@@ -1,21 +1,24 @@
 # -*- coding: utf-8 -*-
 """Compact indented widget tree dumper. Usage: python s10_tree.py <file.json> [...]"""
+
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import os, sys, json
 
 W = r"D:\Games\Steam\steamapps\common\AoE2DE\widgetui"
-OUT = r"D:\Software\DeepSeek Harness\工作区2\_probe\hud_render"
-
+OUT = _HERE_PATH("_probe", "hud_render")
 
 def unwrap(e):
     return e["Widget"] if isinstance(e, dict) and "Widget" in e else e
-
 
 def vp(v):
     if not v:
         return "-"
     return "(%s,%s %sx%s %s)" % (v.get("xorigin"), v.get("yorigin"),
                                  v.get("width"), v.get("height"), v.get("alignment"))
-
 
 def mats(w):
     sm = w.get("StateMaterials") or {}
@@ -33,7 +36,6 @@ def mats(w):
         else:
             out.append("%s=%s" % (k, sorted(v.keys())))
     return " ".join(out)
-
 
 def walk(w, depth, out):
     ind = "  " * depth
@@ -65,7 +67,6 @@ def walk(w, depth, out):
     for c in (w.get("ChildWidgets") or []):
         walk(unwrap(c), depth + 1, out)
 
-
 def main():
     lines = []
     for fn in sys.argv[1:]:
@@ -83,6 +84,5 @@ def main():
     txt = "\n".join(lines)
     open(os.path.join(OUT, "tree_dump.txt"), "w", encoding="utf-8").write(txt)
     print(txt)
-
 
 main()

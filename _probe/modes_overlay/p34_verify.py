@@ -2,9 +2,15 @@
 file-level table, so the report's numbers are exact rather than approximate.
 Read-only -> p34_out.txt
 """
+
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import os, csv, collections, json
 
-OUT = r"D:\Software\DeepSeek Harness\工作区2\_probe\modes_overlay"
+OUT = _HERE_PATH("_probe", "modes_overlay")
 F = open(os.path.join(OUT, "p34_out.txt"), "w", encoding="utf-8")
 def P(*a): print(*a, file=F)
 

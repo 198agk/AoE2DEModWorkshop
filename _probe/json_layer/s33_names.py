@@ -1,5 +1,10 @@
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import os, io, json, re, glob, collections
-OUT = r"D:\Software\DeepSeek Harness\工作区2\_probe\json_layer"
+OUT = _HERE_PATH("_probe", "json_layer")
 GAME = r"D:\Games\Steam\steamapps\common\AoE2DE"
 BASE = os.path.join(GAME, "resources", "_common", "dat")
 CTT = os.path.join(BASE, "CivTechTrees")

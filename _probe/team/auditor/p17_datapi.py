@@ -1,6 +1,11 @@
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 # -*- coding: utf-8 -*-
 import sys, inspect, os, json
-sys.path.insert(0, r"D:\Software\DeepSeek Harness\工作区2")
+sys.path.insert(0, _HERE_PATH("..", "..", ".."))
 from aoe2mod.dat import parser as P
 print("parser module names:", [n for n in dir(P) if not n.startswith("_")])
 print("Parser methods:", [n for n in dir(P.Parser) if not n.startswith("__")])

@@ -1,6 +1,11 @@
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import os, io, re, sys, json, collections
 
-OUT = r"D:\Software\DeepSeek Harness\工作区2\_probe\json_layer"
+OUT = _HERE_PATH("_probe", "json_layer")
 GAME = r"D:\Games\Steam\steamapps\common\AoE2DE"
 rep = io.StringIO()
 def w(s=""):
@@ -76,7 +81,7 @@ w("")
 w("=" * 78)
 w("3. DOES THE SHIPPED TOOL SOURCE MODEL THESE JSON CONCEPTS IN THE .dat?")
 w("=" * 78)
-SRC = r"D:\Software\DeepSeek Harness\工作区2\_probe\source"
+SRC = _HERE_PATH("_probe", "source")
 needles = ["linkedtech", "linkedunit", "dropsite", "drop_site", "unitline", "unit_line",
            "selection_group", "selectiongroup", "unitcategor", "sharedbuilding", "objectreplacement",
            "objreplacement", "futureavailable", "buttonfile", "command_button", "sound_list",

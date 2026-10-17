@@ -1,17 +1,21 @@
 # -*- coding: utf-8 -*-
 """Audit probe 21: (a) who writes mod-status.json (does anything register a mod?),
 (b) do the logs ever mention the two mods, (c) is smoke5 discoverable?"""
+
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import os, sys, json, glob, subprocess
 
-WS = r"D:\Software\DeepSeek Harness\工作区2"
+WS = _HERE_PATH()
 PROFILE = r"C:\Users\26913\Games\Age of Empires 2 DE"
 ACC = os.path.join(PROFILE, "76561198406248391")
 MS = os.path.join(ACC, "mods", "mod-status.json")
 
-
 def head(t):
     print(); print("=" * 78); print(t); print("=" * 78)
-
 
 head("21a: grep the workspace for mod-status.json writers")
 hits = []

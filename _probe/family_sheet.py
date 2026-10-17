@@ -9,12 +9,18 @@ triangles). V1 (widgetui ingame/emblems) is tan engraved art. Chibi is anime.
 Test: unpremultiply V2 (wpfg/resources/civ_emblems) and see whether it becomes
 colour heraldry; compare against V1 and against the observed crops.
 """
+
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import os
 import numpy as np
 from PIL import Image, ImageDraw
 
 GAME = r"D:\Games\Steam\steamapps\common\AoE2DE"
-OUT = r"D:\Software\DeepSeek Harness\工作区2\_shots\ui"
+OUT = _HERE_PATH("_shots", "ui")
 V1 = os.path.join(GAME, "widgetui", "textures", "ingame", "emblems")
 V2 = os.path.join(GAME, "resources", "_common", "wpfg", "resources", "civ_emblems")
 MOD = (r"C:\Users\26913\Games\Age of Empires 2 DE\76561198406248391\mods"
@@ -27,7 +33,6 @@ CIVS = ["britons", "lithuanians", "teutons", "saracens", "vikings",
 
 BG = (70, 60, 52)
 
-
 def unpremult(im):
     a = np.asarray(im, dtype=np.float32)
     al = a[:, :, 3:4]
@@ -36,17 +41,14 @@ def unpremult(im):
     out = np.concatenate([np.clip(rgb, 0, 255), al], axis=2)
     return Image.fromarray(out.astype(np.uint8), "RGBA")
 
-
 def load(path):
     return Image.open(path).convert("RGBA") if os.path.exists(path) else None
-
 
 def onbg(im, size):
     s = im.resize(size, Image.LANCZOS)
     bg = Image.new("RGBA", size, BG + (255,))
     bg.alpha_composite(s)
     return bg.convert("RGB")
-
 
 TW, TH = 200, 124
 rows = []

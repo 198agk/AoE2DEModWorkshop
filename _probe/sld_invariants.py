@@ -18,6 +18,12 @@ Layout (all verified):
 
 Read-only.
 """
+
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import os
 import struct
 import collections
@@ -25,7 +31,7 @@ import json
 
 GAME = r"D:\Games\Steam\steamapps\common\AoE2DE"
 GP = os.path.join(GAME, "resources", "_common", "drs", "graphics")
-OUT = r"D:\Software\DeepSeek Harness\工作区2\_probe\sld_invariants_out.json"
+OUT = _HERE_PATH("_probe", "sld_invariants_out.json")
 BITNAMES = [(0, "main"), (1, "shadow"), (2, "unknown2"), (3, "damage"), (4, "playercolor")]
 ceil4 = lambda x: x + ((4 - x % 4) % 4)
 
@@ -40,7 +46,6 @@ un_samples = []
 ver_hist = collections.Counter()
 numframes_mismatch = []
 files_ok = 0
-
 
 def walk_file(b, fo):
     """yield one dict per frame; raise on structure error."""
@@ -72,7 +77,6 @@ def walk_file(b, fo):
     if p != len(b):
         raise ValueError("overrun %d" % p)
 
-
 def parse_main(b, q, size):
     rect = struct.unpack_from("<4H", b, q + 4)
     fmt, ncmd = struct.unpack_from("<2H", b, q + 12)
@@ -81,14 +85,12 @@ def parse_main(b, q, size):
     cmds = [(b[q + 16 + 2 * i], b[q + 17 + 2 * i]) for i in range(ncmd)]
     return rect, fmt, ncmd, cmds
 
-
 def parse_pc(b, q, size):
     fmt, ncmd = struct.unpack_from("<2H", b, q + 4)
     if 8 + 2 * ncmd > size:
         return fmt, ncmd, None
     cmds = [(b[q + 8 + 2 * i], b[q + 9 + 2 * i]) for i in range(ncmd)]
     return fmt, ncmd, cmds
-
 
 for fn in files:
     b = open(os.path.join(GP, fn), "rb").read()

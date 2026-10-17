@@ -4,9 +4,15 @@
 These appeared under "sprite"/"aseprite"/"游戏资源" rather than under any AoE
 term, so they are only visible if the search is read rather than just counted.
 """
+
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import json, io
 
-CAT = r"D:\Software\DeepSeek Harness\工作区2\_probe\awesome_plugins.json"
+CAT = _HERE_PATH("_probe", "awesome_plugins.json")
 data = json.load(io.open(CAT, encoding="utf-8"))
 plugins = data["plugins"] if isinstance(data, dict) and "plugins" in data else data
 by = {(p.get("npm") or p.get("name")): p for p in plugins}

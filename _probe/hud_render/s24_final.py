@@ -21,12 +21,18 @@ THREE DEFECTS IN MY EARLIER MEASUREMENTS, ALL NOW FIXED
 3. NO FLOOR. I never established what MAD a KNOWN-CORRECT widget scores. Without
    that floor, "plank scored 71" is meaningless. The control is included here.
 """
+
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import os
 import json
 import numpy as np
 from PIL import Image, ImageDraw
 
-O = r"D:\Software\DeepSeek Harness\工作区2\_probe\hud_render"
+O = _HERE_PATH("_probe", "hud_render")
 GAME = r"D:\Games\Steam\steamapps\common\AoE2DE"
 WID = os.path.join(GAME, "widgetui")
 AT = r"C:\Users\26913\.dsh\attachments\v1\objects"

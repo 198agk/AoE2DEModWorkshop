@@ -1,3 +1,8 @@
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import os, io, json
 BASE = r"D:\Games\Steam\steamapps\common\AoE2DE\resources\_common\dat"
 M297 = None
@@ -8,7 +13,7 @@ for d in os.listdir(root):
         M297 = os.path.join(root, d, "resources", "_common", "dat")
     if d.startswith("550749"):
         M550 = os.path.join(root, d, "resources", "_common", "dat")
-OUT = r"D:\Software\DeepSeek Harness\工作区2\_probe\json_layer"
+OUT = _HERE_PATH("_probe", "json_layer")
 rep = io.StringIO()
 def w(s=""):
     rep.write(str(s) + "\n")

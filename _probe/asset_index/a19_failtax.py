@@ -11,13 +11,19 @@ Classes:
   F6 FileName is empty on the graphic
   F7 other
 """
+
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import json, os, collections, re
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 GFXDIR = r"D:\Games\Steam\steamapps\common\AoE2DE\resources\_common\drs\graphics"
 G = json.load(open(os.path.join(HERE, "graphics_raw.json"), encoding="utf-8"))
 C = json.load(open(os.path.join(HERE, "units_raw.json"), encoding="utf-8"))
-SEM = json.load(open(r"D:\Software\DeepSeek Harness\工作区2\_probe\semantic\unit_names.json",
+SEM = json.load(open(_HERE_PATH("_probe", "semantic", "unit_names.json"),
                      encoding="utf-8"))
 
 disk = set(f.lower()[:-4] for f in os.listdir(GFXDIR) if f.lower().endswith(".sld"))

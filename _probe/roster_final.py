@@ -9,6 +9,12 @@ V3 britons.png     = red shield with three gold LIONS (the NCC's false winner).
 So: put observed row1 next to both, at big magnification, plus V1 (chibi target)
 for completeness. Then build the three-family summary sheet.
 """
+
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import os
 import json
 import numpy as np
@@ -16,7 +22,7 @@ from PIL import Image, ImageDraw
 
 GAME = r"D:\Games\Steam\steamapps\common\AoE2DE"
 SHOTS = r"C:\Users\26913\.dsh\attachments\v1\objects"
-OUT = r"D:\Software\DeepSeek Harness\工作区2\_shots\ui"
+OUT = _HERE_PATH("_shots", "ui")
 WJ = os.path.join(GAME, "widgetui")
 V1 = os.path.join(WJ, "textures", "ingame", "emblems")
 V2 = os.path.join(GAME, "resources", "_common", "wpfg", "resources", "civ_emblems")
@@ -28,7 +34,6 @@ MOD = (r"C:\Users\26913\Games\Age of Empires 2 DE\76561198406248391\mods"
 F1 = os.path.join(SHOTS, "02", "0261b373ecaf49144281bea8a63f4b57627bc303cbb35a78fcb7f4b616ee4e82")
 shot = Image.open(F1).convert("RGBA")
 
-
 def onbg(p, size=None, bg=(70, 60, 52)):
     im = Image.open(p).convert("RGBA")
     if size:
@@ -36,7 +41,6 @@ def onbg(p, size=None, bg=(70, 60, 52)):
     b = Image.new("RGBA", im.size, bg + (255,))
     b.alpha_composite(im)
     return b.convert("RGB")
-
 
 # ---------- figure A: roster row1 vs candidates ----------
 row = shot.crop((2648, 1070, 2704, 1106))  # generous, centred on row 1
@@ -65,13 +69,11 @@ CIVS = ["britons", "lithuanians", "teutons", "franks", "vikings", "chinese",
         "aztecs", "poles", "berbers", "celts"]
 BG = (62, 54, 47)
 
-
 def g(d, c):
     p = os.path.join(d, c + ".png")
     if not os.path.exists(p) and c == "berbers":
         p = os.path.join(d, "berber.png")
     return p
-
 
 TW, TH = 168, 105
 cols = [

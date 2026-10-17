@@ -1,3 +1,8 @@
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import re, io, collections
 
 EXE = r"D:\Games\Steam\steamapps\common\AoE2DE\AoE2DE_s.exe"
@@ -54,5 +59,5 @@ for f in sorted(found):
     w("  %-40s %s\n" % (f, found[f][0][:130]))
 
 txt = out.getvalue()
-io.open(r"D:\Software\DeepSeek Harness\工作区2\_probe\ui_surfaces\exe_flagtable2.txt", "w", encoding="utf-8").write(txt)
+io.open(_HERE_PATH("_probe", "ui_surfaces", "exe_flagtable2.txt"), "w", encoding="utf-8").write(txt)
 print("clusters:", len(clusters), "flags w/ desc:", len(found))

@@ -18,11 +18,17 @@ Outputs
   cmp_resource_diff.png    per-pixel |diff| heat map (fidelity check)
   cmp_resource.txt         numeric summary
 """
+
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import os
 import numpy as np
 from PIL import Image, ImageDraw, ImageChops
 
-O = r"D:\Software\DeepSeek Harness\工作区2\_probe\hud_render"
+O = _HERE_PATH("_probe", "hud_render")
 SHOT = r"C:\Users\26913\.dsh\attachments\v1\objects\02\0261b373ecaf49144281bea8a63f4b57627bc303cbb35a78fcb7f4b616ee4e82"
 
 S = 0.5980          # measured HUD scale (s14_align2.py)

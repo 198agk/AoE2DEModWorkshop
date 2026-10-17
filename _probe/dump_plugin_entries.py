@@ -5,9 +5,15 @@ The catalog descriptions are the only first-party statement of what a plugin
 does; quoting them is cheaper than reading 30 READMEs and cannot drift from the
 published metadata.
 """
+
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import json, io, sys
 
-CAT = r"D:\Software\DeepSeek Harness\工作区2\_probe\awesome_plugins.json"
+CAT = _HERE_PATH("_probe", "awesome_plugins.json")
 
 WANTED = [
     "dsh-click",

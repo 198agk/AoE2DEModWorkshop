@@ -2,11 +2,17 @@
 
 Read-only.
 """
+
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import os
 import re
 
 GAME = r"D:\Games\Steam\steamapps\common\AoE2DE"
-RES = r"D:\Software\DeepSeek Harness\工作区2\_probe\xs_ai_research"
+RES = _HERE_PATH("_probe", "xs_ai_research")
 
 SUSPECT_C = """cActionTypeGatherPoint cActionTypeUnload cAttributeCivVoiceOverride
 cColorIdAqua cColorIdBlack cColorIdBlue cColorIdGray cColorIdGreen cColorIdOrange

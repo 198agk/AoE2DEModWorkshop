@@ -6,10 +6,16 @@
  - content-mode name table + per-mode WWISE bank table
  - second (non-<locale>) storage-point path table
 """
+
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import os, struct, json, re, math
 
 GAME = r"D:\Games\Steam\steamapps\common\AoE2DE"
-OUT = r"D:\Software\DeepSeek Harness\工作区2\_probe\modes_overlay"
+OUT = _HERE_PATH("_probe", "modes_overlay")
 buf = open(os.path.join(GAME, "AoE2DE_s.exe"), "rb").read()
 
 e_lfanew = struct.unpack_from("<I", buf, 0x3C)[0]

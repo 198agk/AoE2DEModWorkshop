@@ -1,6 +1,11 @@
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import os, re, io, collections
 LOGROOT = r"C:\Users\26913\Games\Age of Empires 2 DE\logs"
-OUT = r"D:\Software\DeepSeek Harness\工作区2\_probe\json_layer"
+OUT = _HERE_PATH("_probe", "json_layer")
 rep = io.StringIO()
 def w(s=""):
     rep.write(str(s)+"\n")

@@ -2,6 +2,12 @@
 """Is the floating chibi figure in the HUD a *crop from the chibi mod's emblem PNGs*?
 If yes, the loose-PNG route DOES work and only the score panel differs.
 """
+
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import os, glob
 import numpy as np
 from PIL import Image
@@ -9,7 +15,7 @@ from PIL import Image
 G = r"D:\Games\Steam\steamapps\common\AoE2DE"
 CHIBI = r"C:\Users\26913\Games\Age of Empires 2 DE\76561198406248391\mods\subscribed\182654_Age of Anime (Chibi Edition)\widgetui\textures\ingame\emblems"
 SHOTS = r"C:\Users\26913\.dsh\attachments\v1\objects"
-OUT = r"D:\Software\DeepSeek Harness\工作区2\_shots\ui"
+OUT = _HERE_PATH("_shots", "ui")
 os.makedirs(OUT, exist_ok=True)
 
 f1 = os.path.join(SHOTS, "02", "0261b373ecaf49144281bea8a63f4b57627bc303cbb35a78fcb7f4b616ee4e82")

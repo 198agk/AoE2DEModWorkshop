@@ -1,3 +1,8 @@
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import json, os, io, collections
 
 P = r"D:\Games\Steam\steamapps\common\AoE2DE\modes\Pompeii\resources\_common\dat\civTechTrees.json"
@@ -76,5 +81,5 @@ w("\n### Pompeii CivTechTrees dir:")
 for f in sorted(os.listdir(PD)):
     w("   %-30s %8d" % (f, os.path.getsize(os.path.join(PD, f))))
 
-open(r"D:\Software\DeepSeek Harness\工作区2\_probe\json_layer\s12_mono.txt", "w", encoding="utf-8").write(out.getvalue())
+open(_HERE_PATH("_probe", "json_layer", "s12_mono.txt"), "w", encoding="utf-8").write(out.getvalue())
 print(out.getvalue()[:9000])

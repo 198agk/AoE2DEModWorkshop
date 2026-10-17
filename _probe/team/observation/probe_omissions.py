@@ -1,10 +1,16 @@
 """Identify (a) the 22 barracks-trainable units never in any civ's cache@12,
 (b) what tree rows 215 / 602 / 875 are."""
+
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import json
 import os
 import sys
 
-sys.path.insert(0, r"D:\Software\DeepSeek Harness\工作区2")
+sys.path.insert(0, _HERE_PATH("..", "..", ".."))
 ROOT = r"D:\Games\Steam\steamapps\common\AoE2DE"
 TREES = os.path.join(ROOT, "resources", "_common", "dat", "CivTechTrees")
 from aoe2mod.dat import parser as P, locate

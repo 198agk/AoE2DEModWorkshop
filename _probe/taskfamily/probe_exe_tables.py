@@ -9,17 +9,22 @@ little-endian, either as adjacent pairs or as a contiguous run.
 
 Everything here is read-only: the file is opened 'rb' and never written.
 """
+
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import struct, os, sys, json, itertools, re
 
 EXE = r"D:\Games\Steam\steamapps\common\AoE2DE\AoE2DE_s.exe"
-OUT = r"D:\Software\DeepSeek Harness\工作区2\_probe\taskfamily"
+OUT = _HERE_PATH("_probe", "taskfamily")
 
 # male group (dat TaskSwapGroup=1) and female group (=2), from probe 1
 TSG1 = [56, 83, 118, 120, 122, 123, 124, 156, 259, 579, 592, 1810, 1892, 2333]
 TSG2 = [57, 212, 214, 216, 218, 220, 222, 293, 354, 581, 590, 1891, 2334]
 TSG3 = [13, 2147, 2171, 2356, 2630]
 FAMILY = sorted(set(TSG1) | set(TSG2))
-
 
 def main():
     b = open(EXE, "rb").read()
@@ -175,7 +180,6 @@ def main():
         json.dump(report, f, ensure_ascii=False, indent=1)
     print("\nwrote exe_scan.json")
     print("DONE")
-
 
 if __name__ == "__main__":
     main()

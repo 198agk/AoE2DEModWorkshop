@@ -1,6 +1,11 @@
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import os, io, json, sys
-sys.path.insert(0, r"D:\Software\DeepSeek Harness\工作区2\_probe\datparse")
-OUT = r"D:\Software\DeepSeek Harness\工作区2\_probe\json_layer"
+sys.path.insert(0, _HERE_PATH("_probe", "datparse"))
+OUT = _HERE_PATH("_probe", "json_layer")
 BASE = r"D:\Games\Steam\steamapps\common\AoE2DE\resources\_common\dat"
 DAT = os.path.join(BASE, "empires2_x2_p1.dat")
 import parse_dat as P
@@ -38,11 +43,11 @@ w("  .dat civ keys = player_type,name,tech_tree_id,team_bonus_id,resources,icon_
 w("  overlap = %s" % sorted(set(civs[0].keys()) & {"player_type","name","tech_tree_id","team_bonus_id","resources","icon_set"}))
 
 # unit id set from semantics file
-sem = json.loads(open(r"D:\Software\DeepSeek Harness\工作区2\_probe\semantic\unit_names.json", encoding="utf-8").read())
+sem = json.loads(open(_HERE_PATH("_probe", "semantic", "unit_names.json"), encoding="utf-8").read())
 uids = set(int(k) for k in (sem.get("units") or sem).keys() if str(k).isdigit()) if isinstance(sem, dict) else set()
 w("")
 w("semantic unit_ids available = %d" % len(uids))
-tech_sem = json.loads(open(r"D:\Software\DeepSeek Harness\工作区2\_probe\semantic\tech_names.json", encoding="utf-8").read())
+tech_sem = json.loads(open(_HERE_PATH("_probe", "semantic", "tech_names.json"), encoding="utf-8").read())
 tids = set(int(k) for k in (tech_sem.get("techs") or tech_sem).keys() if str(k).isdigit()) if isinstance(tech_sem, dict) else set()
 w("semantic tech_ids available = %d" % len(tids))
 if not tids:

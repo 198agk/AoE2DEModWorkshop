@@ -28,6 +28,12 @@ This script closes the case with two independent measurements:
   E3  count Blend modes across materials.json to size AlphaPlayerColor usage.
 Read-only.
 """
+
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import json
 import os
 import struct
@@ -38,7 +44,7 @@ GAME = r"D:\Games\Steam\steamapps\common\AoE2DE"
 GP = os.path.join(GAME, "resources", "_common", "drs", "graphics")
 PAL = os.path.join(GAME, "resources", "_common", "palettes")
 WID = os.path.join(GAME, "widgetui")
-OUT = r"D:\Software\DeepSeek Harness\工作区2\_shots\playerclr"
+OUT = _HERE_PATH("_shots", "playerclr")
 os.makedirs(OUT, exist_ok=True)
 
 u8 = lambda b, o: b[o]
@@ -48,7 +54,6 @@ u32 = lambda b, o: struct.unpack_from("<I", b, o)[0]
 
 BITS = [(0, "main", False), (1, "shadow", True), (2, "unknown2", False),
         (3, "damage", False), (4, "playercolor", True)]
-
 
 def bc1(blk):
     c0, c1 = struct.unpack_from("<HH", blk, 0)
@@ -66,7 +71,6 @@ def bc1(blk):
     lut = [a, b2, c2, c3]
     return [lut[idx >> (2 * k) & 3] for k in range(16)]
 
-
 def bc4(blk):
     c0, c1 = blk[0], blk[1]
     if c0 > c1:
@@ -75,7 +79,6 @@ def bc4(blk):
         lut = [c0, c1] + [((5 - i) * c0 + i * c1) // 5 for i in range(1, 5)] + [0, 255]
     v = int.from_bytes(blk[2:8], "little")
     return [lut[v >> (3 * k) & 7] for k in range(16)]
-
 
 def decode_layer(b, L, x, y, w, h, isbc4):
     """Decode a layer's blocks into an (w x h) RGBA / mask array."""
@@ -116,7 +119,6 @@ def decode_layer(b, L, x, y, w, h, isbc4):
                 bx, by = 0, by + 1
     return im.crop((0, 0, w, h)), isbc4
 
-
 def frame0(path):
     b = open(path, "rb").read()
     nf = u16(b, 6)
@@ -140,7 +142,6 @@ def frame0(path):
         off += clen + ((4 - clen % 4) % 4)
         layers.append(L)
     return b, cw, ch, ft, layers
-
 
 print("=" * 72)
 print("E1  render main + playercolor layers, check mask coherence")

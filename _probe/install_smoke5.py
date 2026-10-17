@@ -13,7 +13,7 @@ flag in the mod manager.  So this script:
   * does NOT touch mod-status.json, Enable, priority, or anything else.
 
 Usage:
-    $env:PYTHONPATH='D:\Software\DeepSeek Harness\工作区2'
+    $env:PYTHONPATH=D:\Software\AI\帝国项目
     & $py _probe\install_smoke5.py
 """
 import hashlib

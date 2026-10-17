@@ -4,6 +4,12 @@
   Q2  what are the 24 playercolor layers whose sum(skip+draw) != main grid?
   Q3  can `unknown2` be decoded as a mask/colour layer on main's grid?
 """
+
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import os
 import struct
 import sys
@@ -16,15 +22,13 @@ from PIL import Image, ImageDraw
 
 GAME = r"D:\Games\Steam\steamapps\common\AoE2DE"
 GP = os.path.join(GAME, "resources", "_common", "drs", "graphics")
-OUT = r"D:\Software\DeepSeek Harness\工作区2\_shots\sld_render"
+OUT = _HERE_PATH("_shots", "sld_render")
 os.makedirs(OUT, exist_ok=True)
-
 
 def mask(l):
     fmt, n = struct.unpack_from("<2H", l.data, 0)
     cmds = [struct.unpack_from("<2B", l.data, 4 + 2 * i) for i in range(n)]
     return fmt, n, cmds, sum(c[0] + c[1] for c in cmds)
-
 
 # ---------------- Q1 + Q2 ----------------
 c = Counter()
@@ -178,7 +182,6 @@ def render_unknown2(fn, fi):
         im = im.resize((im.width * sc, im.height * sc), Image.NEAREST)
         crops.append((label, im))
     return ("%s f%d unknown2 size=%d %dx%d" % (fn, fi, u.size, w, h), crops)
-
 
 SRC = r"D:\Games\Steam\steamapps\common\AoE2DE\_probe_src"
 JOBS = []

@@ -18,11 +18,17 @@ Test. If the game drew the MOD panel, then for every pixel
           (inside 0..255, unclipped, terrain-toned).
     If the game drew the VANILLA panel, those same pixels must have std ~ 0.
 """
+
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import os
 import numpy as np
 from PIL import Image
 
-O = r"D:\Software\DeepSeek Harness\工作区2\_probe\hud_render"
+O = _HERE_PATH("_probe", "hud_render")
 GAME = r"D:\Games\Steam\steamapps\common\AoE2DE"
 WID = os.path.join(GAME, "widgetui")
 MOD = r"C:\Users\26913\Games\Age of Empires 2 DE\76561198406248391\mods\subscribed\550412_透明主题整合自用"

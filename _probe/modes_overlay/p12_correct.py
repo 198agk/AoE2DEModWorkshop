@@ -5,11 +5,17 @@
  4) morematerials.json + COMMON_STRINGS real file names.
 Read-only.
 """
+
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import os, json, struct, re
 
 GAME = r"D:\Games\Steam\steamapps\common\AoE2DE"
 POM  = os.path.join(GAME, "modes", "Pompeii")
-OUT  = r"D:\Software\DeepSeek Harness\工作区2\_probe\modes_overlay"
+OUT  = _HERE_PATH("_probe", "modes_overlay")
 buf = open(os.path.join(GAME, "AoE2DE_s.exe"), "rb").read()
 secs = json.load(open(os.path.join(OUT, "exe_sections.json")))
 S = {s["name"]: s for s in secs}

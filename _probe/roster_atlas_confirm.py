@@ -6,6 +6,12 @@ textures/menu/civs/<civ>.png. Decode the SHIPPED atlas slice and compare it to
 This closes the loop: it proves the shipped atlas is the pixel source, and that
 the loose V3 png is the build input (i.e. the override target).
 """
+
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import os
 import json
 import numpy as np
@@ -13,7 +19,7 @@ from PIL import Image, ImageDraw
 
 GAME = r"D:\Games\Steam\steamapps\common\AoE2DE"
 SHOTS = r"C:\Users\26913\.dsh\attachments\v1\objects"
-OUT = r"D:\Software\DeepSeek Harness\工作区2\_shots\ui"
+OUT = _HERE_PATH("_shots", "ui")
 WJ = os.path.join(GAME, "widgetui")
 
 m = json.load(open(os.path.join(WJ, "materials.json"), encoding="utf-8-sig"))

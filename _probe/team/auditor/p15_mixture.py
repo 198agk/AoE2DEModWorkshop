@@ -2,8 +2,14 @@
 """Audit probe 15: (a) full mod-status dump, (b) the 2x2 the TWO installed mods
 can synthesise by file layering, (c) .dat button/hotkey fields for 74 & 2550,
 (d) mod-manager passes in the log."""
+
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import json, os, sys, glob, collections
-sys.path.insert(0, r"D:\Software\DeepSeek Harness\工作区2")
+sys.path.insert(0, _HERE_PATH("..", "..", ".."))
 os.environ.setdefault("PYTHONIOENCODING", "utf-8")
 from aoe2mod.game import buildpanel as BP
 from aoe2mod.game import civtechtrees as CT
@@ -16,10 +22,8 @@ BUNDLE = "aoe2mod Bundle VillagerHP plus Britons HandCannon"
 SMOKE5 = "aoe2mod Smoke5 TreeVsPanel"
 BLD = 12
 
-
 def head(t):
     print(); print("=" * 78); print(t); print("=" * 78)
-
 
 head("15a: every entry in mod-status.json")
 j = json.load(open(os.path.join(ACC, "mods", "mod-status.json"), encoding="utf-8-sig"))

@@ -1,10 +1,15 @@
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 # Campaign container structure, fixed scan (+h bug), gap analysis, and in-place member swap test.
 import os, sys, io, json, zlib, glob, contextlib, warnings
 sys.stdout.reconfigure(encoding='utf-8', errors='replace')
 warnings.filterwarnings('ignore'); import logging; logging.disable(logging.CRITICAL)
 
 CAMP = r'D:\Games\Steam\steamapps\common\AoE2DE\resources\_common\campaign'
-HERE = r'D:\Software\DeepSeek Harness\工作区2\_probe\survey_scenario'
+HERE = _HERE_PATH("_probe", "survey_scenario")
 buf = io.StringIO()
 def p(*a):
     s = ' '.join(str(x) for x in a); print(s); buf.write(s + '\n')

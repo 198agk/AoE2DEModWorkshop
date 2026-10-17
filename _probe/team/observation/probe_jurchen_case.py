@@ -11,9 +11,15 @@ CACHE, then the cache is the button list and the tree is advisory.
 This costs zero games played: it is a question about a shipped, live product
 whose answer millions of players already know.
 """
+
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import os, sys, json
 
-ROOT = r"D:\Software\DeepSeek Harness\工作区2"
+ROOT = _HERE_PATH()
 sys.path.insert(0, ROOT)
 os.environ.setdefault("PYTHONIOENCODING", "utf-8")
 

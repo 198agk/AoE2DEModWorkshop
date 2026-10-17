@@ -2,11 +2,17 @@
 the mode/DLC name table, so downstream tools do not have to re-parse the exe.
 Read-only -> storage_points.json, content_modes.json
 """
+
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import os, struct, re, json
 
 EXE = r"D:\Games\Steam\steamapps\common\AoE2DE\AoE2DE_s.exe"
 PI = r"D:\Games\Steam\steamapps\common\AoE2DE\modes\Pompeii\Pompeii.json"
-OUT = r"D:\Software\DeepSeek Harness\工作区2\_probe\modes_overlay"
+OUT = _HERE_PATH("_probe", "modes_overlay")
 
 buf = open(EXE, "rb").read()
 e = struct.unpack_from("<I", buf, 0x3c)[0]

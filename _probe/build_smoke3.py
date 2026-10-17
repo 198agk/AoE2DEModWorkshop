@@ -19,7 +19,7 @@ This build removes the confound:
     is what failed -- not the installation.
 
 Usage:
-    $env:PYTHONPATH='D:\Software\DeepSeek Harness\工作区2'
+    $env:PYTHONPATH=D:\Software\AI\帝国项目
     & $py _probe\build_smoke3.py
 """
 

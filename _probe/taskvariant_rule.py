@@ -14,11 +14,17 @@ engine swap 村民 -> 建筑者, so 83 and 118 are ground truth) plus the whole
 A rule is only usable if it (a) groups the whole family and (b) does not sweep
 up unrelated units.
 """
+
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import collections
 import os
 import sys
 
-sys.path.insert(0, r"D:\Software\DeepSeek Harness\工作区2")
+sys.path.insert(0, _HERE_PATH(".."))
 from aoe2mod import api as A  # noqa: E402
 
 tk = A.open_toolkit()

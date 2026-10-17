@@ -4,11 +4,17 @@
 Check the .dat train hosts of 41/555 vs 759/761, and count how many of the
 49 barracks-trainable units have a cache entry at building 12 in ANY civ.
 """
+
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import json
 import os
 import sys
 
-sys.path.insert(0, r"D:\Software\DeepSeek Harness\工作区2")
+sys.path.insert(0, _HERE_PATH("..", "..", ".."))
 ROOT = r"D:\Games\Steam\steamapps\common\AoE2DE"
 from aoe2mod.dat import parser as P, locate
 

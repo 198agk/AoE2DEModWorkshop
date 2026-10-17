@@ -14,10 +14,16 @@ This script:
   5. clusters units by an identical stat signature (the proposed data-driven
      heuristic) and checks whether 83 and 118 land in the same cluster.
 """
+
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import sys, os, struct, json, collections
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-DP = r"D:\Software\DeepSeek Harness\工作区2\_probe\datparse"
+DP = _HERE_PATH("_probe", "datparse")
 sys.path.insert(0, DP)
 
 import parse_dat as P
@@ -38,7 +44,6 @@ LINKED_VILLAGERS = [56, 57, 83, 118, 120, 122, 123, 124, 156, 206, 212, 214,
 # parse_dat discards everything -- so TaskSwapGroup has never been readable.
 # ---------------------------------------------------------------------------
 BIRD_BY_OFF = {}
-
 
 class _PosProxy(object):
     """Wraps any reader object and adds an `at(key)` that returns the current
@@ -65,7 +70,6 @@ class _PosProxy(object):
     def __setattr__(self, name, value):
         setattr(self._r, name, value)
 
-
 def read_bird_marked(inner):
     r = _PosProxy(inner)
     start = r.at("bird_start")
@@ -88,16 +92,13 @@ def read_bird_marked(inner):
     BIRD_BY_OFF[start] = b
     return b
 
-
 P.read_bird = read_bird_marked
-
 
 def bird_of(u):
     off = u["_offs"].get("bird_start")
     if off is None:
         return None
     return BIRD_BY_OFF.get(off)
-
 
 def sig_stats(u, b):
     """Gameplay-stat signature.  Deliberately EXCLUDES identity (id, name,
@@ -123,7 +124,6 @@ def sig_stats(u, b):
         round(b.get("work_rate", 0.0), 6) if b else None,
         round(b.get("search_radius", 0.0), 6) if b else None,
     )
-
 
 def main():
     data, how = P.load_dat(BASE)
@@ -268,7 +268,6 @@ def main():
         print("\n  id %-5d tsg=%-4d -> group members: %s" % (probe, g, sorted(dtsg.get(g, []))))
 
     print("\nDONE")
-
 
 if __name__ == "__main__":
     main()

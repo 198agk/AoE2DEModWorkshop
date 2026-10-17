@@ -5,10 +5,16 @@ The top bar spans the full width over terrain that varies (desert tan vs dark tr
  - mod (alpha 64)                               -> colour follows the terrain behind it
 So column-colour variance across the bar tells us whether the override applied.
 """
+
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import os
 from PIL import Image
 
-OUT = r"D:\Software\DeepSeek Harness\工作区2\_shots\ui"
+OUT = _HERE_PATH("_shots", "ui")
 os.makedirs(OUT, exist_ok=True)
 SHOTS = r"C:\Users\26913\.dsh\attachments\v1\objects"
 f1 = os.path.join(SHOTS, "02", "0261b373ecaf49144281bea8a63f4b57627bc303cbb35a78fcb7f4b616ee4e82")

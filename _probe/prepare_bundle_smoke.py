@@ -26,10 +26,16 @@ Three questions one game answers:
   Q2 is the villager 1000 hp (so the .dat half is live)?
   Q3 does the Britons Archery Range offer the Hand Cannoneer (so availability is)?
 """
+
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import os
 import sys
 
-sys.path.insert(0, r"D:\Software\DeepSeek Harness\工作区2")
+sys.path.insert(0, _HERE_PATH(".."))
 import aoe2mod.api as A                                     # noqa: E402
 from aoe2mod.game import locations as L                     # noqa: E402
 

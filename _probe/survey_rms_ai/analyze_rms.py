@@ -1,11 +1,17 @@
 # -*- coding: utf-8 -*-
 """Analyze AoE2DE .rms / .rms2 / .inc random map scripts."""
+
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import os, re, json, collections, sys
 
 GAME = r"D:\Games\Steam\steamapps\common\AoE2DE"
 GX   = os.path.join(GAME, r"resources\_common\drs\gamedata_x2")
 POMP = os.path.join(GAME, r"modes\Pompeii\resources\_common\drs\gamedata_x2")
-OUT  = r"D:\Software\DeepSeek Harness\工作区2\_probe\survey_rms_ai"
+OUT  = _HERE_PATH("_probe", "survey_rms_ai")
 os.makedirs(OUT, exist_ok=True)
 
 TARGET_EXT = {".rms", ".rms2", ".inc"}

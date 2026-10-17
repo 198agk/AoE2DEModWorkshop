@@ -7,6 +7,12 @@ Part 1: 10 well-known entities, checked against disk by exact filename existence
 Part 2: the 1344 vs 1345 icon delta explained.
 Part 3: negative controls -- confirm the mapping does NOT accidentally succeed.
 """
+
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import json, os
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -17,7 +23,7 @@ B = json.load(open(os.path.join(HERE, "index_buildings.json"), encoding="utf-8")
 C = json.load(open(os.path.join(HERE, "units_raw.json"), encoding="utf-8"))
 
 disk = set(f.lower() for f in os.listdir(GFXDIR))
-SEM = json.load(open(r"D:\Software\DeepSeek Harness\工作区2\_probe\semantic\unit_names.json",
+SEM = json.load(open(_HERE_PATH("_probe", "semantic", "unit_names.json"),
                      encoding="utf-8"))
 
 TARGETS = ["Archer", "Villager (Male)", "Knight", "Militia", "Town Center",

@@ -10,10 +10,16 @@ authoritative list of branches to implement.
 
 Reads only the extracted genieutils sources under _probe/source/.
 """
+
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import os
 import re
 
-SRC = r"D:\Software\DeepSeek Harness\工作区2\_probe\source\genieutils"
+SRC = _HERE_PATH("_probe", "source", "genieutils")
 DAT = os.path.join(SRC, "src", "dat")
 
 # Authoritative enum order from include/genie/Types.h -- indices are values.
@@ -35,7 +41,6 @@ VAL["GV_LatestDE2"] = VAL["GV_C32"]
 
 GUARD_RE = re.compile(r"\bif\s*\(")
 
-
 def extract_condition(line, start):
     """Return the balanced parenthesised condition beginning at `start`."""
     depth = 0
@@ -49,7 +54,6 @@ def extract_condition(line, start):
                 return line[start + 1:i]
     return None
 
-
 def to_python(expr):
     """Translate a C++ boolean expression to evaluable Python."""
     e = expr
@@ -57,7 +61,6 @@ def to_python(expr):
     e = e.replace("&&", " and ").replace("||", " or ")
     e = re.sub(r"!(?!=)", " not ", e)
     return e
-
 
 def evaluate(expr, gv_value, reading=True):
     env = dict(VAL)
@@ -82,7 +85,6 @@ def evaluate(expr, gv_value, reading=True):
         return bool(eval(py, {"__builtins__": {}}, {}))
     except Exception:                                            # noqa: BLE001
         return None
-
 
 def main():
     c21 = VAL["GV_C21"]
@@ -138,7 +140,6 @@ def main():
     print("=" * 78)
     for fname, ln, cond, a, b in unevaluable:
         print("%-24s:%-5d  C21=%-5s C32=%-5s  %s" % (fname, ln, a, b, cond))
-
 
 if __name__ == "__main__":
     main()

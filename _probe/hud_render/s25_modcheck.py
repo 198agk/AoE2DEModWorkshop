@@ -6,12 +6,18 @@ Corrected from s25: mod-status.json lives at
 and its Path values are RELATIVE to that mods\ directory (e.g.
 "subscribed//550412_<title>"), not absolute.
 """
+
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import os
 import json
 import numpy as np
 from PIL import Image
 
-O = r"D:\Software\DeepSeek Harness\工作区2\_probe\hud_render"
+O = _HERE_PATH("_probe", "hud_render")
 GAME = r"D:\Games\Steam\steamapps\common\AoE2DE"
 WID = os.path.join(GAME, "widgetui")
 MODS = r"C:\Users\26913\Games\Age of Empires 2 DE\76561198406248391\mods"
@@ -70,7 +76,6 @@ rep.append("")
 rep.append("total name-hits: %d" % len(hits))
 rep.append("")
 
-
 def score(im, box=(1750, 276)):
     im = im.convert("RGBA")
     tw, th = int(round(box[0] * SC)), int(round(box[1] * SC))
@@ -82,7 +87,6 @@ def score(im, box=(1750, 276)):
         return None
     x = sub[:, :, :3][m]; y = rm[:ch, :cw][m]
     return float(np.abs(x - y).mean()), float(np.corrcoef(x.mean(axis=1), y.mean(axis=1))[0, 1]), int(m.sum()), im.size
-
 
 rep.append("SCORED (drawn into the 1750x276 widget box at x0.598, vs real 5-shot mean on opaque mask):")
 r = score(Image.open(os.path.join(WID, r"textures\ingame\panels\ASIA\resource-panel.png")))

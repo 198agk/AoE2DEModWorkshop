@@ -6,11 +6,17 @@
  - what do mods actually ship (top-level dirs of each mod)?
 Read-only. Never writes outside _probe.
 """
+
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import os, json, io, hashlib, re
 
 GAME = r"D:\Games\Steam\steamapps\common\AoE2DE"
 POM = os.path.join(GAME, "modes", "Pompeii")
-OUT = r"D:\Software\DeepSeek Harness\工作区2\_probe\modes_overlay"
+OUT = _HERE_PATH("_probe", "modes_overlay")
 F = open(os.path.join(OUT, "p16_out.txt"), "w", encoding="utf-8")
 def P(*a): print(*a, file=F)
 

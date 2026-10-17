@@ -20,11 +20,17 @@ the mean across-shot std in each bin.
 A terrain control strip below the bar gives std_T to convert the observed std into
 an estimated (1-alpha) and compare it with each candidate's declared alpha.
 """
+
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import os
 import numpy as np
 from PIL import Image
 
-O = r"D:\Software\DeepSeek Harness\工作区2\_probe\hud_render"
+O = _HERE_PATH("_probe", "hud_render")
 GAME = r"D:\Games\Steam\steamapps\common\AoE2DE"
 WID = os.path.join(GAME, "widgetui")
 MOD = r"C:\Users\26913\Games\Age of Empires 2 DE\76561198406248391\mods\subscribed\550412_透明主题整合自用"
@@ -52,7 +58,6 @@ def box(x, y, w, h, align="CentreCentre"):
     if align == "CentreCentre":
         return (x - w // 2, y - h // 2, w, h)
     return (x, y, w, h)
-
 
 KNOWN = [box(57 + 200 * i, 57, 84, 84) for i in range(4)]          # 4 resource icons
 KNOWN += [box(856, 57, 86, 84), box(1080, 57, 70, 70), box(1200, 62, 141, 122)]  # pop/idle/ageup

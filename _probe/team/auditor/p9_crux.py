@@ -10,8 +10,14 @@ Do the shipped files already contain instances of the two manipulations?
 Also: is `panel` a subset of `tree` everywhere (that would prove the panel cannot be the sole source)?
 Also: what gates does the granted 2550 row carry, and is it unique in Britons' tree?
 """
+
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import json, os, sys, collections
-sys.path.insert(0, r"D:\Software\DeepSeek Harness\工作区2")
+sys.path.insert(0, _HERE_PATH("..", "..", ".."))
 os.environ.setdefault("PYTHONIOENCODING", "utf-8")
 
 from aoe2mod.game import buildpanel as BP
@@ -20,10 +26,8 @@ from aoe2mod.game import civtechtrees as CT
 GAME = r"D:\Games\Steam\steamapps\common\AoE2DE"
 D = os.path.join(GAME, "resources", "_common", "dat")
 
-
 def head(t):
     print(); print("=" * 78); print(t); print("=" * 78)
-
 
 trees = CT.load_trees(GAME)
 panels = BP.load_all(GAME)

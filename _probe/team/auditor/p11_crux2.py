@@ -2,8 +2,14 @@
 """Audit probe 11 -- REDO of p9's tree-side scans using the REAL accessor
 (rows_of/_rows), because p9 used tree["Units"] which does not exist and made
 its 9d/9e results vacuous zeros."""
+
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import json, os, sys, collections, inspect
-sys.path.insert(0, r"D:\Software\DeepSeek Harness\工作区2")
+sys.path.insert(0, _HERE_PATH("..", "..", ".."))
 os.environ.setdefault("PYTHONIOENCODING", "utf-8")
 from aoe2mod.game import buildpanel as BP
 from aoe2mod.game import civtechtrees as CT
@@ -11,10 +17,8 @@ from aoe2mod.game import civtechtrees as CT
 GAME = r"D:\Games\Steam\steamapps\common\AoE2DE"
 UE = CT.UNIT_USE_TYPES
 
-
 def head(t):
     print(); print("=" * 78); print(t); print("=" * 78)
-
 
 print("### rows_of / _rows source")
 print("\n".join(inspect.getsource(CT.rows_of).splitlines()[:30]))

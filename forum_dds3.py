@@ -1,5 +1,10 @@
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import json, os
-d = r"D:\Software\DeepSeek Harness\工作区2\aoe2docs"
+d = _ROOT_PATH("aoe2docs")
 
 def load(f):
     return json.load(open(os.path.join(d, f), encoding="utf-8-sig"))

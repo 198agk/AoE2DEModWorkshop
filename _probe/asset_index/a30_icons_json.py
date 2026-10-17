@@ -22,6 +22,12 @@ This script:
   4. applies the icons.json rule to the decisive entities from a28/a29 and
      compares the outcome with the Type/Class rules that failed.
 """
+
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import json, os, re, collections
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -90,7 +96,7 @@ print("  Units-only %d ; Buildings-only %d ; union of numeric ids %d"
 
 # ---- the decisive entities ----
 C = json.load(open(os.path.join(HERE, "units_raw.json"), encoding="utf-8"))
-SEM = json.load(open(r"D:\Software\DeepSeek Harness\工作区2\_probe\semantic\unit_names.json",
+SEM = json.load(open(_HERE_PATH("_probe", "semantic", "unit_names.json"),
                      encoding="utf-8"))
 byid = {}
 for civ in C:

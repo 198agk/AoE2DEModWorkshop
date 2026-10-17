@@ -1,3 +1,8 @@
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import os, json, io
 
 M = r"C:\Users\26913\Games\Age of Empires 2 DE\76561198406248391\mods\subscribed"
@@ -65,5 +70,5 @@ for n in sorted(os.listdir(M)):
                 w("  %s / %s : %s\n" % (n[:40], rel, ex))
 
 txt = out.getvalue()
-io.open(r"D:\Software\DeepSeek Harness\工作区2\_probe\ui_surfaces\names_bom_out.txt", "w", encoding="utf-8").write(txt)
+io.open(_HERE_PATH("_probe", "ui_surfaces", "names_bom_out.txt"), "w", encoding="utf-8").write(txt)
 print(txt)

@@ -1,10 +1,16 @@
 # -*- coding: utf-8 -*-
 """Diagnose glyph alpha extraction + YO/baseline semantics; dump sample glyph crops."""
+
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import os, struct, json
 from PIL import Image, ImageChops
 
 FONTDIR = r"D:\Games\Steam\steamapps\common\AoE2DE\resources\_common\fonts"
-OUT = r"D:\Software\DeepSeek Harness\工作区2\_probe\hud_render"
+OUT = _HERE_PATH("_probe", "hud_render")
 name = "combined"
 data = open(os.path.join(FONTDIR, name + ".box"), "rb").read()
 ver, cnt, pages, srcpx = struct.unpack_from("<IIIf", data, 0)

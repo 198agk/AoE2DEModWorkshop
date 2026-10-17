@@ -22,6 +22,12 @@ that the writer consumed exactly the raw stream (no skipped or repeated bytes).
 Run:  python verify_roundtrip.py [path-to-dat]
 Exit: 0 on full success, 1 on any failure.
 """
+
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import contextlib
 import hashlib
 import io
@@ -29,7 +35,7 @@ import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-sys.path.insert(0, r"D:\Software\DeepSeek Harness\工作区2\_probe\datparse")
+sys.path.insert(0, _HERE_PATH("_probe", "datparse"))
 
 import parse_dat
 import write_dat
@@ -40,10 +46,8 @@ DEFAULT_BASE = (r"D:\Games\Steam\steamapps\common\AoE2DE\resources\_common\dat"
 OUT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "out")
 CONTEXT = 32
 
-
 def sha256(b):
     return hashlib.sha256(b).hexdigest()
-
 
 def parse_bytes(data):
     """Parse a decompressed stream, suppressing the parser's stage logging."""
@@ -51,7 +55,6 @@ def parse_bytes(data):
     with contextlib.redirect_stdout(io.StringIO()):
         stats = p.parse()
     return p, stats
-
 
 def compare(a, b, label_a="A", label_b="B"):
     """Return (equal, first_diff, diff_count, n_common)."""
@@ -74,7 +77,6 @@ def compare(a, b, label_a="A", label_b="B"):
     equal = (first is None) and (len(a) == len(b))
     return equal, first, count, n
 
-
 def hex_context(data, off, width=CONTEXT):
     lo = max(0, off - width)
     hi = min(len(data), off + width)
@@ -86,7 +88,6 @@ def hex_context(data, off, width=CONTEXT):
         mark = " <-- " if row <= off < row + 16 else "     "
         out.append("    %08X  %-47s  %s%s" % (row, h, t, mark))
     return "\n".join(out)
-
 
 def counters(stats):
     """Every counter that would move if parsing had drifted."""
@@ -110,7 +111,6 @@ def counters(stats):
         "terrains": len(stats.get("terrain_block", {}).get("terrains", [])),
         "deltas": sum(len(g.get("deltas", [])) for g in stats["graphics"]),
     }
-
 
 def main(argv):
     base = argv[1] if len(argv) > 1 else DEFAULT_BASE
@@ -250,7 +250,6 @@ def main(argv):
               encoding="utf-8") as fh:
         fh.write("\n".join(lines) + "\n")
     return 0 if (ok and equal and eq2) else 1
-
 
 if __name__ == "__main__":
     raise SystemExit(main(sys.argv))

@@ -55,6 +55,12 @@ TWO FIELD-SHAPE TRAPS THIS FILE PAID FOR (do not re-derive them)
    `{"type","a","b","c","d", ...offsets}` -- `tk._effect_records()` is the
    accessor; `tk._stats["effects"]` is a different shape.
 """
+
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import json
 import os
 import re
@@ -65,12 +71,10 @@ DAT_REL = os.path.join("resources", "_common", "dat")
 
 FAILURES = []
 
-
 def check(cond, label):
     print("[%s] %s" % ("PASS" if cond else "FAIL", label))
     if not cond:
         FAILURES.append(label)
-
 
 # ---- all string tables, merged (we learned there are many) -----------------
 STR_DIR = os.path.join(GAME, "resources", "en", "strings", "key-value")
@@ -112,7 +116,7 @@ print()
 print("=" * 76)
 print("Q2 -- do the Techs groups match the .dat's type-102 disable layer?")
 print("=" * 76)
-sys.path.insert(0, r"D:\Software\DeepSeek Harness\工作区2")
+sys.path.insert(0, _HERE_PATH(".."))
 import aoe2mod.api as A
 from aoe2mod.dat import locate as L
 

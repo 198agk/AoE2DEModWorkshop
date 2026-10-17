@@ -14,12 +14,18 @@ Heuristics measured against it:
   H4  same LanguageDLLName within the villager-ranged ids
   H5  dat TaskSwapGroup != 0                      <- the real field
 """
+
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import sys, os, json, struct, collections
-sys.path.insert(0, r"D:\Software\DeepSeek Harness\工作区2\_probe\datparse")
+sys.path.insert(0, _HERE_PATH("_probe", "datparse"))
 import parse_dat as P, intent_patch as IP
 
 BASE = r"D:\Games\Steam\steamapps\common\AoE2DE\resources\_common\dat\empires2_x2_p1.dat"
-OUT = r"D:\Software\DeepSeek Harness\工作区2\_probe\taskfamily"
+OUT = _HERE_PATH("_probe", "taskfamily")
 lines = []
 def p(s=""):
     lines.append(s); print(s)

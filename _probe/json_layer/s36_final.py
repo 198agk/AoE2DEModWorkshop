@@ -1,8 +1,13 @@
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import os, io, json, sys, collections, glob
-sys.path.insert(0, r"D:\Software\DeepSeek Harness\工作区2\_probe\datparse")
+sys.path.insert(0, _HERE_PATH("_probe", "datparse"))
 import parse_dat as P
 
-OUT = r"D:\Software\DeepSeek Harness\工作区2\_probe\json_layer"
+OUT = _HERE_PATH("_probe", "json_layer")
 GAME = r"D:\Games\Steam\steamapps\common\AoE2DE"
 BASE = os.path.join(GAME, "resources", "_common", "dat")
 MODS = r"C:\Users\26913\Games\Age of Empires 2 DE\76561198406248391\mods\subscribed"
@@ -69,7 +74,7 @@ for civ, v in fu.items():
         continue
     break
 # .dat has no 'prereq icon' concept: check genieutils for it
-src = r"D:\Software\DeepSeek Harness\工作区2\_probe\source"
+src = _HERE_PATH("_probe", "source")
 hits = {}
 for needle in ("PrereqIconSet", "PrereqIconIndex", "PrereqStringID", "PrereqStyle",
                "RequiredTechID", "RequiredUnitID", "futuravailable", "FutureAvailable"):

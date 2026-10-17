@@ -2,6 +2,12 @@
 """Legible render check: a handful of frames, big, labelled, side by side.
 Read-only w.r.t. game tree.
 """
+
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import os
 import sys
 
@@ -11,9 +17,8 @@ from PIL import Image, ImageDraw
 
 GAME = r"D:\Games\Steam\steamapps\common\AoE2DE"
 GP = os.path.join(GAME, "resources", "_common", "drs", "graphics")
-OUT = r"D:\Software\DeepSeek Harness\工作区2\_shots\sld_render"
+OUT = _HERE_PATH("_shots", "sld_render")
 os.makedirs(OUT, exist_ok=True)
-
 
 def frame_img(fn, idx, scale=3, team=(220, 60, 60), with_pc=True):
     s = read_sld(os.path.join(GP, fn))
@@ -26,7 +31,6 @@ def frame_img(fn, idx, scale=3, team=(220, 60, 60), with_pc=True):
         im = im.crop((max(0, x1 - 6), max(0, y1 - 6), x2 + 6, y2 + 6))
     im = im.resize((im.width * scale, im.height * scale), Image.NEAREST)
     return im, info, s
-
 
 JOBS = [
     ("u_arc_archer_idlea_x1.sld", [0, 10, 20, 30], "Archer idle"),

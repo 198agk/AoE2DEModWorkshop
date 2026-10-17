@@ -10,6 +10,12 @@ character, so 33 characters is the budget.
 
 Output: 发布包/*.zip
 """
+
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import json
 import os
 import shutil
@@ -17,7 +23,7 @@ import zipfile
 
 from PIL import Image
 
-ROOT = r"D:\Software\DeepSeek Harness\工作区2"
+ROOT = _HERE_PATH()
 OUT_DIR = os.path.join(ROOT, "发布包")
 STAGE = os.path.join(ROOT, "_probe", "out_publish")
 
@@ -74,7 +80,6 @@ PACKS = [
     },
 ]
 
-
 def stage_copy(src, stage, info):
     if os.path.isdir(stage):
         shutil.rmtree(stage)
@@ -102,7 +107,6 @@ def stage_copy(src, stage, info):
         json.dump(info, fh, ensure_ascii=False, separators=(",", ":"))
     return n
 
-
 def pack(stage, dst):
     if os.path.exists(dst):
         os.remove(dst)
@@ -115,7 +119,6 @@ def pack(stage, dst):
                 z.write(full, rel)
                 count += 1
     return count
-
 
 def main():
     os.makedirs(OUT_DIR, exist_ok=True)
@@ -138,7 +141,6 @@ def main():
             print("%s: %d entries, corrupt=%s, thumb=%s, dat=%s, title=%r"
                   % (os.path.basename(p["zip"]), len(names), bad, im.size, has_dat,
                      info["Title"]))
-
 
 if __name__ == "__main__":
     main()

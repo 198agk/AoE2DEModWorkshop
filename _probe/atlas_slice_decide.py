@@ -1,6 +1,12 @@
 # -*- coding: utf-8 -*-
 """DECISIVE: decode the actual ingamepanels atlas slice for civ emblems and
 compare pixel-wise against V1 (widgetui) and V2 (wpfg) source PNGs."""
+
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import os, json
 from PIL import Image
 
@@ -8,7 +14,7 @@ G = r"D:\Games\Steam\steamapps\common\AoE2DE"
 W = os.path.join(G, "widgetui")
 V1 = os.path.join(W, "textures", "ingame", "emblems")
 V2 = os.path.join(G, "resources", "_common", "wpfg", "resources", "civ_emblems")
-OUT = r"D:\Software\DeepSeek Harness\工作区2\_shots\ui"
+OUT = _HERE_PATH("_shots", "ui")
 os.makedirs(OUT, exist_ok=True)
 
 mats = json.load(open(os.path.join(W, "materials.json"), "r", encoding="utf-8"))

@@ -1,13 +1,19 @@
 # -*- coding: utf-8 -*-
 """Audit probe 19: decompress the four .dat copies (raw deflate, wbits=-15) and
 read the CONTROL (Villager hit_points) + subjects."""
+
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import os, sys, io, zlib, contextlib
-sys.path.insert(0, r"D:\Software\DeepSeek Harness\工作区2")
+sys.path.insert(0, _HERE_PATH("..", "..", ".."))
 from aoe2mod.dat import parser as P
 
 GAME = r"D:\Games\Steam\steamapps\common\AoE2DE"
 LOCAL = r"C:\Users\26913\Games\Age of Empires 2 DE\76561198406248391\mods\local"
-OUT = r"D:\Software\DeepSeek Harness\工作区2\_probe\out_smoke5"
+OUT = _HERE_PATH("_probe", "out_smoke5")
 REL = r"resources\_common\dat\empires2_x2_p1.dat"
 
 TARGETS = [
@@ -17,7 +23,6 @@ TARGETS = [
     ("OUT    ", os.path.join(OUT, REL)),
 ]
 
-
 def inflate(raw):
     for wb in (-15, 15, 31):
         try:
@@ -25,7 +30,6 @@ def inflate(raw):
         except Exception:
             continue
     return None, None
-
 
 res = {}
 for tag, p in TARGETS:

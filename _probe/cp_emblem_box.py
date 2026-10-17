@@ -10,11 +10,17 @@ ref (761..1211, 1839..2119) -> screenshot (541..861, 1307..1506).
 Crop that generously from every frame and magnify; also crop a wide bottom strip
 so the whole command panel is visible at once.
 """
+
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import os
 from PIL import Image, ImageDraw
 
 SHOTS = r"C:\Users\26913\.dsh\attachments\v1\objects"
-OUT = r"D:\Software\DeepSeek Harness\工作区2\_shots\ui"
+OUT = _HERE_PATH("_shots", "ui")
 
 F = [
     ("f1_29s", "02", "0261b373ecaf49144281bea8a63f4b57627bc303cbb35a78fcb7f4b616ee4e82"),

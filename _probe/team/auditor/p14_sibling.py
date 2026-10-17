@@ -2,8 +2,14 @@
 """Audit probe 14: the co-installed sibling mod and the enable state.
 Two local mods ship the SAME three engine paths; whichever the engine picks
 determines the read, independent of what smoke5's own bytes say."""
+
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import json, os, sys, hashlib
-sys.path.insert(0, r"D:\Software\DeepSeek Harness\工作区2")
+sys.path.insert(0, _HERE_PATH("..", "..", ".."))
 os.environ.setdefault("PYTHONIOENCODING", "utf-8")
 from aoe2mod.game import buildpanel as BP
 from aoe2mod.game import civtechtrees as CT
@@ -15,10 +21,8 @@ MODS = os.path.join(ACC, "mods", "local")
 BUNDLE = "aoe2mod Bundle VillagerHP plus Britons HandCannon"
 SMOKE5 = "aoe2mod Smoke5 TreeVsPanel"
 
-
 def head(t):
     print(); print("=" * 78); print(t); print("=" * 78)
-
 
 def sha(p):
     h = hashlib.sha256()
@@ -26,7 +30,6 @@ def sha(p):
         for c in iter(lambda: f.read(1 << 20), b""):
             h.update(c)
     return h.hexdigest()
-
 
 head("14a: mod-status.json -- which local mods are ENABLED, and in what order")
 ms = os.path.join(ACC, "mods", "mod-status.json")

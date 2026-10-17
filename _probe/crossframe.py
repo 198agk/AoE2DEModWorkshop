@@ -4,12 +4,18 @@ If a HUD panel region is transparent, its pixels must CHANGE across frames
 whenever the terrain behind it changes. If opaque, it stays pixel-stable.
 Compare 5 frames of the same session (29/37/43/49/55 s).
 """
+
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import os
 import numpy as np
 from PIL import Image
 
 SHOTS = r"C:\Users\26913\.dsh\attachments\v1\objects"
-OUT = r"D:\Software\DeepSeek Harness\工作区2\_shots\ui"
+OUT = _HERE_PATH("_shots", "ui")
 os.makedirs(OUT, exist_ok=True)
 
 F = {

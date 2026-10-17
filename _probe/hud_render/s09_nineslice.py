@@ -1,10 +1,16 @@
 # -*- coding: utf-8 -*-
 """Census TextAnchor values; inspect Surround nine-slice piece sizes; verify UV-vs-PNG-source 1:1."""
+
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import os, io, json, collections
 from PIL import Image
 
 W = r"D:\Games\Steam\steamapps\common\AoE2DE\widgetui"
-OUT = r"D:\Software\DeepSeek Harness\工作区2\_probe\hud_render"
+OUT = _HERE_PATH("_probe", "hud_render")
 rep = io.StringIO()
 mj = json.load(open(os.path.join(W, "materials.json"), encoding="utf-8-sig"))
 mats = {}

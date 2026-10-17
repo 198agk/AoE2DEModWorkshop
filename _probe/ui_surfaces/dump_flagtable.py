@@ -1,3 +1,8 @@
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import re, io
 
 EXE = r"D:\Games\Steam\steamapps\common\AoE2DE\AoE2DE_s.exe"
@@ -38,7 +43,7 @@ for off, s in runs:
     w("  0x%08x  %s\n" % (off, s[:180]))
 
 txt = out.getvalue()
-io.open(r"D:\Software\DeepSeek Harness\工作区2\_probe\ui_surfaces\exe_flagtable.txt", "w", encoding="utf-8").write(txt)
+io.open(_HERE_PATH("_probe", "ui_surfaces", "exe_flagtable.txt"), "w", encoding="utf-8").write(txt)
 print("pairs:", len(pairs))
 for off, d, f in pairs:
     print("  %-34s | %s" % (f, d[:130]))

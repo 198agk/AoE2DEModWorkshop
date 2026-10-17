@@ -35,7 +35,7 @@ the corpus must then answer is whether writing it can HURT somebody else: does a
 shipped unit point its EnablingResearch at a technology owned by a civilization
 that is not a builder of that unit?
 
-Run:  $env:PYTHONPATH='D:\Software\DeepSeek Harness\工作区2'; python _probe\probe_enabling_scope.py
+Run:  $env:PYTHONPATH=D:\Software\AI\帝国项目; python _probe\probe_enabling_scope.py
 """
 import contextlib
 import io

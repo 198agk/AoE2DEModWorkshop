@@ -23,12 +23,18 @@ Also breaks the number down by widget, so the report can say which widgets are
 reproduced and which are not, and separates CONTENT differences (live game values
 vs the layout's static placeholders) from RENDERING differences.
 """
+
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import os
 import json
 import numpy as np
 from PIL import Image, ImageDraw
 
-O = r"D:\Software\DeepSeek Harness\工作区2\_probe\hud_render"
+O = _HERE_PATH("_probe", "hud_render")
 GAME = r"D:\Games\Steam\steamapps\common\AoE2DE"
 WID = os.path.join(GAME, "widgetui")
 MOD = r"C:\Users\26913\Games\Age of Empires 2 DE\76561198406248391\mods\subscribed\550412_透明主题整合自用"

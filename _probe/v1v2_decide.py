@@ -3,6 +3,12 @@
 Renders: V1 (widgetui/textures/ingame/emblems) vs V2 (wpfg/resources/civ_emblems)
 composited over light/dark, plus a tight crop of the score panel from the screenshot.
 """
+
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import os
 from PIL import Image
 
@@ -11,7 +17,7 @@ V1 = os.path.join(G, "widgetui", "textures", "ingame", "emblems")
 V2 = os.path.join(G, "resources", "_common", "wpfg", "resources", "civ_emblems")
 EMP = os.path.join(G, "resources", "_common", "wpfg", "resources", "empireicons")
 SHOTS = r"C:\Users\26913\.dsh\attachments\v1\objects"
-OUT = r"D:\Software\DeepSeek Harness\工作区2\_shots\ui"
+OUT = _HERE_PATH("_shots", "ui")
 os.makedirs(OUT, exist_ok=True)
 
 print("=== V1 vs V2 pixel statistics (britons/chinese/celts) ===")

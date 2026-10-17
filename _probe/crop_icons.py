@@ -1,11 +1,17 @@
 """Crop the mod manager's enable-icon column so the checkbox state is legible."""
+
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import os
 import sys
 
 from PIL import Image
 
-SRC = r"D:\Software\DeepSeek Harness\工作区2\_smoke\now01.png"
-OUT = r"D:\Software\DeepSeek Harness\工作区2\_smoke\now01_icons.png"
+SRC = _HERE_PATH("_smoke", "now01.png")
+OUT = _HERE_PATH("_smoke", "now01_icons.png")
 
 im = Image.open(SRC).convert("RGB")
 print("source size:", im.size)

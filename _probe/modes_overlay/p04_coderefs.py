@@ -1,10 +1,16 @@
 """Find x86-64 code references (RIP-relative LEA/MOV) to the .rdata VAs of interest.
 Read-only. This separates 'string lives in pool' from 'string is referenced by code'.
 """
+
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import os, json, struct
 
 GAME = r"D:\Games\Steam\steamapps\common\AoE2DE"
-OUT  = r"D:\Software\DeepSeek Harness\工作区2\_probe\modes_overlay"
+OUT  = _HERE_PATH("_probe", "modes_overlay")
 EXE  = os.path.join(GAME, "AoE2DE_s.exe")
 buf = open(EXE, "rb").read()
 secs = json.load(open(os.path.join(OUT, "exe_sections.json")))

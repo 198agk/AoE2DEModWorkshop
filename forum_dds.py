@@ -1,5 +1,10 @@
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import json, glob, os
-d = r"D:\Software\DeepSeek Harness\工作区2\aoe2docs"
+d = _ROOT_PATH("aoe2docs")
 KEYS = ["dds", "dxt", "mipmap", ".mip", "texconv", "texture format", "a8b8g8r8", "b8g8r8a8",
         "dxgi", "compressed texture", "uncompressed"]
 for f in sorted(glob.glob(os.path.join(d, "*.json"))):

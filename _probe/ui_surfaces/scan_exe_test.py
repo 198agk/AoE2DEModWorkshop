@@ -1,3 +1,8 @@
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import re, io, sys
 
 EXE = r"D:\Games\Steam\steamapps\common\AoE2DE\AoE2DE_s.exe"
@@ -37,5 +42,5 @@ for s in sorted(seen)[:120]:
     w("  %s\n" % s)
 
 txt = out.getvalue()
-io.open(r"D:\Software\DeepSeek Harness\工作区2\_probe\ui_surfaces\exe_testharness.txt", "w", encoding="utf-8").write(txt)
+io.open(_HERE_PATH("_probe", "ui_surfaces", "exe_testharness.txt"), "w", encoding="utf-8").write(txt)
 print(txt[:6000])

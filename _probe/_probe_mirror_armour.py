@@ -6,8 +6,14 @@ Two raw armour classes map to two different panel numbers:
   raw class 3  -> displayed_pierce_armour
 so a raw edit must find the RIGHT displayed field, not just any.
 """
+
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import sys, io, contextlib, struct
-root = r"D:\Software\DeepSeek Harness\工作区2"
+root = _HERE_PATH()
 sys.path.insert(0, root)
 from aoe2mod import api as A
 from aoe2mod.intent import compiler as C
@@ -17,7 +23,6 @@ tk = A.open_toolkit()
 tk.version
 data = tk._raw
 bindings = C.load_schema()[1]
-
 
 def apply_edits(res):
     buf = bytearray(data)
@@ -29,24 +34,20 @@ def apply_edits(res):
                 e.width, "little", signed=True)
     return bytes(buf)
 
-
 def stream(blob):
     p = P.Parser(blob)
     with contextlib.redirect_stdout(io.StringIO()):
         p.parse()
     return L.locate(blob, parser=p)[0]
 
-
 def units_of(blob):
     return stream(blob)[0]["units"]
-
 
 def fresh(uid):
     for u in tk._civs[0]["units"]:
         if u["id"] == uid:
             return u
     raise SystemExit("no unit %d" % uid)
-
 
 def show(units, uid, tag):
     u = None
@@ -60,7 +61,6 @@ def show(units, uid, tag):
     print("   %-14s disp_melee=%-6s disp_pierce=%-6s disp_atk=%-6s | a3=%-5s a4=%-5s m3=%-5s m4=%-5s"
           % (tag, t50.get("displayed_melee_armour"), u.get("displayed_pierce_armour"),
              t50.get("displayed_attack"), atk.get(3), atk.get(4), arm.get(3), arm.get(4)))
-
 
 print("=" * 112)
 print("ARMOUR class 4 edit must move displayed_melee_armour ONLY")

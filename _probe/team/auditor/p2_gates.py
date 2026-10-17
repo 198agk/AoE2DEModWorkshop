@@ -1,7 +1,13 @@
 # -*- coding: utf-8 -*-
 """Audit probe 2: the gates on subject A, the alternatives for the menu source."""
+
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import collections, json, os, sys
-sys.path.insert(0, r"D:\Software\DeepSeek Harness\工作区2")
+sys.path.insert(0, _HERE_PATH("..", "..", ".."))
 os.environ.setdefault("PYTHONIOENCODING", "utf-8")
 
 import aoe2mod.api as A
@@ -11,14 +17,11 @@ from aoe2mod.game import civtechtrees as CT
 GAME = r"D:\Games\Steam\steamapps\common\AoE2DE"
 STEM, CIV = "BRITONS", "Britons"
 
-
 def p(*a):
     print(*a)
 
-
 def head(t):
     p(); p("=" * 78); p(t); p("=" * 78)
-
 
 tk = A.open_toolkit()
 trees = CT.load_trees(GAME)

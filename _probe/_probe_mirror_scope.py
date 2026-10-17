@@ -5,9 +5,15 @@ Fix over v1: displayed_pierce_armour lives in the CREATABLE block (not Type50),
 and the melee/pierce class preference must be single-class, not "first nonzero",
 because displayed_melee_armour tracks class 4 specifically.
 """
+
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import sys
 from collections import Counter
-root = r"D:\Software\DeepSeek Harness\工作区2"
+root = _HERE_PATH()
 sys.path.insert(0, root)
 from aoe2mod import api as A
 

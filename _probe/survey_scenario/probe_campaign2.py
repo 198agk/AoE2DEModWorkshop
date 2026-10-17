@@ -1,3 +1,8 @@
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 # Campaign container arithmetic test:
 #  (1) can a campaign be structurally parsed into (prefix, [scenario blobs], tail) with no gaps?
 #  (2) is the container a plain concatenation (i.e. reassembly with identical blobs reproduces the file byte-for-byte)?
@@ -6,7 +11,7 @@ import os, sys, io, json, zlib, glob
 sys.stdout.reconfigure(encoding='utf-8', errors='replace')
 
 CAMP = r'D:\Games\Steam\steamapps\common\AoE2DE\resources\_common\campaign'
-HERE = r'D:\Software\DeepSeek Harness\工作区2\_probe\survey_scenario'
+HERE = _HERE_PATH("_probe", "survey_scenario")
 buf = io.StringIO()
 def p(*a):
     s = ' '.join(str(x) for x in a); print(s); buf.write(s + '\n')

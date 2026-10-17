@@ -4,17 +4,22 @@ independent reader (NOT locate.Orec) so the numbers are a real cross-check.
 Research.cpp:61  serializeSub<ResearchResourceCost>(ResourceCosts, 3)
 ResourceUsage.h:56-61  Type(i16) Amount(i16) Flag(u8)  -- 5 bytes each, x3 = 15
 """
+
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import contextlib
 import io
 import struct
 import sys
 from collections import Counter
 
-sys.path.insert(0, r"D:\Software\DeepSeek Harness\工作区2")
+sys.path.insert(0, _HERE_PATH(".."))
 from aoe2mod.dat import parser as P          # noqa: E402
 
 BASE = r"D:\Games\Steam\steamapps\common\AoE2DE\resources\_common\dat\empires2_x2_p1.dat"
-
 
 def advance_rest(b, o, gv):
     """Skip everything after ResourceCosts up to the next tech, per Research.cpp.
@@ -39,7 +44,6 @@ def advance_rest(b, o, gv):
     # Recompute precisely instead of guessing: caller passes the offset of
     # EffectID; see walk() below for the explicit version.
     raise AssertionError("unused")
-
 
 def walk_one(b, o, gv):
     """Return (costs, next_offset) mirroring Research.cpp field by field."""
@@ -74,7 +78,6 @@ def walk_one(b, o, gv):
         cnt = struct.unpack_from("<h", b, o)[0]
         o += 2 + 9 * cnt                      # ResearchLocation array (9 B each)
     return costs, o
-
 
 def main():
     data, how = P.load_dat(BASE)
@@ -123,6 +126,5 @@ def main():
     print("\nexamples (type, amount, flag):")
     for i, c in sorted(examples.items()):
         print("  tech %4d" % i, c)
-
 
 main()

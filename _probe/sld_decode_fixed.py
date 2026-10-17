@@ -29,20 +29,25 @@ This script:
   S4  render: main | playercolor mask | main tinted by mask*red
 Read-only.
 """
+
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import os
 import struct
 from PIL import Image
 
 GAME = r"D:\Games\Steam\steamapps\common\AoE2DE"
 GP = os.path.join(GAME, "resources", "_common", "drs", "graphics")
-OUT = r"D:\Software\DeepSeek Harness\工作区2\_shots\playerclr"
+OUT = _HERE_PATH("_shots", "playerclr")
 os.makedirs(OUT, exist_ok=True)
 
 u16 = lambda b, o: struct.unpack_from("<H", b, o)[0]
 u32 = lambda b, o: struct.unpack_from("<I", b, o)[0]
 BITS = [(0, "main"), (1, "shadow"), (2, "unknown2"), (3, "damage"), (4, "playercolor")]
 PAD = lambda x: x + ((4 - x % 4) % 4)
-
 
 def read_layer(b, p, kind):
     """Return dict with layout info; comp = computed size."""
@@ -61,7 +66,6 @@ def read_layer(b, p, kind):
     comp = (q - p) + 8 * draws
     return dict(start=p, size=size, rect=rect, fmt=fmt, ncmd=ncmd, cmds=cmds,
                 draws=draws, blocks_off=q, comp=comp)
-
 
 def decode(b, L, bc4):
     """Decode blocks into an image using the command array (skip/draw)."""
@@ -124,7 +128,6 @@ def decode(b, L, bc4):
             if bx >= bw:
                 bx, by = 0, by + 1
     return im
-
 
 print("=" * 74)
 print("S1  layout verification over 300 frames of u_arc_archer_idlea_x1.sld")

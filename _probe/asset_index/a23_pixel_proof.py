@@ -20,13 +20,18 @@ This replaces name-guessing with PIXELS:
 
 Only the blocks covering the requested rect are decoded (the SD atlas is 13 MB).
 """
+
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import json, os, struct, hashlib
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 WID = r"D:\Games\Steam\steamapps\common\AoE2DE\widgetui"
 J = json.load(open(os.path.join(WID, "materials.json"), encoding="utf-8"))
 ATLS = {e.get("AtlasDef", e)["Name"]: e.get("AtlasDef", e) for e in J["AtlasTextures"]}
-
 
 def dds_header(path):
     with open(path, "rb") as f:
@@ -36,7 +41,6 @@ def dds_header(path):
     (size, flags, h, w, pitch, depth, mips) = struct.unpack_from("<7I", b, 4)
     fourcc = struct.unpack_from("<4s", b, 84)[0]
     return {"h": h, "w": w, "mips": mips, "fourcc": fourcc.decode("latin1").strip("\x00")}
-
 
 def _c565(c0, c1, dxt1):
     def ex(c):
@@ -48,7 +52,6 @@ def _c565(c0, c1, dxt1):
                 tuple((a[k] + 2 * b[k]) // 3 for k in range(3))]
     return [a, b, tuple((a[k] + b[k]) // 2 for k in range(3)), (0, 0, 0)]
 
-
 def _dxt5_alpha(blk, i):
     a0, a1 = blk[0], blk[1]
     if a0 > a1:
@@ -57,7 +60,6 @@ def _dxt5_alpha(blk, i):
         tab = [a0, a1] + [((5 - k) * a0 + k * a1) // 5 for k in range(1, 5)] + [0, 255]
     code = int.from_bytes(blk[2:8], "little")
     return tab[(code >> (3 * i)) & 7]
-
 
 def decode_rect(path, hd, lx, ly, w, h):
     """Decode exactly the pixel rect [lx,lx+w) x [ly,ly+h) from a DDS file."""
@@ -104,7 +106,6 @@ def decode_rect(path, hd, lx, ly, w, h):
                         out[o:o + 4] = bytes((r, g, bl, a))
     return bytes(out)
 
-
 def emb_map(a):
     out = {}
     for t in ATLS[a]["Textures"]:
@@ -114,7 +115,6 @@ def emb_map(a):
             out[int(h)] = t
     return out
 
-
 def rect(t, W, H):
     """UV rect -> inclusive texel box (half-texel inset), then (lx,ly,w,h,size)."""
     x1, y1 = float(t["imageTLX"]), float(t["imageTLY"])
@@ -122,7 +122,6 @@ def rect(t, W, H):
     lx = int(round(x1 * W + 0.5)); ly = int(round(y1 * H + 0.5))
     hx = int(round(x2 * W - 0.5)); hy = int(round(y2 * H - 0.5))
     return lx, ly, hx - lx + 1, hy - ly + 1
-
 
 def loose(a, t):
     fp = os.path.join(WID, t["FileName"].replace("/", os.sep))
@@ -133,7 +132,6 @@ def loose(a, t):
         if f.lower() == os.path.basename(fp).lower():
             return os.path.join(d, f)
     return None
-
 
 print("=== 1. DDS headers ===")
 for a in ("ingameunits", "ingamebuildings", "ingametechs"):
@@ -201,7 +199,7 @@ for a in ("ingameunits", "ingamebuildings", "ingametechs"):
 
 print("\n=== 4. NEGATIVE CONTROL: same IconID in the wrong atlas ===")
 C = json.load(open(os.path.join(HERE, "units_raw.json"), encoding="utf-8"))
-SEM = json.load(open(r"D:\Software\DeepSeek Harness\工作区2\_probe\semantic\unit_names.json",
+SEM = json.load(open(_HERE_PATH("_probe", "semantic", "unit_names.json"),
                      encoding="utf-8"))
 byid = {}
 for civ in C:

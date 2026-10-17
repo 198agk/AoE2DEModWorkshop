@@ -1,11 +1,17 @@
 """The mod's added Britons row carries "Trigger Tech ID": 1350. Resolve that tech
 and check how the shipped Incas row's mechanism is expressed in the tree, so the
 report can say whether the added row is complete or missing a companion row."""
+
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import json
 import os
 import sys
 
-sys.path.insert(0, r"D:\Software\DeepSeek Harness\工作区2")
+sys.path.insert(0, _HERE_PATH("..", "..", ".."))
 from aoe2mod.dat import parser as P          # noqa: E402
 from aoe2mod.dat import locate as L          # noqa: E402
 

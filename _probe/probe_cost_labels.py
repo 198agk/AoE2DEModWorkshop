@@ -7,10 +7,16 @@ must never see "cost type 3"; they must see the resource name.
 This probe reads the plan text for tech and unit cost intents and FAILS if any
 reported string contains "type <digits>".
 """
+
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import re
 import sys
 
-sys.path.insert(0, r"D:\Software\DeepSeek Harness\工作区2")
+sys.path.insert(0, _HERE_PATH(".."))
 
 import aoe2mod.api as A  # noqa: E402
 
@@ -25,7 +31,6 @@ CASES = [
     {"intent": "unit.cost", "unit": "Knight", "resource": "gold", "value": 100},
 ]
 
-
 def strings_of(obj, path=""):
     """Every string anywhere in the plan result, with a path for reporting."""
     if isinstance(obj, str):
@@ -36,7 +41,6 @@ def strings_of(obj, path=""):
     elif isinstance(obj, (list, tuple)):
         for i, v in enumerate(obj):
             yield from strings_of(v, "%s[%d]" % (path, i))
-
 
 def main():
     tk = A.open_toolkit()
@@ -62,7 +66,6 @@ def main():
         return 1
     print("NO COST LABEL LEAKS A RAW RESOURCE TYPE ID")
     return 0
-
 
 if __name__ == "__main__":
     sys.exit(main())

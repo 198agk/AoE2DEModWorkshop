@@ -13,13 +13,19 @@ Test: NCC of each mod emblem PNG (450x280, per-civ) against that box, with the
 alpha mask of the PNG. The correct civ should match far better than the rest, and
 far better than the vanilla V1/V2 emblems.
 """
+
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import os
 import numpy as np
 from PIL import Image
 
 GAME = r"D:\Games\Steam\steamapps\common\AoE2DE"
 SHOTS = r"C:\Users\26913\.dsh\attachments\v1\objects"
-OUT = r"D:\Software\DeepSeek Harness\工作区2\_shots\ui"
+OUT = _HERE_PATH("_shots", "ui")
 os.makedirs(OUT, exist_ok=True)
 
 MOD = r"C:\Users\26913\Games\Age of Empires 2 DE\76561198406248391\mods\subscribed\182654_Age of Anime (Chibi Edition)\widgetui\textures\ingame\emblems"
@@ -32,10 +38,8 @@ obs = np.asarray(f1.crop(BOX), dtype=np.float32)
 oh, ow = obs.shape[:2]
 print("observed box %dx%d  meanRGB=(%.1f,%.1f,%.1f)" % (ow, oh, obs[:, :, 0].mean(), obs[:, :, 1].mean(), obs[:, :, 2].mean()))
 
-
 def lum(a):
     return 0.299 * a[:, :, 0] + 0.587 * a[:, :, 1] + 0.114 * a[:, :, 2]
-
 
 def ncc_masked(x, y, m):
     """Normalised cross-correlation of x and y over mask m (fractional)."""
@@ -50,7 +54,6 @@ def ncc_masked(x, y, m):
     if den == 0:
         return float("nan"), int(n)
     return float((xm * ym).sum() / den), int(n)
-
 
 def run(folder, label, limit=None):
     res = []
@@ -81,7 +84,6 @@ def run(folder, label, limit=None):
     if len(res) > 8:
         print("   ... worst: r=%+0.4f  %s" % (res[-1][0], res[-1][1]))
     return res
-
 
 rm = run(MOD, "MOD chibi emblems (182654) widgetui/textures/ingame/emblems")
 r1 = run(V1, "VANILLA V1 widgetui/textures/ingame/emblems")

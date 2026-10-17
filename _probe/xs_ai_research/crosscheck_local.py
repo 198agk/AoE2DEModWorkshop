@@ -9,17 +9,22 @@
 
 Read-only. Writes nothing outside the probe dir.
 """
+
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import json
 import os
 import re
 import sys
 
 GAME = r"D:\Games\Steam\steamapps\common\AoE2DE"
-RES = r"D:\Software\DeepSeek Harness\工作区2\_probe\xs_ai_research"
+RES = _HERE_PATH("_probe", "xs_ai_research")
 
 funcs = set()
 consts = set()
-
 
 def table_names(path, prefix):
     """Names in the first column of markdown table rows: | `name` | ..."""
@@ -36,7 +41,6 @@ def table_names(path, prefix):
             if c0.startswith(prefix):
                 out.add(c0)
     return out
-
 
 xs_guide = os.path.join(RES, "XS_GUIDE_AOE2ROCKS.md")
 # Function rows look like: | `int xsCreateUnit(int objectId, ...)` | `int` | ... |

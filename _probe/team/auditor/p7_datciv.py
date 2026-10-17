@@ -2,8 +2,14 @@
 """Audit probe 7: does the .dat ITSELF carry per-civ buildable-unit lists
 (the civ record has 'units' / 'unit_pointers_total'), and are there competing
 dat variants / CivTechTrees dirs / panel files?"""
+
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import json, os, sys, glob
-sys.path.insert(0, r"D:\Software\DeepSeek Harness\工作区2")
+sys.path.insert(0, _HERE_PATH("..", "..", ".."))
 os.environ.setdefault("PYTHONIOENCODING", "utf-8")
 
 import aoe2mod.api as A
@@ -11,10 +17,8 @@ from aoe2mod.game import buildpanel as BP
 
 GAME = r"D:\Games\Steam\steamapps\common\AoE2DE"
 
-
 def head(t):
     print(); print("=" * 78); print(t); print("=" * 78)
-
 
 tk = A.open_toolkit(); tk._ensure()
 data, civs, civs_start, gv, tail, how = tk._parsed

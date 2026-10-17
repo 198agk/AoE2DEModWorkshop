@@ -3,6 +3,12 @@
 interpretations of the `damage` layer, so the correct one can be chosen
 VISUALLY.  Read-only.
 """
+
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import os
 import struct
 import sys
@@ -14,7 +20,7 @@ from PIL import Image, ImageDraw
 
 GAME = r"D:\Games\Steam\steamapps\common\AoE2DE"
 GP = os.path.join(GAME, "resources", "_common", "drs", "graphics")
-OUT = r"D:\Software\DeepSeek Harness\工作区2\_shots\sld_render"
+OUT = _HERE_PATH("_shots", "sld_render")
 os.makedirs(OUT, exist_ok=True)
 
 FILES = [
@@ -27,7 +33,6 @@ FILES = [
     ("b_afri_mill_age2_x1.sld", [1, 2]),
 ]
 
-
 def blocks_of(l, header):
     fmt, n = struct.unpack_from("<2H", l.data, 0) if header == "mask" \
         else (struct.unpack_from("<2H", l.data, 8))
@@ -37,7 +42,6 @@ def blocks_of(l, header):
     nb = (l.size - base) // 8
     return fmt, n, cmds, [l.data[base + 8 * i: base + 8 * i + 8]
                           for i in range(nb)]
-
 
 def render(fn, fi):
     s = read_sld(os.path.join(GP, fn))
@@ -130,7 +134,6 @@ def render(fn, fi):
         crops.append((label, im))
     return "%s  f%d  ft=0x%02x  canvas=%dx%d  main rect=%s grid=%dx%d" % (
         fn, fi, fr.frame_type, w, h, rect, bw, bh), crops
-
 
 allrows = []
 for fn, idxs in FILES:

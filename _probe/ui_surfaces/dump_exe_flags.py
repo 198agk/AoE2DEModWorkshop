@@ -1,3 +1,8 @@
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import re, io
 
 EXE = r"D:\Games\Steam\steamapps\common\AoE2DE\AoE2DE_s.exe"
@@ -40,5 +45,5 @@ for centre, label in [(0x334e7a0, "REGRESSION tool flags"), (0x32590e0, "REGRESS
             w("  0x%08x  %s\n" % (lo + m.start(), s[:170]))
 
 txt = out.getvalue()
-io.open(r"D:\Software\DeepSeek Harness\工作区2\_probe\ui_surfaces\exe_flags.txt", "w", encoding="utf-8").write(txt)
+io.open(_HERE_PATH("_probe", "ui_surfaces", "exe_flags.txt"), "w", encoding="utf-8").write(txt)
 print("ok len", len(txt))

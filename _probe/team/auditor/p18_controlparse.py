@@ -2,13 +2,19 @@
 """Audit probe 18: parse all four .dat copies and compare the CONTROL
 (Villager hit_points) plus the two subjects, to prove/disprove the control's
 attribution power."""
+
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import os, sys, json
-sys.path.insert(0, r"D:\Software\DeepSeek Harness\工作区2")
+sys.path.insert(0, _HERE_PATH("..", "..", ".."))
 from aoe2mod.dat import parser as P
 
 GAME = r"D:\Games\Steam\steamapps\common\AoE2DE"
 LOCAL = r"C:\Users\26913\Games\Age of Empires 2 DE\76561198406248391\mods\local"
-OUT = r"D:\Software\DeepSeek Harness\工作区2\_probe\out_smoke5"
+OUT = _HERE_PATH("_probe", "out_smoke5")
 REL = r"resources\_common\dat\empires2_x2_p1.dat"
 
 TARGETS = [
@@ -17,7 +23,6 @@ TARGETS = [
     ("SMOKE5 ", os.path.join(LOCAL, "aoe2mod Smoke5 TreeVsPanel", REL)),
     ("OUT    ", os.path.join(OUT, REL)),
 ]
-
 
 def allunits(path):
     pr = P.Parser(open(path, "rb").read())
@@ -28,7 +33,6 @@ def allunits(path):
     with contextlib.redirect_stdout(buf):
         pr.parse()
     return got, pr
-
 
 print("=" * 78)
 print("18a: control (Villager) + subjects in each .dat copy")

@@ -7,6 +7,12 @@ Huskarl / 761 Elite Huskarl), which proves the cache is NOT the button list.
 If this claim is wrong, the whole 'the tree licenses, the cache only feeds
 greyed previews' reading collapses.  So check it from four directions.
 """
+
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import json
 import os
 
@@ -64,7 +70,7 @@ print("   cache_only (cache lists, tree denies)  = %s"
 
 print("\n=== 5. does a real Goths player train Huskarls? (the .dat train host) ===")
 import sys
-sys.path.insert(0, r"D:\Software\DeepSeek Harness\工作区2")
+sys.path.insert(0, _HERE_PATH("..", "..", ".."))
 from aoe2mod.dat import parser as P, locate
 data, how = P.load_dat(os.path.join(ROOT, "resources", "_common", "dat", "empires2_x2_p1.dat"))
 p = P.Parser(data)

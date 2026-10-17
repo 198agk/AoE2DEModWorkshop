@@ -1,5 +1,11 @@
 # -*- coding: utf-8 -*-
 """What IS the most static 239x239 block at (2400,1280)? Verify before claiming it is the minimap."""
+
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import os
 import numpy as np
 from PIL import Image, ImageDraw
@@ -11,7 +17,7 @@ SHOTS = [os.path.join(AT, d, s) for d, s in [
     ("8e", "8eeadcf84b38696ac0ede7aedaf08ee6eff1812468c8d43fa667e2376c877850"),
     ("89", "89bdabdd26b4c0ada57121bc0851f93ee52aa18080e51a9274406c1dee0bd9f9"),
 ]]
-O = r"D:\Software\DeepSeek Harness\工作区2\_probe\hud_render"
+O = _HERE_PATH("_probe", "hud_render")
 im = Image.open(SHOTS[0]).convert("RGB")
 W, H = im.size
 # bottom-right quadrant, 2x

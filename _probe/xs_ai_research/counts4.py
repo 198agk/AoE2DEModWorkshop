@@ -1,6 +1,11 @@
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import io, re, sys
 sys.stdout.reconfigure(encoding='utf-8', errors='replace')
-P = 'D:/Software/DeepSeek Harness/工作区2/_probe/xs_ai_research/AI_SCRIPTING_AIREF.md'
+P = _HERE_PATH("_probe", "xs_ai_research", "AI_SCRIPTING_AIREF.md")
 lines = io.open(P, encoding='utf-8', newline='').read().split('\n')
 
 def at(p, after=0):

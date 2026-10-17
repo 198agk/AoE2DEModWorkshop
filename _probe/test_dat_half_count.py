@@ -30,7 +30,7 @@ reverse: the schema raised to 3 while the recipe does 2, which over-reports.
 Either way `plan()` would promise something `build()` does not deliver, which is
 the defect class this project already fixed twice.
 
-Run:  $env:PYTHONPATH='D:\Software\DeepSeek Harness\工作区2'; python _probe\test_dat_half_count.py
+Run:  $env:PYTHONPATH=D:\Software\AI\帝国项目; python _probe\test_dat_half_count.py
 """
 import contextlib
 import io

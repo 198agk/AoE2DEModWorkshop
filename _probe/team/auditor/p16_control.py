@@ -5,8 +5,14 @@
     breaks a second button, contaminating subject B)?
 (c) which enabled mods ship the panel/dat paths at all?
 """
+
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import json, os, sys, hashlib, collections
-sys.path.insert(0, r"D:\Software\DeepSeek Harness\工作区2")
+sys.path.insert(0, _HERE_PATH("..", "..", ".."))
 from aoe2mod.game import buildpanel as BP
 from aoe2mod.game import civtechtrees as CT
 
@@ -14,19 +20,16 @@ GAME = r"D:\Games\Steam\steamapps\common\AoE2DE"
 PROFILE = r"C:\Users\26913\Games\Age of Empires 2 DE"
 ACC = os.path.join(PROFILE, "76561198406248391")
 MODS = os.path.join(ACC, "mods", "local")
-OUT = r"D:\Software\DeepSeek Harness\工作区2\_probe\out_smoke5"
+OUT = _HERE_PATH("_probe", "out_smoke5")
 BUNDLE = "aoe2mod Bundle VillagerHP plus Britons HandCannon"
 SMOKE5 = "aoe2mod Smoke5 TreeVsPanel"
 BLD = 12
 
-
 def head(t):
     print(); print("=" * 78); print(t); print("=" * 78)
 
-
 def sha(p):
     return hashlib.sha256(open(p, "rb").read()).hexdigest()[:12]
-
 
 head("16a: the emitted .dat -- is the CONTROL edit (Villager HP 1000) really in it?")
 try:

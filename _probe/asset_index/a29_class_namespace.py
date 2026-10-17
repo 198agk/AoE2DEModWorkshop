@@ -22,6 +22,12 @@ CONTROLS
 If the discriminator works, the two controls straddle the Type==80 classes and the
 outlier classes fall on the unit side.
 """
+
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import json, os, re, struct
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -31,11 +37,10 @@ J = json.load(open(os.path.join(WID, "materials.json"), encoding="utf-8"))
 ATLS = {e.get("AtlasDef", e)["Name"]: e.get("AtlasDef", e) for e in J["AtlasTextures"]}
 UA = "ingameunits"
 C = json.load(open(os.path.join(HERE, "units_raw.json"), encoding="utf-8"))
-SEM = json.load(open(r"D:\Software\DeepSeek Harness\工作区2\_probe\semantic\unit_names.json",
+SEM = json.load(open(_HERE_PATH("_probe", "semantic", "unit_names.json"),
                      encoding="utf-8"))
 
 STOP = {"age", "the", "and", "of", "icon", "sprite", "de"}
-
 
 def toks(s):
     s = re.sub(r"([a-z])([A-Z])", r"\1 \2", s or "")
@@ -43,7 +48,6 @@ def toks(s):
     s = re.sub(r"([0-9])([A-Za-z])", r"\1 \2", s)
     return set(x for x in re.split(r"[^A-Za-z0-9]+", s.lower())
                if len(x) > 2 and not x.isdigit() and x not in STOP)
-
 
 def emb_of(name):
     """IconID -> atlas entry, keyed by the embedded numeric stem."""
@@ -54,7 +58,6 @@ def emb_of(name):
         if h.isdigit():
             out[int(h)] = t
     return out
-
 
 U = emb_of("ingameunits")
 B = emb_of("ingamebuildings")
@@ -67,10 +70,8 @@ def bdesc(n):
     stem = B[n]["FileName"].rsplit("/", 1)[-1].rsplit(".", 1)[0]
     return re.sub(r"^[0-9]+_", "", stem)
 
-
 def bplaus(en, n):
     return len(toks(en) & toks(bdesc(n))) > 0
-
 
 byid = {}
 for civ in C:
@@ -123,7 +124,6 @@ def hdr(p):
             "fourcc": b[84:88].decode("latin1").strip("\x00"),
             "off": 148 if b[84:88] == b"DX10" else 128}
 
-
 def _c565(c0, c1, d1):
     def ex(c):
         r = (c >> 11) & 31; g = (c >> 5) & 63; bl = c & 31
@@ -134,7 +134,6 @@ def _c565(c0, c1, d1):
                 tuple((a[k] + 2 * b2[k]) // 3 for k in range(3))]
     return [a, b2, tuple((a[k] + b2[k]) // 2 for k in range(3)), (0, 0, 0)]
 
-
 def _a5(blk, i):
     a0, a1 = blk[0], blk[1]
     if a0 > a1:
@@ -142,7 +141,6 @@ def _a5(blk, i):
     else:
         tab = [a0, a1] + [((5 - k) * a0 + k * a1) // 5 for k in range(1, 5)] + [0, 255]
     return tab[(int.from_bytes(blk[2:8], "little") >> (3 * i)) & 7]
-
 
 def dec(p, lx, ly, w, h):
     d = hdr(p)
@@ -183,12 +181,10 @@ def dec(p, lx, ly, w, h):
                     out[o2:o2 + 4] = bytes((r, g, bl, a))
     return w, h, bytes(out)
 
-
 def uv(t, W, H):
     lx = int(round(float(t["imageTLX"]) * W + 0.5)); ly = int(round(float(t["imageTLY"]) * H + 0.5))
     hx = int(round(float(t["imageBRX"]) * W - 0.5)); hy = int(round(float(t["imageBRY"]) * H - 0.5))
     return lx, ly, hx - lx + 1, hy - ly + 1
-
 
 SU = os.path.join(WID, ATLS[UA]["DefaultSource"].replace("/", os.sep))
 SB = os.path.join(WID, ATLS["ingamebuildings"]["DefaultSource"].replace("/", os.sep))

@@ -20,11 +20,17 @@ Layout constraint used (resourcepanel.json):
 The resource PNGs are 96x96 and are stretched into the 84x84 widget box, so the
 template is resource_<n>.png resized to 84*scale.
 """
+
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import os
 import numpy as np
 from PIL import Image
 
-O = r"D:\Software\DeepSeek Harness\工作区2\_probe\hud_render"
+O = _HERE_PATH("_probe", "hud_render")
 GAME = r"D:\Games\Steam\steamapps\common\AoE2DE"
 ICONS = os.path.join(GAME, r"widgetui\textures\ingame\icons")
 ATT = r"C:\Users\26913\.dsh\attachments\v1\objects"

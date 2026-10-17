@@ -2,11 +2,17 @@
 """A building's token is its AGE, so 'reskin the Dark Age Barracks' cannot use
 the Feudal Age Barracks as donor.  Does a CROSS-CIVILIZATION donor of the same
 age work?  And what does a per-civ fan-out really cost?"""
+
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import collections
 import os
 import sys
 
-ROOT = r"D:\Software\DeepSeek Harness\工作区2"
+ROOT = _HERE_PATH()
 sys.path.insert(0, ROOT)
 import aoe2mod.api as A
 from aoe2mod.game import sprites as S

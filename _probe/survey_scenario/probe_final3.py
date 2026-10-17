@@ -1,15 +1,20 @@
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 # Follow-up probe: difficulty enum, terrain/map access, objectives, trigger_order lists
 import os, sys, io, json
 sys.stdout.reconfigure(encoding='utf-8', errors='replace')
 from AoE2ScenarioParser.scenarios.aoe2_de_scenario import AoE2DEScenario
 import AoE2ScenarioParser.datasets.trigger_lists as tl
 
-OUT = r'D:\Software\DeepSeek Harness\工作区2\_probe\survey_scenario\final3_out.txt'
+OUT = _HERE_PATH("_probe", "survey_scenario", "final3_out.txt")
 buf = io.StringIO()
 def p(*a):
     s = ' '.join(str(x) for x in a); print(s); buf.write(s + '\n')
 
-SC = r'D:\Software\DeepSeek Harness\工作区2\_probe\survey_scenario\extracted\xcam1_0.aoe2scenario'
+SC = _HERE_PATH("_probe", "survey_scenario", "extracted", "xcam1_0.aoe2scenario")
 sc = AoE2DEScenario.from_file(SC)
 
 p('=== enum sizes (beginner-facing vocabulary) ===')

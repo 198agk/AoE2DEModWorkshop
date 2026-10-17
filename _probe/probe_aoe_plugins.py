@@ -5,9 +5,15 @@ game data formats, or mod tooling?
 Stating "none exist" needs evidence, so this searches every catalog field for
 the vocabularies such a plugin would have to use.
 """
+
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import json, io, re
 
-CAT = r"D:\Software\DeepSeek Harness\工作区2\_probe\awesome_plugins.json"
+CAT = _HERE_PATH("_probe", "awesome_plugins.json")
 data = json.load(io.open(CAT, encoding="utf-8"))
 plugins = data["plugins"] if isinstance(data, dict) and "plugins" in data else data
 

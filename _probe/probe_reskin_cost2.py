@@ -1,10 +1,16 @@
 # -*- coding: utf-8 -*-
 """Reskin cost, deduplicated.  Also: why did the Barracks age-variant pair
 report ZERO pairs instead of refusing?"""
+
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import os
 import sys
 
-ROOT = r"D:\Software\DeepSeek Harness\工作区2"
+ROOT = _HERE_PATH()
 sys.path.insert(0, ROOT)
 import aoe2mod.api as A
 from aoe2mod.game import sprites as S
@@ -15,19 +21,16 @@ tk._ensure()
 idx = S.art_index(GAME, tk._stats["graphics"])
 G = S.graphics_dir(GAME)
 
-
 def find_civ(name):
     for i, c in enumerate(tk._civs):
         if c["name"] == name:
             return i
     return None
 
-
 def rec(uid, ci):
     for u in tk._civs[ci]["units"]:
         if u["id"] == uid:
             return u
-
 
 def cost(target, donor, ci):
     t, d = rec(target, ci), rec(donor, ci)
@@ -43,7 +46,6 @@ def cost(target, donor, ci):
             p = os.path.join(G, db + ".sld")
             files[tb + ".sld"] = os.path.getsize(p) if os.path.exists(p) else None
     return ta, da, pairs, unmapped, files
-
 
 print("=" * 78)
 print("1  Archer(4) <- Longbowman(8): the SAME target in every civilization")

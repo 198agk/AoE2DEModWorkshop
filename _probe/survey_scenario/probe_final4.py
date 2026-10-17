@@ -1,14 +1,19 @@
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 
 import sys, io, json, contextlib, warnings, os
 warnings.filterwarnings("ignore")
 import logging; logging.disable(logging.CRITICAL)
 sys.stdout.reconfigure(encoding='utf-8', errors='replace')
 from AoE2ScenarioParser.scenarios.aoe2_de_scenario import AoE2DEScenario
-OUT = r'D:\Software\DeepSeek Harness\工作区2\_probe\survey_scenario\final4_out.txt'
+OUT = _HERE_PATH("_probe", "survey_scenario", "final4_out.txt")
 buf = io.StringIO()
 def p(*a):
     s=' '.join(str(x) for x in a); print(s); buf.write(s+'\n')
-SC = r'D:\Software\DeepSeek Harness\工作区2\_probe\survey_scenario\extracted\xcam1_0.aoe2scenario'
+SC = _HERE_PATH("_probe", "survey_scenario", "extracted", "xcam1_0.aoe2scenario")
 with contextlib.redirect_stdout(io.StringIO()):
     sc = AoE2DEScenario.from_file(SC)
 

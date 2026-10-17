@@ -10,6 +10,12 @@
    correct: cathedral-class buildings share the monastery art).
 3. Same for the disputed units id 42 / 331 (Trebuchet / Trebuchet (Packed)).
 """
+
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import json, os, re, collections
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -17,9 +23,8 @@ WID = r"D:\Games\Steam\steamapps\common\AoE2DE\widgetui"
 J = json.load(open(os.path.join(WID, "materials.json"), encoding="utf-8"))
 atl = {e.get("AtlasDef", e)["Name"]: e.get("AtlasDef", e) for e in J["AtlasTextures"]}
 C = json.load(open(os.path.join(HERE, "units_raw.json"), encoding="utf-8"))
-SEM = json.load(open(r"D:\Software\DeepSeek Harness\工作区2\_probe\semantic\unit_names.json",
+SEM = json.load(open(_HERE_PATH("_probe", "semantic", "unit_names.json"),
                      encoding="utf-8"))
-
 
 def emb(a):
     out = {}
@@ -29,7 +34,6 @@ def emb(a):
         if h.isdigit():
             out[int(h)] = t
     return out
-
 
 U, T, B = emb("ingameunits"), emb("ingametechs"), emb("ingamebuildings")
 byid = {}

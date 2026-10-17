@@ -8,12 +8,18 @@
  E) exact replace:true vs replace-absent correlation numbers from cmp_storagepoints.json.
 Read-only -> p22_out.txt
 """
+
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import os, struct, json, hashlib
 
 EXE = r"D:\Games\Steam\steamapps\common\AoE2DE\AoE2DE_s.exe"
 GAME = r"D:\Games\Steam\steamapps\common\AoE2DE"
 USERD = r"C:\Users\26913\Games\Age of Empires 2 DE"
-OUT = r"D:\Software\DeepSeek Harness\工作区2\_probe\modes_overlay"
+OUT = _HERE_PATH("_probe", "modes_overlay")
 F = open(os.path.join(OUT, "p22_out.txt"), "w", encoding="utf-8")
 def P(*a): print(*a, file=F)
 

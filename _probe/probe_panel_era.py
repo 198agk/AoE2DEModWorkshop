@@ -21,11 +21,17 @@ pairing is a packaging convention -- which is also worth knowing, because then
 adding a panel entry for a Chronicles civ means editing the paphos file by
 hand with nothing in the data to derive it from.
 """
+
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import json
 import os
 import sys
 
-sys.path.insert(0, r"D:\Software\DeepSeek Harness\工作区2")
+sys.path.insert(0, _HERE_PATH(".."))
 
 import aoe2mod.api as A                        # noqa: E402
 from aoe2mod.game import buildpanel as BP      # noqa: E402
@@ -37,12 +43,10 @@ tk._ensure()
 
 main_p, paphos_p = BP.panel_paths(GAME)
 
-
 def civ_keys(path):
     _t, obj = BP.load_panel(path)
     return set(k for k, v in obj.items()
                if isinstance(v, dict) and BP.BUILDINGS_KEY in v)
-
 
 km, kp = civ_keys(main_p), civ_keys(paphos_p)
 

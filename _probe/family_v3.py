@@ -4,13 +4,19 @@ Render it next to V1 and V2 for the same civs, and measure colour content.
 Also crop row-8 (green/red triangles shield) and row-1 (red castle) of the
 player list to compare directly.
 """
+
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import os
 import numpy as np
 from PIL import Image, ImageDraw
 
 GAME = r"D:\Games\Steam\steamapps\common\AoE2DE"
 SHOTS = r"C:\Users\26913\.dsh\attachments\v1\objects"
-OUT = r"D:\Software\DeepSeek Harness\工作区2\_shots\ui"
+OUT = _HERE_PATH("_shots", "ui")
 V1 = os.path.join(GAME, "widgetui", "textures", "ingame", "emblems")
 V2 = os.path.join(GAME, "resources", "_common", "wpfg", "resources", "civ_emblems")
 V3 = os.path.join(GAME, "widgetui", "textures", "menu", "civs")
@@ -21,17 +27,14 @@ CIVS = ["britons", "lithuanians", "teutons", "saracens", "vikings",
 
 BG = (70, 60, 52)
 
-
 def load(p):
     return Image.open(p).convert("RGBA") if os.path.exists(p) else None
-
 
 def onbg(im, size):
     s = im.resize(size, Image.LANCZOS)
     bg = Image.new("RGBA", size, BG + (255,))
     bg.alpha_composite(s)
     return bg.convert("RGB")
-
 
 def sat_of(im):
     a = np.asarray(im, np.float32)
@@ -40,7 +43,6 @@ def sat_of(im):
         return 0.0, 0
     rgb = a[:, :, :3][m]
     return float((rgb.max(1) - rgb.min(1)).mean()), int(m.sum())
-
 
 print("%-12s %-16s %-16s %-16s" % ("civ", "V1 ingame/emblems", "V2 wpfg", "V3 menu/civs"))
 for c in CIVS:

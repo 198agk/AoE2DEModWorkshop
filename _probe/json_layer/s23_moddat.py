@@ -1,13 +1,18 @@
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import os, sys, io, json, hashlib
-sys.path.insert(0, r"D:\Software\DeepSeek Harness\工作区2\_probe\datparse")
+sys.path.insert(0, _HERE_PATH("_probe", "datparse"))
 import parse_dat as P
 
-OUT = r"D:\Software\DeepSeek Harness\工作区2\_probe\json_layer"
+OUT = _HERE_PATH("_probe", "json_layer")
 rep = io.StringIO()
 def w(s=""):
     rep.write(str(s) + "\n")
 
-src = open(r"D:\Software\DeepSeek Harness\工作区2\_probe\datparse\parse_dat.py", encoding="utf-8").read()
+src = open(_HERE_PATH("_probe", "datparse", "parse_dat.py"), encoding="utf-8").read()
 for fn in ("read_tech", "read_effect", "read_effect_command", "read_unit_line", "read_research_location",
            "read_tech_tree_age", "read_building_connection", "read_unit_connection", "read_research_connection"):
     i = src.find("def %s(" % fn)

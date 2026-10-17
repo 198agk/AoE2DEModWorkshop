@@ -19,6 +19,12 @@ multiply by the team colour in spritecolors.json)?
 
 Read-only.
 """
+
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import os
 import struct
 from collections import Counter
@@ -26,7 +32,7 @@ from PIL import Image
 
 GAME = r"D:\Games\Steam\steamapps\common\AoE2DE"
 GP = os.path.join(GAME, "resources", "_common", "drs", "graphics")
-OUT = r"D:\Software\DeepSeek Harness\工作区2\_shots\sld"
+OUT = _HERE_PATH("_shots", "sld")
 
 u8 = lambda b, o: b[o]
 u16 = lambda b, o: struct.unpack_from("<H", b, o)[0]
@@ -35,7 +41,6 @@ u32 = lambda b, o: struct.unpack_from("<I", b, o)[0]
 
 LAYER_BITS = [(0, "main", False), (1, "shadow", True), (2, "unknown2", False),
               (3, "damage", False), (4, "playercolor", True)]
-
 
 def walk(path, max_frames=1):
     b = open(path, "rb").read()
@@ -73,7 +78,6 @@ def walk(path, max_frames=1):
     return dict(ver=ver, nf=nf, u1=u1, u2=u2, u3=u3, frames=frames,
                 consumed=off, size=len(b))
 
-
 def bc1_block(blk):
     c0, c1 = struct.unpack_from("<HH", blk, 0)
     idx = struct.unpack_from("<I", blk, 4)[0]
@@ -89,7 +93,6 @@ def bc1_block(blk):
         lut = [a, b2, tuple((a[i] + b2[i]) // 2 for i in range(3)), (0, 0, 0)]
     return [lut[idx >> (2 * k) & 3] for k in range(16)]
 
-
 def bc4_block(blk):
     c0, c1 = blk[0], blk[1]
     if c0 > c1:
@@ -98,7 +101,6 @@ def bc4_block(blk):
         lut = [c0, c1] + [((5 - i) * c0 + i * c1) // 5 for i in range(1, 5)] + [0, 255]
     v = int.from_bytes(blk[2:8], "little")
     return [lut[v >> (3 * k) & 7] for k in range(16)]
-
 
 os.makedirs(OUT, exist_ok=True)
 for name in ("u_arc_archer_idlea_x1.sld", "u_cav_knight_idlea_x1.sld",

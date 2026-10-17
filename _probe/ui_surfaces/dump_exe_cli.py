@@ -1,3 +1,8 @@
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import re, io
 
 EXE = r"D:\Games\Steam\steamapps\common\AoE2DE\AoE2DE_s.exe"
@@ -41,6 +46,6 @@ w("distinct ALLCAPS tokens: %d\n" % len(cands))
 dump(0x3258f00, 0x325b400, "flag description table A")
 
 txt = out.getvalue()
-io.open(r"D:\Software\DeepSeek Harness\工作区2\_probe\ui_surfaces\exe_cli_dump.txt", "w", encoding="utf-8").write(txt)
+io.open(_HERE_PATH("_probe", "ui_surfaces", "exe_cli_dump.txt"), "w", encoding="utf-8").write(txt)
 print("written, length", len(txt))
 print("\n".join(txt.splitlines()[:20]))

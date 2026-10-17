@@ -8,9 +8,15 @@ into text a user reads, even though the preview sentence looks right.
 This prints the Edit.where values for a cost edit on both the unit and tech path
 so the leak is visible rather than inferred.
 """
+
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import sys
 
-sys.path.insert(0, r"D:\Software\DeepSeek Harness\工作区2")
+sys.path.insert(0, _HERE_PATH(".."))
 
 import aoe2mod.api as A  # noqa: E402
 import aoe2mod.intent.compiler as C  # noqa: E402

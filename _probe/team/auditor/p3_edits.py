@@ -5,8 +5,14 @@
   B: BP.remove_entry(panel, brit,74) -- does ONE removal remove EVERY visible
                                         Barracks Militia row for Britons?
 """
+
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import copy, json, os, sys
-sys.path.insert(0, r"D:\Software\DeepSeek Harness\工作区2")
+sys.path.insert(0, _HERE_PATH("..", "..", ".."))
 os.environ.setdefault("PYTHONIOENCODING", "utf-8")
 
 from aoe2mod.game import buildpanel as BP
@@ -14,10 +20,8 @@ from aoe2mod.game import civtechtrees as CT
 
 GAME = r"D:\Games\Steam\steamapps\common\AoE2DE"
 
-
 def head(t):
     print(); print("=" * 78); print(t); print("=" * 78)
-
 
 trees = CT.load_trees(GAME)
 brit = trees["BRITONS"]
@@ -61,7 +65,6 @@ ok, info = BP.verify_surgical(txt, t2)
 print("   verify_surgical ok=%r" % (ok,))
 print("   info=%s" % json.dumps(info, ensure_ascii=False))
 
-
 def cnt_all(o, nid):
     n = 0
     for ck in o:
@@ -70,7 +73,6 @@ def cnt_all(o, nid):
                 n += len([x for x in BP.entries(o, ck, b.get("ID"), space)
                           if isinstance(x, dict) and x.get("ID") == nid])
     return n
-
 
 print("   unit-74 entries across ALL 58 civs before: %d" % cnt_all(obj, 74))
 print("   unit-74 entries across ALL 58 civs after : %d" % cnt_all(o2, 74))

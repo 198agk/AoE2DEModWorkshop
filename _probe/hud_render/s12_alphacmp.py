@@ -6,11 +6,17 @@ black background, while neighbouring coloured copies of other scripts are
 saturated (one channel dominant). max(R,G,B) therefore floods the crop with the
 neighbour's colour; min(R,G,B) isolates the neutral glyph.
 """
+
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import os, struct
 from PIL import Image, ImageChops
 
 FONTDIR = r"D:\Games\Steam\steamapps\common\AoE2DE\resources\_common\fonts"
-OUT = r"D:\Software\DeepSeek Harness\工作区2\_probe\hud_render"
+OUT = _HERE_PATH("_probe", "hud_render")
 name = "combined"
 data = open(os.path.join(FONTDIR, name + ".box"), "rb").read()
 ver, cnt, pages, srcpx = struct.unpack_from("<IIIf", data, 0)
@@ -24,19 +30,16 @@ for _ in range(cnt):
     cmap[cp] = gi
 _pg = {}
 
-
 def page(i):
     if i not in _pg:
         _pg[i] = Image.open(os.path.join(FONTDIR, "%s_%04d.png" % (name, i))).convert("RGB")
     return _pg[i]
-
 
 def crop(gi):
     W, H, u0, u1, v0, v1, pg = recs[gi][:7]
     im = page(pg)
     return im.crop((int(round(u0 * im.width)), int(round(v0 * im.height)),
                     int(round(u1 * im.width)), int(round(v1 * im.height))))
-
 
 rep = []
 rows = []

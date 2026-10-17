@@ -9,6 +9,12 @@
 
 This is the sprite-mod capability end to end (minus launching the game).
 """
+
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import os
 import struct
 import sys
@@ -22,15 +28,13 @@ from PIL import Image, ImageDraw
 
 GAME = r"D:\Games\Steam\steamapps\common\AoE2DE"
 GP = os.path.join(GAME, "resources", "_common", "drs", "graphics")
-OUT = r"D:\Software\DeepSeek Harness\工作区2\_shots\sld_render"
-WORK = r"D:\Software\DeepSeek Harness\工作区2\_probe\sld_out"
+OUT = _HERE_PATH("_shots", "sld_render")
+WORK = _HERE_PATH("_probe", "sld_out")
 os.makedirs(OUT, exist_ok=True)
 os.makedirs(WORK, exist_ok=True)
 
-
 def rgb565(r, g, b):
     return ((r * 31 // 255) << 11) | ((g * 63 // 255) << 5) | (b * 31 // 255)
-
 
 def recolour_main(s, target=(60, 90, 210), thresh=70):
     """Rewrite BC1 endpoint 0 of any block whose decoded colour is close to a
@@ -56,7 +60,6 @@ def recolour_main(s, target=(60, 90, 210), thresh=70):
                 hits += 1
         m.data = bytes(blob)
     return hits
-
 
 def do(name, fi):
     src = os.path.join(GP, name)
@@ -133,7 +136,6 @@ def do(name, fi):
     p = os.path.join(OUT, "sld_write_proof.png")
     sheet.convert("RGB").save(p)
     print("   ->", p, sheet.size)
-
 
 for nm in ("u_arc_archer_idlea_x1.sld", "u_inf_militia_idlea_x1.sld"):
     if os.path.exists(os.path.join(GP, nm)):

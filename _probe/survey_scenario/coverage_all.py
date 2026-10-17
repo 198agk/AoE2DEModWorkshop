@@ -1,9 +1,14 @@
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 # Definitive coverage over EVERY scenario file on this machine (game + user profile),
 # plus write-determinism / idempotency test.
 import os, sys, subprocess, json, csv
 sys.stdout.reconfigure(encoding='utf-8', errors='replace')
 
-HERE = r'D:\Software\DeepSeek Harness\工作区2\_probe\survey_scenario'
+HERE = _HERE_PATH("_probe", "survey_scenario")
 PY = r'C:\Users\26913\.dsh\dsh-runtimes\dsh-primary-runtime\dependencies\python\python.exe'
 CHILD = os.path.join(HERE, '_cover_json.py')
 ROOTS = [r'D:\Games\Steam\steamapps\common\AoE2DE',

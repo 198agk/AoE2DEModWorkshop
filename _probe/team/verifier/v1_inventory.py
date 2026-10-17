@@ -3,6 +3,12 @@
 Uses ONLY the standard library (hashlib, zlib, json, os) -- no aoe2mod import.
 Writes inflated raw streams into _probe/team/verifier/raw/ for the later diffs.
 """
+
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import hashlib
 import json
 import os
@@ -10,13 +16,12 @@ import zlib
 
 MOD = r"C:\Users\26913\Games\Age of Empires 2 DE\76561198406248391\mods\local\aoe2mod Smoke5 TreeVsPanel"
 GAME = r"D:\Games\Steam\steamapps\common\AoE2DE"
-OUT = r"D:\Software\DeepSeek Harness\工作区2\_probe\team\verifier"
+OUT = _HERE_PATH("_probe", "team", "verifier")
 RAW = os.path.join(OUT, "raw")
 
 REL_DAT = os.path.join("resources", "_common", "dat", "empires2_x2_p1.dat")
 REL_TREE = os.path.join("resources", "_common", "dat", "CivTechTrees", "BRITONS.json")
 REL_PANEL = os.path.join("resources", "_common", "dat", "futuravailableunits.json")
-
 
 def sha256_file(p):
     h = hashlib.sha256()
@@ -24,7 +29,6 @@ def sha256_file(p):
         for chunk in iter(lambda: f.read(1 << 20), b""):
             h.update(chunk)
     return h.hexdigest()
-
 
 def walk(root):
     out = []
@@ -34,7 +38,6 @@ def walk(root):
             out.append(os.path.relpath(full, root))
     return sorted(out)
 
-
 def inflate(path):
     with open(path, "rb") as f:
         comp = f.read()
@@ -42,7 +45,6 @@ def inflate(path):
     raw = d.decompress(comp)
     raw += d.flush()
     return comp, raw, d.unused_data, d.eof
-
 
 def main():
     os.makedirs(RAW, exist_ok=True)
@@ -110,7 +112,6 @@ def main():
     with open(os.path.join(OUT, "v1_inventory.json"), "w", encoding="utf-8") as f:
         json.dump(report, f, indent=1, ensure_ascii=False)
     print("\nwrote v1_inventory.json")
-
 
 if __name__ == "__main__":
     main()

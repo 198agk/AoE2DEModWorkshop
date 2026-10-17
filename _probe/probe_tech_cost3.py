@@ -6,15 +6,20 @@ first one; if it cannot, selection by resource type is safe and total.
 
 Self-contained on purpose: importing probe_tech_cost2 would run its main().
 """
+
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import contextlib
 import io
 import struct
 import sys
 from collections import Counter
 
-sys.path.insert(0, r"D:\Software\DeepSeek Harness\工作区2")
+sys.path.insert(0, _HERE_PATH(".."))
 from aoe2mod.dat import parser as P          # noqa: E402
-
 
 def walk_one(b, o, gv):
     """(costs, internal_name, next_offset) mirroring Research.cpp exactly."""
@@ -48,7 +53,6 @@ def walk_one(b, o, gv):
         cnt = struct.unpack_from("<h", b, o)[0]
         o += 2 + 9 * cnt
     return costs, name, o
-
 
 def main():
     base = r"D:\Games\Steam\steamapps\common\AoE2DE\resources\_common\dat\empires2_x2_p1.dat"
@@ -100,6 +104,5 @@ def main():
     for r in odd[:10]:
         print("   ", r)
     print("paid slots (flag!=0) whose amount is 0:", zero_paid)
-
 
 main()

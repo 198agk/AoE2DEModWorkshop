@@ -6,8 +6,14 @@
 (d) field asymmetry of the GRANTED 2550 row vs Britons' own Age-1 rows,
 (e) what happens if BOTH mods are enabled (which contents win per path).
 """
+
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import os, sys, json, glob, time
-sys.path.insert(0, r"D:\Software\DeepSeek Harness\工作区2")
+sys.path.insert(0, _HERE_PATH("..", "..", ".."))
 from aoe2mod.game import buildpanel as BP
 from aoe2mod.game import civtechtrees as CT
 
@@ -20,14 +26,11 @@ BUNDLE = "aoe2mod Bundle VillagerHP plus Britons HandCannon"
 SMOKE5 = "aoe2mod Smoke5 TreeVsPanel"
 BLD, A, B = 12, 2550, 74
 
-
 def head(t):
     print(); print("=" * 78); print(t); print("=" * 78)
 
-
 def fts(t):
     return time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(t))
-
 
 trees = CT.load_trees(GAME)
 _t, po = BP.load_panel(os.path.join(GAME, BP.PANEL_REL))

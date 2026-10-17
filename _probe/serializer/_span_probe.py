@@ -12,12 +12,18 @@ A single wrong constant desynchronizes the verbatim cursor and only surfaces
 later as a byte diff.  This probe reports the exact composite where the parser
 and writer disagree, with no hand-summing.
 """
+
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import contextlib
 import io
 import sys
 
-sys.path.insert(0, r"D:\Software\DeepSeek Harness\工作区2\_probe\datparse")
-sys.path.insert(0, r"D:\Software\DeepSeek Harness\工作区2\_probe\serializer")
+sys.path.insert(0, _HERE_PATH("_probe", "datparse"))
+sys.path.insert(0, _HERE_PATH("_probe", "serializer"))
 
 import parse_dat
 import write_dat
@@ -56,14 +62,12 @@ WPAIRS = [
     ("write_attack_or_armor", None),
 ]
 
-
 def norm(name):
     """read_/write_ prefix is the only difference between the two sides."""
     for pre in ("read_", "write_"):
         if name.startswith(pre):
             return name[len(pre):]
     return name
-
 
 def spy_load(mod, pairs):
     """Wrap named functions so each call records (path, start, len)."""
@@ -88,7 +92,6 @@ def spy_load(mod, pairs):
             return wrapper
         setattr(mod, fname, make(saved[fname], fname))
     return events, saved
-
 
 def main():
     raw, how = write_dat.load_dat(BASE)
@@ -191,7 +194,6 @@ def main():
             print("  [%2d] p:%-24s len=%-6d   w:%-24s len=%-6d%s"
                   % (k, p_[0], p_[1], w_[0], w_[1], flag))
     return 0
-
 
 if __name__ == "__main__":
     raise SystemExit(main())

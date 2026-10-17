@@ -9,11 +9,17 @@ button list.
 Also prints the Goths' full building-12 tree block so the tech rows are visible,
 and the cache's PrereqTech usage.
 """
+
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import json
 import os
 import sys
 
-sys.path.insert(0, r"D:\Software\DeepSeek Harness\工作区2")
+sys.path.insert(0, _HERE_PATH("..", "..", ".."))
 from aoe2mod.dat import parser as P          # noqa: E402
 from aoe2mod.dat import locate as L          # noqa: E402
 

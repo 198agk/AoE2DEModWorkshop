@@ -5,9 +5,15 @@ entry the damage maths actually reads.
 displayed_pierce_armour is NOT in the Type50 block -- it is the last field of the
 Creatable block -- so it needs its own comparison.
 """
+
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import sys
 from collections import Counter
-root = r"D:\Software\DeepSeek Harness\工作区2"
+root = _HERE_PATH()
 sys.path.insert(0, root)
 from aoe2mod import api as A
 

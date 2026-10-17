@@ -6,10 +6,16 @@ more than the current cost would store a negative amount.  A negative cost is
 not a discount -- the engine reads it as a resource REQUIREMENT and it can make
 a building unbuildable or, worse, grant resources.  Measure before fixing.
 """
+
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import os
 import sys
 
-ROOT = r"D:\Software\DeepSeek Harness\工作区2"
+ROOT = _HERE_PATH()
 sys.path.insert(0, ROOT)
 from aoe2mod import api  # noqa: E402
 

@@ -6,10 +6,16 @@ Establishes: unit IconID -> ingameunits atlas entry (by EMBEDDED NUMBER),
 tech IconID -> ingametechs entry, building IconID -> ingamebuildings entry.
 Also dumps techs_raw.json and answers: which unit fields actually differ per civ.
 """
+
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import json, os, sys, collections, hashlib
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, r"D:\Software\DeepSeek Harness\工作区2\_probe\datparse")
+sys.path.insert(0, _HERE_PATH("_probe", "datparse"))
 import parse_dat as P
 
 DAT = r"D:\Games\Steam\steamapps\common\AoE2DE\resources\_common\dat\empires2_x2_p1.dat"
@@ -20,7 +26,6 @@ J = json.load(open(os.path.join(WID, "materials.json"), encoding="utf-8"))
 atl = {e.get("AtlasDef", e)["Name"]: e.get("AtlasDef", e) for e in J["AtlasTextures"]}
 mats = [e.get("MaterialDef", e) for e in J["Materials"]]
 matnames = set(m.get("Name", "") for m in mats)
-
 
 def emb_map(atlas_name):
     """number -> texture entry, using the embedded numeric stem."""
@@ -34,7 +39,6 @@ def emb_map(atlas_name):
         else:
             weird.append(t)
     return out, weird
-
 
 EMB_UNIT, weird_u = emb_map("ingameunits")
 EMB_TECH, weird_t = emb_map("ingametechs")

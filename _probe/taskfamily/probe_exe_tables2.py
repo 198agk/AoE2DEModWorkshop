@@ -1,8 +1,14 @@
 # -*- coding: utf-8 -*-
 """Focused dump: the two exe int32 tables that contain the villager family,
 their exact extents, and the dat tsg=3 group identity."""
+
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import struct, sys, os
-sys.path.insert(0, r"D:\Software\DeepSeek Harness\工作区2\_probe\datparse")
+sys.path.insert(0, _HERE_PATH("_probe", "datparse"))
 import parse_dat as P, intent_patch as IP
 
 EXE = r"D:\Games\Steam\steamapps\common\AoE2DE\AoE2DE_s.exe"
@@ -82,7 +88,7 @@ for c in civs:
 for uid in (13, 2147, 2171, 2356, 2630):
     p("  unit %-6d %s" % (uid, seen.get(uid, "ABSENT")))
 
-with open(r"D:\Software\DeepSeek Harness\工作区2\_probe\taskfamily\exe_tables_dump.txt",
+with open(_HERE_PATH("_probe", "taskfamily", "exe_tables_dump.txt"),
           "w", encoding="utf-8") as f:
     f.write("\n".join(out))
 print("\n".join(out[:400]))

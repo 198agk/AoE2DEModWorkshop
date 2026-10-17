@@ -17,11 +17,17 @@ installed mod to the storage point it lands in (longest prefix match), and
 report depth by storage point.  This says how much of the "nested overrides
 work" claim is actually covered, and how much rests on WIDGETUI alone.
 """
+
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import json
 import os
 import sys
 
-sys.path.insert(0, r"D:\Software\DeepSeek Harness\工作区2")
+sys.path.insert(0, _HERE_PATH(".."))
 
 GAME = r"D:\Games\Steam\steamapps\common\AoE2DE"
 POMPEII = os.path.join(GAME, "modes", "Pompeii", "Pompeii.json")
@@ -34,10 +40,8 @@ if sps is None:
     sys.exit("no storage_point_list in %s" % POMPEII)
 print("storage points declared: %d" % len(sps))
 
-
 def norm(p):
     return p.replace("\\", "/").strip("/").lower()
-
 
 POINTS = []
 for e in sps:

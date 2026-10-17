@@ -2,20 +2,25 @@
 """Inspect existing Effect command shapes so the append demo can mirror a real
 resource-adding effect instead of guessing the command-type enum.
 """
+
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import contextlib
 import io
 import sys
 from collections import Counter
 
-sys.path.insert(0, r"D:\Software\DeepSeek Harness\工作区2\_probe\datparse")
-sys.path.insert(0, r"D:\Software\DeepSeek Harness\工作区2\_probe\serializer")
+sys.path.insert(0, _HERE_PATH("_probe", "datparse"))
+sys.path.insert(0, _HERE_PATH("_probe", "serializer"))
 
 import parse_dat
 import write_dat
 
 BASE = (r"D:\Games\Steam\steamapps\common\AoE2DE\resources\_common\dat"
         r"\empires2_x2_p1.dat")
-
 
 def main():
     raw, how = write_dat.load_dat(BASE)
@@ -68,7 +73,6 @@ def main():
           % (len(st["effects"]), st.get("effect_count"),
              len(st["techs"]), st.get("tech_count")))
     return 0
-
 
 if __name__ == "__main__":
     raise SystemExit(main())

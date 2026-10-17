@@ -10,10 +10,16 @@ a different statement from "the building is there and omits the unit".
 Find out which, and record the answer.  Never let a None stand unexamined in a
 pin: it usually means the probe is looking in the wrong place.
 """
+
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import os
 import sys
 
-sys.path.insert(0, r"D:\Software\DeepSeek Harness\工作区2")
+sys.path.insert(0, _HERE_PATH(".."))
 
 import aoe2mod.api as A                      # noqa: E402
 from aoe2mod.game import buildpanel as BP    # noqa: E402

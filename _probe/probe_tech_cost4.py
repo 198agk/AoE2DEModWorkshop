@@ -10,15 +10,20 @@ Two questions:
 Rule under test for tech: among slots whose Type == wanted, take the first with
 Amount != 0; if all are 0, take the first.  Verify it against known costs.
 """
+
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import contextlib
 import io
 import struct
 import sys
 from collections import Counter
 
-sys.path.insert(0, r"D:\Software\DeepSeek Harness\工作区2")
+sys.path.insert(0, _HERE_PATH(".."))
 from aoe2mod.dat import parser as P          # noqa: E402
-
 
 def walk_tech(b, o, gv):
     o += 12
@@ -50,7 +55,6 @@ def walk_tech(b, o, gv):
         o += 2 + 9 * cnt
     return costs, name, o
 
-
 KNOWN = {
     12:  [(0, 250), (1, 250)],
     13:  [(0, 125), (1, 125)],
@@ -61,7 +65,6 @@ KNOWN = {
     50:  [(1, 175), (0, 150)],
     51:  [(1, 200), (0, 300)],
 }
-
 
 def main():
     base = r"D:\Games\Steam\steamapps\common\AoE2DE\resources\_common\dat\empires2_x2_p1.dat"
@@ -165,6 +168,5 @@ def main():
           len(dup_units))
     for r in dup_units[:10]:
         print("     ", r)
-
 
 main()

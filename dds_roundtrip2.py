@@ -1,7 +1,12 @@
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import os, struct, subprocess, shutil
 from PIL import Image
 
-OUT = r"D:\Software\DeepSeek Harness\工作区2\_ddstest3"
+OUT = _ROOT_PATH("_ddstest3")
 shutil.rmtree(OUT, ignore_errors=True); os.makedirs(OUT)
 TC  = r"D:\Games\Steam\steamapps\common\AoE2DE\Tools_Builds\texconv.exe"
 G   = r"D:\Games\Steam\steamapps\common\AoE2DE"

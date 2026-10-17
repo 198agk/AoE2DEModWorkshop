@@ -10,6 +10,12 @@ Run:  $env:PYTHONIOENCODING='utf-8'
       $env:PYTHONPATH='D:\\Software\\DeepSeek Harness\\工作区2'
       python _probe/team_audit_design.py
 """
+
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import os
 import sys
 import json
@@ -20,7 +26,7 @@ import hashlib
 import time
 import contextlib
 
-HERE = r"D:\Software\DeepSeek Harness\工作区2"
+HERE = _HERE_PATH()
 sys.path.insert(0, HERE)
 from aoe2mod.game import buildpanel as BP       # noqa: E402
 from aoe2mod.game import civtechtrees as CT     # noqa: E402
@@ -38,18 +44,15 @@ BLD, SUBJ_A, SUBJ_B = 12, 2550, 74
 
 FINDINGS = []
 
-
 def head(t):
     print()
     print("=" * 78)
     print(t)
     print("=" * 78)
 
-
 def note(tag, text):
     FINDINGS.append((tag, text))
     print("   [%s] %s" % (tag, text))
-
 
 # --------------------------------------------------------------------------
 # F1 -- is smoke5 even registered / enabled?
@@ -160,14 +163,11 @@ trees = CT.load_trees(GAME)
 _t, po = BP.load_panel(os.path.join(GAME, BP.PANEL_REL))
 kb = BP.civ_key_for(po, "Britons")
 
-
 def tree_has(t, nid):
     return CT.row_for(t, nid, CT.UNIT_USE_TYPES) is not None
 
-
 def panel_has(obj, key, nid):
     return BP.find_entry(obj, key, nid, BP.UNITS_KEY)[1] is not None
-
 
 print("   SHIPPED tree BRITONS : A=%s B=%s" % (
     tree_has(trees["BRITONS"], SUBJ_A), tree_has(trees["BRITONS"], SUBJ_B)))

@@ -15,17 +15,22 @@ Claims under test (all read-only):
 Emit per-file pass/fail and a global histogram so the report can quote
 honest denominators.
 """
+
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import os
 import struct
 import collections
 
 GAME = r"D:\Games\Steam\steamapps\common\AoE2DE"
 GP = os.path.join(GAME, "resources", "_common", "drs", "graphics")
-OUT = r"D:\Software\DeepSeek Harness\工作区2\_probe\sld_validate_out.txt"
+OUT = _HERE_PATH("_probe", "sld_validate_out.txt")
 
 BITS = [(0, "main"), (1, "shadow"), (2, "unknown2"), (3, "damage"), (4, "playercolor")]
 PAD = lambda x: x + ((4 - x % 4) % 4)
-
 
 def walk(b):
     """Return (nframes, ok_eof, idx_ok, per-layer stats) or raise."""
@@ -97,7 +102,6 @@ def walk(b):
     return dict(sig=sig, ver=ver, n=n, walked=off, eof_ok=(p == len(b)), p=p, blen=len(b),
                 idx_bad=idx_bad, comp_ok=comp_ok, comp_bad=comp_bad, span_ok=span_ok,
                 span_bad=span_bad, seen=seen, u1=u1, u2=u2, u3=u3)
-
 
 def main():
     files = sorted(os.listdir(GP))
@@ -186,6 +190,5 @@ def main():
     io.write(txt)
     io.close()
     print(txt)
-
 
 main()

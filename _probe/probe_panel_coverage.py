@@ -21,10 +21,16 @@ treated `futuravailableunits.json` as "the panel"; that was never checked.
 
 Also cross-checks the two panel files against each other where both cover a civ.
 """
+
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import os
 import sys
 
-sys.path.insert(0, r"D:\Software\DeepSeek Harness\工作区2")
+sys.path.insert(0, _HERE_PATH(".."))
 
 import aoe2mod.api as A                        # noqa: E402
 from aoe2mod.game import buildpanel as BP      # noqa: E402
@@ -39,7 +45,6 @@ print("game root     : %s" % GAME)
 print("main panel    : %s" % (os.path.basename(main_p) if main_p else None))
 print("paphos panel  : %s" % (os.path.basename(paphos_p) if paphos_p else None))
 
-
 def civ_keys(path):
     if not path:
         return set()
@@ -47,7 +52,6 @@ def civ_keys(path):
     # the file is {civ_display_name: {"Buildings": [...]}, ...}
     return set(k for k, v in obj.items()
                if isinstance(v, dict) and BP.BUILDINGS_KEY in v)
-
 
 km = civ_keys(main_p)
 kp = civ_keys(paphos_p)
@@ -97,14 +101,12 @@ shared = sorted(km & kp)
 _text_a, obj_a = BP.load_panel(main_p)
 _text_p, obj_p = BP.load_panel(paphos_p)
 
-
 def pairs(obj, key):
     out = set()
     for b in (obj.get(key) or {}).get(BP.BUILDINGS_KEY, []):
         for u in (b.get("Units") or []):
             out.add((b.get("ID"), u.get("ID")))
     return out
-
 
 agree = differ = 0
 examples = []

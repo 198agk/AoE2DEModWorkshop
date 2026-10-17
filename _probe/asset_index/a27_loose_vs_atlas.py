@@ -13,6 +13,12 @@ If the loose file is the true icon and the atlas slice is stale, the LEFT column
 is the authoritative image; either way the atlas entry (RefName + UV + FileName)
 stays the same, only the pixels differ.
 """
+
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import json, os, struct, zlib
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -20,9 +26,8 @@ WID = r"D:\Games\Steam\steamapps\common\AoE2DE\widgetui"
 J = json.load(open(os.path.join(WID, "materials.json"), encoding="utf-8"))
 ATLS = {e.get("AtlasDef", e)["Name"]: e.get("AtlasDef", e) for e in J["AtlasTextures"]}
 C = json.load(open(os.path.join(HERE, "units_raw.json"), encoding="utf-8"))
-SEM = json.load(open(r"D:\Software\DeepSeek Harness\工作区2\_probe\semantic\unit_names.json",
+SEM = json.load(open(_HERE_PATH("_probe", "semantic", "unit_names.json"),
                      encoding="utf-8"))
-
 
 def parse(p):
     with open(p, "rb") as f:
@@ -35,7 +40,6 @@ def parse(p):
             "maskB": struct.unpack_from("<I", b, 100)[0], "maskA": struct.unpack_from("<I", b, 104)[0],
             "off": 148 if b[84:88] == b"DX10" else 128}
 
-
 def _c565(c0, c1, dxt1):
     def ex(c):
         r = (c >> 11) & 31; g = (c >> 5) & 63; bl = c & 31
@@ -46,7 +50,6 @@ def _c565(c0, c1, dxt1):
                 tuple((a[k] + 2 * b[k]) // 3 for k in range(3))]
     return [a, b, tuple((a[k] + b[k]) // 2 for k in range(3)), (0, 0, 0)]
 
-
 def _a5(blk, i):
     a0, a1 = blk[0], blk[1]
     if a0 > a1:
@@ -55,7 +58,6 @@ def _a5(blk, i):
         tab = [a0, a1] + [((5 - k) * a0 + k * a1) // 5 for k in range(1, 5)] + [0, 255]
     c = int.from_bytes(blk[2:8], "little")
     return tab[(c >> (3 * i)) & 7]
-
 
 def decode(p, lx, ly, w, h):
     d = parse(p)
@@ -119,7 +121,6 @@ def decode(p, lx, ly, w, h):
         return w, h, bytes(out)
     return w, h, None
 
-
 def png(path, W, H, rgba):
     rows = bytearray()
     for y in range(H):
@@ -140,7 +141,6 @@ def png(path, W, H, rgba):
         f.write(ch(b"IDAT", zlib.compress(bytes(rows), 6)))
         f.write(ch(b"IEND", b""))
 
-
 def emb(a):
     out = {}
     for t in ATLS[a]["Textures"]:
@@ -149,7 +149,6 @@ def emb(a):
         if hh.isdigit():
             out[int(hh)] = t
     return out
-
 
 def loose(a, t):
     fp = os.path.join(WID, t["FileName"].replace("/", os.sep))
@@ -161,14 +160,12 @@ def loose(a, t):
             return os.path.join(d, f)
     return None
 
-
 def emb_uv(t, W, H):
     lx = int(round(float(t["imageTLX"]) * W + 0.5))
     ly = int(round(float(t["imageTLY"]) * H + 0.5))
     hx = int(round(float(t["imageBRX"]) * W - 0.5))
     hy = int(round(float(t["imageBRY"]) * H - 0.5))
     return lx, ly, hx - lx + 1, hy - ly + 1
-
 
 def down2(px, w, h):
     W, Hh = w // 2, h // 2
@@ -181,7 +178,6 @@ def down2(px, w, h):
                                             px[((y * 2 + 1) * w + x * 2) * 4 + k] +
                                             px[((y * 2 + 1) * w + x * 2 + 1) * 4 + k]) // 4
     return bytes(out)
-
 
 SRC = os.path.join(WID, ATLS["ingameunits"]["DefaultSource"].replace("/", os.sep))
 hdr_src = parse(SRC)

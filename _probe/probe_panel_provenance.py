@@ -33,18 +33,23 @@ civs both files cover -- the earlier "18" was over the 56 civs the panel file
 covers; this probe walks every tree that has a panel key).  Either way it is not
 a live projection.
 """
+
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import os
 import sys
 import datetime
 
-sys.path.insert(0, r"D:\Software\DeepSeek Harness\工作区2")
+sys.path.insert(0, _HERE_PATH(".."))
 
 import aoe2mod.api as A                       # noqa: E402
 from aoe2mod.game import buildpanel as BP     # noqa: E402
 from aoe2mod.game import civtechtrees as CT   # noqa: E402
 
 GAME = A.open_toolkit().game_root
-
 
 def stamp(path):
     if not os.path.isfile(path):
@@ -53,7 +58,6 @@ def stamp(path):
     return "%s  (%d B)" % (
         datetime.datetime.fromtimestamp(st.st_mtime).strftime("%Y-%m-%d %H:%M:%S"),
         st.st_size)
-
 
 print("game root : %s" % GAME)
 print()

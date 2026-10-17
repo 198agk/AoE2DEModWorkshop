@@ -8,6 +8,12 @@ an embedded numeric stem.  If a building's IconID resolved equally well in
 ingameunits, the mapping would be ambiguous.  Discriminate by NAME PLAUSIBILITY:
 does the resolved entry's RefName actually name the entity?
 """
+
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import json, os, collections, re
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -15,9 +21,8 @@ WID = r"D:\Games\Steam\steamapps\common\AoE2DE\widgetui"
 J = json.load(open(os.path.join(WID, "materials.json"), encoding="utf-8"))
 atl = {e.get("AtlasDef", e)["Name"]: e.get("AtlasDef", e) for e in J["AtlasTextures"]}
 C = json.load(open(os.path.join(HERE, "units_raw.json"), encoding="utf-8"))
-SEM = json.load(open(r"D:\Software\DeepSeek Harness\工作区2\_probe\semantic\unit_names.json",
+SEM = json.load(open(_HERE_PATH("_probe", "semantic", "unit_names.json"),
                      encoding="utf-8"))
-
 
 def emb(a):
     out = {}
@@ -27,7 +32,6 @@ def emb(a):
         if h.isdigit():
             out[int(h)] = t
     return out
-
 
 U, T, B = emb("ingameunits"), emb("ingametechs"), emb("ingamebuildings")
 print("atlas numeric coverage: units=%d (min %d max %d)  techs=%d (%d..%d)  bldgs=%d (%d..%d)"
@@ -46,13 +50,11 @@ def toks(s):
     s = re.sub(r"[^a-z0-9]+", " ", (s or "").lower())
     return set(x for x in s.split() if len(x) > 2)
 
-
 def plaus(entity_name, refname):
     """does the RefName (CamelCase, e.g. BuildingIcons007Castle) name the entity?"""
     r = re.sub(r"^(BuildingIcons|UnitIcons|TechIconsT?)\d+", "", refname or "")
     r = re.sub(r"([a-z])([A-Z])", r"\1 \2", r)
     return len(toks(r) & toks(entity_name)) > 0
-
 
 print("\n=== BUILDINGS: which atlas does IconID index? ===")
 bld_rows = []

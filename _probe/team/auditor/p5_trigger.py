@@ -5,8 +5,14 @@ If Trigger Tech ID is a gate that the civ must satisfy, then granting row 2550
 into BRITONS (whose Trigger Tech 1350 no civ carries) plants an UNCONTROLLED
 variable inside the "tree drives the menu" arm of the experiment.
 """
+
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import collections, json, os, sys
-sys.path.insert(0, r"D:\Software\DeepSeek Harness\工作区2")
+sys.path.insert(0, _HERE_PATH("..", "..", ".."))
 os.environ.setdefault("PYTHONIOENCODING", "utf-8")
 
 import aoe2mod.api as A
@@ -15,10 +21,8 @@ from aoe2mod.game import civtechtrees as CT
 
 GAME = r"D:\Games\Steam\steamapps\common\AoE2DE"
 
-
 def head(t):
     print(); print("=" * 78); print(t); print("=" * 78)
-
 
 trees = CT.load_trees(GAME)
 panels = BP.load_all(GAME)

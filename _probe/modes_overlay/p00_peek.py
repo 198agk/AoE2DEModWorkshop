@@ -1,6 +1,11 @@
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import os, json, sys
 GAME = r"D:\Games\Steam\steamapps\common\AoE2DE"
-OUT  = r"D:\Software\DeepSeek Harness\工作区2\_probe\modes_overlay"
+OUT  = _HERE_PATH("_probe", "modes_overlay")
 
 def walk_inv(root):
     inv = {}   # relpath(lower, / sep) -> size

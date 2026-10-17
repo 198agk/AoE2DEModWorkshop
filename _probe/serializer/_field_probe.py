@@ -15,12 +15,18 @@ and the writer disagree about width is the defect.
 
 Usage:  _field_probe.py [hex-offset] [unit-index-in-civ0]
 """
+
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import contextlib
 import io
 import sys
 
-sys.path.insert(0, r"D:\Software\DeepSeek Harness\工作区2\_probe\datparse")
-sys.path.insert(0, r"D:\Software\DeepSeek Harness\工作区2\_probe\serializer")
+sys.path.insert(0, _HERE_PATH("_probe", "datparse"))
+sys.path.insert(0, _HERE_PATH("_probe", "serializer"))
 
 import parse_dat
 import write_dat
@@ -34,7 +40,6 @@ PRIMS = ("u8", "i16", "u16", "u32", "i32", "f32", "raw", "skip",
 WPRIMS = ("op", "opu8", "opi16", "opu16", "opi32", "opu32",
           "u8", "i16", "u16", "u32", "i32", "f32",
           "debug_string", "fixed_string", "skip")
-
 
 def parse_one(raw, target):
     """Read exactly one unit body at ``target``; return (unit, log, end)."""
@@ -62,7 +67,6 @@ def parse_one(raw, target):
     for name, fn in saved.items():
         setattr(parse_dat.Reader, name, fn)
     return u, log, end
-
 
 def write_one(stats, raw, unit):
     """Emit that unit; return (log, report)."""
@@ -96,7 +100,6 @@ def write_one(stats, raw, unit):
     for name, fn in saved.items():
         setattr(write_dat.Writer, name, fn)
     return log, end, mism, fm
-
 
 def main():
     target = int(sys.argv[1], 16) if len(sys.argv) > 1 else 0x3BB4A0
@@ -193,7 +196,6 @@ def main():
         print("   raw+%-6d len=%-5d parser=%-14s writer=%-14s%s"
               % (off, wd, p, q, flag))
     return 0
-
 
 if __name__ == "__main__":
     raise SystemExit(main())

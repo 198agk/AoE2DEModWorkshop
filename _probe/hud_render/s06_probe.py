@@ -1,11 +1,17 @@
 # -*- coding: utf-8 -*-
 """Focused probes: texture alpha stats, FontIndex-by-file, missing atlas entries, glyph table, backdrop."""
+
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import os, io, json, struct, collections
 from PIL import Image
 
 W = r"D:\Games\Steam\steamapps\common\AoE2DE\widgetui"
 FD = r"D:\Games\Steam\steamapps\common\AoE2DE\resources\_common\fonts"
-OUT = r"D:\Software\DeepSeek Harness\工作区2\_probe\hud_render"
+OUT = _HERE_PATH("_probe", "hud_render")
 rep = io.StringIO()
 
 # ---- 1. alpha stats of resolved textures ----

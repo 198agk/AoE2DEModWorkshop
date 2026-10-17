@@ -17,6 +17,12 @@ tech-link layer (effect command type 102, "Disable Tech", and the
 `MutuallyExclusive` / `StartingTech` / `Toggleable` / `Cycle` vocabulary that
 sits next to it in the exe string pool).
 """
+
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import hashlib
 import json
 import os
@@ -28,18 +34,15 @@ DAT_REL = os.path.join("resources", "_common", "dat")
 
 FAILURES = []
 
-
 def check(cond, label):
     print("[%s] %s" % ("PASS" if cond else "FAIL", label))
     if not cond:
         FAILURES.append(label)
 
-
 def load(p):
     with open(p, "rb") as fh:
         raw = fh.read()
     return raw, json.loads(raw.decode("utf-8-sig"))
-
 
 def shape(obj, depth=0):
     if isinstance(obj, dict):
@@ -50,7 +53,6 @@ def shape(obj, depth=0):
     if isinstance(obj, list):
         return "[ %s  x%d ]" % (shape(obj[0], depth + 1) if obj else "?", len(obj))
     return type(obj).__name__
-
 
 base_p = os.path.join(GAME, DAT_REL, "linkedTechs.json")
 base_raw, base = load(base_p)
@@ -105,7 +107,7 @@ print("=" * 76)
 # Are the base file's records all present in the .dat's own tech data?
 # The .dat cannot be read here without the product kernel, so cross-reference
 # by NAME: every tech named in linkedTechs.json should be a real .dat tech.
-sys.path.insert(0, r"D:\Software\DeepSeek Harness\工作区2")
+sys.path.insert(0, _HERE_PATH(".."))
 from aoe2mod.semantic.index import index as sem_index
 
 sem = sem_index()

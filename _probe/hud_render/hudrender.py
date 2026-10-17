@@ -8,13 +8,19 @@ source tree, proven in s09_nineslice.py).
 Usage:
     python hudrender.py resourcepanel.json scorepanel.json
 """
+
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import os, sys, json, struct, math, collections, argparse
 from PIL import Image, ImageDraw, ImageFilter, ImageChops
 
 GAME = r"D:\Games\Steam\steamapps\common\AoE2DE"
 UIDIR = os.path.join(GAME, "widgetui")
 FONTDIR = os.path.join(GAME, "resources", "_common", "fonts")
-SCRATCH = r"D:\Software\DeepSeek Harness\工作区2\_probe\hud_render"
+SCRATCH = _HERE_PATH("_probe", "hud_render")
 OUTDIR = os.path.join(SCRATCH, "out")
 CANVAS_W, CANVAS_H = 3840, 2160
 
@@ -43,7 +49,6 @@ def split_align(a):
             return (v, "Centre")
     return ("Top", "Left")
 
-
 def align_rect(x, y, w, h, alignment):
     """Place a w x h rect so that the point (x,y) lands on the corner/edge/centre
     of the rect named by `alignment`, in parent top-left-relative space.
@@ -64,7 +69,6 @@ def align_rect(x, y, w, h, alignment):
     else:
         dy = -h
     return (x + dx, y + dy, w, h)
-
 
 # ------------------------------------------------------------------ assets
 
@@ -177,19 +181,16 @@ class Assets(object):
             return (im, None, "OK_TEXTURE", "%s (%dx%d)" % (os.path.basename(rel), im.width, im.height), blend)
         return (None, None, "MATERIAL_TYPE_UNKNOWN", str(t), blend)
 
-
 def _f(v):
     try:
         return float(v)
     except Exception:
         return 0.0
 
-
 # -------------------------------------------------------------------- font
 
 FONT_TABLE = {0: "combined", 1: "basic_bold_16", 2: "combined_sansserif"}
 FONT_FALLBACK = {3: "combined", -1: "combined"}
-
 
 class GlyphFont(object):
     def __init__(self, name):
@@ -237,7 +238,6 @@ class GlyphFont(object):
         a = ImageChops.darker(ImageChops.darker(r, g), b)
         return a, self.recs[gi]
 
-
 class Fonts(object):
     def __init__(self):
         self._f = {}
@@ -246,7 +246,6 @@ class Fonts(object):
         if name not in self._f:
             self._f[name] = GlyphFont(name)
         return self._f[name]
-
 
 def norm_color(c):
     """Handle the alpha/byte scale trap: some blocks are 0..1 floats, others 0..255."""
@@ -259,12 +258,10 @@ def norm_color(c):
         a = a / 255.0
     return tuple(max(0, min(255, int(round(v * 255)))) for v in (r, g, b, a))
 
-
 # ------------------------------------------------------------------ render
 
 SLOTS = ["TL", "TC", "TR", "CL", "CC", "CR", "BL", "BC", "BR"]
 VPOS, HPOS = ("Top", "Centre", "Bottom"), ("Left", "Centre", "Right")
-
 
 class Renderer(object):
     def __init__(self):
@@ -599,10 +596,8 @@ class Renderer(object):
             self.draw_widget(canvas, w, (r[0], r[1]), 1, col.get("Name"))
         return canvas
 
-
 def font_scale_base(font):
     return 64.0
-
 
 def main():
     ap = argparse.ArgumentParser()
@@ -655,7 +650,6 @@ def main():
         print(txt)
         summary.append(txt)
     return summary
-
 
 if __name__ == "__main__":
     main()

@@ -12,6 +12,12 @@ Q1  Is the icon atlas chosen by unit Type (80 -> ingamebuildings, else ingameuni
 Q1b Which buildings still fail name-plausibility, and why?
 Q2  ingameunits claims 794 '<NNN>_50730.dds' but only 447 appeared to exist.
 """
+
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import json, os, re, collections
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -19,9 +25,8 @@ WID = r"D:\Games\Steam\steamapps\common\AoE2DE\widgetui"
 J = json.load(open(os.path.join(WID, "materials.json"), encoding="utf-8"))
 atl = {e.get("AtlasDef", e)["Name"]: e.get("AtlasDef", e) for e in J["AtlasTextures"]}
 C = json.load(open(os.path.join(HERE, "units_raw.json"), encoding="utf-8"))
-SEM = json.load(open(r"D:\Software\DeepSeek Harness\工作区2\_probe\semantic\unit_names.json",
+SEM = json.load(open(_HERE_PATH("_probe", "semantic", "unit_names.json"),
                      encoding="utf-8"))
-
 
 def emb(a):
     out = {}
@@ -32,10 +37,8 @@ def emb(a):
             out[int(h)] = t
     return out
 
-
 U, T, B = emb("ingameunits"), emb("ingametechs"), emb("ingamebuildings")
 STOP = {"age", "the", "and", "icon", "sld", "x1", "x2"}
-
 
 def toks(s):
     s = re.sub(r"([a-z])([A-Z])", r"\1 \2", s or "")          # CamelCase
@@ -44,12 +47,10 @@ def toks(s):
     raw = re.split(r"[^A-Za-z0-9]+", s.lower())
     return set(x for x in raw if len(x) > 2 and not x.isdigit() and x not in STOP)
 
-
 def plaus(entity, ref):
     r = re.sub(r"^(BuildingIcons|UnitIcons|TechIconsT?)", "", ref or "")
     r = re.sub(r"^[0-9]+", "", r)                              # drop leading number
     return len(toks(r) & toks(entity)) > 0
-
 
 byid = {}
 for ci, civ in enumerate(C):

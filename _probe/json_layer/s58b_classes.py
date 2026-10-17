@@ -1,6 +1,11 @@
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import os, io, re, json
-OUT = r"D:\Software\DeepSeek Harness\工作区2\_probe\json_layer"
-SRC = r"D:\Software\DeepSeek Harness\工作区2\_probe\source"
+OUT = _HERE_PATH("_probe", "json_layer")
+SRC = _HERE_PATH("_probe", "source")
 rep = io.StringIO()
 def w(s=""):
     rep.write(str(s) + "\n")

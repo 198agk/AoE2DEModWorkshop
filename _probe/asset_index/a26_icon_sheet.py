@@ -12,6 +12,12 @@ IconID -> ingameunits entry -> FileName is the right chain.
 
 Prints the grid order so the sheet can be read without drawn labels.
 """
+
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import json, os, struct, zlib
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -19,9 +25,8 @@ WID = r"D:\Games\Steam\steamapps\common\AoE2DE\widgetui"
 J = json.load(open(os.path.join(WID, "materials.json"), encoding="utf-8"))
 ATLS = {e.get("AtlasDef", e)["Name"]: e.get("AtlasDef", e) for e in J["AtlasTextures"]}
 C = json.load(open(os.path.join(HERE, "units_raw.json"), encoding="utf-8"))
-SEM = json.load(open(r"D:\Software\DeepSeek Harness\工作区2\_probe\semantic\unit_names.json",
+SEM = json.load(open(_HERE_PATH("_probe", "semantic", "unit_names.json"),
                      encoding="utf-8"))
-
 
 def parse(p):
     with open(p, "rb") as f:
@@ -38,13 +43,11 @@ def parse(p):
         d["dxgi"] = struct.unpack_from("<I", b, 128)[0]
     return d
 
-
 DXGI = {70: "BC1", 71: "BC1", 72: "BC2", 73: "BC2", 74: "BC3", 75: "BC3", 76: "BC1",
         77: "BC2", 78: "BC3", 79: "BC4", 80: "BC4", 81: "BC5", 82: "BC5", 83: "BC5",
         94: "BC5", 95: "BC6H", 96: "BC6H", 97: "BC7", 98: "BC7",
         28: "R8G8B8A8_UNORM", 29: "R8G8B8A8_UNORM_SRGB", 87: "B8G8R8A8_UNORM",
         88: "B8G8R8X8_UNORM"}
-
 
 def _c565(c0, c1, dxt1):
     def ex(c):
@@ -56,7 +59,6 @@ def _c565(c0, c1, dxt1):
                 tuple((a[k] + 2 * b[k]) // 3 for k in range(3))]
     return [a, b, tuple((a[k] + b[k]) // 2 for k in range(3)), (0, 0, 0)]
 
-
 def _a5(blk, i):
     a0, a1 = blk[0], blk[1]
     if a0 > a1:
@@ -65,7 +67,6 @@ def _a5(blk, i):
         tab = [a0, a1] + [((5 - k) * a0 + k * a1) // 5 for k in range(1, 5)] + [0, 255]
     c = int.from_bytes(blk[2:8], "little")
     return tab[(c >> (3 * i)) & 7]
-
 
 def decode_full(p):
     """Return (w, h, rgba bytes, describe str) or (w,h,None,why)."""
@@ -137,7 +138,6 @@ def decode_full(p):
     return w, h, None, "UNSUPPORTED fourcc=%r dxgi=%s pfFlags=0x%x bits=%d" % (
         d["fourcc"], d.get("dxgi"), d["pfFlags"], d["bits"])
 
-
 def png(path, W, H, rgba):
     rows = bytearray()
     for y in range(H):
@@ -159,7 +159,6 @@ def png(path, W, H, rgba):
         f.write(ch(b"IDAT", zlib.compress(bytes(rows), 6)))
         f.write(ch(b"IEND", b""))
 
-
 def emb(a):
     out = {}
     for t in ATLS[a]["Textures"]:
@@ -168,7 +167,6 @@ def emb(a):
         if hh.isdigit():
             out[int(hh)] = t
     return out
-
 
 def loose(a, t):
     fp = os.path.join(WID, t["FileName"].replace("/", os.sep))
@@ -179,7 +177,6 @@ def loose(a, t):
         if f.lower() == os.path.basename(fp).lower():
             return os.path.join(d, f)
     return None
-
 
 byid = {}
 for civ in C:

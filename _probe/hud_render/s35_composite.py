@@ -6,11 +6,17 @@ in shot0, tiled), so the composite shows the renderer's output in a realistic co
 without pretending to be a screenshot. Deliberately NOT a fake screenshot: the panels
 are drawn at the measured HUD scale 0.5980 over a 2730x1535 canvas.
 """
+
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import os
 import numpy as np
 from PIL import Image, ImageDraw
 
-O = r"D:\Software\DeepSeek Harness\工作区2\_probe\hud_render"
+O = _HERE_PATH("_probe", "hud_render")
 AT = r"C:\Users\26913\.dsh\attachments\v1\objects"
 SHOT0 = os.path.join(AT, "02", "0261b373ecaf49144281bea8a63f4b57627bc303cbb35a78fcb7f4b616ee4e82")
 SC = 0.5980

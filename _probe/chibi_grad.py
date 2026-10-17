@@ -8,13 +8,19 @@ identifies the source art without needing to know a or T.
 Player label reads "RemonBo (立陶宛)" = Lithuanians -> check lithuanians.png
 explicitly as well as the full ranked list.
 """
+
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import os
 import numpy as np
 from PIL import Image, ImageDraw
 
 GAME = r"D:\Games\Steam\steamapps\common\AoE2DE"
 SHOTS = r"C:\Users\26913\.dsh\attachments\v1\objects"
-OUT = r"D:\Software\DeepSeek Harness\工作区2\_shots\ui"
+OUT = _HERE_PATH("_shots", "ui")
 MOD = r"C:\Users\26913\Games\Age of Empires 2 DE\76561198406248391\mods\subscribed\182654_Age of Anime (Chibi Edition)\widgetui\textures\ingame\emblems"
 V1 = os.path.join(GAME, "widgetui", "textures", "ingame", "emblems")
 V2 = os.path.join(GAME, "resources", "_common", "wpfg", "resources", "civ_emblems")
@@ -24,19 +30,15 @@ f1 = Image.open(os.path.join(SHOTS, "02", "0261b373ecaf49144281bea8a63f4b57627bc
 obs = np.asarray(f1.crop(BOX), dtype=np.float32)
 oh, ow = obs.shape[:2]
 
-
 def lum(a):
     return 0.299 * a[:, :, 0] + 0.587 * a[:, :, 1] + 0.114 * a[:, :, 2]
-
 
 def grad_mag(l):
     gy, gx = np.gradient(l)
     return np.sqrt(gx * gx + gy * gy)
 
-
 ob_l = lum(obs)
 ob_g = grad_mag(ob_l)
-
 
 def ncc(x, y, m):
     n = int(m.sum())
@@ -50,7 +52,6 @@ def ncc(x, y, m):
     if den == 0:
         return float("nan"), n
     return float((a * b).sum() / den), n
-
 
 def run(folder, label):
     res = []
@@ -79,7 +80,6 @@ def run(folder, label):
     if len(res) > 10:
         print("     ... min r=%+0.4f (%s)" % (res[-1][0], res[-1][1]))
     return res
-
 
 rm = run(MOD, "MOD chibi emblems 182654")
 r1 = run(V1, "VANILLA V1 widgetui emblems")

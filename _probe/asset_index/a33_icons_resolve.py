@@ -18,6 +18,12 @@ THE INSIGHT
 
 OUTPUT: icon_resolution.json -- per entity the chosen section/material/atlas/uv + why.
 """
+
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import json, os, re, collections
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -26,7 +32,7 @@ J = json.load(open(os.path.join(WID, "materials.json"), encoding="utf-8"))
 ICONS = json.load(open(os.path.join(WID, "icons.json"), encoding="utf-8"))
 ATLS = {e.get("AtlasDef", e)["Name"]: e.get("AtlasDef", e) for e in J["AtlasTextures"]}
 C = json.load(open(os.path.join(HERE, "units_raw.json"), encoding="utf-8"))
-SEM = json.load(open(r"D:\Software\DeepSeek Harness\工作区2\_probe\semantic\unit_names.json",
+SEM = json.load(open(_HERE_PATH("_probe", "semantic", "unit_names.json"),
                      encoding="utf-8"))
 
 # material name -> MaterialDef
@@ -46,7 +52,6 @@ def emb(atlas_name):
             out[int(h)] = t
     return out
 
-
 EMB = {name: emb(name) for name in ATLS}
 
 # the game's own author-written label for building icon N, from the loose file on disk
@@ -59,17 +64,14 @@ for f in os.listdir(LOOSE_B):
 
 STOP = {"age", "the", "and", "of", "de", "icon", "sprite", "packed", "dead", "x", "new"}
 
-
 def toks(s):
     s = re.sub(r"([a-z0-9])([A-Z])", r"\1 \2", s or "")
     s = re.sub(r"([A-Za-z])([0-9])", r"\1 \2", s)
     return set(x for x in re.split(r"[^A-Za-z0-9]+", s.lower())
                if len(x) > 2 and not x.isdigit() and x not in STOP)
 
-
 def match(entity_en, label):
     return len(toks(entity_en) & toks(label)) > 0
-
 
 def resolve_material(mname):
     """material name -> atlas/refname/uv/texture, via materials.json."""
@@ -109,16 +111,13 @@ def resolve_material(mname):
             "atlas_max": [at.get("MaxWidth"), at.get("MaxHeight")],
             "atlas_default_source": at.get("DefaultSource")}
 
-
 byid = {}
 for civ in C:
     for x in civ["units"]:
         byid.setdefault(x["id"], x)
 
-
 def EN(u):
     return (SEM.get(str(u["id"])) or {}).get("en") or u.get("name") or "?"
-
 
 UNITS, BLD = ICONS.get("Units", {}), ICONS.get("Buildings", {})
 print("icons.json sections: Units=%d Buildings=%d" % (len(UNITS), len(BLD)))

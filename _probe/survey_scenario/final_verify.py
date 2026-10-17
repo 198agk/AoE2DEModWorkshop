@@ -1,3 +1,8 @@
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 # FINAL VERIFICATION
 #  A) campaign index (positional) vs physical scan, all 42 campaigns
 #  B) ASP readability of EVERY embedded campaign member (isolated processes)
@@ -8,7 +13,7 @@ sys.stdout.reconfigure(encoding='utf-8', errors='replace')
 warnings.filterwarnings('ignore'); import logging; logging.disable(logging.CRITICAL)
 
 CAMP = r'D:\Games\Steam\steamapps\common\AoE2DE\resources\_common\campaign'
-HERE = r'D:\Software\DeepSeek Harness\工作区2\_probe\survey_scenario'
+HERE = _HERE_PATH("_probe", "survey_scenario")
 PY = r'C:\Users\26913\.dsh\dsh-runtimes\dsh-primary-runtime\dependencies\python\python.exe'
 EX = os.path.join(HERE, 'camp_all'); os.makedirs(EX, exist_ok=True)
 buf = io.StringIO()

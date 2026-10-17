@@ -6,18 +6,22 @@ If the engine reads the tree at all, the tree independently grants 74 and the
 remove-from-panel edit cannot make the button disappear. Measure how general
 that is.
 """
+
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import os, sys, json
-sys.path.insert(0, r"D:\Software\DeepSeek Harness\工作区2")
+sys.path.insert(0, _HERE_PATH("..", "..", ".."))
 from aoe2mod.game import buildpanel as BP
 from aoe2mod.game import civtechtrees as CT
 
 GAME = r"D:\Games\Steam\steamapps\common\AoE2DE"
 BLD = 12
 
-
 def head(t):
     print(); print("=" * 78); print(t); print("=" * 78)
-
 
 trees = CT.load_trees(GAME)
 panels = BP.load_all(GAME)

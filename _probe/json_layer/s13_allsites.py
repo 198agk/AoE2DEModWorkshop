@@ -1,8 +1,13 @@
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import os, io, re, json, struct
 
 EXE = r"D:\Games\Steam\steamapps\common\AoE2DE\AoE2DE_s.exe"
 DAT = r"D:\Games\Steam\steamapps\common\AoE2DE\resources\_common\dat"
-OUT = r"D:\Software\DeepSeek Harness\工作区2\_probe\json_layer"
+OUT = _HERE_PATH("_probe", "json_layer")
 buf = open(EXE, "rb").read()
 low = bytes(buf[i] if 65 <= buf[i] <= 90 else buf[i] for i in range(len(buf)))  # not used; do manual lower
 print("exe size", len(buf))

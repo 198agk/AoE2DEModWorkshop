@@ -4,17 +4,23 @@ whose real in-game costs are independently known.
 walk_one() in probe_tech_cost.py is an independent walk; this script pairs it
 with the authoritative reader for NAMES so the two can be compared row by row.
 """
+
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import contextlib
 import io
 import json
 import struct
 import sys
 
-sys.path.insert(0, r"D:\Software\DeepSeek Harness\工作区2")
+sys.path.insert(0, _HERE_PATH(".."))
 from aoe2mod.dat import parser as P          # noqa: E402
 
 BASE = r"D:\Games\Steam\steamapps\common\AoE2DE\resources\_common\dat\empires2_x2_p1.dat"
-NAMES = r"D:\Software\DeepSeek Harness\工作区2\aoe2mod\semantic\data\tech_names.json"
+NAMES = _HERE_PATH("aoe2mod", "semantic", "data", "tech_names.json")
 
 # Real AoE2 DE costs, from the game's own tech tree.  Only ones I am certain of.
 KNOWN = {
@@ -35,7 +41,6 @@ KNOWN = {
     "Masonry":       [(0, 150)],
     "Architecture":  [(0, 300), (1, 200)],
 }
-
 
 def walk_one(b, o, gv):
     """(costs, internal_name, next_offset) mirroring Research.cpp exactly."""
@@ -69,7 +74,6 @@ def walk_one(b, o, gv):
         cnt = struct.unpack_from("<h", b, o)[0]
         o += 2 + 9 * cnt
     return costs, name, o
-
 
 def main():
     data, how = P.load_dat(BASE)
@@ -142,6 +146,5 @@ def main():
     for i, name, zh, costs in rows:
         if name in ("Loom", "Coinage", "Banking"):
             print("  id %-5d %-10s zh %-8s %s" % (i, name, zh, costs))
-
 
 main()

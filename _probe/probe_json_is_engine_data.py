@@ -28,11 +28,17 @@ NOT PROVEN (printed below too): which of the two JSON layers the build panel
 consults.  That needs one in-game look at a civ the two files disagree about,
 and those 18 pairs need no mod installed at all.
 """
+
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import json
 import os
 import sys
 
-sys.path.insert(0, r"D:\Software\DeepSeek Harness\工作区2")
+sys.path.insert(0, _HERE_PATH(".."))
 
 import aoe2mod.api as A                        # noqa: E402
 from aoe2mod.game import civtechtrees as CT    # noqa: E402
@@ -98,7 +104,6 @@ pk_build = BP.civ_key_for(panels, CIV_BUILD)
 pk_block = BP.civ_key_for(panels, CIV_BLOCK)
 print("    panel civ keys                  : %r / %r" % (pk_build, pk_block))
 
-
 def panel_obj(pk):
     """`load_all` gives {civ: {"text":…, "obj": <the WHOLE parsed file>, …}}.
 
@@ -118,14 +123,12 @@ def panel_obj(pk):
         return v[1]
     return v
 
-
 def panel_has(pk, building_id, node):
     obj = panel_obj(pk)
     for b in obj.get(BP.BUILDINGS_KEY, []):
         if b.get("ID") == building_id:
             return any(u.get("ID") == node for u in b.get(BP.UNITS_KEY, []))
     return None
-
 
 for pk, label in ((pk_build, CIV_BUILD), (pk_block, CIV_BLOCK)):
     print("    panel %-8s Archery Range lists unit %d : %s"

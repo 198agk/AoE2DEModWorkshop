@@ -1,6 +1,11 @@
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import os, io, json, sys
-sys.path.insert(0, r"D:\Software\DeepSeek Harness\工作区2\_probe\datparse")
-OUT = r"D:\Software\DeepSeek Harness\工作区2\_probe\json_layer"
+sys.path.insert(0, _HERE_PATH("_probe", "datparse"))
+OUT = _HERE_PATH("_probe", "json_layer")
 BASE = r"D:\Games\Steam\steamapps\common\AoE2DE\resources\_common\dat"
 DAT = os.path.join(BASE, "empires2_x2_p1.dat")
 import parse_dat as P

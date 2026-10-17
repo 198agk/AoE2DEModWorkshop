@@ -2,6 +2,12 @@
 """Render real .sld frames with sldlib.py and dump PNG contact sheets.
 Read-only w.r.t. the game tree; writes only under _shots\sld_render\.
 """
+
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import os
 import sys
 
@@ -12,13 +18,11 @@ from PIL import Image
 
 GAME = r"D:\Games\Steam\steamapps\common\AoE2DE"
 GP = os.path.join(GAME, "resources", "_common", "drs", "graphics")
-OUT = r"D:\Software\DeepSeek Harness\工作区2\_shots\sld_render"
+OUT = _HERE_PATH("_shots", "sld_render")
 os.makedirs(OUT, exist_ok=True)
-
 
 def rgba_to_img(buf, w, h):
     return Image.frombytes("RGBA", (w, h), bytes(buf))
-
 
 SAMPLES = [
     ("u_arc_archer_idlea_x1.sld", [0, 20, 40]),

@@ -1,8 +1,14 @@
 # -*- coding: utf-8 -*-
 """Audit probe 13: does the built mod even LOAD, and can another mod outrank it?
 Plus: is there a per-civ availability block in the .dat the parser discards?"""
+
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import json, os, sys, glob, inspect
-sys.path.insert(0, r"D:\Software\DeepSeek Harness\工作区2")
+sys.path.insert(0, _HERE_PATH("..", "..", ".."))
 os.environ.setdefault("PYTHONIOENCODING", "utf-8")
 from aoe2mod.game import buildpanel as BP
 from aoe2mod.game import civtechtrees as CT
@@ -10,12 +16,10 @@ from aoe2mod.dat import parser as P
 
 GAME = r"D:\Games\Steam\steamapps\common\AoE2DE"
 PROFILE = r"C:\Users\26913\Games\Age of Empires 2 DE"
-W = r"D:\Software\DeepSeek Harness\工作区2"
-
+W = _HERE_PATH()
 
 def head(t):
     print(); print("=" * 78); print(t); print("=" * 78)
-
 
 head("13a: what did build_smoke5 actually emit?")
 OUT = os.path.join(W, "_probe", "out_smoke5")

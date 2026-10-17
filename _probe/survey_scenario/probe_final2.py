@@ -1,3 +1,8 @@
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 # Final consolidated probe for SCENARIO_SURVEY.md
 # - full shape of a Trigger object (storage model)
 # - condition/effect field values on a real trigger
@@ -8,13 +13,13 @@ import os, sys, json, io
 sys.stdout.reconfigure(encoding='utf-8', errors='replace')
 from AoE2ScenarioParser.scenarios.aoe2_de_scenario import AoE2DEScenario
 
-OUT = r'D:\Software\DeepSeek Harness\工作区2\_probe\survey_scenario\final2_out.txt'
+OUT = _HERE_PATH("_probe", "survey_scenario", "final2_out.txt")
 buf = io.StringIO()
 def p(*a):
     s = ' '.join(str(x) for x in a)
     print(s); buf.write(s + '\n')
 
-SC = r'D:\Software\DeepSeek Harness\工作区2\_probe\survey_scenario\extracted\xcam1_0.aoe2scenario'
+SC = _HERE_PATH("_probe", "survey_scenario", "extracted", "xcam1_0.aoe2scenario")
 sc = AoE2DEScenario.from_file(SC)
 tm = sc.trigger_manager
 
@@ -103,7 +108,7 @@ for nm in ('ConditionType','EffectType','ConditionId','EffectId','Attribute','Ob
             p('  %s -> %s' % (nm, type(o).__name__))
 
 p('\n=== write to file at same version (roundtrip on extracted official scenario) ===')
-dst = r'D:\Software\DeepSeek Harness\工作区2\_probe\survey_scenario\roundtrip\xcam1_0.roundtrip.aoe2scenario'
+dst = _HERE_PATH("_probe", "survey_scenario", "roundtrip", "xcam1_0.roundtrip.aoe2scenario")
 sc.write_to_file(dst)
 a = os.path.getsize(SC); b = os.path.getsize(dst)
 p(' bytes in=%d out=%d ratio=%.5f' % (a, b, b / a))

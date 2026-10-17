@@ -12,6 +12,12 @@ WHY
   (icons.json 'Techs' section -> TechIconsT<NNN> -> ingametechs) so the final builder can
   use the same chain for techs.
 """
+
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import json, os, re, collections
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -22,7 +28,7 @@ ICONS = json.load(open(os.path.join(WID, "icons.json"), encoding="utf-8"))
 ATLS = {e.get("AtlasDef", e)["Name"]: e.get("AtlasDef", e) for e in J["AtlasTextures"]}
 C = json.load(open(os.path.join(HERE, "units_raw.json"), encoding="utf-8"))
 TECH = json.load(open(os.path.join(HERE, "techs_raw.json"), encoding="utf-8"))
-SEM = json.load(open(r"D:\Software\DeepSeek Harness\工作区2\_probe\semantic\unit_names.json",
+SEM = json.load(open(_HERE_PATH("_probe", "semantic", "unit_names.json"),
                      encoding="utf-8"))
 
 main = set(f[:-4] for f in os.listdir(GFX) if f.endswith(".sld"))
@@ -32,14 +38,11 @@ for civ in C:
     for x in civ["units"]:
         byid.setdefault(x["id"], x)
 
-
 def EN(u):
     return (SEM.get(str(u["id"])) or {}).get("en") or u.get("name") or "?"
 
-
 SPRITE_FIELDS = [k for k in next(iter(byid.values())).keys()
                  if k.endswith("_graphic") or k in ("standing_1", "standing_2", "dying", "undead")]
-
 
 def prefix_of(u):
     """the dominant sld prefix of this entity's own resolved art files."""
@@ -48,7 +51,6 @@ def prefix_of(u):
         if isinstance(v, int) and v >= 0:
             pass
     return None
-
 
 print("=== candidate building definitions ===")
 t80 = [u for u in byid.values() if u.get("type") == 80]

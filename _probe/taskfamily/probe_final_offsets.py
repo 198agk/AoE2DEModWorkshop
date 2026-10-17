@@ -1,6 +1,12 @@
 # -*- coding: utf-8 -*-
 """Final: exact file offset -> RVA for the two exe tables, plus the
 authoritative TaskSwapGroup roster as the report will state it."""
+
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import struct, json, os
 EXE = r"D:\Games\Steam\steamapps\common\AoE2DE\AoE2DE_s.exe"
 b = open(EXE, "rb").read()
@@ -40,12 +46,12 @@ for name, start, count in (("TABLE A (villager pair table)", 0x32B1DCC, 25),
     p("  values: %s" % vals)
 
 # TaskSwapGroup roster straight from the dat is already in task_swap_groups.json
-j = json.load(open(r"D:\Software\DeepSeek Harness\工作区2\_probe\taskfamily\task_swap_groups.json",
+j = json.load(open(_HERE_PATH("_probe", "taskfamily", "task_swap_groups.json"),
                    encoding="utf-8"))
 p("\ntask_swap_groups.json keys: %s" % list(j.keys()))
 p(json.dumps(j, ensure_ascii=False)[:1200])
 
-with open(r"D:\Software\DeepSeek Harness\工作区2\_probe\taskfamily\exe_tables_final.txt",
+with open(_HERE_PATH("_probe", "taskfamily", "exe_tables_final.txt"),
           "w", encoding="utf-8") as f:
     f.write("\n".join(out))
 p("\nwrote exe_tables_final.txt")

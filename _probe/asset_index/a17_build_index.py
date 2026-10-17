@@ -20,6 +20,12 @@ Correspondence rules used (all established empirically; see ASSET_INDEX_REPORT.m
   R5  tech.IconID indexes 'ingametechs' the same way (177/180 ids).
   R6  building.IconID indexes 'ingamebuildings' by embedded number.
 """
+
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import json, os, collections
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -28,7 +34,7 @@ WID = r"D:\Games\Steam\steamapps\common\AoE2DE\widgetui"
 G = json.load(open(os.path.join(HERE, "graphics_raw.json"), encoding="utf-8"))
 C = json.load(open(os.path.join(HERE, "units_raw.json"), encoding="utf-8"))
 TECH = json.load(open(os.path.join(HERE, "techs_raw.json"), encoding="utf-8"))
-SEM = json.load(open(r"D:\Software\DeepSeek Harness\工作区2\_probe\semantic\unit_names.json",
+SEM = json.load(open(_HERE_PATH("_probe", "semantic", "unit_names.json"),
                      encoding="utf-8"))
 J = json.load(open(os.path.join(WID, "materials.json"), encoding="utf-8"))
 atl = {e.get("AtlasDef", e)["Name"]: e.get("AtlasDef", e) for e in J["AtlasTextures"]}
@@ -38,7 +44,6 @@ ANIMS = set("""idlea idleb idlec walka walkb walkc attacka attackb attackc
 deatha deathb decaya constr rubble destruction flag garrison""".split())
 SPRITE_ANIMS = ["idlea", "idleb", "idlec", "walka", "walkb", "attacka", "attackb",
                 "attackc", "deatha", "decaya"]
-
 
 def canon(name):
     n = (name or "").strip().lower()
@@ -50,7 +55,6 @@ def canon(name):
     if i > 0 and n[i + 1:] in ANIMS:
         return n[:i], n[i + 1:]
     return n, None
-
 
 main = set()
 for f in os.listdir(GFXDIR):
@@ -65,7 +69,6 @@ for g in G:
     if f:
         s, a = canon(f)
         dat_canon["%s_%s" % (s, a) if a else s] = g
-
 
 def emb(atlas_name, want_material=False):
     out = {}
@@ -88,7 +91,6 @@ def emb(atlas_name, want_material=False):
             out[int(h)] = rec
     return out
 
-
 EMB_UNIT = emb("ingameunits")
 EMB_TECH = emb("ingametechs")
 EMB_BLD = emb("ingamebuildings")
@@ -108,7 +110,6 @@ for ci, civ in enumerate(C):
     for u in civ["units"]:
         byid.setdefault(u["id"], {})[ci] = u
 CIVNAME = [c["name"] for c in C]
-
 
 def sprite_block(u):
     """-> {field: {"graphic_slot","FileName","direct_sld","animations":{...}}}"""
@@ -161,7 +162,6 @@ def sprite_block(u):
         out[f] = rec
     return out
 
-
 def icon_for(icon_id, table):
     if not isinstance(icon_id, int) or icon_id <= 0:
         return None
@@ -173,7 +173,6 @@ def icon_for(icon_id, table):
     r["resolved"] = True
     r["atlas_source"] = ATLAS_SRC[e["atlas"]]
     return r
-
 
 # ------------------------------------------------------------------- UNITS
 units_out = {}
@@ -263,7 +262,6 @@ def dump(name, obj):
     p = os.path.join(HERE, name)
     json.dump(obj, open(p, "w", encoding="utf-8"), ensure_ascii=False)
     print("wrote %-24s %9d bytes" % (name, os.path.getsize(p)))
-
 
 dump("index_units.json", units_out)
 dump("index_buildings.json", bld_out)

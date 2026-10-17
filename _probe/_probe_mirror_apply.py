@@ -7,8 +7,14 @@ Three things must hold:
   3. A record whose two numbers deliberately differ keeps that difference --
      the mirror carries the DELTA, it must not copy the displayed value.
 """
+
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import sys, os, io, contextlib, zlib, struct
-root = r"D:\Software\DeepSeek Harness\工作区2"
+root = _HERE_PATH()
 sys.path.insert(0, root)
 from aoe2mod import api as A
 from aoe2mod.intent import compiler as C
@@ -18,13 +24,11 @@ tk = A.open_toolkit()
 tk.version
 data = tk._raw
 
-
 def raw_lookup(units, uid):
     for u in units:
         if u["id"] == uid:
             return u
     return None
-
 
 def show(tag, units, uid, label):
     u = raw_lookup(units, uid)
@@ -40,7 +44,6 @@ def show(tag, units, uid, label):
              u.get("displayed_pierce_armour"),
              atk.get(3), atk.get(4), arm.get(3), arm.get(4)))
 
-
 def apply_edits(data, res):
     """Rebuild the patched stream from the result's Edit list."""
     buf = bytearray(data)
@@ -52,14 +55,12 @@ def apply_edits(data, res):
                 e.width, "little", signed=True)
     return bytes(buf)
 
-
 def locate_stream(blob):
     p = P.Parser(blob)
     with contextlib.redirect_stdout(io.StringIO()):
         p.parse()
     civs, _, _, _ = L.locate(blob, parser=p)
     return civs
-
 
 print("=" * 118)
 print("CASE 1  archer (displayed == raw, class 3)")

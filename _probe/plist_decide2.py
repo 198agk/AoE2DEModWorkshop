@@ -8,13 +8,19 @@ saturation profile, using autocorrelation for the pitch, then score.
 Row1 owner is RemonBo, civ 立陶宛 (Lithuanians) -> lithuanians.png is the
 apples-to-apples reference for every family.
 """
+
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import os
 import numpy as np
 from PIL import Image, ImageDraw
 
 GAME = r"D:\Games\Steam\steamapps\common\AoE2DE"
 SHOTS = r"C:\Users\26913\.dsh\attachments\v1\objects"
-OUT = r"D:\Software\DeepSeek Harness\工作区2\_shots\ui"
+OUT = _HERE_PATH("_shots", "ui")
 V1 = os.path.join(GAME, "widgetui", "textures", "ingame", "emblems")
 V2 = os.path.join(GAME, "resources", "_common", "wpfg", "resources", "civ_emblems")
 MOD = (r"C:\Users\26913\Games\Age of Empires 2 DE\76561198406248391\mods"
@@ -47,10 +53,8 @@ print("row centres (abs y):", rows, " count =", len(rows))
 
 H2 = max(10, pitch // 2 - 3)
 
-
 def lum(x):
     return 0.299 * x[:, :, 0] + 0.587 * x[:, :, 1] + 0.114 * x[:, :, 2]
-
 
 def rank(crop, folder):
     ow, oh = crop.size
@@ -75,7 +79,6 @@ def rank(crop, folder):
             out.append((float((A_ * B_).sum() / den), fn))
     out.sort(reverse=True)
     return out
-
 
 print()
 print("=== per-row best match (crop x %d..%d, h=%d) ===" % (X0, X1, 2 * H2))

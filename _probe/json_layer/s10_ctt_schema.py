@@ -1,3 +1,8 @@
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import json, os, collections, io, sys
 
 D = r"D:\Games\Steam\steamapps\common\AoE2DE\resources\_common\dat"
@@ -60,5 +65,5 @@ w("\n### verbatim first building node (json.dumps indent=2, 700 chars):")
 s = json.dumps(j, ensure_ascii=False, indent=2)
 w(s[:700])
 
-open(r"D:\Software\DeepSeek Harness\工作区2\_probe\json_layer\s10_ctt_schema.txt", "w", encoding="utf-8").write(out.getvalue())
+open(_HERE_PATH("_probe", "json_layer", "s10_ctt_schema.txt"), "w", encoding="utf-8").write(out.getvalue())
 print(out.getvalue()[:6000])

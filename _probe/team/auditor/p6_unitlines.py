@@ -1,8 +1,14 @@
 # -*- coding: utf-8 -*-
 """Audit probe 6: unitlines.json as a THIRD supplier of the Barracks menu,
 and .dat-level tech enablement for tech 1350."""
+
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import json, os, sys
-sys.path.insert(0, r"D:\Software\DeepSeek Harness\工作区2")
+sys.path.insert(0, _HERE_PATH("..", "..", ".."))
 os.environ.setdefault("PYTHONIOENCODING", "utf-8")
 
 import aoe2mod.api as A
@@ -12,10 +18,8 @@ from aoe2mod.game import civtechtrees as CT
 GAME = r"D:\Games\Steam\steamapps\common\AoE2DE"
 D = os.path.join(GAME, "resources", "_common", "dat")
 
-
 def head(t):
     print(); print("=" * 78); print(t); print("=" * 78)
-
 
 head("6a: unitlines.json -- what is it, and which chains carry 74 / 2550?")
 o = json.load(open(os.path.join(D, "unitlines.json"), encoding="utf-8-sig"))

@@ -6,13 +6,19 @@ shield with gold Gediminas columns; the roster row-1 emblem looked exactly like
 that. Confirm with (a) side-by-side, (b) masked NCC against V1/V2/V3, and
 (c) confirm the roster shows the SAME art as the game's own menu civic shield.
 """
+
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import os
 import numpy as np
 from PIL import Image, ImageDraw
 
 GAME = r"D:\Games\Steam\steamapps\common\AoE2DE"
 SHOTS = r"C:\Users\26913\.dsh\attachments\v1\objects"
-OUT = r"D:\Software\DeepSeek Harness\工作区2\_shots\ui"
+OUT = _HERE_PATH("_shots", "ui")
 FAMS = {
     "V1 ingame/emblems": os.path.join(GAME, "widgetui", "textures", "ingame", "emblems"),
     "V2 wpfg/civ_emblems": os.path.join(GAME, "resources", "_common", "wpfg", "resources", "civ_emblems"),
@@ -26,10 +32,8 @@ X0, X1 = 2654, 2696
 ROWY = [1088, 1117, 1146, 1175, 1204, 1233, 1262, 1291]
 H2 = 16
 
-
 def lum(x):
     return 0.299 * x[:, :, 0] + 0.587 * x[:, :, 1] + 0.114 * x[:, :, 2]
-
 
 def ranked(crop, folder):
     ow, oh = crop.size
@@ -53,7 +57,6 @@ def ranked(crop, folder):
             out.append((float((A_ * B_).sum() / den), fn))
     out.sort(reverse=True)
     return out
-
 
 print("=== masked NCC per row, best of each family ===")
 for i, y in enumerate(ROWY):

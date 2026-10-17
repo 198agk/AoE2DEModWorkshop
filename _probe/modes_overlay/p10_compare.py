@@ -4,11 +4,17 @@ Emits a TSV + JSON of: per-SP counts/bytes both sides, per-file status
 (MISSING_IN_BASE / IDENTICAL / SIZE_DIFFERS / CONTENT_DIFFERS), plus hashes.
 Read-only on the game dir.
 """
+
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import os, sys, json, hashlib
 
 GAME = r"D:\Games\Steam\steamapps\common\AoE2DE"
 POM = os.path.join(GAME, "modes", "Pompeii")
-OUT = r"D:\Software\DeepSeek Harness\工作区2\_probe\modes_overlay"
+OUT = _HERE_PATH("_probe", "modes_overlay")
 
 def load_tsv(p):
     d = {}

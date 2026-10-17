@@ -15,13 +15,19 @@ So both must be checked against the SAME civ separately. Here: crop the player-l
 emblem of row 1 (RemonBo, Lithuanians) and score it against all three candidate
 sets, to show which family the PLAYER LIST uses.
 """
+
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import os
 import numpy as np
 from PIL import Image, ImageDraw
 
 GAME = r"D:\Games\Steam\steamapps\common\AoE2DE"
 SHOTS = r"C:\Users\26913\.dsh\attachments\v1\objects"
-OUT = r"D:\Software\DeepSeek Harness\工作区2\_shots\ui"
+OUT = _HERE_PATH("_shots", "ui")
 MODDIR = r"C:\Users\26913\Games\Age of Empires 2 DE\76561198406248391\mods\subscribed\182654_Age of Anime (Chibi Edition)\widgetui\textures\ingame\emblems"
 V1 = os.path.join(GAME, "widgetui", "textures", "ingame", "emblems")
 V2 = os.path.join(GAME, "resources", "_common", "wpfg", "resources", "civ_emblems")
@@ -42,10 +48,8 @@ ROWS = [
     ("cabelo",   (2555, 1391, 2645, 1453)),
 ]
 
-
 def lum(a):
     return 0.299 * a[:, :, 0] + 0.587 * a[:, :, 1] + 0.114 * a[:, :, 2]
-
 
 def best(crop_rgb, folder, want=None):
     ow, oh = crop_rgb.width, crop_rgb.height
@@ -77,7 +81,6 @@ def best(crop_rgb, folder, want=None):
                 target = (r, res.index((r, fn)) + 1)
                 break
     return top, target
-
 
 print("=== TOP-RIGHT PLAYER LIST emblems: which family? ===")
 sheet_tiles = []

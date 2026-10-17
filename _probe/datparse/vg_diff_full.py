@@ -5,13 +5,18 @@ each guard for every supported DAT version.
 This exists because an earlier scan used glob `src/dat/*.cpp` (NOT recursive)
 and therefore missed src/dat/unit/*.cpp and src/dat/tech/*.cpp.
 """
+
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import os
 import re
 import sys
 
-SRC = r"D:\Software\DeepSeek Harness\工作区2\_probe\source\genieutils"
+SRC = _HERE_PATH("_probe", "source", "genieutils")
 TYPES = os.path.join(SRC, "include", "genie", "Types.h")
-
 
 def parse_enum():
     txt = open(TYPES, encoding="utf-8", errors="replace").read()
@@ -49,7 +54,6 @@ def parse_enum():
             vals[alias] = vals[target]
     return vals
 
-
 def parse_version_map():
     txt = open(TYPES, encoding="utf-8", errors="replace").read()
     m = re.search(r"SupportedDatVersionsToGameVersion\s*=\s*\{(.*?)\n\s*\};", txt, re.S)
@@ -58,12 +62,10 @@ def parse_version_map():
         out.append((ver, name))
     return out
 
-
 def strip_comments(t):
     t = re.sub(r"/\*.*?\*/", " ", t, flags=re.S)
     t = re.sub(r"//[^\n]*", " ", t)
     return t
-
 
 def iter_guards(path):
     """Yield (line_no, condition_text) for every if(...) whose condition
@@ -95,10 +97,8 @@ def iter_guards(path):
             line_no = txt.count("\n", 0, m.start()) + 1
             yield line_no, " ".join(cond.split())
 
-
 IDENT_OK = re.compile(r"^[A-Za-z_][\w:]*$")
 CALL_OK = re.compile(r"^isOperation\s*\(\s*(?:Operation::)?OP_READ\s*\)$")
-
 
 def evaluate(cond, gvvals, ver_ord):
     """Return True/False/None(unevaluable) for a given numeric gv."""
@@ -121,13 +121,11 @@ def evaluate(cond, gvvals, ver_ord):
     except Exception:
         return None
 
-
 def enclosing_func(txt, offset):
     m = None
     for mm in re.finditer(r"^[\w:<>,&*\s]+?(\w+)::(\w+)\s*\([^;{]*\)\s*\{", txt[:offset], re.M):
         m = mm
     return ("%s::%s" % (m.group(1), m.group(2))) if m else "?"
-
 
 def main():
     gvvals = parse_enum()
@@ -208,7 +206,6 @@ def main():
     for k in sorted(h, key=lambda k: -h[k]):
         print("  %-46s %d" % (k, h[k]))
     return 0
-
 
 if __name__ == "__main__":
     sys.exit(main())

@@ -2,12 +2,18 @@
 
 Pure stdlib. No aoe2mod import. Reads the raw/ files written by v1.
 """
+
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import difflib
 import hashlib
 import json
 import os
 
-OUT = r"D:\Software\DeepSeek Harness\工作区2\_probe\team\verifier"
+OUT = _HERE_PATH("_probe", "team", "verifier")
 RAW = os.path.join(OUT, "raw")
 MOD = r"C:\Users\26913\Games\Age of Empires 2 DE\76561198406248391\mods\local\aoe2mod Smoke5 TreeVsPanel"
 GAME = r"D:\Games\Steam\steamapps\common\AoE2DE"
@@ -15,11 +21,9 @@ GAME = r"D:\Games\Steam\steamapps\common\AoE2DE"
 REL_TREE = os.path.join("resources", "_common", "dat", "CivTechTrees", "BRITONS.json")
 REL_PANEL = os.path.join("resources", "_common", "dat", "futuravailableunits.json")
 
-
 def load_raw(name):
     with open(os.path.join(RAW, name), "rb") as f:
         return f.read()
-
 
 def runs_of_difference(a, b):
     """Contiguous [start,end) runs where a != b. Inputs must be equal length."""
@@ -37,7 +41,6 @@ def runs_of_difference(a, b):
         else:
             i += 1
     return runs
-
 
 def main():
     gm = load_raw("dat_game.raw")
@@ -154,7 +157,6 @@ def main():
             print("    same-length positional differing bytes:", same_len_diff)
 
     print("\ndone")
-
 
 if __name__ == "__main__":
     main()

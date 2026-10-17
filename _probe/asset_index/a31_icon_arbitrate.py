@@ -23,6 +23,12 @@ CANDIDATES
   H_class : Class in BUILDING_CLASSES     -> ingamebuildings
   H_name  : class is building-ish AND building entry name denotes the entity
 """
+
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import json, os, re, struct, collections
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -31,10 +37,9 @@ J = json.load(open(os.path.join(WID, "materials.json"), encoding="utf-8"))
 ICONS = json.load(open(os.path.join(WID, "icons.json"), encoding="utf-8"))
 ATLS = {e.get("AtlasDef", e)["Name"]: e.get("AtlasDef", e) for e in J["AtlasTextures"]}
 C = json.load(open(os.path.join(HERE, "units_raw.json"), encoding="utf-8"))
-SEM = json.load(open(r"D:\Software\DeepSeek Harness\工作区2\_probe\semantic\unit_names.json",
+SEM = json.load(open(_HERE_PATH("_probe", "semantic", "unit_names.json"),
                      encoding="utf-8"))
 STOP = {"age", "the", "and", "of", "de", "icon", "sprite", "packed", "dead"}
-
 
 def toks(s):
     s = re.sub(r"([a-z])([A-Z])", r"\1 \2", s or "")
@@ -42,7 +47,6 @@ def toks(s):
     s = re.sub(r"([0-9])([A-Za-z])", r"\1 \2", s)
     return set(x for x in re.split(r"[^A-Za-z0-9]+", s.lower())
                if len(x) > 2 and not x.isdigit() and x not in STOP)
-
 
 def emb(name):
     out = {}
@@ -53,28 +57,22 @@ def emb(name):
             out[int(h)] = t
     return out
 
-
 U, B = emb("ingameunits"), emb("ingamebuildings")
-
 
 def bdesc(n):
     return re.sub(r"^[0-9]+_", "", B[n]["FileName"].rsplit("/", 1)[-1].rsplit(".", 1)[0])
 
-
 def bmatch(en, n):
     return n in B and len(toks(en) & toks(bdesc(n))) > 0
-
 
 byid = {}
 for civ in C:
     for x in civ["units"]:
         byid.setdefault(x["id"], x)
 
-
 def EN(u):
     uid = u["id"]
     return (SEM.get(str(uid)) or {}).get("en") or u.get("name") or "?"
-
 
 ents = [u for u in byid.values() if u.get("icon_id", -1) > 0]
 print("entities with IconID>0: %d" % len(ents))
@@ -111,7 +109,6 @@ for cl in (1, 14, 51, 54, 11, 49, 52):
 
 BUILDING_CLASSES = {1, 3, 11, 14, 27, 39, 49, 52}
 
-
 def route(u, rule):
     n = u["icon_id"]
     if rule == "H_type":
@@ -121,7 +118,6 @@ def route(u, rule):
     if rule == "H_name":
         return "ingamebuildings" if bmatch(EN(u), n) else "ingameunits"
     raise ValueError(rule)
-
 
 print("\n=== rule error metrics over the %d entities with IconID>0 ===" % len(ents))
 print("%-9s %14s %14s %10s %10s" % ("rule", "->buildings", "of those FALSE", "FP rate", "->units"))

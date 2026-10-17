@@ -5,13 +5,19 @@ genieutils enum, replacing whatever hand-written block is there.
 Hand-transcribing 59 enum ordinals is exactly the kind of thing that silently
 goes wrong (it did: GV_C5 was written as 26 instead of 27).  Generate it.
 """
+
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import re
 import sys
 
-sys.path.insert(0, r"D:\Software\DeepSeek Harness\工作区2\_probe\datparse")
+sys.path.insert(0, _HERE_PATH("_probe", "datparse"))
 import vg_diff_full as V
 
-TARGET = r"D:\Software\DeepSeek Harness\工作区2\_probe\datparse\parse_dat.py"
+TARGET = _HERE_PATH("_probe", "datparse", "parse_dat.py")
 
 gv = V.parse_enum()
 # preserve declaration order as it appears in the enum body

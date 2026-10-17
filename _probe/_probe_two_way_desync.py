@@ -7,8 +7,14 @@ Direction B: unit.attack_class (raw)     -> damage moves, panel number does not.
 If both are true, the tool has no single intent that keeps the pair in step with
 shipped data (which agrees 96-99.9% of the time).
 """
+
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import sys, os, io, contextlib, tempfile, zlib
-root = r"D:\Software\DeepSeek Harness\工作区2"
+root = _HERE_PATH()
 sys.path.insert(0, root)
 from aoe2mod import api as A
 from aoe2mod import dat as D

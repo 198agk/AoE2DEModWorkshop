@@ -1,11 +1,16 @@
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import os, io, json, re, sys, glob, struct, collections
-sys.path.insert(0, r"D:\Software\DeepSeek Harness\工作区2\_probe\datparse")
+sys.path.insert(0, _HERE_PATH("_probe", "datparse"))
 import parse_dat as P
 
-OUT = r"D:\Software\DeepSeek Harness\工作区2\_probe\json_layer"
+OUT = _HERE_PATH("_probe", "json_layer")
 BASE = r"D:\Games\Steam\steamapps\common\AoE2DE\resources\_common\dat"
 CTT = os.path.join(BASE, "CivTechTrees")
-SRC = r"D:\Software\DeepSeek Harness\工作区2\_probe\source"
+SRC = _HERE_PATH("_probe", "source")
 GAME = r"D:\Games\Steam\steamapps\common\AoE2DE"
 MODS = r"C:\Users\26913\Games\Age of Empires 2 DE\76561198406248391\mods"
 rep = io.StringIO()

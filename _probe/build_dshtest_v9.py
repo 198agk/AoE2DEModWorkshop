@@ -1,4 +1,4 @@
-﻿# -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 r"""v9 -- one session, three answers.
 
 WHY THIS MOD EXISTS

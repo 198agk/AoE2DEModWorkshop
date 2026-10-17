@@ -4,6 +4,12 @@
 Invariant under test: for BOTH mask layers (playercolor, damage),
 sum(skip+draw) == main's bw*bh, i.e. both index main's cell grid exactly.
 """
+
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import os
 import struct
 import sys
@@ -16,15 +22,13 @@ from PIL import Image, ImageDraw
 
 GAME = r"D:\Games\Steam\steamapps\common\AoE2DE"
 GP = os.path.join(GAME, "resources", "_common", "drs", "graphics")
-OUT = r"D:\Software\DeepSeek Harness\工作区2\_shots\sld_render"
+OUT = _HERE_PATH("_shots", "sld_render")
 os.makedirs(OUT, exist_ok=True)
-
 
 def mask(l):
     fmt, n = struct.unpack_from("<2H", l.data, 0)
     cmds = [struct.unpack_from("<2B", l.data, 4 + 2 * i) for i in range(n)]
     return fmt, cmds, sum(c[0] + c[1] for c in cmds)
-
 
 print("=== grid invariant: sum(skip+draw) == main bw*bh ===")
 c = Counter()
@@ -59,7 +63,6 @@ for f in sorted(os.listdir(GP)):
 for k, v in sorted(c.items()):
     print("  %-30s %7d" % (k, v))
 
-
 # ---------------------------------------------------------------- rendering
 def blocks(l, header):
     if header == "mask":
@@ -70,7 +73,6 @@ def blocks(l, header):
         base = 12 + 2 * n
     return [l.data[base + 8 * i: base + 8 * i + 8]
             for i in range(max(0, (l.size - base) // 8))]
-
 
 def render(fn, fi):
     s = read_sld(os.path.join(GP, fn))
@@ -154,7 +156,6 @@ def render(fn, fi):
         crops.append((label, im))
     return ("%s f%d ft=0x%02x %dx%d main=%s grid=%dx%d"
             % (fn, fi, fr.frame_type, w, h, rect, bw, bh), crops)
-
 
 JOBS = [("b_afri_archery_range_age2_x1.sld", 0),
         ("b_afri_gate_stone_e_constr_x1.sld", 2),

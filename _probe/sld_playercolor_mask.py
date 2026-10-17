@@ -17,20 +17,25 @@ Two independent discriminators:
      silhouette (IoU / correlation), and be grey-valued rather than index-valued.
 Read-only.
 """
+
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import os
 import struct
 from PIL import Image
 
 GAME = r"D:\Games\Steam\steamapps\common\AoE2DE"
 GP = os.path.join(GAME, "resources", "_common", "drs", "graphics")
-OUT = r"D:\Software\DeepSeek Harness\工作区2\_shots\playerclr"
+OUT = _HERE_PATH("_shots", "playerclr")
 os.makedirs(OUT, exist_ok=True)
 
 u16 = lambda b, o: struct.unpack_from("<H", b, o)[0]
 u32 = lambda b, o: struct.unpack_from("<I", b, o)[0]
 BITS = [(0, "main"), (1, "shadow"), (2, "unknown2"), (3, "damage"), (4, "playercolor")]
 PAD = lambda x: x + ((4 - x % 4) % 4)
-
 
 def layers_of_frame(b, off):
     cw, ch, cx, cy, ft, un, fi = struct.unpack_from("<2H 2h 2B H", b, off)
@@ -53,7 +58,6 @@ def layers_of_frame(b, off):
                         cmds=cmds, draws=sum(c[1] for c in cmds), blocks=q, canvas=(cw, ch)))
         p = PAD(p + size)
     return (cw, ch, ft, fi), out, p
-
 
 def decode(b, L, bc4, canvas):
     cw, ch = canvas
@@ -104,7 +108,6 @@ def decode(b, L, bc4, canvas):
             if bx >= bw:
                 bx, by = 0, by + 1
     return im.crop((0, 0, cw, ch))
-
 
 print("=" * 76)
 print("D1/D2  subset + shape test, mask decoded on the CANVAS grid and cropped at main's rect")

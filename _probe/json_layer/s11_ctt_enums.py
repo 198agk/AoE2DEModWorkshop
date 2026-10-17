@@ -1,3 +1,8 @@
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import json, os, io, collections, csv, re
 
 D = r"D:\Games\Steam\steamapps\common\AoE2DE\resources\_common\dat"
@@ -89,6 +94,6 @@ w("\n### AZTECS vs BRITONS unit node ids equal? %s ; buildings equal? %s" % (
 w("### BRITONS len(u)=%d  AZTECS len(u)=%d" % (len(allu.get("BRITONS", [])), len(allu.get("AZTECS", []))))
 
 json.dump({c: {"buildings": allb[c], "units": allu[c], "unit_names": {str(k): v for k, v in allunames[c].items()}}
-           for c in allb}, open(r"D:\Software\DeepSeek Harness\工作区2\_probe\json_layer\s11_ctt_index.json", "w", encoding="utf-8"), ensure_ascii=False)
-open(r"D:\Software\DeepSeek Harness\工作区2\_probe\json_layer\s11_ctt_enums.txt", "w", encoding="utf-8").write(out.getvalue())
+           for c in allb}, open(_HERE_PATH("_probe", "json_layer", "s11_ctt_index.json"), "w", encoding="utf-8"), ensure_ascii=False)
+open(_HERE_PATH("_probe", "json_layer", "s11_ctt_enums.txt"), "w", encoding="utf-8").write(out.getvalue())
 print(out.getvalue())

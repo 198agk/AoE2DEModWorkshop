@@ -1,17 +1,21 @@
 # -*- coding: utf-8 -*-
 """Audit probe 10: what IS the tree object's shape? (p9's 9b/9d zeros may be vacuous)"""
+
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import json, os, sys, collections
-sys.path.insert(0, r"D:\Software\DeepSeek Harness\工作区2")
+sys.path.insert(0, _HERE_PATH("..", "..", ".."))
 os.environ.setdefault("PYTHONIOENCODING", "utf-8")
 from aoe2mod.game import buildpanel as BP
 from aoe2mod.game import civtechtrees as CT
 
 GAME = r"D:\Games\Steam\steamapps\common\AoE2DE"
 
-
 def head(t):
     print(); print("=" * 78); print(t); print("=" * 78)
-
 
 trees = CT.load_trees(GAME)
 brit = trees["BRITONS"]

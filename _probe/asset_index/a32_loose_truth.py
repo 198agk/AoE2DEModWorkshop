@@ -19,6 +19,12 @@ WHAT IT PRINTS
   2. the H_class "false positive" list with its label, so we can see whether they are
      really false.
 """
+
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import json, os, re, collections
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -26,7 +32,7 @@ WID = r"D:\Games\Steam\steamapps\common\AoE2DE\widgetui"
 J = json.load(open(os.path.join(WID, "materials.json"), encoding="utf-8"))
 ATLS = {e.get("AtlasDef", e)["Name"]: e.get("AtlasDef", e) for e in J["AtlasTextures"]}
 C = json.load(open(os.path.join(HERE, "units_raw.json"), encoding="utf-8"))
-SEM = json.load(open(r"D:\Software\DeepSeek Harness\工作区2\_probe\semantic\unit_names.json",
+SEM = json.load(open(_HERE_PATH("_probe", "semantic", "unit_names.json"),
                      encoding="utf-8"))
 LOOSE_B = os.path.join(WID, "textures", "ingame", "buildings")
 LOOSE_U = os.path.join(WID, "textures", "ingame", "units")
@@ -63,10 +69,8 @@ for civ in C:
     for x in civ["units"]:
         byid.setdefault(x["id"], x)
 
-
 def EN(u):
     return (SEM.get(str(u["id"])) or {}).get("en") or u.get("name") or "?"
-
 
 byicon = collections.defaultdict(list)
 for u in byid.values():

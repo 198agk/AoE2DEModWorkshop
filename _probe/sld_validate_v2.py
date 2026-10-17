@@ -8,17 +8,22 @@ Also: characterise the `unknown2` layer now that far more samples are reachable.
 
 Read-only.
 """
+
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import os
 import struct
 import collections
 
 GAME = r"D:\Games\Steam\steamapps\common\AoE2DE"
 GP = os.path.join(GAME, "resources", "_common", "drs", "graphics")
-OUT = r"D:\Software\DeepSeek Harness\工作区2\_probe\sld_validate_v2_out.txt"
+OUT = _HERE_PATH("_probe", "sld_validate_v2_out.txt")
 
 BITS = [(0, "main"), (1, "shadow"), (2, "unknown2"), (3, "damage"), (4, "playercolor")]
 PAD = lambda x: x + ((4 - x % 4) % 4)
-
 
 def walk(b, fo):
     sig, ver, n, z, fo_hdr, magic = struct.unpack_from("<4s 2H 2H H", b, 0)
@@ -98,7 +103,6 @@ def walk(b, fo):
                 idx_bad=idx_bad, comp_ok=comp_ok, comp_bad=comp_bad, span_ok=span_ok,
                 span_bad=span_bad, seen=seen, z=z, magic=magic,
                 u2_shapes=u2_shapes, u2_samples=u2_samples), None
-
 
 def main():
     sld = sorted(f for f in os.listdir(GP) if f.endswith(".sld"))
@@ -184,6 +188,5 @@ def main():
     io.write(txt)
     io.close()
     print(txt)
-
 
 main()

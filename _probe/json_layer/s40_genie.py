@@ -1,5 +1,10 @@
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import re, os
-S = r"D:\Software\DeepSeek Harness\工作区2\_probe\source\genieutils"
+S = _HERE_PATH("_probe", "source", "genieutils")
 for f in (r"include\genie\dat\Research.h", r"include\genie\dat\UnitLine.h",
           r"include\genie\dat\Civ.h", r"include\genie\dat\DatFile.h"):
     p = os.path.join(S, f)

@@ -18,20 +18,25 @@ to main.  Discriminators:
   D3 RENDER   : main tinted by pc*teamcolour must reproduce the in-game look.
 Read-only.
 """
+
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import os
 import struct
 from PIL import Image
 
 GAME = r"D:\Games\Steam\steamapps\common\AoE2DE"
 GP = os.path.join(GAME, "resources", "_common", "drs", "graphics")
-OUT = r"D:\Software\DeepSeek Harness\工作区2\_shots\playerclr"
+OUT = _HERE_PATH("_shots", "playerclr")
 os.makedirs(OUT, exist_ok=True)
 
 u16 = lambda b, o: struct.unpack_from("<H", b, o)[0]
 u32 = lambda b, o: struct.unpack_from("<I", b, o)[0]
 BITS = [(0, "main"), (1, "shadow"), (2, "unknown2"), (3, "damage"), (4, "playercolor")]
 PAD = lambda x: x + ((4 - x % 4) % 4)
-
 
 def parse_frame(b, off):
     cw, ch, cx, cy, ft, un, fi = struct.unpack_from("<2H 2h 2B H", b, off)
@@ -55,7 +60,6 @@ def parse_frame(b, off):
                       span=sum(c[0] + c[1] for c in cmds))
         p = PAD(p + size)
     return (cw, ch, ft, fi), Ls, p
-
 
 def decode_on_grid(b, L, bw, bh, bc4):
     im = Image.new("RGBA", (bw * 4, bh * 4), (0, 0, 0, 0))
@@ -104,7 +108,6 @@ def decode_on_grid(b, L, bw, bh, bc4):
             if bx >= bw:
                 bx, by = 0, by + 1
     return im
-
 
 print("=" * 78)
 print("BLOCK-GRID IDENTITY: does playercolor.span == main.span?  (decisive for sharing)")

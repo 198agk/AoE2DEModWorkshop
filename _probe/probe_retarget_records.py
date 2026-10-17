@@ -13,9 +13,15 @@ Two ways to make unit X draw unit Y's art:
 This probe measures B: which records would change, what the new file strings
 are, and what the .dat grows by when those strings change length.
 """
+
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import os, sys, collections
 
-sys.path.insert(0, r"D:\Software\DeepSeek Harness\工作区2")
+sys.path.insert(0, _HERE_PATH(".."))
 
 import aoe2mod.api as A
 from aoe2mod.game import sprites as SP
@@ -89,7 +95,7 @@ for f, n in by_new.most_common():
 dat = os.path.join(GAME, "resources", "_common", "dat", "empires2_x2_p1.dat")
 print()
 print("=== size comparison ===")
-out = os.path.join(r"D:\Software\DeepSeek Harness\工作区2\_probe", "out_dshtest_v12")
+out = os.path.join(_HERE_PATH("_probe"), "out_dshtest_v12")
 copy_bytes = sum(os.path.getsize(os.path.join(r, f)) for r, _, fs in os.walk(out) for f in fs)
 print("A copy     : %10d B  (%.1f MB)" % (copy_bytes, copy_bytes / 1e6))
 print("B retarget : %10d B  (%.1f MB)   <- the .dat, unchanged pixel count"

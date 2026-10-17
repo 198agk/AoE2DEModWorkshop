@@ -1,8 +1,13 @@
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import os, io, json, re, sys
-sys.path.insert(0, r"D:\Software\DeepSeek Harness\工作区2\_probe\datparse")
+sys.path.insert(0, _HERE_PATH("_probe", "datparse"))
 import parse_dat as P
 
-OUT = r"D:\Software\DeepSeek Harness\工作区2\_probe\json_layer"
+OUT = _HERE_PATH("_probe", "json_layer")
 GAME = r"D:\Games\Steam\steamapps\common\AoE2DE"
 BASE = os.path.join(GAME, "resources", "_common", "dat")
 rep = io.StringIO()
@@ -60,7 +65,7 @@ w("  record keys: %s" % sorted(snd[0].keys()))
 named = [s for s in snd if s.get("name")]
 w("  records with a non-empty 'name': %d" % len(named))
 w("  first 5 records: %s" % json.dumps(snd[:5], ensure_ascii=False)[:400])
-sh = r"D:\Software\DeepSeek Harness\工作区2\_probe\source\genieutils\include\genie\dat\Sound.h"
+sh = _HERE_PATH("_probe", "source", "genieutils", "include", "genie", "dat", "Sound.h")
 w("  Sound.h exists=%s" % os.path.exists(sh))
 if os.path.exists(sh):
     t = open(sh, encoding="utf-8", errors="replace").read()

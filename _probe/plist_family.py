@@ -6,13 +6,19 @@ around 44-57% of that crop's width -> original x approx 2467..2520. My previous
 boxes at x2555..2645 missed. Find the column by looking for columns with high
 vertical structure and warm/desaturated parchment tone, then crop each row.
 """
+
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import os
 import numpy as np
 from PIL import Image, ImageDraw
 
 GAME = r"D:\Games\Steam\steamapps\common\AoE2DE"
 SHOTS = r"C:\Users\26913\.dsh\attachments\v1\objects"
-OUT = r"D:\Software\DeepSeek Harness\工作区2\_shots\ui"
+OUT = _HERE_PATH("_shots", "ui")
 V1 = os.path.join(GAME, "widgetui", "textures", "ingame", "emblems")
 V2 = os.path.join(GAME, "resources", "_common", "wpfg", "resources", "civ_emblems")
 MODDIR = r"C:\Users\26913\Games\Age of Empires 2 DE\76561198406248391\mods\subscribed\182654_Age of Anime (Chibi Edition)\widgetui\textures\ingame\emblems"
@@ -47,10 +53,8 @@ ROWS = [("1 RemonBo (Lithuanians)", 1018), ("8 mingkang", 1071), ("7 sunquan", 1
 W, H = 74, 62
 boxes = [(lab, (BAND[0] + CX - W // 2, y, BAND[0] + CX + W // 2, y + H)) for lab, y in ROWS]
 
-
 def lumof(x):
     return 0.299 * x[:, :, 0] + 0.587 * x[:, :, 1] + 0.114 * x[:, :, 2]
-
 
 def rank(crop, folder):
     ow, oh = crop.size
@@ -74,7 +78,6 @@ def rank(crop, folder):
             out.append((float((A * B).sum() / den), fn))
     out.sort(reverse=True)
     return out
-
 
 print()
 print("=== per-row best match per family ===")

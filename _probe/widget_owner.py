@@ -23,6 +23,12 @@ owner is identified by containment rather than by assuming.
 Chibi centre measured in f1 (red-dress centroid, region offset 380,1080):
    absolute screenshot approx (750, 1390).  Reference coords = /0.7109.
 """
+
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import os
 import json
 import numpy as np
@@ -30,7 +36,7 @@ from PIL import Image, ImageDraw
 
 GAME = r"D:\Games\Steam\steamapps\common\AoE2DE"
 WID = os.path.join(GAME, "widgetui")
-OUT = r"D:\Software\DeepSeek Harness\工作区2\_shots\ui"
+OUT = _HERE_PATH("_shots", "ui")
 SHOTS = r"C:\Users\26913\.dsh\attachments\v1\objects"
 
 REF_W, REF_H = 3840, 2160
@@ -40,7 +46,6 @@ S = SHOT_W / REF_W
 CHIBI_SHOT = (750.0, 1390.0)
 CHIBI_REF = (CHIBI_SHOT[0] / S, CHIBI_SHOT[1] / S)
 print("chibi screenshot centre %s -> ref %s" % (CHIBI_SHOT, CHIBI_REF))
-
 
 def box_from_vp(vp, is_collection=False):
     """Return (x0,y0,x1,y1) in ref coords, or None."""
@@ -71,7 +76,6 @@ def box_from_vp(vp, is_collection=False):
         x0, x1 = x, x + w
     return (x0, y0, x1, y1)
 
-
 def offset_child(al, w, h, pw, ph):
     """Child's top-left offset within a parent box of size pw x ph."""
     a = (al or "TopLeft").lower()
@@ -89,9 +93,7 @@ def offset_child(al, w, h, pw, ph):
         dx = (pw - w) / 2.0
     return dx, dy
 
-
 hits = []
-
 
 def walk(w, px, py, pw, ph, path, fname):
     vp = w.get("ViewPort") or {}
@@ -107,7 +109,6 @@ def walk(w, px, py, pw, ph, path, fname):
     for c in w.get("ChildWidgets") or []:
         if "Widget" in c:
             walk(c["Widget"], ax, ay, cw, chh, p, fname)
-
 
 files = [f for f in sorted(os.listdir(WID)) if f.endswith(".json")]
 print("scanning %d widgetui json files..." % len(files))

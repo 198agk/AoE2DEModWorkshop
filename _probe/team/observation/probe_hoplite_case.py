@@ -3,11 +3,17 @@ tree but NEVER appears in any civ's cache@12 -- the same unit CLASS as Champi
 Scout.  Compare tree@12 vs cache@12 for its civs, and dump the cache's whole
 view of those units anywhere.
 """
+
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import json
 import os
 import sys
 
-sys.path.insert(0, r"D:\Software\DeepSeek Harness\工作区2")
+sys.path.insert(0, _HERE_PATH("..", "..", ".."))
 ROOT = r"D:\Games\Steam\steamapps\common\AoE2DE"
 TREES = os.path.join(ROOT, "resources", "_common", "dat", "CivTechTrees")
 cache = json.load(open(os.path.join(ROOT, "resources", "_common", "dat",

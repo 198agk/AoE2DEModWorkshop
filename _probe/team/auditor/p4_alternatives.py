@@ -1,17 +1,21 @@
 # -*- coding: utf-8 -*-
 """Audit probe 4: could any OTHER shipped file supply the Barracks menu entries
 for Britons -- i.e. is the "tree vs panel" framing a false dichotomy?"""
+
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import json, os, re, sys
-sys.path.insert(0, r"D:\Software\DeepSeek Harness\工作区2")
+sys.path.insert(0, _HERE_PATH("..", "..", ".."))
 os.environ.setdefault("PYTHONIOENCODING", "utf-8")
 
 GAME = r"D:\Games\Steam\steamapps\common\AoE2DE"
 D = os.path.join(GAME, "resources", "_common", "dat")
 
-
 def head(t):
     print(); print("=" * 78); print(t); print("=" * 78)
-
 
 head("4a: every file under resources/_common/dat that mentions 2550 / 74 / 1350")
 pat = re.compile(rb"2550")

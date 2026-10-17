@@ -2,10 +2,16 @@
 """Survey widgetui layout JSONs: widget Type census, field usage, viewport/alignment usage.
 Widgets are wrapped: "Widgets": [{"Widget": {...}}, ...]
 """
+
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import json, os, sys, collections, io
 
 W = r"D:\Games\Steam\steamapps\common\AoE2DE\widgetui"
-OUT = r"D:\Software\DeepSeek Harness\工作区2\_probe\hud_render"
+OUT = _HERE_PATH("_probe", "hud_render")
 
 type_counter = collections.Counter()
 by_file = {}

@@ -12,9 +12,15 @@ family and the sheep donor:
   * whether the donor's animation set covers the target's needs
   * the resulting mod size (the .dat only) against the copy approach
 """
+
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import os, sys, collections
 
-sys.path.insert(0, r"D:\Software\DeepSeek Harness\工作区2")
+sys.path.insert(0, _HERE_PATH(".."))
 
 import aoe2mod.api as A
 from aoe2mod.game import sprites as SP
@@ -80,7 +86,7 @@ print("total (civ, member) pairs: %d" % tot)
 
 # size comparison
 copy_bytes = 0
-out = os.path.join(r"D:\Software\DeepSeek Harness\工作区2\_probe", "out_dshtest_v12")
+out = os.path.join(_HERE_PATH("_probe"), "out_dshtest_v12")
 for r, _, fs in os.walk(out):
     for f in fs:
         copy_bytes += os.path.getsize(os.path.join(r, f))

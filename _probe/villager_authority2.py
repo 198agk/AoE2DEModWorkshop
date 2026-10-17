@@ -11,6 +11,12 @@ TEST 2 -- does the dat's own internal naming already enumerate the family?
   signature, cannot sweep up unrelated units.  If the naming is deliberate the
   product can use it as the rule.
 """
+
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import os
 import re
 import struct
@@ -32,13 +38,11 @@ for i in range(nsec):
 
 sec = {n: (va, vs, rp, rs) for n, va, vs, rp, rs in sections}
 
-
 def foff_to_rva(fo):
     for name, va, vs, rp, rs in sections:
         if rp <= fo < rp + rs:
             return va + (fo - rp)
     return None
-
 
 TABLES = [0x032B1DD0, 0x03232E30]
 print("=== TEST 1: base relocations that point at the tables ===")
@@ -68,7 +72,7 @@ if ".reloc" in sec:
 
 print()
 print("=== TEST 2: dat units named VM* / VF* (villager male / female) ===")
-sys.path.insert(0, r"D:\Software\DeepSeek Harness\工作区2")
+sys.path.insert(0, _HERE_PATH(".."))
 from aoe2mod import api as A  # noqa: E402
 
 tk = A.open_toolkit()

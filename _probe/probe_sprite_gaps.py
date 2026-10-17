@@ -6,11 +6,17 @@
   B  the second int16 (alternate idle) -- does it ever point at a DIFFERENT
      art group?  If so, copying only the standing group leaves half a unit.
 """
+
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import collections
 import os
 import sys
 
-ROOT = r"D:\Software\DeepSeek Harness\工作区2"
+ROOT = _HERE_PATH()
 sys.path.insert(0, ROOT)
 import aoe2mod.api as A
 from aoe2mod.game import sprites as S

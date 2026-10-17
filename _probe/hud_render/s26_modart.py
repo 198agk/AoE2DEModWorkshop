@@ -8,11 +8,17 @@ All scored "too few px", i.e. nearly transparent -> consistent with a
 'transparent theme' mod, but then the bright tan wood in the screenshot must
 come from somewhere else. Find out what.
 """
+
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import os
 import numpy as np
 from PIL import Image
 
-O = r"D:\Software\DeepSeek Harness\工作区2\_probe\hud_render"
+O = _HERE_PATH("_probe", "hud_render")
 GAME = r"D:\Games\Steam\steamapps\common\AoE2DE"
 WID = os.path.join(GAME, "widgetui")
 MOD = r"C:\Users\26913\Games\Age of Empires 2 DE\76561198406248391\mods\subscribed\550412_透明主题整合自用"
@@ -26,7 +32,6 @@ SHOTS = [os.path.join(AT, d, s) for d, s in [
 ]]
 SC = 0.5980
 rep = []
-
 
 def stats(p, label):
     im = Image.open(p)
@@ -42,7 +47,6 @@ def stats(p, label):
             rep.append("      RGB over alpha>200: %.1f %.1f %.1f"
                        % tuple(a[:, :, i][op].mean() for i in range(3)))
     return im
-
 
 rep.append("=== MOD panel art (透明主题整合自用) ===")
 for civ in ("ASIA", "WEST", "AFRI"):
@@ -84,7 +88,6 @@ op = rstd < 4.0
 rep.append("real 5-shot mean; provably-opaque %.2f%%" % (100.0 * op.mean()))
 rep.append("")
 
-
 def score(im, box, use_alpha_only=False):
     tw, th = int(round(box[0] * SC)), int(round(box[1] * SC))
     ta = np.asarray(im.convert("RGBA").resize((tw, th), Image.LANCZOS), dtype=np.float64)
@@ -97,7 +100,6 @@ def score(im, box, use_alpha_only=False):
         return None
     x = sub[:, :, :3][m]; y = rm[:ch, :cw][m]
     return float(np.abs(x - y).mean()), float(np.corrcoef(x.mean(axis=1), y.mean(axis=1))[0, 1]), int(m.sum())
-
 
 rep.append("SCORED vs real 5-shot mean, drawn into the 1750x276 widget box @ SC 0.598:")
 rep.append("  %-52s %8s %8s %8s" % ("source", "MAD", "corr", "px"))

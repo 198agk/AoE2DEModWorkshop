@@ -1,13 +1,18 @@
 """Print every string in a cost plan EXCEPT the giant civs list, plus raw edit labels."""
+
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import sys
 
-sys.path.insert(0, r"D:\Software\DeepSeek Harness\工作区2")
+sys.path.insert(0, _HERE_PATH(".."))
 
 import aoe2mod.api as A  # noqa: E402
 import aoe2mod.intent.compiler as C  # noqa: E402
 from aoe2mod.dat import families as F  # noqa: E402
 from aoe2mod.dat import locate as L  # noqa: E402
-
 
 def strings_of(obj, path=""):
     if isinstance(obj, str):
@@ -20,7 +25,6 @@ def strings_of(obj, path=""):
     elif isinstance(obj, (list, tuple)):
         for i, v in enumerate(obj):
             yield from strings_of(v, "%s[%d]" % (path, i))
-
 
 tk = A.open_toolkit()
 tk._ensure()

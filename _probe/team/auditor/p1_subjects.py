@@ -1,7 +1,13 @@
 # -*- coding: utf-8 -*-
 """Audit probe 1: the two subjects, read straight from the shipped game files."""
+
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import os, sys, json
-sys.path.insert(0, r"D:\Software\DeepSeek Harness\工作区2")
+sys.path.insert(0, _HERE_PATH("..", "..", ".."))
 os.environ.setdefault("PYTHONIOENCODING", "utf-8")
 
 import aoe2mod.api as A
@@ -13,10 +19,8 @@ CIV = "Britons"
 STEM = "BRITONS"
 HDR = "=" * 78
 
-
 def p(*a):
     print(*a)
-
 
 tk = A.open_toolkit()
 trees = CT.load_trees(GAME)

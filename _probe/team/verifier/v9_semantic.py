@@ -2,11 +2,17 @@
 Enumerates every unit record of every civ via aoe2mod and counts which unit IDs have a
 different hit_points between game and mod. This must agree with the raw-byte answer
 (27 IDs x 63 civs). Clearly labelled secondary: the PRIMARY evidence is v2/v3/v7/v8b raw bytes."""
+
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import json
 import os
 import sys
 
-sys.path.insert(0, r"D:\Software\DeepSeek Harness\工作区2")
+sys.path.insert(0, _HERE_PATH("..", "..", ".."))
 from aoe2mod.dat.parser import Parser, load_dat  # noqa: E402
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -15,11 +21,9 @@ GAME = r"D:\Games\Steam\steamapps\common\AoE2DE"
 
 out = []
 
-
 def p(s=""):
     out.append(s)
     print(s)
-
 
 def hp_map(path):
     g, how = load_dat(path)
@@ -29,7 +33,6 @@ def hp_map(path):
         for u in civ["units"]:
             m.setdefault(u["id"], {})[ci] = u.get("hit_points")
     return m, d["civ_count"], how
-
 
 mg, ng, howg = hp_map(os.path.join(GAME, r"resources\_common\dat\empires2_x2_p1.dat"))
 mm, nm, howm = hp_map(os.path.join(MOD, r"resources\_common\dat\empires2_x2_p1.dat"))

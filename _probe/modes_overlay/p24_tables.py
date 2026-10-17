@@ -4,12 +4,18 @@
  (4) decode 0xBDB50 properly, listing every immediate/LEA/CALL in order.
 Read-only -> p24_out.txt
 """
+
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import os, struct, json
 
 EXE = r"D:\Games\Steam\steamapps\common\AoE2DE\AoE2DE_s.exe"
 GAME = r"D:\Games\Steam\steamapps\common\AoE2DE"
 POM = os.path.join(GAME, "modes", "Pompeii")
-OUT = r"D:\Software\DeepSeek Harness\工作区2\_probe\modes_overlay"
+OUT = _HERE_PATH("_probe", "modes_overlay")
 F = open(os.path.join(OUT, "p24_out.txt"), "w", encoding="utf-8")
 def P(*a): print(*a, file=F)
 

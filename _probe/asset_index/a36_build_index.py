@@ -29,6 +29,12 @@ RULES IMPLEMENTED (see ASSET_INDEX_REPORT.md for the evidence of each)
 
 Outputs: index_units.json, index_buildings.json, index_techs.json, index_coverage.json
 """
+
+import os as _os
+_HERE_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
+_ROOT_PATH = lambda *p: _os.path.join(
+    _os.path.dirname(_os.path.abspath(__file__)), *p)
 import json, os, re, collections
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -37,7 +43,7 @@ WID = r"D:\Games\Steam\steamapps\common\AoE2DE\widgetui"
 G = json.load(open(os.path.join(HERE, "graphics_raw.json"), encoding="utf-8"))
 C = json.load(open(os.path.join(HERE, "units_raw.json"), encoding="utf-8"))
 TECH = json.load(open(os.path.join(HERE, "techs_raw.json"), encoding="utf-8"))
-SEM = json.load(open(r"D:\Software\DeepSeek Harness\工作区2\_probe\semantic\unit_names.json",
+SEM = json.load(open(_HERE_PATH("_probe", "semantic", "unit_names.json"),
                      encoding="utf-8"))
 J = json.load(open(os.path.join(WID, "materials.json"), encoding="utf-8"))
 ICONS = json.load(open(os.path.join(WID, "icons.json"), encoding="utf-8"))
@@ -53,7 +59,6 @@ deatha deathb decaya constr rubble destruction flag garrison""".split())
 SPRITE_ANIMS = ["idlea", "idleb", "idlec", "walka", "walkb", "attacka", "attackb",
                 "attackc", "deatha", "decaya"]
 
-
 def canon(name):
     n = (name or "").strip().lower()
     if n.endswith(".sld"):
@@ -64,7 +69,6 @@ def canon(name):
     if i > 0 and n[i + 1:] in ANIMS:
         return n[:i], n[i + 1:]
     return n, None
-
 
 main = set()
 for f in os.listdir(GFXDIR):
@@ -82,13 +86,11 @@ for g in G:
 # ---------------------------------------------------------------- ICON MACHINERY
 STOP = {"age", "the", "and", "of", "de", "icon", "sprite", "packed", "dead", "x", "new"}
 
-
 def toks(s):
     s = re.sub(r"([a-z0-9])([A-Z])", r"\1 \2", s or "")
     s = re.sub(r"([A-Za-z])([0-9])", r"\1 \2", s)
     return set(x for x in re.split(r"[^A-Za-z0-9]+", s.lower())
                if len(x) > 2 and not x.isdigit() and x not in STOP)
-
 
 LOOSE_B = os.path.join(WID, "textures", "ingame", "buildings")
 BLABEL = {}
@@ -99,9 +101,7 @@ if os.path.isdir(LOOSE_B):
             BLABEL[int(h)] = re.sub(r"^[0-9]+_", "", f.rsplit(".", 1)[0])
 IUNITS, IBLD, ITECH = ICONS.get("Units", {}), ICONS.get("Buildings", {}), ICONS.get("Techs", {})
 
-
 _STEM_FALLBACK = collections.Counter()
-
 
 def resolve_material(mname):
     md = MAT.get(mname)
@@ -135,7 +135,6 @@ def resolve_material(mname):
                    "x2": float(tex["imageBRX"]), "y2": float(tex["imageBRY"])},
             "atlas_max": [at.get("MaxWidth"), at.get("MaxHeight")], "resolved": True}
 
-
 def icon_for(icon_id, entity_en, section_hint="Units"):
     """R4: icons.json section -> material -> materials.json -> atlas entry + UV."""
     if not isinstance(icon_id, int) or icon_id <= 0:
@@ -162,9 +161,7 @@ def icon_for(icon_id, entity_en, section_hint="Units"):
     r.update({"icon_id": icon_id, "icons_json_section": section, "why": why})
     return r
 
-
 BLD_NICE = {int(k): v for k, v in IBLD.items() if v}
-
 
 def sprite_block(u):
     out = {}
@@ -216,7 +213,6 @@ def sprite_block(u):
         out[f] = rec
     return out
 
-
 ALL_FIELDS = ["standing_1", "standing_2", "dying", "undead", "attack_graphic",
               "attack_graphic2", "garrison_graphic", "spawning_graphic",
               "upgrade_graphic", "hero_glow_graphic", "idle_attack_graphic",
@@ -230,10 +226,8 @@ for ci, civ in enumerate(C):
         byid.setdefault(u["id"], {})[ci] = u
 CIVNAME = [c["name"] for c in C]
 
-
 def EN_of(u, uid):
     return (SEM.get(str(uid)) or {}).get("en") or u.get("name") or "?"
-
 
 def files_of(sp):
     out = []
@@ -245,13 +239,11 @@ def files_of(sp):
                 out.append(a["sld_x1"])
     return out
 
-
 def dominant_prefix(sp):
     fs = files_of(sp)
     if not fs:
         return None
     return collections.Counter(x.split("_")[0] for x in fs).most_common(1)[0][0]
-
 
 # ------------------------------------------------------------------- UNITS
 units_out = {}
@@ -373,7 +365,6 @@ def dump(name, obj):
     p = os.path.join(HERE, name)
     json.dump(obj, open(p, "w", encoding="utf-8"), ensure_ascii=False)
     print("wrote %-24s %9d bytes" % (name, os.path.getsize(p)))
-
 
 RULES = {
     "R1": "dat Graphic.FileName (ends '_x1') + '.sld' == file in "
