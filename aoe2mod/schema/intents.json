@@ -1,0 +1,385 @@
+{
+  "$comment": "AoE2 DE mod-toolkit intent schema. EXTERNALIZED ON PURPOSE: game patches change format details, and a version bump must be a data edit, not a code change. The compiler reads this file; nothing about an intent is hard-coded in Python.",
+  "schema_version": 1,
+  "targets_dat_version": ["VER 8.9", "VER 7.8"],
+
+  "intents": {
+    "unit.stat": {
+      "title": "改变单位属性",
+      "title_en": "Change a unit's stat",
+      "applies_to": "unit",
+      "description": "Adjust one numeric stat on every civilization's copy of a unit.",
+      "fields": {
+        "unit": {
+          "type": "entity_ref",
+          "kind": "unit",
+          "required": true,
+          "label": "单位",
+          "help": "Name or id. Ambiguity is reported, never guessed."
+        },
+        "stat": {
+          "type": "enum",
+          "required": true,
+          "label": "属性",
+          "options": ["hit_points", "displayed_attack", "displayed_melee_armour",
+                      "displayed_pierce_armour", "movement_speed",
+                      "line_of_sight", "creation_time",
+                      "max_range", "displayed_range",
+                      "reload_time", "displayed_reload_time",
+                      "min_range", "accuracy", "garrison_capacity"],
+          "help": "Range and reload are float32 (fractions are allowed). reload_time is SECONDS BETWEEN ATTACKS, so a smaller number is a faster unit -- an intent UI should offer 'attack faster' rather than a raw negative. min_range is a dead zone: 0 means the unit can fire at any distance. accuracy is a whole percent (100 = always hits). garrison_capacity is how many units a building or ram can shelter; it is a single byte, so it caps at 255 and 0 means 'cannot shelter anyone' (most records)."
+        },
+        "delta": {
+          "type": "int",
+          "required": false,
+          "label": "变化量",
+          "min": -32768,
+          "max": 32767,
+          "help": "Signed change. Mutually exclusive with 'value'."
+        },
+        "value": {
+          "type": "int",
+          "required": false,
+          "label": "设为",
+          "min": -32768,
+          "max": 32767,
+          "help": "Absolute new value. Mutually exclusive with 'delta'."
+        },
+        "civs": {
+          "type": "civ_scope",
+          "required": false,
+          "default": "all",
+          "label": "文明",
+          "help": "Default 'all'. Editing one civ only is almost never what a user means."
+        }
+      },
+      "compile": {
+        "strategy": "in_place_patch",
+        "writes_per_unit_per_civ": 1,
+        "note": "Each civilization holds an INDEPENDENT physical record, so one logical edit fans out to N civs."
+      },
+      "safety": {
+        "field_width_bits": 16,
+        "signed": true,
+        "reject_on_overflow": true,
+        "reject_on_nonmember_civ": true
+      }
+    },
+
+    "unit.attack_class": {
+      "title": "改变单位的攻击/护甲数值",
+      "title_en": "Change a unit's attack or armour value",
+      "applies_to": "unit",
+      "description": "Adjust the raw attack/armour entry for a specific armour class.",
+      "fields": {
+        "unit": {"type": "entity_ref", "kind": "unit", "required": true},
+        "class_id": {
+          "type": "armor_class",
+          "required": true,
+          "label": "类别",
+          "help": "Read from schema/armor_classes.json. Unknown ids render as 'Class N'."
+        },
+        "kind": {"type": "enum", "required": true,
+                 "options": ["attack", "armour"],
+                 "default": "attack"},
+        "delta": {"type": "int", "required": false, "min": -32768, "max": 32767},
+        "value": {"type": "int", "required": false, "min": -32768, "max": 32767},
+        "civs": {"type": "civ_scope", "default": "all"}
+      },
+      "compile": {"strategy": "in_place_patch"},
+      "safety": {"field_width_bits": 16, "signed": true, "reject_on_overflow": true}
+    },
+
+    "unit.cost": {
+      "title": "改变单位造价",
+      "title_en": "Change a unit's cost",
+      "applies_to": "unit",
+      "fields": {
+        "unit": {"type": "entity_ref", "kind": "unit", "required": true},
+        "resource": {"type": "enum", "required": true,
+                     "options": ["food", "wood", "gold", "stone", "population"]},
+        "delta": {"type": "int", "required": false, "min": -32768, "max": 32767},
+        "value": {"type": "int", "required": false, "min": -32768, "max": 32767},
+        "civs": {"type": "civ_scope", "default": "all"}
+      },
+      "compile": {"strategy": "in_place_patch"}
+    },
+
+    "tech.research_time": {
+      "title": "改变科技研究时间",
+      "title_en": "Change a technology's research time",
+      "applies_to": "tech",
+      "fields": {
+        "tech": {"type": "entity_ref", "kind": "tech", "required": true},
+        "delta": {"type": "int", "required": false, "min": -32768, "max": 32767},
+        "value": {"type": "int", "required": false, "min": 0, "max": 32767}
+      },
+      "compile": {"strategy": "in_place_patch"},
+      "safety": {"field_width_bits": 16, "signed": true}
+    },
+
+    "tech.cost": {
+      "title": "改变科技造价",
+      "title_en": "Change a technology's cost",
+      "applies_to": "tech",
+      "fields": {
+        "tech": {"type": "entity_ref", "kind": "tech", "required": true},
+        "resource": {"type": "enum", "required": true,
+                     "$comment": "No 'population' here, unlike unit.cost which has five. That is measured, not an oversight: no technology in the shipped data charges population. _probe/test_declared_resources.py walks every cost slot of every tech and unit record and fails unless this option set is EXACTLY what tech records actually charge -- so a game update that starts charging population on a tech becomes a test failure, instead of an intent that silently cannot reach the new slot.",
+                     "options": ["food", "wood", "gold", "stone"]},
+        "delta": {"type": "int", "required": false, "min": -32768, "max": 32767},
+        "value": {"type": "int", "required": false, "min": 0, "max": 32767}
+      },
+      "compile": {"strategy": "in_place_patch"},
+      "safety": {"field_width_bits": 16, "signed": true}
+    },
+
+    "tech.effect": {
+      "title": "改变科技效果",
+      "title_en": "Change what a technology does",
+      "applies_to": "tech",
+      "fields": {
+        "tech": {"type": "entity_ref", "kind": "tech", "required": true},
+        "command": {"type": "int", "required": true, "min": 0, "max": 255,
+                    "help": "Which entry of this tech's effect list to change. A tech's effect record is a list of commands, and the same (attribute, target, operation) triple can appear on it twice with different numbers ('C-Bonus, Military cost -20%' multiplies food cost by 1.174 and again by 0.800). Any scheme that addressed a command by its meaning would therefore have to guess in 12 of the shipped techs, so the address is the position in the list the user picked from. Read the list with Toolkit.effects(tech)."},
+        "delta": {"type": "float", "required": false},
+        "value": {"type": "float", "required": false}
+      },
+      "compile": {"strategy": "in_place_patch"},
+      "safety": {"field_width_bits": 32, "signed": true}
+    },
+
+    "unit.availability": {
+      "title": "改变某个文明能否建造某单位",
+      "title_en": "Change whether a civilization can build a unit",
+      "applies_to": "unit",
+      "description": "Give or take away a unit for ONE civilization. Granting writes THREE layers at once: the .dat recipe the user confirmed in game, the CivTechTrees file, and the build panel. Revoking writes the two JSON layers only, because no .dat recipe for taking a unit away has been confirmed in game.",
+      "fields": {
+        "unit": {
+          "type": "entity_ref",
+          "kind": "unit",
+          "required": true,
+          "label": "单位",
+          "help": "Name or id. Only units that appear in at least one civilization's tech tree can be granted: 1364 of the 1651 name-resolved units do not, and the refusal says exactly that instead of calling them unknown."
+        },
+        "civ": {
+          "type": "civ_ref",
+          "required": true,
+          "label": "文明",
+          "help": "Exactly one civilization name, as the .dat spells it (British, Hindustanis, Magyars) or its CivTechTrees file name. Unlike the stat intents this is never 'all'."
+        },
+        "action": {
+          "type": "enum",
+          "required": true,
+          "default": "grant",
+          "label": "操作",
+          "options": ["grant", "revoke"],
+          "help": "grant = make it buildable, revoke = make it not buildable. Granting copies a real row from a civilization that has it; no field value is ever invented."
+        }
+      },
+      "compile": {
+        "strategy": "civtechtrees_json",
+        "why_not_dat": "The unit RECORD carries no per-civ availability byte: across 2693 unit ids only 7 differ between civilizations in the Enabled/Disabled bytes, while British and Goths differ on 24 ids. The .dat expresses it elsewhere -- a civ-owned free technology carrying a `type 2` enable command -- which is the recipe below. Measured in _probe/probe_availability_decisive.py and _probe/test_civ_unit_gate.py.",
+        "dat_half": {
+          "actions": ["grant"],
+          "recipe": "datgrant.apply_grant",
+          "write_operations": 2,
+          "write_operations_note": "The .dat half performs exactly two write operations, whatever the data: one new Effect record plus the re-pointed technology, then the training ButtonID byte. This number is declared here rather than measured, because measuring it means running the recipe, and the recipe serialises the whole 93 MB .dat (25 s) while a preview must stay cheap. `_probe/test_dat_half_count.py` asserts the declaration still equals `len(apply_grant(...)[\"edits\"])`, so the two cannot drift apart silently.",
+          "help": "Appends a NEW effect carrying the anchor technology's own commands plus 'type 2, unit, 1' and re-points that technology at it, then moves the unit's training button to a free slot. The button is a byte patch because the writer's model does not carry train_locations. EnablingResearch is deliberately left alone: the confirmed recipe wrote no such byte, and the field is global per unit id, so pointing it at one civilization's technology would claim that all 63 are enabled by it.",
+          "why_enabling_research_is_not_written": "Three measurements, in _probe/probe_enabling_scope.py. (1) `dsh test v7`, the recipe the user confirmed in game (m27131), wrote no EnablingResearch byte at all -- its script patches only when the shipped value is not -1, and unit 2550 ships as -1. (2) The field does not gate: v5 set it to the age-gated tech 263 and v6 cleared it to -1, and both behaved identically in game. (3) It is one connection per unit id, not per civilization, so writing British's private tech 383 onto unit 2550 -- which Incas/Mapuche/Muisca/Tupi build and the British do not -- would create a pairing the shipped corpus contains zero of.",
+          "why_not_for_other_actions": "A revoke would need a `type 2` command with b = 0, and no in-game test has shown that hiding a unit in a data mod. Only the grant recipe is confirmed (2026-10-16, `dsh test v7`).",
+          "verified_in_game": "2026-10-16, `dsh test v7`: villagers stayed at 1000 hp, the Castle Longbowman was unaffected, and the Dark Age Barracks showed the Champi Scout."
+        },
+        "writes_per_civ": 1,
+        "mod_contains_dat": true
+      },
+      "safety": {"field_width_bits": 0, "signed": false}
+    },
+
+    "tech.availability": {
+      "title": "改变某个文明能否研究某科技",
+      "title_en": "Change whether a civilization can research a technology",
+      "applies_to": "tech",
+      "description": "Give or take away a technology for ONE civilization. Like unit.availability this writes a CivTechTrees JSON file and no .dat, but it addresses the OTHER id space: a tech row's Node ID is the .dat tech ARRAY INDEX, and the same integer is a unit id in the unit space, so the two must never be mixed.",
+      "fields": {
+        "tech": {
+          "type": "entity_ref",
+          "kind": "tech",
+          "required": true,
+          "label": "科技",
+          "help": "Name or id. 238 distinct tech nodes are listed across the 62 CivTechTrees files; a tech that is in no civilization's tree cannot be granted and the refusal says exactly that."
+        },
+        "civ": {
+          "type": "civ_ref",
+          "required": true,
+          "label": "文明",
+          "help": "Exactly one civilization name, as the .dat spells it (British, Hindustanis, Magyars) or its CivTechTrees file name. Never 'all'."
+        },
+        "action": {
+          "type": "enum",
+          "required": true,
+          "default": "grant",
+          "label": "操作",
+          "options": ["grant", "revoke"],
+          "help": "grant = make it researchable, revoke = remove it from the tree. Granting copies a real row from a civilization that has it; no field value is ever invented."
+        }
+      },
+      "compile": {
+        "strategy": "civtechtrees_json",
+        "why_not_dat": "Same reason as unit.availability: the .dat holds one GLOBAL tech record and no per-civ byte, so 62 identical records cannot express 'civ X may research this'. Measured in _probe/probe_tech_rows.py (5244 tech rows, 238 distinct ids, none outside the .dat array).",
+        "writes_per_civ": 1,
+        "mod_contains_dat": false
+      },
+      "safety": {"field_width_bits": 0, "signed": false}
+    },
+
+    "unit.sprite": {
+      "title": "换掉单位的造型",
+      "title_en": "Make one unit look like another",
+      "applies_to": "unit",
+      "description": "Copy another unit's animation files over this one's, so it is drawn as that unit while keeping its own stats. Writes loose .sld files under resources/_common/drs/graphics and no .dat at all.",
+      "fields": {
+        "unit": {
+          "type": "entity_ref",
+          "kind": "unit",
+          "required": true,
+          "label": "单位",
+          "help": "The unit whose look changes. Name or id; ambiguity is reported, never guessed."
+        },
+        "donor": {
+          "type": "entity_ref",
+          "kind": "unit",
+          "required": true,
+          "label": "变成",
+          "help": "The unit to copy the look FROM. Its animation files are copied onto the target's, matched one animation at a time by the engine's own animation name (walkA onto walkA). A donor that lacks an animation the target has leaves the target's own picture there, and the report says which."
+        },
+        "civs": {
+          "type": "list",
+          "required": false,
+          "label": "文明",
+          "help": "Optional. Omit for every civilization. This matters because the same unit id is not always the same art: unit 4 is u_arc_archer for 57 civilizations and u_arc_bowman for the six Chronicles ones, so asking for all of them can legitimately be a contradiction (one file cannot hold two pictures) and is refused with both pictures named rather than silently picking one."
+        },
+        "whole_family": {
+          "type": "bool",
+          "required": false,
+          "label": "连干活的样子也换",
+          "default": false,
+          "help": "Optional, default off. A unit that swaps records when it is given a job (a villager is 27 records carrying 18 different pictures: Villager Male, Builder Male, Lumberjack Male, GoldMiner Male, Farmer Male ...) is only fully re-skinned when every one of those records is rewritten. Off, this sentence replaces the unit's ordinary picture and the report names exactly which jobs keep the old look. On, every record in the unit's family is rewritten -- for the villager that measured 466 files and 418 MB instead of 20 files and 18 MB. Both numbers are real: measured on the shipped install, not estimated. Asking for the family also turns on `fill`, because without it the family scope still cannot deliver: see that field."
+        },
+        "fill": {
+          "type": "bool",
+          "required": false,
+          "label": "缺的动画拿相近的补",
+          "default": null,
+          "help": "Optional. When the donor has no picture for an animation the target needs, let a nearby animation of the SAME donor stand in for it (carry <- walk, work <- attack, idlec <- idle). Defaults to on when `whole_family` is on, off otherwise. This is not a nicety: a villager family needs ten animations and NO entity in the game owns all ten -- `seed` exists on 4 unit ids, `task` on 6, `carry` on 36, `work` on 61 -- so a family reskin without filling leaves five animations on the shipped human art, and the villager turns back into a person the moment it works. Measured in game on 2026-10-17. A stand-in is rejected unless its angle count matches and it has at least as many frames, because the engine indexes the sprite by the RECORD's frame and angle counts: too few frames is unrenderable garbage, while extra frames are simply never asked for."
+        },
+        "mode": {
+          "type": "enum",
+          "required": false,
+          "label": "交付方式",
+          "default": "copy",
+          "options": ["copy", "rename"],
+          "help": "HOW the new picture reaches the game, and the two answers are different products. `copy` ships the donor's art once per target filename: proven in game on 2026-10-17, ships no .dat, and therefore coexists with every other data mod -- the villager family is 466 files and 418 MB. `rename` rewrites the graphics records' `file` strings to point at pictures the game already has: 244 record edits, the .dat gets 2,514 bytes SMALLER, the whole mod is 11 MB -- but it ships a .dat, and the game loads one data mod per match, so it cannot sit alongside a resource-multiplier or civ-overhaul mod. Default is `copy` because it is the proven and the non-conflicting one; the cheap model must be asked for. Both produce the same picture on screen (verified in game)."
+        }
+      },
+      "compile": {
+        "strategy": "loose_files",
+        "why_not_dat": "A unit's picture is not in the .dat at all: the 93 MB file only carries the NAME of the art (the standing graphic's `file` string, via a graphics record's id). The picture itself is a loose uncompressed .sld under resources/_common/drs/graphics, so the whole edit is 'copy these files over those files'. Nothing in the .dat has to change, which also means this mod cannot break on a game update that only rebalances numbers.",
+        "per_civ": true,
+        "per_civ_reason": "370 of 2693 unit ids have a different standing graphic in different civilizations, so the set of target filenames is computed per civilization and unioned.",
+        "resource_variants": "Also copied: the art an entity uses ONLY while carrying a resource (StoneMiner Male has one file of its own, and no unit record names it). Found and shipped in `dsh test v12`; 4 stems in the game carry one, 8 files for the villager family.",
+        "writes_pairs": true,
+        "mod_contains_dat": false,
+        "in_bundle": true,
+        "in_bundle_note": "This sentence can sit inside a plan_bundle/build_bundle list next to .dat and CivTechTrees sentences, and all of them land in one mod folder with no second emitter. Two reskin sentences naming the SAME target file with different donors are refused by Toolkit._sprite_bundle with BOTH sentences quoted -- reskin.plan only checks within one sentence and cannot see across sentences, so without that second guard the later sentence would overwrite the earlier one in silence.",
+        "bundle_edit_count_note": "edit_count for a reskin is FILES, not bytes. A bundle must sum it with the byte patcher's edits and the availability .dat halves, or the preview and the build disagree.",
+        "verified_in_game": "2026-10-17, `dsh test v10` (villager -> sheep, 20 loose .sld, no .dat): the game drew the sheep. The villager was a sheep while standing and while attacking and a human while chopping, mining and building -- which proved the loose override AND exposed that one record's art is not one unit's art.",
+        "verified_detail": "The override itself is PROVEN. What the first version got wrong is scope: unit 83's family spans 27 records and 18 stems, and replacing only the Villager Male stem left every task-specific record on its shipped human art. The engine never refuses; it simply draws whatever the record it re-pointed to names."
+      },
+      "safety": {"field_width_bits": 0, "signed": false}
+    },
+
+    "unit.art": {
+      "title": "给单位画一张新图",
+      "title_en": "Paint a picture onto a unit's animations",
+      "applies_to": "unit",
+      "description": "Take one picture off the user's disk and paint it onto the .sld files this unit is drawn from. The original motion survives: every frame keeps its own rect, so the picture is sampled in CANVAS coordinates and each frame's existing crop decides which part of it that frame shows. Writes loose .sld files and no .dat.",
+      "fields": {
+        "unit": {
+          "type": "entity_ref",
+          "kind": "unit",
+          "required": true,
+          "label": "单位",
+          "help": "The unit to paint. Its animations are found the same way a reskin finds them: the unit record's standing graphic, through the graphics record's `file` string. A unit whose art is not a loose .sld (legacy names such as ARROW_NN) is refused with that reason rather than painted."
+        },
+        "picture": {
+          "type": "path",
+          "required": true,
+          "label": "图片",
+          "help": "A PNG, JPEG or BMP on disk. It is scaled to FIT the box the original art occupies on the canvas, aspect ratio kept and centred, so a picture of any size lands where the original stood. The box is measured from the union of every frame's rect -- not guessed, and not the file's canvas, because a 200x200 canvas holds the art only in roughly x 68..132, y 52..108."
+        },
+        "civs": {
+          "type": "list",
+          "required": false,
+          "label": "文明",
+          "help": "Optional. Omit for every civilization. This matters for pictures exactly as it does for reskins: 302 of 2,273 unit ids are drawn from a different file depending on the civilization, so the set of files to paint is computed per civilization and unioned. A file two civilizations share is painted once."
+        },
+        "animations": {
+          "type": "list",
+          "required": false,
+          "label": "只改这些动作",
+          "help": "Optional. Limits the repaint to named animations (idle, walk, attack, death, decay, work, carry ...). The key is the ENGINE's own animation name from the graphics record -- 'Archer (Walk)' -> walk -- and not the filename suffix, because the shipped files spell the same animation both ways (u_arc_archer_walkA vs u_arc_bowman_walk). Omit to paint every animation the unit has."
+        }
+      },
+      "compile": {
+        "strategy": "repaint_sld",
+        "why_not_dat": "An .sld cannot be built from scratch: every frame carrying a `main` layer also carries an `unknown2` layer (4,737,215 frames, zero exceptions in the shipped corpus) and unknown2's size is not a function of main's run list, so it cannot be regenerated. What CAN be done is to repaint the BC1 blocks of `main` in place and keep every other byte: shadow, playercolor, damage, unknown2, frame headers, padding and the frame grid all survive untouched.",
+        "why_not_copy": "Copying another unit's art is `unit.sprite`. This is the other half of that layer: a picture the game has never seen. It needs an encoder, and only the main layer has a proven one.",
+        "per_civ": true,
+        "writes_pairs": true,
+        "mod_contains_dat": false,
+        "in_bundle": true,
+        "bundle_edit_count_note": "edit_count is FILES (each .sld counts once), like `unit.sprite` in copy mode.",
+        "encoder_note": "The block order is not free: a frame's run list places blocks on a grid of ceil(rect/4) cells in row-major order, and the payload is padded to ceil4. Both rules were proven by copying the original blocks back and reproducing the file byte-for-byte, which fails if either is off by one.",
+        "grid_rule": "A repaint must match the frame's own grid: the block count is fixed by the run list, so a picture of another size cannot be poured in without deciding what the extra pixels mean. Frames whose grid differs are skipped and reported, never stretched.",
+        "x2_note": "x1 and x2 are independent DRAWINGS, not scales of each other: over 6 shipped pairs the frame rects were exactly 2x in only 0-37 frames of 481-961. The engine derives the _x2 name from _x1, so both are painted, each at its own canvas size, from the same picture.",
+        "verified_in_game": null,
+        "not_verified_reason": "A repainted .sld has not been loaded by a running game. Loose .sld loading itself IS proven (2026-10-17, `dsh test v10`/`v12`), but those mods copied shipped files; nothing in this project has yet put a hand-encoded block into a file the game then drew."
+      },
+      "safety": {"field_width_bits": 0, "signed": false}
+    }
+  },
+
+  "mod": {
+    "required_files": ["info.json"],
+    "optional_files": ["thumbnail.png", "thumbnail.jpg"],
+    "info_json_keys": ["Author", "CacheStatus", "Description", "Title"],
+    "dat_storage_point": "resources/_common/dat/empires2_x2_p1.dat",
+    "path_base": "mod_root",
+    "note": "Mod folder contents mirror the GAME ROOT directly; do not add an extra 'resources' wrapper beyond the mirrored path.",
+    "rules": {
+      "parse_info_json_strict_false": true,
+      "info_json_reason": "Shipped mods contain bare \r\n control characters in Description, which strict JSON parsing rejects.",
+      "deliver_data_and_ui_as_separate_mods": true,
+      "separate_mods_reason": "The game's own mod manager warns (IDS_MODMGR_DATAMOD_SCENARIO_WARNING / _UNEXPECTED_WARNING) that mixing data mods with scenario/UI mods misbehaves."
+    },
+    "publish_validation": {
+      "only_png_images": true,
+      "banned_characters": true,
+      "error_codes": ["ZIP", "THUMBNAIL", "MISSING_FILE", "BAD_FILES",
+                      "IMAGE_FORMAT", "VIDEO_FORMAT", "MISSING_FIELDS",
+                      "NO_TITLE_ID", "PUBLISH_FAILED"]
+    }
+  },
+
+  "verification": {
+    "required": [
+      "reparse_with_unmodified_parser",
+      "assert_exact_eof",
+      "assert_geometry_unchanged",
+      "assert_other_fields_untouched",
+      "report_changed_byte_count"
+    ],
+    "note": "Compression is NOT byte-reproducible, so never validate by recompressing and comparing. Always reparse."
+  }
+}

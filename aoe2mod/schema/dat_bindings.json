@@ -1,0 +1,193 @@
+{
+  "$comment": "Field -> byte binding table. EXTERNALIZED like intents.json: the compiler never hard-codes a field name or a width. 'source' says where the value lives in the located record; 'kind' says how to interpret and range-check it. Verified against shipped ground truth: Archer id 4 = 25 wood + 45 gold, train_time 35, hit_points 30, displayed_attack 4; Knight id 38 = 60 food + 75 gold, train_time 30.",
+  "schema_version": 1,
+  "binds_to_dat_version": ["VER 8.9", "VER 7.8"],
+
+  "sources": {
+    "mark": "A named offset recorded by dat/locate.py while walking the unit; look up unit['_offs'][name].",
+    "creatable_tail": "Offset relative to the END of the Creatable block (dat/locate.py records _creatable_end). Used for the last field of that block.",
+    "train_location": "The 'train_time' field of each entry in unit['train_locations'].",
+    "attack_entry": "The amount of an entry in unit['type50']['attacks'] selected by armour class id.",
+    "armour_entry": "The amount of an entry in unit['type50']['armors'] selected by armour class id.",
+    "cost_entry": "The amount of an entry in unit['costs'] selected by resource type id.",
+    "research_time": "For tech intents. A tech's time is EITHER the scalar tech['_off_research_time'] (pre-C31) OR the research_time of every entry in tech['research_locations'] (C31+). The locator records which shape it found, so the binding never guesses from the version."
+  },
+
+  "unit_fields": {
+    "hit_points": {
+      "source": "mark", "name": "hit_points",
+      "bytes": 2, "kind": "int", "signed": true,
+      "label": "生命值",
+      "requires": null,
+      "note": "i16 at a fixed offset; overflow silently corrupts the next field, so it is rejected."
+    },
+    "line_of_sight": {
+      "source": "mark", "name": "line_of_sight",
+      "bytes": 4, "kind": "float",
+      "label": "视野",
+      "requires": null
+    },
+    "movement_speed": {
+      "source": "mark", "name": "speed",
+      "bytes": 4, "kind": "float",
+      "label": "移动速度",
+      "requires": "type >= 20 (UNIT_TYPE_FLAG)",
+      "note": "Only stored for type >= 20; slower unit types have no speed field at all."
+    },
+    "displayed_attack": {
+      "source": "mark", "name": "displayed_attack",
+      "bytes": 2, "kind": "int", "signed": true,
+      "label": "攻击力",
+      "requires": "type >= 50 (UNIT_TYPE_COMBATANT)",
+      "mirror": {"source": "attack_entry", "class_candidates": [3, 4],
+                 "bytes": 2, "kind": "int", "signed": true},
+      "note": "This is the value the unit panel RENDERS; the damage maths reads the raw attacks[] list. Shipped data keeps the two in step (759/779 comparable units agree, the 20 that differ are nearly all 'Projectile *' records), so editing only one of them produces a record the game never ships: the panel would show 10 while the arrow still hits for 4. 'mirror' moves the raw class 3/4 entry by the SAME change, which preserves whatever offset a deliberately divergent record carries."
+    },
+    "displayed_melee_armour": {
+      "source": "mark", "name": "displayed_melee_armour",
+      "bytes": 2, "kind": "int", "signed": true,
+      "label": "近战护甲",
+      "requires": "type >= 50 (UNIT_TYPE_COMBATANT)",
+      "mirror": {"source": "armour_entry", "class_candidates": [4, 3],
+                 "bytes": 2, "kind": "int", "signed": true},
+      "note": "Mirrors raw class 4 (base melee armour). In shipped data 1172/1173 comparable units agree exactly."
+    },
+    "displayed_pierce_armour": {
+      "source": "creatable_tail", "delta": -2,
+      "bytes": 2, "kind": "int", "signed": true,
+      "label": "远程护甲",
+      "requires": "type >= 70 (UNIT_TYPE_CREATABLE)",
+      "mirror": {"source": "armour_entry", "class_candidates": [3, 4],
+                 "bytes": 2, "kind": "int", "signed": true},
+      "note": "DisplayedPierceArmour is the LAST field of the Creatable block, so its offset is derived from the block end rather than re-walked. Mirrors raw class 3 (base pierce armour); 1171/1172 comparable units agree exactly."
+    },
+    "creation_time": {
+      "source": "train_location", "name": "train_time",
+      "bytes": 2, "kind": "int", "signed": true,
+      "label": "训练时间",
+      "requires": "type >= 70 (UNIT_TYPE_CREATABLE)",
+      "note": "Every train-location entry is updated, because each one is a building that trains this unit and they must agree."
+    },
+    "max_range": {
+      "source": "mark", "name": "max_range",
+      "bytes": 4, "kind": "float",
+      "label": "射程",
+      "non_negative": true,
+      "requires": "type >= 50 (UNIT_TYPE_COMBATANT)",
+      "note": "The range the engine actually uses. float32, so the overflow check does not apply -- but non_negative does: a negative range is not a shorter shot, it is a record the engine cannot use. ZERO is legitimate and common (1039 records in BASE), because every melee unit stores range 0."
+    },
+    "displayed_range": {
+      "source": "mark", "name": "displayed_range",
+      "bytes": 4, "kind": "float",
+      "label": "面板射程",
+      "non_negative": true,
+      "requires": "type >= 50 (UNIT_TYPE_COMBATANT)",
+      "mirror": {"source": "mark", "name": "max_range",
+                 "bytes": 4, "kind": "float"},
+      "note": "The range the unit panel SHOWS. It is NOT a copy of max_range: 7 shipped records diverge on purpose (id 445 CATH shows 0.0 and reaches 8.0; id 1968 FIREARCHER shows 5.0 and reaches 9.0), so the mirror moves both by the same DELTA and never copies the value."
+    },
+    "reload_time": {
+      "source": "mark", "name": "reload_time",
+      "bytes": 4, "kind": "float",
+      "label": "装填时间",
+      "non_negative": true,
+      "requires": "type >= 50 (UNIT_TYPE_COMBATANT)",
+      "note": "Seconds between attacks -- the engine value. Smaller is faster, so a player-intent UI must present a DECREASE as the improvement. 0.0 is legitimate (614 records) and means the unit has no reload delay."
+    },
+    "displayed_reload_time": {
+      "source": "mark", "name": "displayed_reload_time",
+      "bytes": 4, "kind": "float",
+      "label": "面板装填时间",
+      "non_negative": true,
+      "requires": "type >= 50 (UNIT_TYPE_COMBATANT)",
+      "mirror": {"source": "mark", "name": "reload_time",
+                 "bytes": 4, "kind": "float"},
+      "note": "The reload number the panel SHOWS, which is deliberately NOT the engine's number for 32 shipped records -- every monk-class unit (id 125 MONKX, 781 HPOPE, ...) displays 1.0 while the engine reloads in 1.6, and some heroes are off in the other direction (id 1022 MONKBT shows 3.0, reloads in 2.0). The mirror therefore carries the DELTA only."
+    },
+    "min_range": {
+      "source": "mark", "name": "min_range",
+      "bytes": 4, "kind": "float",
+      "label": "最小射程",
+      "non_negative": true,
+      "requires": "type >= 50 (UNIT_TYPE_COMBATANT)",
+      "note": "The dead zone: below this distance the unit cannot fire at all. 0.0 means no minimum and is the overwhelmingly common case (84,520 of 90,190 combatant records); 5,670 records are non-zero and the values are 1.0/2.0/3.0/4.0/5.0 -- siege and defences (id 42 TREBU 4.0, id 36 BCANN 5.0, id 280 MANGO 3.0, castles and towers 1.0). A negative minimum is a broken record, hence non_negative."
+    },
+    "accuracy": {
+      "source": "mark", "name": "accuracy",
+      "bytes": 2, "kind": "int", "signed": true,
+      "label": "命中率",
+      "requires": "type >= 50 (UNIT_TYPE_COMBATANT)",
+      "note": "Type50.h:55 -- 'Percentage value determining the probability of an attack hitting'. Stored as a whole percent (100 = always hits), so the sensible range is 0..100 but the engine reads 0 as 'default/always' for the 27,669 melee records that never use it; 19 distinct values ship (15..100). Deliberately NOT declared non_negative: it is an i16 the engine accepts as-is and clamping here would invent a rule the format does not have."
+    },
+    "garrison_capacity": {
+      "source": "mark", "name": "garrison_capacity",
+      "bytes": 1, "kind": "int", "signed": false,
+      "label": "驻扎容量",
+      "non_negative": true,
+      "requires": null,
+      "note": "Unit.h:124-125 -- 'Maximum number of units that can be garrisonned at the same time'. Read from every record that walks the unit (136,861 marks) because the uint8 sits in the common unit block, but only 5,544 records are non-zero and they are all type 70 (creatables: the ram line, id 35 BTRAM 6) or type 80 (buildings: Dock 5, Barracks/Market/Tower 10, Town Center 15, Castle 20, Castle Age4 30). A uint8, so it is the first field in this schema that is NOT signed: packing it signed would raise OverflowError past 127 instead of storing 128..255. non_negative is declared because a negative garrison is not a smaller shelter, it is a corrupt record."
+    }
+  },
+
+  "tech_fields": {
+    "research_time": {
+      "source": "research_time",
+      "bytes": 2, "kind": "int", "signed": true,
+      "label": "研究时间",
+      "non_negative": true,
+      "note": "TWO storage shapes, and the locator picks between them per record. For VER 7.8 (gv < GV_C31) the time is a single i16 on the tech itself. For VER 8.9 (gv >= GV_C31) it lives in the ResearchLocations array instead, and EVERY entry carries its own copy -- all of them are written, because updating one and not the others leaves the record self-contradictory. A record whose array is empty stores no time at all and is reported rather than silently skipped."
+    },
+    "cost": {
+      "source": "cost_entry",
+      "bytes": 2, "kind": "int", "signed": true,
+      "label": "成本",
+      "non_negative": true,
+      "note": "The resource type id comes from resource_types above. Research.cpp:61 always serializes exactly THREE ResourceUsage<int16,int16,uint8> records (Tech::Tech() does ResourceCosts(3)), so a tech's costs are its first 15 bytes and no version guard applies to them. Selecting among the three is NOT 'the slot whose type matches': see _pick_cost_slot in compiler.py -- a type match with amount 0 is a placeholder (133 in BASE) and a real cost can carry flag 0 (tech 430 Elite Genitour). A type with no slot at all is reported rather than silently skipped."
+    },
+    "effect": {
+      "source": "effect_command",
+      "bytes": 4, "kind": "float", "signed": true,
+      "label": "科技效果",
+      "note": "A tech does not store its gameplay effect inline: it stores an i16 effect_id indexing the top-level Effects array, and that record is a LIST of 11-byte EffectCommands (Type u8, A/B/C i16, D f32). Editing it therefore means editing a command inside a SHARED record -- measured over BASE, 37 effects are referenced by more than one tech and 34 of those carry commands, so one edit can silently change other techs. READ the sharing with compiler.effect_fanout()/effect_rows() and REPORT it; never assume the effect is private. Commands are addressed by INDEX, not by (operation, attribute, target): that triple collides with DIFFERENT values in 12 shipped techs, so any meaning-keyed scheme would have to guess. D is a float32 for every attribute, but for attribute ids 8 (armor) and 9 (attack) it is a PACKED pair -- AGE_Frame/Techs.cpp Tester() prints 'armor type <high> <how> <low>', so the high byte names the armor/attack class and the low byte is the value. The class byte must be preserved when the value is rewritten (encode_effect_value) or the command silently retargets class 0, and the low byte is UNSIGNED even though the field is a float (153 commands in BASE carry a low byte >= 128). Do not write the command's Type, the command count, or the effect NAME: those change the record's length, shift every later effect and invalidate every effect_id. Vocabulary tables live beside this file: effect_command_types.json (59 types), effect_attributes.json (89 attribute ids), armor_classes.json (class names). An id missing from those tables is REAL and must render as a number ('Class 251', 'attribute 158'), never as a guess -- AGE's own note says its class table is incomplete for DE."
+    }
+  },
+
+  "resource_types": {
+    "food": 0,
+    "wood": 1,
+    "stone": 2,
+    "gold": 3,
+    "population": 4
+  },
+
+  "attack_classes": {
+    "$comment": "Used by the unit.attack_class intent when it does not name a class id. 'class_candidates' are tried in order and the FIRST one the unit actually carries is edited; a unit with neither is reported as having no such field.",
+    "attack": {
+      "source": "attack_entry", "class_candidates": [3, 4],
+      "bytes": 2, "kind": "int", "signed": true,
+      "label": "基础攻击",
+      "note": "Class 3 is the generic 'base attack' every combatant carries; class 4 is 'base melee' and is what siege weapons use."
+    },
+    "armour": {
+      "source": "armour_entry", "class_candidates": [4, 3],
+      "bytes": 2, "kind": "int", "signed": true,
+      "label": "基础护甲",
+      "note": "Class 4 = base melee armour, class 3 = base pierce armour."
+    }
+  },
+
+  "cost_entry": {
+    "source": "cost_entry",
+    "bytes": 2, "kind": "int", "signed": true,
+    "label": "成本",
+    "non_negative": true,
+    "note": "The resource type id comes from resource_types above; a unit with no slot of that type is reported rather than silently skipped. non_negative is a LEGALITY rule, not a range rule: -75 fits in an i16, passed the overflow check, and used to be written as if it were a discount. The engine reads a cost as a requirement, so negative is refused."
+  },
+
+  "armour_classes": {
+    "$comment": "Only the ids that carry meaning for attacks/armour. Read schema/armor_classes.json for display names; unknown ids render as 'Class N' rather than being hidden.",
+    "base_melee": 4,
+    "base_pierce": 3,
+    "base_attack_guess_order": [3, 4]
+  }
+}

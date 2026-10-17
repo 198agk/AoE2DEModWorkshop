@@ -1,0 +1,35 @@
+# --- generated / regenerable ---------------------------------------------
+# _raw_ids.json is 17 MB of intermediate data produced by
+# _probe/semantic/extract_ids.py from the shipped .dat in ~5 s.  It is an input
+# to build_semantic.py, never a source: committing it would make every clone
+# carry a copy of the game's data.
+_probe/semantic/_raw_ids.json
+_probe/semantic/_unresolved_ids.json
+_probe/semantic/_tech_diag.json
+_probe/schema/AGE3NamesV0007.json
+_probe/schema/age_label_tables_raw.json
+
+# The AGE source tree is extracted from the game's own
+# Tools_Builds/docs/Source.7z.  It is third-party source under GPLv3/LGPLv3,
+# it is 2.4 MB of C++, and it is reproducible from the installed game:
+#   tar -xf "<game>/Tools_Builds/docs/Source.7z" -C _probe/source
+# Keeping it out of the repo keeps the licence question out of the repo too.
+_probe/source/
+aoe2docs/
+
+# --- python ---------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*.pyc
+
+# --- outputs --------------------------------------------------------------
+_probe/out_*/
+_probe/out_*.txt
+发布包/
+_shots/
+*.zip
+*.7z
+
+# --- scratch --------------------------------------------------------------
+_probe/tmp_*.py
+_probe/_newlog.md

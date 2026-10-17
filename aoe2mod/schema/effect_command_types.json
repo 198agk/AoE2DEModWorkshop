@@ -1,0 +1,617 @@
+{
+ "source": "AGE/AGE_Frame/Lists.cpp + Techs.cpp",
+ "note": "raw = the uint8 EffectCommand.Type value as stored in the .dat; walked AGE's own version branches and evaluated them for AoE2:DE (GenieVersion = GV_C32 = 54, GameVersion = EV_DE2, isAoE2DE = true); an unmodelled condition raises rather than guessing",
+ "types": {
+  "0": {
+   "raw": 0,
+   "label": "Attribute Modifier (Set)",
+   "params": [
+    "A:unit or -1",
+    "B:class or -1",
+    "C:attribute",
+    "D:new value"
+   ],
+   "summary": "Set an attribute to a value",
+   "b_codes": null
+  },
+  "1": {
+   "raw": 1,
+   "label": "Resource Modifier (Set/+/-)",
+   "params": [
+    "A:resource id",
+    "B:0=set/1=change",
+    "C:times-resource or -1",
+    "D:value"
+   ],
+   "summary": "Set or add to a resource",
+   "b_codes": null
+  },
+  "2": {
+   "raw": 2,
+   "label": "Enable/Disable Unit",
+   "params": [
+    "A:unit id",
+    "B:0=disable/1=enable"
+   ],
+   "summary": "Toggle unit availability",
+   "b_codes": null
+  },
+  "3": {
+   "raw": 3,
+   "label": "Upgrade Unit",
+   "params": [
+    "A:from unit",
+    "B:to unit",
+    "C:-1=all/2=selected/3=incl own master/other=on map"
+   ],
+   "summary": "Replace one unit with another",
+   "b_codes": null
+  },
+  "4": {
+   "raw": 4,
+   "label": "Attribute Modifier (+/-)",
+   "params": [
+    "A:unit or -1",
+    "B:class or -1",
+    "C:attribute",
+    "D:delta"
+   ],
+   "summary": "Add to an attribute",
+   "b_codes": null
+  },
+  "5": {
+   "raw": 5,
+   "label": "Attribute Modifier (Multiply)",
+   "params": [
+    "A:unit or -1",
+    "B:class or -1",
+    "C:attribute",
+    "D:factor"
+   ],
+   "summary": "Multiply an attribute",
+   "b_codes": null
+  },
+  "6": {
+   "raw": 6,
+   "label": "Resource Modifier (Multiply)",
+   "params": [
+    "A:resource id",
+    "B:unused",
+    "C:unused",
+    "D:factor"
+   ],
+   "summary": "Multiply a resource",
+   "b_codes": null
+  },
+  "7": {
+   "raw": 7,
+   "label": "Spawn Unit",
+   "params": [
+    "A:unit id",
+    "B:source unit/building",
+    "C:count",
+    "D:unused"
+   ],
+   "summary": "Create units on the map",
+   "b_codes": null
+  },
+  "8": {
+   "raw": 8,
+   "label": "Modify Tech",
+   "params": [
+    "A:tech id",
+    "B:sub-field (see B-codes)",
+    "C:unused",
+    "D:value"
+   ],
+   "summary": "Change a tech's own properties",
+   "b_codes": {
+    "-1": "set research time",
+    "-2": "add to research time",
+    "0..3": "set cost type N",
+    "4": "set research location",
+    "5": "set research button",
+    "6": "set icon",
+    "7": "set name",
+    "8": "set description",
+    "9": "enable/disable stacking",
+    "10": "set stacking cap",
+    "11": "set hotkey",
+    "12": "0=disable / 1=enable tech",
+    "16384..16387": "add to cost type (B-16384)"
+   }
+  },
+  "10": {
+   "raw": 10,
+   "label": "Team Attribute Modifier (Set)",
+   "params": [
+    "A:unit or -1",
+    "B:class or -1",
+    "C:attribute",
+    "D:new value"
+   ],
+   "summary": "Team Set an attribute to a value",
+   "b_codes": null
+  },
+  "11": {
+   "raw": 11,
+   "label": "Team Resource Modifier (Set/+/-)",
+   "params": [
+    "A:resource id",
+    "B:0=set/1=change",
+    "C:times-resource or -1",
+    "D:value"
+   ],
+   "summary": "Team Set or add to a resource",
+   "b_codes": null
+  },
+  "12": {
+   "raw": 12,
+   "label": "Team Enable/Disable Unit",
+   "params": [
+    "A:unit id",
+    "B:0=disable/1=enable"
+   ],
+   "summary": "Team Toggle unit availability",
+   "b_codes": null
+  },
+  "13": {
+   "raw": 13,
+   "label": "Team Upgrade Unit",
+   "params": [
+    "A:from unit",
+    "B:to unit",
+    "C:-1=all/2=selected/3=incl own master/other=on map"
+   ],
+   "summary": "Team Replace one unit with another",
+   "b_codes": null
+  },
+  "14": {
+   "raw": 14,
+   "label": "Team Attribute Modifier (+/-)",
+   "params": [
+    "A:unit or -1",
+    "B:class or -1",
+    "C:attribute",
+    "D:delta"
+   ],
+   "summary": "Team Add to an attribute",
+   "b_codes": null
+  },
+  "15": {
+   "raw": 15,
+   "label": "Team Attribute Modifier (Multiply)",
+   "params": [
+    "A:unit or -1",
+    "B:class or -1",
+    "C:attribute",
+    "D:factor"
+   ],
+   "summary": "Team Multiply an attribute",
+   "b_codes": null
+  },
+  "16": {
+   "raw": 16,
+   "label": "Team Resource Modifier (Multiply)",
+   "params": [
+    "A:resource id",
+    "B:unused",
+    "C:unused",
+    "D:factor"
+   ],
+   "summary": "Team Multiply a resource",
+   "b_codes": null
+  },
+  "17": {
+   "raw": 17,
+   "label": "Team Spawn Unit",
+   "params": [],
+   "summary": "",
+   "b_codes": null
+  },
+  "18": {
+   "raw": 18,
+   "label": "Team Modify Tech",
+   "params": [],
+   "summary": "",
+   "b_codes": null
+  },
+  "20": {
+   "raw": 20,
+   "label": "Enemy Attribute Modifier (Set)",
+   "params": [
+    "A:unit or -1",
+    "B:class or -1",
+    "C:attribute",
+    "D:new value"
+   ],
+   "summary": "Enemy Set an attribute to a value",
+   "b_codes": null
+  },
+  "21": {
+   "raw": 21,
+   "label": "Enemy Resource Modifier (Set/+/-)",
+   "params": [
+    "A:resource id",
+    "B:0=set/1=change",
+    "C:times-resource or -1",
+    "D:value"
+   ],
+   "summary": "Enemy Set or add to a resource",
+   "b_codes": null
+  },
+  "22": {
+   "raw": 22,
+   "label": "Enemy Enable/Disable Unit",
+   "params": [
+    "A:unit id",
+    "B:0=disable/1=enable"
+   ],
+   "summary": "Enemy Toggle unit availability",
+   "b_codes": null
+  },
+  "23": {
+   "raw": 23,
+   "label": "Enemy Upgrade Unit",
+   "params": [
+    "A:from unit",
+    "B:to unit",
+    "C:-1=all/2=selected/3=incl own master/other=on map"
+   ],
+   "summary": "Enemy Replace one unit with another",
+   "b_codes": null
+  },
+  "24": {
+   "raw": 24,
+   "label": "Enemy Attribute Modifier (+/-)",
+   "params": [
+    "A:unit or -1",
+    "B:class or -1",
+    "C:attribute",
+    "D:delta"
+   ],
+   "summary": "Enemy Add to an attribute",
+   "b_codes": null
+  },
+  "25": {
+   "raw": 25,
+   "label": "Enemy Attribute Modifier (Multiply)",
+   "params": [
+    "A:unit or -1",
+    "B:class or -1",
+    "C:attribute",
+    "D:factor"
+   ],
+   "summary": "Enemy Multiply an attribute",
+   "b_codes": null
+  },
+  "26": {
+   "raw": 26,
+   "label": "Enemy Resource Modifier (Multiply)",
+   "params": [
+    "A:resource id",
+    "B:unused",
+    "C:unused",
+    "D:factor"
+   ],
+   "summary": "Enemy Multiply a resource",
+   "b_codes": null
+  },
+  "27": {
+   "raw": 27,
+   "label": "Enemy Spawn Unit",
+   "params": [],
+   "summary": "",
+   "b_codes": null
+  },
+  "28": {
+   "raw": 28,
+   "label": "Enemy Modify Tech",
+   "params": [],
+   "summary": "",
+   "b_codes": null
+  },
+  "30": {
+   "raw": 30,
+   "label": "Neutral Attribute Modifier (Set)",
+   "params": [
+    "A:unit or -1",
+    "B:class or -1",
+    "C:attribute",
+    "D:new value"
+   ],
+   "summary": "Neutral Set an attribute to a value",
+   "b_codes": null
+  },
+  "31": {
+   "raw": 31,
+   "label": "Neutral Resource Modifier (Set/+/-)",
+   "params": [
+    "A:resource id",
+    "B:0=set/1=change",
+    "C:times-resource or -1",
+    "D:value"
+   ],
+   "summary": "Neutral Set or add to a resource",
+   "b_codes": null
+  },
+  "32": {
+   "raw": 32,
+   "label": "Neutral Enable/Disable Unit",
+   "params": [
+    "A:unit id",
+    "B:0=disable/1=enable"
+   ],
+   "summary": "Neutral Toggle unit availability",
+   "b_codes": null
+  },
+  "33": {
+   "raw": 33,
+   "label": "Neutral Upgrade Unit",
+   "params": [
+    "A:from unit",
+    "B:to unit",
+    "C:-1=all/2=selected/3=incl own master/other=on map"
+   ],
+   "summary": "Neutral Replace one unit with another",
+   "b_codes": null
+  },
+  "34": {
+   "raw": 34,
+   "label": "Neutral Attribute Modifier (+/-)",
+   "params": [
+    "A:unit or -1",
+    "B:class or -1",
+    "C:attribute",
+    "D:delta"
+   ],
+   "summary": "Neutral Add to an attribute",
+   "b_codes": null
+  },
+  "35": {
+   "raw": 35,
+   "label": "Neutral Attribute Modifier (Multiply)",
+   "params": [
+    "A:unit or -1",
+    "B:class or -1",
+    "C:attribute",
+    "D:factor"
+   ],
+   "summary": "Neutral Multiply an attribute",
+   "b_codes": null
+  },
+  "36": {
+   "raw": 36,
+   "label": "Neutral Resource Modifier (Multiply)",
+   "params": [
+    "A:resource id",
+    "B:unused",
+    "C:unused",
+    "D:factor"
+   ],
+   "summary": "Neutral Multiply a resource",
+   "b_codes": null
+  },
+  "37": {
+   "raw": 37,
+   "label": "Neutral Spawn Unit",
+   "params": [],
+   "summary": "",
+   "b_codes": null
+  },
+  "38": {
+   "raw": 38,
+   "label": "Neutral Modify Tech",
+   "params": [],
+   "summary": "",
+   "b_codes": null
+  },
+  "40": {
+   "raw": 40,
+   "label": "Gaia Attribute Modifier (Set)",
+   "params": [
+    "A:unit or -1",
+    "B:class or -1",
+    "C:attribute",
+    "D:new value"
+   ],
+   "summary": "Gaia Set an attribute to a value",
+   "b_codes": null
+  },
+  "41": {
+   "raw": 41,
+   "label": "Gaia Resource Modifier (Set/+/-)",
+   "params": [
+    "A:resource id",
+    "B:0=set/1=change",
+    "C:times-resource or -1",
+    "D:value"
+   ],
+   "summary": "Gaia Set or add to a resource",
+   "b_codes": null
+  },
+  "42": {
+   "raw": 42,
+   "label": "Gaia Enable/Disable Unit",
+   "params": [
+    "A:unit id",
+    "B:0=disable/1=enable"
+   ],
+   "summary": "Gaia Toggle unit availability",
+   "b_codes": null
+  },
+  "43": {
+   "raw": 43,
+   "label": "Gaia Upgrade Unit",
+   "params": [
+    "A:from unit",
+    "B:to unit",
+    "C:-1=all/2=selected/3=incl own master/other=on map"
+   ],
+   "summary": "Gaia Replace one unit with another",
+   "b_codes": null
+  },
+  "44": {
+   "raw": 44,
+   "label": "Gaia Attribute Modifier (+/-)",
+   "params": [
+    "A:unit or -1",
+    "B:class or -1",
+    "C:attribute",
+    "D:delta"
+   ],
+   "summary": "Gaia Add to an attribute",
+   "b_codes": null
+  },
+  "45": {
+   "raw": 45,
+   "label": "Gaia Attribute Modifier (Multiply)",
+   "params": [
+    "A:unit or -1",
+    "B:class or -1",
+    "C:attribute",
+    "D:factor"
+   ],
+   "summary": "Gaia Multiply an attribute",
+   "b_codes": null
+  },
+  "46": {
+   "raw": 46,
+   "label": "Gaia Resource Modifier (Multiply)",
+   "params": [
+    "A:resource id",
+    "B:unused",
+    "C:unused",
+    "D:factor"
+   ],
+   "summary": "Gaia Multiply a resource",
+   "b_codes": null
+  },
+  "47": {
+   "raw": 47,
+   "label": "Gaia Spawn Unit",
+   "params": [],
+   "summary": "",
+   "b_codes": null
+  },
+  "48": {
+   "raw": 48,
+   "label": "Gaia Modify Tech",
+   "params": [],
+   "summary": "",
+   "b_codes": null
+  },
+  "101": {
+   "raw": 101,
+   "label": "Tech Cost Modifier (Set/+/-)",
+   "params": [
+    "A:tech id",
+    "B:cost type",
+    "C:resource",
+    "D:value"
+   ],
+   "summary": "Change a tech's cost",
+   "b_codes": null
+  },
+  "102": {
+   "raw": 102,
+   "label": "Disable Tech",
+   "params": [
+    "D:tech id (via D)"
+   ],
+   "summary": "Remove a tech from the tree",
+   "b_codes": null
+  },
+  "103": {
+   "raw": 103,
+   "label": "Tech Time Modifier (Set/+/-)",
+   "params": [
+    "A:tech id",
+    "D:value"
+   ],
+   "summary": "Change research time",
+   "b_codes": null
+  },
+  "200": {
+   "raw": 200,
+   "label": "Own Master Objects Attribute Modifier (Set)",
+   "params": [
+    "A:unit or -1",
+    "B:class or -1",
+    "C:attribute",
+    "D:new value"
+   ],
+   "summary": "Own Master Objects:  (Set) on own-master/selected units",
+   "b_codes": null
+  },
+  "201": {
+   "raw": 201,
+   "label": "Own Master Objects Attribute Modifier (+/-)",
+   "params": [
+    "A:unit or -1",
+    "B:class or -1",
+    "C:attribute",
+    "D:delta"
+   ],
+   "summary": "Own Master Objects:  (+/-) on own-master/selected units",
+   "b_codes": null
+  },
+  "202": {
+   "raw": 202,
+   "label": "Own Master Objects Attribute Modifier (Multiply)",
+   "params": [
+    "A:unit or -1",
+    "B:class or -1",
+    "C:attribute",
+    "D:factor"
+   ],
+   "summary": "Own Master Objects:  (Multiply) on own-master/selected units",
+   "b_codes": null
+  },
+  "203": {
+   "raw": 203,
+   "label": "Selected Unit Attribute Modifier (Set)",
+   "params": [
+    "A:unit or -1",
+    "B:class or -1",
+    "C:attribute",
+    "D:new value"
+   ],
+   "summary": "Selected Unit:  (Set) on own-master/selected units",
+   "b_codes": null
+  },
+  "204": {
+   "raw": 204,
+   "label": "Selected Unit Attribute Modifier (+/-)",
+   "params": [
+    "A:unit or -1",
+    "B:class or -1",
+    "C:attribute",
+    "D:delta"
+   ],
+   "summary": "Selected Unit:  (+/-) on own-master/selected units",
+   "b_codes": null
+  },
+  "205": {
+   "raw": 205,
+   "label": "Selected Unit Attribute Modifier (Multiply)",
+   "params": [
+    "A:unit or -1",
+    "B:class or -1",
+    "C:attribute",
+    "D:factor"
+   ],
+   "summary": "Selected Unit:  (Multiply) on own-master/selected units",
+   "b_codes": null
+  },
+  "206": {
+   "raw": 206,
+   "label": "Transform Selected Unit",
+   "params": [
+    "A:unit id"
+   ],
+   "summary": "Morph the selected unit",
+   "b_codes": null
+  }
+ }
+}

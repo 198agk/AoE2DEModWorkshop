@@ -1,0 +1,106 @@
+{
+  "sources": {
+    "parser": {
+      "path": "_probe/datparse/parse_dat.py",
+      "sha256": "2808a4be7d41e5e18cb8ce9bee4c69b6a22a85826230b16de4cfe85c262892cd",
+      "bytes": 50095
+    },
+    "writer": {
+      "path": "_probe/serializer/write_dat.py",
+      "sha256": "b7675df0dc20292472689af4b7ffb8a8bd14cb578930887fdd94fa9fb681166a",
+      "bytes": 41473
+    },
+    "locator": {
+      "path": "_probe/datparse/intent_patch.py",
+      "sha256": "56519761e3b5f6c1c23442b0a5f38cb9ade2e3f74c3267fb8a708a316c2e3e5b",
+      "bytes": 29331
+    },
+    "sldlib": {
+      "path": "_probe/sldlib.py",
+      "sha256": "31f3333c489f791545c294380ef1d7d5389d37f37c9b47952029f316fa1cb543",
+      "bytes": 13586
+    },
+    "sldencode": {
+      "path": "_probe/sldencode.py",
+      "sha256": "676a5a27188b74b331e12b4baac37784e9928d2c5d5201d2c9c111e5ccac99c1",
+      "bytes": 10690
+    }
+  },
+  "vendored_parser": {
+    "path": "aoe2mod/dat/parser.py",
+    "sha256": "2808a4be7d41e5e18cb8ce9bee4c69b6a22a85826230b16de4cfe85c262892cd",
+    "bytes": 50095
+  },
+  "vendored_writer": {
+    "path": "aoe2mod/dat/writer.py",
+    "sha256": "e9b0947e2a3cf2d8a8f3920b05cadf68d21909ab6cb7464c799abbce17158162",
+    "bytes": 40498
+  },
+  "vendored_locator": {
+    "path": "aoe2mod/dat/locate.py",
+    "sha256": "d02b54800aea2d27d1bd9a7fbcb25232e302aa4f01045118d2e7d3d56162d087",
+    "bytes": 29174
+  },
+  "vendored_sldlib": {
+    "path": "aoe2mod/game/sld.py",
+    "sha256": "31f3333c489f791545c294380ef1d7d5389d37f37c9b47952029f316fa1cb543",
+    "bytes": 13586
+  },
+  "vendored_sldencode": {
+    "path": "aoe2mod/game/sldencode.py",
+    "sha256": "a8a374e662945558a5ac612710497528315d0d470117e251d5a2aadf3bd7cbc3",
+    "bytes": 10694
+  },
+  "data": [
+    {
+      "path": "aoe2mod/semantic/data/unit_names.json",
+      "bytes": 1145349
+    },
+    {
+      "path": "aoe2mod/semantic/data/tech_names.json",
+      "bytes": 1022134
+    }
+  ],
+  "effect_tables": [
+    {
+      "path": "aoe2mod/schema/effect_command_types.json",
+      "bytes": 13278,
+      "sha256": "f31e98454b86afde2d2d1d7a332298f74aa429d354c41dc471ed92a89d06ebe1"
+    },
+    {
+      "path": "aoe2mod/schema/effect_attributes.json",
+      "bytes": 3798,
+      "sha256": "c6a3cbafc43b4c2ef7a4bcc6598e710b815c5a463314f52656c01276778acef0"
+    },
+    {
+      "path": "aoe2mod/schema/armor_classes.json",
+      "bytes": 1925,
+      "sha256": "a6c0472ebcded5c626784c61d27c297bec256e84285b71c4f6ccc63f3be968c2"
+    },
+    {
+      "path": "aoe2mod/schema/effect_labels_zh.json",
+      "bytes": 5957,
+      "sha256": "fa978208c342c68a3d123781c84f7d47a8374fff4e62e27243806eb8e525b3af"
+    },
+    {
+      "path": "aoe2mod/schema/resource_labels.json",
+      "bytes": 11326,
+      "sha256": "7085245b23899fc0bf9c1007467132a25763ae4898e742633041b8fedc3f9016"
+    },
+    {
+      "path": "aoe2mod/schema/resource_labels_zh.json",
+      "bytes": 10651,
+      "sha256": "2af24834a81fefb9e0a87ce79dc81ebf298a5178bb35d363bee8115103e8c5b1"
+    },
+    {
+      "path": "aoe2mod/schema/attribute_labels.json",
+      "bytes": 7000,
+      "sha256": "97afe4d8d4d965e8dce08aebf34789f939285bdb508763bd02fc63ea70a48b82"
+    },
+    {
+      "path": "aoe2mod/schema/attribute_labels_zh.json",
+      "bytes": 6594,
+      "sha256": "c1ab53adcad4ef5894ffa459d0d468b76f9c699a7aca09a0d1eb827bafad3d3e"
+    }
+  ]
+}
