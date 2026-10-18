@@ -24,7 +24,7 @@ a control that proves the load.  The earlier in-game tests failed for the mirror
 reason -- both halves moved the same way, and Hand Cannoneer (unit 5) carried
 `RequiredAge` 4 so a Dark-Age game could never show it.
 
-Run:  $env:PYTHONPATH='D:\\Software\\DeepSeek Harness\\工作区2'; python _probe\test_smoke5_design.py
+Run:  $env:PYTHONPATH='D:\\Software\\AI\\帝国项目'; python _probe\test_smoke5_design.py
 """
 import json
 import os

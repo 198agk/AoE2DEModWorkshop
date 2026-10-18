@@ -212,9 +212,9 @@ def build_techs():
 units, ustat = build_units()
 techs, tstat = build_techs()
 
-with open(os.path.join(HERE, "unit_names.json"), "w", encoding="utf-8") as f:
+with open(os.path.join(HERE, "unit_names.json"), "w", encoding="utf-8", newline="\n") as f:
     json.dump(units, f, ensure_ascii=False, indent=1)
-with open(os.path.join(HERE, "tech_names.json"), "w", encoding="utf-8") as f:
+with open(os.path.join(HERE, "tech_names.json"), "w", encoding="utf-8", newline="\n") as f:
     json.dump(techs, f, ensure_ascii=False, indent=1)
 
 print()
@@ -247,7 +247,7 @@ unres_tech = {k: {"internal": v["internal"], "name_string_id": v["name_string_id
 missing_pos = sorted({v["name_string_id"] for v in units.values()
                       if v.get("name_string_id") and v["name_string_id"] > 0
                       and not v["resolved"]})
-with open(os.path.join(HERE, "_unresolved_ids.json"), "w", encoding="utf-8") as f:
+with open(os.path.join(HERE, "_unresolved_ids.json"), "w", encoding="utf-8", newline="\n") as f:
     json.dump({"units": unres_unit, "techs": unres_tech,
                "unit_string_ids_absent_from_strings": missing_pos,
                "stats": {"units": dict(ustat), "techs": dict(tstat)}},

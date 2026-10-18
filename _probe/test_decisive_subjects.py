@@ -31,7 +31,7 @@ its upgrade, so that "absent" means "the panel is driving":
 
 This pins the corrected criterion, so the mistake cannot come back.
 
-Run:  $env:PYTHONPATH='D:\\Software\\DeepSeek Harness\\工作区2'; python _probe\test_decisive_subjects.py
+Run:  $env:PYTHONPATH='D:\\Software\\AI\\帝国项目'; python _probe\test_decisive_subjects.py
 """
 import os
 import sys

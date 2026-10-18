@@ -3,8 +3,9 @@
 """
 Pure-Python parser for the Age of Empires II: Definitive Edition .dat file.
 
-Format spec transcribed from genieutils C++ sources:
-  D:\\Software\\DeepSeek Harness\\工作区2\\_probe\\source\\genieutils\\
+Format spec transcribed from genieutils C++ sources (unpacked from the game's
+own ``Tools_Builds/docs/Source.7z`` into ``_probe/source/``):
+  <workspace>/_probe/source/genieutils/
      include\\genie\\file\\ISerializable.h   (serialization primitives)
      include\\genie\\Types.h                 (GameVersion enum, VER -> GV map)
      src\\dat\\DatFile.cpp                   (top level read order)

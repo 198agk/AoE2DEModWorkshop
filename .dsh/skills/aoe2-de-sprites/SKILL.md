@@ -14,7 +14,7 @@ parser.
 | Reader + decoders + renderer | `aoe2mod/game/sld.py` (vendored from `_probe/sldlib.py`) | `read_sld(path)`, `parse_rect_layer`, `parse_mask_layer`, `grid_of`, `placed_blocks`, `decode_bc1_plane`, `decode_bc4_plane`, `render_frame` |
 | Unit → art resolution + swap planning | `aoe2mod/game/sprites.py` | `art_index(game_root, graphics)`, `art(unit)`, `plan_swap(target_art, donor_art)`, `swap_files(...)`, `anim_of`, `anim_keys`, `stem_of_name` |
 | The `unit.sprite` intent | `aoe2mod/intent/reskin.py` | `plan()`, `describe()`, `read_payload()`, `verify_files()` |
-| **The UI-facing entry point** | `aoe2mod/api.py` | `tk.plan({'intent':'unit.sprite','unit':4,'donor':8})` / `tk.build(...)`; **and inside a `plan_bundle`/`build_bundle` sentence list** — the reskin strategy is one of three `_split_by_strategy` returns |
+| **The UI-facing entry point** | `aoe2mod/api.py` | `tk.plan({'intent':'unit.sprite','unit':4,'donor':8})` / `tk.build(...)`; **and inside a `plan_bundle`/`build_bundle` sentence list** — the reskin strategy is one of four `_split_by_strategy` returns |
 | Writer | `_probe/sldwrite.py` | `serialize_sld(s)` + `roundtrip_all()` |
 | Edit end-to-end proof | `_probe/u2_verify_write.py` | byte-diff localisation + re-parse + render |
 | Colour enumeration | `_probe/u2_colours.py` | list real opaque colours of a main layer (use before setting thresholds) |
@@ -332,11 +332,18 @@ used by `.palx`. `//` and `#` are both comments. **Do not trust the declared col
 
 ## Do not overclaim
 
-- **No in-game verification exists.** Every result stops at the file layer. Frame count
-  mismatch is known to play wrong frames silently, but whether it crashes or is rejected
-  is unknown.
-- **Zero of this machine's 9 installed mods ship any `.sld`/`.slp`/`.smp`** — the
-  replacement path has community consensus and format derivation, but no local precedent.
+- **Loose-file `.sld` override IS verified in-game** (2026-10-17): `dsh test v10` (Villager→Sheep,
+  20 files, no `.dat`) put a sheep on the villager; `v11`/`v12` (family-wide + fill + resource
+  variant) made every villager job a sheep; `v13` (244 graphics-record renames, no picture
+  copies) also rendered as sheep. So a loose `.sld` in `resources/_common/drs/graphics/` DOES
+  override the packed art. What remains unproven: the **frame-grid** guard's prediction (a
+  `(60,16)`-vs-`(45,16)` mismatch playing wrong frames silently) — reported, not yet observed.
+- **A unit's picture is decided in THREE places, only two walk the records**: (1) the unit
+  record's `StandingGraphic` → a `graphics` record → its `file` `.sld`; (2) `Bird.TaskSwapGroup`
+  family — 27 villager records share one task-swap family and EACH carries its own art stem, so
+  a single-record reskin goes back to human the moment the unit does another job; (3) the
+  carried-resource variant — the StoneMiner's `..._miner_stone_carrywalkA_x1.sld` is named by NO
+  unit record, and only `resource_variants(stem)` recovers it. `v11` missed (3); `v12` fixed it.
 - Audio is a separate problem: **all audio is packed** (39 `.pck`, 0 loose files), and the
   developers state only uncompressed PCM **UI** sounds work — **do not promise unit voice or
   music replacement.**

@@ -21,7 +21,7 @@ Every one of these was scored backwards or missed on the first attempt.  This pi
 runs the whole filter over the corpus and names what survives, so the criterion
 lives in one place.
 
-Run:  $env:PYTHONPATH='D:\\Software\\DeepSeek Harness\\工作区2'; python _probe\test_protocol_subjects.py
+Run:  $env:PYTHONPATH='D:\\Software\\AI\\帝国项目'; python _probe\test_protocol_subjects.py
 """
 import os
 import sys
@@ -255,7 +255,8 @@ check("POLES 691's producing building is the Dock",
 check("SICILIANS 588's producing building is the Siege Workshop",
       building_row(trees["SICILIANS"], 49).get("Name") == "Siege Workshop")
 check("the two subjects are not name-colliding",
-      "精锐炮舰" != "重型投石车")
+      named(691) != named(588),
+      "691=%r 588=%r" % (named(691), named(588)))
 
 print()
 print("D  the complete-path alternatives, for a player who owns different DLC")

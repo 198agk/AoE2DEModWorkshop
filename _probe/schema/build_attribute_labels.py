@@ -178,7 +178,7 @@ def main():
     print("zh: %d of the %d English-named ids translated"
           % (len(zh), len(en)))
 
-    with io.open(OUT_EN, "w", encoding="utf-8") as fh:
+    with io.open(OUT_EN, "w", newline="\n") as fh:
         json.dump({
             "source": "the game's own attribute-name block, "
                       "string_id = %d + attribute id" % BASE,
@@ -190,7 +190,7 @@ def main():
             "names": {str(k): en[k] for k in sorted(en)},
         }, fh, ensure_ascii=False, indent=1)
 
-    with io.open(OUT_ZH, "w", encoding="utf-8") as fh:
+    with io.open(OUT_ZH, "w", newline="\n") as fh:
         json.dump({
             "source": "the game's own zh locale for the same block",
             "note": "A translation of the English table's decision.  An id "

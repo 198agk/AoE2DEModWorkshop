@@ -2,13 +2,13 @@
   "sources": {
     "parser": {
       "path": "_probe/datparse/parse_dat.py",
-      "sha256": "2808a4be7d41e5e18cb8ce9bee4c69b6a22a85826230b16de4cfe85c262892cd",
-      "bytes": 50095
+      "sha256": "7926e0d0dedae23d212da7447680ad739ccf5c276bef6ec0f3a9e8aca863ca6e",
+      "bytes": 50135
     },
     "writer": {
       "path": "_probe/serializer/write_dat.py",
-      "sha256": "b7675df0dc20292472689af4b7ffb8a8bd14cb578930887fdd94fa9fb681166a",
-      "bytes": 41473
+      "sha256": "eb8bc7e5b3c9481dcb5fe2dcbb5cf6dc2be7aaa41aad203b3ce77a18e839a2a7",
+      "bytes": 41582
     },
     "locator": {
       "path": "_probe/datparse/intent_patch.py",
@@ -28,18 +28,18 @@
   },
   "vendored_parser": {
     "path": "aoe2mod/dat/parser.py",
-    "sha256": "2808a4be7d41e5e18cb8ce9bee4c69b6a22a85826230b16de4cfe85c262892cd",
-    "bytes": 50095
+    "sha256": "7926e0d0dedae23d212da7447680ad739ccf5c276bef6ec0f3a9e8aca863ca6e",
+    "bytes": 50135
   },
   "vendored_writer": {
     "path": "aoe2mod/dat/writer.py",
-    "sha256": "e9b0947e2a3cf2d8a8f3920b05cadf68d21909ab6cb7464c799abbce17158162",
-    "bytes": 40498
+    "sha256": "8a887fd17b24b319f11635f4eb1108ab7425784d5f92698832967d068f12079e",
+    "bytes": 39463
   },
   "vendored_locator": {
     "path": "aoe2mod/dat/locate.py",
-    "sha256": "d02b54800aea2d27d1bd9a7fbcb25232e302aa4f01045118d2e7d3d56162d087",
-    "bytes": 29174
+    "sha256": "23ad7d2986a10d73729f4ace70c4d9ce99bd1a8c948971265434f96380e19a2c",
+    "bytes": 22270
   },
   "vendored_sldlib": {
     "path": "aoe2mod/game/sld.py",
@@ -54,53 +54,59 @@
   "data": [
     {
       "path": "aoe2mod/semantic/data/unit_names.json",
-      "bytes": 1145349
+      "bytes": 1088495
     },
     {
       "path": "aoe2mod/semantic/data/tech_names.json",
-      "bytes": 1022134
+      "bytes": 975859
     }
   ],
   "effect_tables": [
     {
       "path": "aoe2mod/schema/effect_command_types.json",
-      "bytes": 13278,
-      "sha256": "f31e98454b86afde2d2d1d7a332298f74aa429d354c41dc471ed92a89d06ebe1"
+      "bytes": 12662,
+      "sha256": "714fb80bf0872c35b19161a79a7df90fc55ca03541259a5bb62dca50fb26a901"
     },
     {
       "path": "aoe2mod/schema/effect_attributes.json",
-      "bytes": 3798,
-      "sha256": "c6a3cbafc43b4c2ef7a4bcc6598e710b815c5a463314f52656c01276778acef0"
+      "bytes": 3704,
+      "sha256": "2f0bebe181334866411a34d9fe59abe72f83abdbe8267b48c3e8e1b2c54c37e8"
     },
     {
       "path": "aoe2mod/schema/armor_classes.json",
-      "bytes": 1925,
-      "sha256": "a6c0472ebcded5c626784c61d27c297bec256e84285b71c4f6ccc63f3be968c2"
+      "bytes": 1858,
+      "sha256": "02027c3d55c49a5518d8a06516d4cb565af6fd597e9cea19ba6210bbc8dae151"
     },
     {
       "path": "aoe2mod/schema/effect_labels_zh.json",
-      "bytes": 5957,
-      "sha256": "fa978208c342c68a3d123781c84f7d47a8374fff4e62e27243806eb8e525b3af"
+      "bytes": 5741,
+      "sha256": "5f31d237bdf51d14364f59be94f4d88f5c6ee8569eff10828aa228021fb62860"
     },
     {
       "path": "aoe2mod/schema/resource_labels.json",
-      "bytes": 11326,
-      "sha256": "7085245b23899fc0bf9c1007467132a25763ae4898e742633041b8fedc3f9016"
+      "bytes": 10993,
+      "sha256": "b45b41efd6edb83e4ff7fcffa0f1bbf408e203e51b622fe002123798e69cdedb"
     },
     {
       "path": "aoe2mod/schema/resource_labels_zh.json",
-      "bytes": 10651,
-      "sha256": "2af24834a81fefb9e0a87ce79dc81ebf298a5178bb35d363bee8115103e8c5b1"
+      "bytes": 10318,
+      "sha256": "7e073c887a6d5d2008835970cb8b9d05ae2379fe5d5906af023474c9aca45b3f"
     },
     {
       "path": "aoe2mod/schema/attribute_labels.json",
-      "bytes": 7000,
-      "sha256": "97afe4d8d4d965e8dce08aebf34789f939285bdb508763bd02fc63ea70a48b82"
+      "bytes": 6770,
+      "sha256": "7a90c12675948333ac0a74c1511d39bca3fcdf22c88c64120c08eccdc1e85f0b"
     },
     {
       "path": "aoe2mod/schema/attribute_labels_zh.json",
-      "bytes": 6594,
-      "sha256": "c1ab53adcad4ef5894ffa459d0d468b76f9c699a7aca09a0d1eb827bafad3d3e"
+      "bytes": 6364,
+      "sha256": "f9ece6f44a23aa0adf4eee04ce55296510cd5f18c08e3495d7914ade5808ed24"
     }
-  ]
+  ],
+  "checked": {
+    "table_content": true,
+    "vendored_python": true,
+    "parser_and_sldlib_byte_identical": true,
+    "sldencode_transform_only": true
+  }
 }

@@ -1,0 +1,45 @@
+{
+ "dat_on_disk_bytes": 12023754,
+ "dat_raw_bytes": 93268152,
+ "dat_parse_final_pos": 93268152,
+ "dat_eof_leftover": 0,
+ "dat_parse_seconds": 4.77,
+ "dat_graphic_count": 21001,
+ "dat_graphic_pointers_nonzero": 20883,
+ "dat_civ_count": 63,
+ "dat_tech_count": 1510,
+ "dat_effect_count": 1500,
+ "dat_sound_count": 769,
+ "dat_player_colour_count": 16,
+ "dat_unit_header_count": 1701,
+ "dat_techtree": {
+  "ages": 4,
+  "buildings": 37,
+  "units": 266,
+  "research": 241
+ },
+ "graphic_file_strings_nonempty": 17359,
+ "graphic_file_strings_distinct": 8657,
+ "sld_files_on_disk": 15486,
+ "graphics_dir_ext_histogram": {
+  ".sld": 15486,
+  ".smp": 38,
+  ".slp": 35
+ },
+ "graphics_dir_total_files": 15559,
+ "sld_x1": 7743,
+ "sld_x2": 7743,
+ "sld_x1_without_x2": 7729,
+ "sld_x2_without_x1": 7729,
+ "sld_version_histogram": {
+  "4": 15484
+ },
+ "sld_frame_offset_histogram": {
+  "14": 431,
+  "16": 15053
+ },
+ "sld_u1_histogram": {
+  "0": 15484
+ },
+ "sld_total_frames_from_headers": 4850222
+}

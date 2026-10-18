@@ -29,10 +29,21 @@ os.chdir(ROOT)
 
 import aoe2mod.api as A
 
+fails = []
+def check(name, ok, detail=""):
+    print("  %-70s %s%s" % (name[:70], "PASS" if ok else "FAIL",
+                            ("  " + str(detail)) if detail else ""))
+    if not ok:
+        fails.append(name)
+
 GAME = r"D:\Games\Steam\steamapps\common\AoE2DE"
 GP = os.path.join(GAME, "resources", "_common", "drs", "graphics")
 
+if not os.path.isdir(GP):
+    print("FATAL: graphics dir missing: %s" % GP)
+    sys.exit(1)
 _on_disk = set(fn for fn in os.listdir(GP) if fn.endswith(".sld"))
+check("the graphics dir has loose .sld files", bool(_on_disk), "dir=%s" % GP)
 _pair_ok = 0
 _pair_bad = []
 for fn in _on_disk:

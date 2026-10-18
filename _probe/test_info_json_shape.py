@@ -29,7 +29,7 @@ The title still appeared because the LIST shows the folder name, not the Title f
 
 So the fix is in the emitter, and it applies to every mod this tool ships.
 
-Run:  $env:PYTHONPATH='D:\\Software\\DeepSeek Harness\\工作区2'; python _probe\test_info_json_shape.py
+Run:  $env:PYTHONPATH='D:\\Software\\AI\\帝国项目'; python _probe\test_info_json_shape.py
 """
 import json
 import os

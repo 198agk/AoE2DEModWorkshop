@@ -39,16 +39,16 @@ for v in all_names_vars:
 json.dump({"source": "AGE_Frame/Lists.cpp effect_type_names",
            "note": "index = combo-box selection - 1; Selection 0 is 'No Type/Invalid Type'",
            "entries": eff_types},
-          open(os.path.join(OUT, "effect_command_types.json"), "w", encoding="utf-8"),
+          open(os.path.join(OUT, "effect_command_types.json"), "w", encoding="utf-8", newline="\n"),
           ensure_ascii=False, indent=1)
 
 json.dump({"source": "AGE_Frame/Lists.cpp effect_attribute_names",
            "note": "index = combo-box selection - 1; describes effect command C parameter",
            "entries": eff_attrs},
-          open(os.path.join(OUT, "effect_attributes.json"), "w", encoding="utf-8"),
+          open(os.path.join(OUT, "effect_attributes.json"), "w", encoding="utf-8", newline="\n"),
           ensure_ascii=False, indent=1)
 
-json.dump(report, open(os.path.join(OUT, "age_label_tables_raw.json"), "w", encoding="utf-8"),
+json.dump(report, open(os.path.join(OUT, "age_label_tables_raw.json"), "w", encoding="utf-8", newline="\n"),
           ensure_ascii=False, indent=1)
 
 print("\n=== EFFECT COMMAND TYPES (%d) ===" % len(eff_types))

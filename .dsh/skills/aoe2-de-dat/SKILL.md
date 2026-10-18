@@ -299,11 +299,11 @@ Consequence: **no single civilization can be a one-game discriminator.** The inj
 
 The panel is organised by **producer building**: `<Civ> → Buildings → [{ID, Units, Techs}]`, and 62/62 civs carry a **building 118 (`Builder`) block**. That shape looks like the villager build menu — but it omits buildings every civilization can certainly build:
 
-- Britons' tree has **29** building rows; the panel's Builder block has **18**.
-- **11** tree buildings are absent from that block, and **10 appear NOWHERE in that civ's entire panel file**: Barracks (12), Mill (68), House (70), Palisade Wall (72), Lumber Camp (562), Mining Camp (584), Outpost (598), Palisade Gate (792), Bombard Tower (236), Dock (45).
-- Across all 62 civs, **Barracks / Mill / House / Palisade Wall / Lumber Camp / Mining Camp each appear in 0 panels** — yet Britons can obviously build a Barracks.
+- Britons' tree has **29** building rows; the panel's Builder block has **18** entries.
+- **CORRECTION (this supersedes an earlier claim)**: the basics ARE in the panel, as their own blocks — **Barracks 62/62, House 62/62, Mill 62/62, etc.** (`_probe/test_panel_shape.py`). The earlier "10 buildings appear 0 times in the panel" counted absence from a building's **`Units` array**, which is a DIFFERENT statement: a `Units` array is "what this building produces", a block is "a place you can produce".
+- **434** (basic building × civ) pairs are absent from every `Units` list **and still present as blocks**.
 
-So the tree and the panel are **different models, not copies** — which is also why they disagree on the ~11+3 (civ, unit) pairs: the disagreement is structural, not a bug. **A write to the panel cannot add or remove a basic building**; for those, the tree is the only layer. Pinned by `_probe/test_panel_is_not_build_menu.py`.
+So the two layers are different models, not copies — the ~11+3 disagreement is structural, not a bug. The panel writer (`buildpanel.insert_entry`/`remove_entry`) manipulates **entries inside a building block** (a building's `Units`/`Techs` array); it does not add or remove **blocks**. Adding/removing a building *block* is a separate operation from adding/removing an *entry* — do not conflate the two. Pinned by `_probe/test_panel_shape.py`.
 
 ### ⚠ A "everything is zero/empty" assertion must also assert the census was non-empty
 

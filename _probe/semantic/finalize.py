@@ -152,14 +152,14 @@ print("   resolved ids missing zh (units): %d"
 print("   resolved ids missing zh (techs): %d"
       % sum(1 for e in tres if not e["zh"]))
 
-json.dump(units, open(os.path.join(HERE, "unit_names.json"), "w", encoding="utf-8"),
+json.dump(units, open(os.path.join(HERE, "unit_names.json"), "w", encoding="utf-8", newline="\n"),
           ensure_ascii=False, indent=1)
-json.dump(techs, open(os.path.join(HERE, "tech_names.json"), "w", encoding="utf-8"),
+json.dump(techs, open(os.path.join(HERE, "tech_names.json"), "w", encoding="utf-8", newline="\n"),
           ensure_ascii=False, indent=1)
 
 summary = {"units": dict(uclass), "techs": dict(tclass),
            "unit_total": len(units), "tech_total": len(techs)}
-json.dump(summary, open(os.path.join(HERE, "_final_stats.json"), "w", encoding="utf-8"),
+json.dump(summary, open(os.path.join(HERE, "_final_stats.json"), "w", encoding="utf-8", newline="\n"),
           ensure_ascii=False, indent=1)
 print()
 print("updated unit_names.json / tech_names.json with `category`; wrote _final_stats.json")

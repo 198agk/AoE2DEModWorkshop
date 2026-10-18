@@ -16,7 +16,7 @@ The rule it implements:
                                                 the JSON half is read too early)
     no resource-packages marker              -> UNCLEAR (not evidence either way)
 
-Run:  $env:PYTHONPATH='D:\\Software\\DeepSeek Harness\\工作区2'; python _probe\test_test_validity.py
+Run:  $env:PYTHONPATH='D:\\Software\\AI\\帝国项目'; python _probe\test_test_validity.py
 """
 import importlib.util
 import os

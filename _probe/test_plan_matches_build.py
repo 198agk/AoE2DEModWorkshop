@@ -126,9 +126,16 @@ for case in CASES:
         if plan["edit_count"] != 0:
             bad.append((case, "plan promised %d edits but build refused: %s"
                         % (plan["edit_count"], exc)))
-        if "no " not in plan["description"] and "没有" not in plan["description"]:
-            bad.append((case, "refusal not disclosed in the plan text: %r"
-                        % plan["description"]))
+        # A plan that returns a dict while the build refuses must say so with the
+        # same flag the build's refusal implies: `editable: False`.  The older
+        # check grepped the description for "no "/"没有", a fragile proxy that
+        # broke the moment a refusal was worded "nothing would change ...".
+        if plan.get("editable") is not False:
+            bad.append((case, "plan returned a dict but did not mark it "
+                        "ineditable while the build refused: %r"
+                        % plan.get("description")))
+        elif not plan.get("description"):
+            bad.append((case, "plan refused but gave no reason text"))
         continue
     except Exception as exc:
         bad.append((case, "build raised %r" % (exc,)))

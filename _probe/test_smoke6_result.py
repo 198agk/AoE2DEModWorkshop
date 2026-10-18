@@ -51,7 +51,7 @@ This pin records the measurement so a later round does not re-derive it, and mar
 the honest boundary: **the availability write has now been tested in game and did
 not take effect on the menu.**
 
-Run:  $env:PYTHONPATH='D:\\Software\\DeepSeek Harness\\工作区2'; python _probe\test_smoke6_result.py
+Run:  $env:PYTHONPATH='D:\\Software\\AI\\帝国项目'; python _probe\test_smoke6_result.py
 """
 import json
 import os
@@ -110,7 +110,7 @@ _ship = CT.load_trees(GAME)
 # installed-folder assertions are reported for whichever of them is present, and
 # the JSON-layer content is asserted against the BUILT artifact, which still exists.
 if INSTALLED:
-    check("the smoke6 artifact is installed", True)
+    print("     [note] the smoke6 artifact is still installed at %s" % INSTALLED)
     _dat = os.path.join(INSTALLED, "resources", "_common", "dat",
                         "empires2_x2_p1.dat")
     check("it carries the .dat (11.98 MB)", os.path.exists(_dat) and
@@ -208,8 +208,8 @@ print("     unit 2550 connection: enabling=-1, required=-1, upper=-1")
 print("     unit 8 Longbowman  : enabling=263 -> British   (civ-owned)")
 print("     unit 41 Huskarl    : enabling=270 -> Goths      (civ-owned)")
 print("     unit 5  Hand Cann : enabling=85  -> GLOBAL")
-check("2550 carries no enabling research at all (so that mechanism is not it)",
-      True)
+print("     [note] unit 2550 carries no enabling research (recorded fact; the "
+      "reader lives in _probe/probe_enabling_gate.py)")
 
 print()
 print("SMOKE6 RESULT: the mod loaded (control passed) and the availability write did")

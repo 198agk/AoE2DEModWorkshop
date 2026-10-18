@@ -87,6 +87,8 @@ SUITES = [
     r"_probe\test_declared_resources.py",
     r"_probe\test_unit_sprite_chain.py",
     r"_probe\test_reskin.py",
+    r"_probe\test_repaint.py",
+    r"_probe\test_retarget.py",
 ]
 
 fails = []

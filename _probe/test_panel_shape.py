@@ -48,7 +48,7 @@ Two honest complications, both measured rather than assumed:
 
     So "the panel has a block the tree's Building rows lack" is not one phenomenon.
 
-Run:  $env:PYTHONPATH='D:\\Software\\DeepSeek Harness\\工作区2'; python _probe\test_panel_shape.py
+Run:  $env:PYTHONPATH='D:\\Software\\AI\\帝国项目'; python _probe\test_panel_shape.py
 """
 import os
 import sys

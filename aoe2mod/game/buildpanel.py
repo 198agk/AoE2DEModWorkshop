@@ -478,7 +478,16 @@ def verify_surgical(before_text, after_text, inserted_chars=None):
     info["outside_is_untouched"] = (
         before_text[:p] == after_text[:p]
         and before_text[len(before_text) - s:] == after_text[len(after_text) - s:])
-    ok = info["outside_is_untouched"]
+    # A matching prefix and suffix are TRUE BY CONSTRUCTION (p and s were
+    # computed AS the longest common prefix/suffix), so `outside_is_untouched`
+    # alone can never fail -- which is exactly the tautology the audit found:
+    # `ok = outside_is_untouched` made verify_surgical("aaaa", "bbbb") return
+    # ok=True.  The real "one contiguous edit" test is that the prefix and the
+    # suffix MEET: the differing middle is a single block only when
+    # p + s == shorter.  Two disjoint edits leave p + s < shorter and must be
+    # reported as NOT surgical.
+    info["contiguous"] = (p + s) == shorter
+    ok = info["outside_is_untouched"] and info["contiguous"]
     if inserted_chars is not None:
         info["inserted_as_expected"] = info["inserted"] == inserted_chars
         ok = ok and info["inserted_as_expected"]

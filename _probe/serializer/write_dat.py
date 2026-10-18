@@ -1,8 +1,9 @@
 # -*- coding: utf-8 -*-
 """write_dat.py -- re-serializer (writer) for AoE2 DE ``.dat`` files.
 
-This is the exact inverse of the proven parser
-``D:\\Software\\DeepSeek Harness\\工作区2\\_probe\\datparse\\parse_dat.py``.
+This is the exact inverse of the proven parser ``_probe/datparse/parse_dat.py``
+(paths below are workspace-relative; the workspace moved on 2026-10-17 and a
+hardcoded absolute path survives only as history, not as a load-bearing fact).
 Every field order / width below was taken from that parser (which round-trips
 the real 93,268,152-byte decompressed BASE file byte-exactly) and cross-checked
 against the authoritative genieutils C++ shipped in the game's own

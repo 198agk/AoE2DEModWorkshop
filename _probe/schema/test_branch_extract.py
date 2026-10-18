@@ -48,5 +48,5 @@ print("extractor raised on every condition: True")
 import json                                              # noqa: E402
 out = os.path.join(HERE, "regen_preview.json")
 json.dump({"attributes": attrs, "classes": classes, "types": types},
-          open(out, "w", encoding="utf-8"), ensure_ascii=False, indent=1)
+          open(out, "w", encoding="utf-8", newline="\n"), ensure_ascii=False, indent=1)
 print("preview -> %s" % os.path.relpath(out, ROOT))

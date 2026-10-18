@@ -23,7 +23,7 @@ The counts and the JURCHENS Barracks case are asserted, so a game update that
 changes the disagreement makes this suite fail rather than quietly retire the
 only clean experiment the project has.
 
-Run:  $env:PYTHONPATH='D:\\Software\\DeepSeek Harness\\工作区2'; python _probe\test_zero_mod_experiment.py
+Run:  $env:PYTHONPATH='D:\\Software\\AI\\帝国项目'; python _probe\test_zero_mod_experiment.py
 """
 import os
 import sys
@@ -265,7 +265,8 @@ check("NO single civilization is injective (only SPARTANS has both, and its two 
       and not ({(n or "").lower() for _u, n in kindP["SPARTANS"]}
                - {(n or "").lower() for _u, n in kindT["SPARTANS"]}),
       "civs with both: %s" % _both)
-check("the injective answer is therefore a TWO-GAME protocol", True)
+print("     [note] the injective answer is therefore a TWO-GAME protocol (no "
+      "single game is decisive)")
 print("        GAME 1  MUISCA  Imperial Age  Barracks(12)  look for 长戟兵(359)")
 print("           tree=NotAvailable; panel lists 359 AND its upgrade tech 429")
 print("           -> present => PANEL or UNION")

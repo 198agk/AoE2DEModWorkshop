@@ -31,7 +31,7 @@ And the subject it edits is the strongest one available: `tech 263
 only civ that can build Longbowmen.  So it is a per-civ unit gate the engine
 demonstrably honours, which is exactly the mechanism smoke8 reuses.
 
-Run:  $env:PYTHONPATH='D:\\Software\\DeepSeek Harness\\工作区2'; python _probe\test_dat_edit_routes.py
+Run:  $env:PYTHONPATH='D:\\Software\\AI\\帝国项目'; python _probe\test_dat_edit_routes.py
 """
 import contextlib
 import io

@@ -70,7 +70,7 @@ check(_rep2["donor"] is not None, "a donor civ was recorded", _rep2.get("donor")
 _rel = _rep2["rel"].replace(os.sep, "/")
 check(_rel.startswith("resources/_common/dat/"),
       "the path is engine-relative", _rel)
-check("British" in json.dumps(_obj) or True, "sanity: object loads")
+check(isinstance(_obj, dict), "sanity: object loads", type(_obj).__name__)
 
 # the emitted bytes must be a valid file with ONE more entry
 _t2, _o2 = BP.load_panel_text(_files2[_rep2["rel"]].decode("utf-8"))

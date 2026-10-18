@@ -130,7 +130,7 @@ for base, ar, at in SAMPLES[:6]:
     print("   base=%d armor=%s attack=%s" % (base, ar[:6], at[:6]))
 
 with open(os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                       "_armor_classes.json"), "w", encoding="utf-8") as f:
+                       "_armor_classes.json"), "w", encoding="utf-8", newline="\n") as f:
     json.dump({
         "armor_class_counts": {str(k): v for k, v in sorted(arm_classes.items())},
         "attack_class_counts": {str(k): v for k, v in sorted(atk_classes.items())},

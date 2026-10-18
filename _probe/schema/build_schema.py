@@ -103,7 +103,7 @@ json.dump({"source": "AGE/AGE_Frame/Lists.cpp + Techs.cpp",
            "note": "raw = the uint8 EffectCommand.Type value as stored in the .dat; "
                    + BRANCH_RULE,
            "types": schema_types},
-          open(os.path.join(OUT, "effect_command_types.json"), "w", encoding="utf-8"),
+          open(os.path.join(OUT, "effect_command_types.json"), "w", encoding="utf-8", newline="\n"),
           ensure_ascii=False, indent=1)
 
 # ---------------------------------------------------------------------------
@@ -115,7 +115,7 @@ json.dump({"source": "AGE/AGE_Frame/Lists.cpp effect_attribute_names",
                    + BRANCH_RULE + ".  Do NOT key by list position -- AGE collapses several "
                    "engines' entries into one slot, and the collision picks the wrong name.",
            "attributes": {str(k): v for k, v in sorted(attrs.items())}},
-          open(os.path.join(OUT, "effect_attributes.json"), "w", encoding="utf-8"),
+          open(os.path.join(OUT, "effect_attributes.json"), "w", encoding="utf-8", newline="\n"),
           ensure_ascii=False, indent=1)
 
 # ---------------------------------------------------------------------------
@@ -131,7 +131,7 @@ for line in ini.splitlines():
     elif cur and "=" in line:
         k, v = line.split("=", 1)
         sections[cur][k.strip()] = v.strip()
-json.dump(sections, open(os.path.join(OUT, "AGE3NamesV0007.json"), "w", encoding="utf-8"),
+json.dump(sections, open(os.path.join(OUT, "AGE3NamesV0007.json"), "w", encoding="utf-8", newline="\n"),
           ensure_ascii=False, indent=1)
 
 # ---------------------------------------------------------------------------
@@ -152,7 +152,7 @@ json.dump({"source": "AGE/AGE_Frame/Lists.cpp class_names",
                    + BRANCH_RULE + ".  The sentinel entry carries no number and is dropped; "
                    "ids AGE does not name must be rendered as 'Class <n>', never guessed.",
            "classes": {str(k): v for k, v in sorted(classes.items())}},
-          open(os.path.join(OUT, "armor_classes.json"), "w", encoding="utf-8"),
+          open(os.path.join(OUT, "armor_classes.json"), "w", encoding="utf-8", newline="\n"),
           ensure_ascii=False, indent=1)
 
 print("wrote:", sorted(os.listdir(OUT)))

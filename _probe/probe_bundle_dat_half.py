@@ -128,16 +128,17 @@ if os.path.exists(dat_a):
     _, _, en_a = anchor_effect(raw_a)
     check("A alone: the grant's `.dat` half is on disk", bool(en_a),
           "enables=%r" % (en_a,))
-    check("A alone: manifest does not claim a carrier when it shipped a grant",
-          not (raw_a == base_raw) or True)
+    check("A alone: the grant's .dat half is a REAL edit, not a carrier copy",
+          raw_a != base_raw,
+          "raw_a %d B vs base %d B" % (len(raw_a), len(base_raw)))
 
 if os.path.exists(dat_b):
     raw_b, _ = raw_of(dat_b)
     _, _, en_b = anchor_effect(raw_b)
     check("B (with an unrelated .dat sentence): the grant survived",
           bool(en_b), "enables=%r" % (en_b,))
-    check("B: the villager edit is also there",
-          len(raw_b) != len(base_raw))
+    check("B: the villager edit is also there (bytes, not just length)",
+          raw_b != base_raw)
 
 print()
 if fails:

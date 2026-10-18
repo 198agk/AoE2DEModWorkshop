@@ -124,7 +124,7 @@ print()
 print("unresolved tech internal names (first 60):",
       [t.get("name") for t in unres[:60]])
 
-with open(os.path.join(HERE, "_tech_diag.json"), "w", encoding="utf-8") as f:
+with open(os.path.join(HERE, "_tech_diag.json"), "w", encoding="utf-8", newline="\n") as f:
     json.dump({
         "unresolved_tech_ids": sorted(set(ids)),
         "resolved_count": len(res),

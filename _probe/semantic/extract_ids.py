@@ -133,7 +133,7 @@ def main():
         print("   sample:", rec)
 
     out_dir = os.path.dirname(os.path.abspath(__file__))
-    with open(os.path.join(out_dir, "_raw_ids.json"), "w", encoding="utf-8") as f:
+    with open(os.path.join(out_dir, "_raw_ids.json"), "w", encoding="utf-8", newline="\n") as f:
         json.dump({
             "units": unit_records,
             "techs": [{"index": i, **t} for i, t in enumerate(st["techs"])],

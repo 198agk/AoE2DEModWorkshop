@@ -27,7 +27,7 @@ The `Trigger Tech ID = 1350` on that copied row is a GLOBAL make-avail tech
 as a Tech row is the NORM -- 1,590 of 1,814 such rows corpus-wide -- so that is not a
 defect to fix first (see the Round 66 measurement).
 
-Run:  $env:PYTHONPATH='D:\\Software\\DeepSeek Harness\\工作区2'; python _probe\test_v4_reproduces_incas.py
+Run:  $env:PYTHONPATH='D:\\Software\\AI\\帝国项目'; python _probe\test_v4_reproduces_incas.py
 """
 import os
 import sys

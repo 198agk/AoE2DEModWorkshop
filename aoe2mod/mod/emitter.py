@@ -415,6 +415,13 @@ def emit_data_mod(mod_dir, dat_bytes, info, thumbnail=None, base_dir=None,
                     manifest["warnings"] = [
                         "the emitted .dat is byte-identical to the base game, so "
                         "this mod changes nothing"]
+                    # `changes_dat` was set above from "a .dat was handed in", but
+                    # the whole point of that field is whether a byte changed.  An
+                    # audit measured the two disagreeing: a build whose .dat is
+                    # byte-identical to the base ended up carrying
+                    # `changes_dat: True` next to this warning.  Correct it here,
+                    # where the base comparison actually happened.
+                    manifest["changes_dat"] = False
 
         # Same redundancy check for the JSON layer.  A JSON override that is
         # byte-identical to the shipped file is not harmless: it pins that file

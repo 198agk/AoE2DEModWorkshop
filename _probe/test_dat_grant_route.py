@@ -30,7 +30,7 @@ and the writer's proven ability to synthesise Effects/Techs make this worth stat
 precisely.  What is NOT known is whether the engine accepts an ADDED one -- no
 shipped data adds to an existing civ -- so it needs its own in-game test.
 
-Run:  $env:PYTHONPATH='D:\\Software\\DeepSeek Harness\\工作区2'; python _probe\test_dat_grant_route.py
+Run:  $env:PYTHONPATH='D:\\Software\\AI\\帝国项目'; python _probe\test_dat_grant_route.py
 """
 import os
 import sys

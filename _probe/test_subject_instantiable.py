@@ -24,7 +24,7 @@ if it does not appear, the gate is not what the write changed.
 The general rule this pins: **an availability test needs the DATA layer to be able
 to instantiate the subject first.**  Otherwise a negative result is unattributable.
 
-Run:  $env:PYTHONPATH='D:\\Software\\DeepSeek Harness\\工作区2'; python _probe\test_subject_instantiable.py
+Run:  $env:PYTHONPATH='D:\\Software\\AI\\帝国项目'; python _probe\test_subject_instantiable.py
 """
 import os
 import sys

@@ -56,7 +56,7 @@ remains correct and needs no further in-game work.  The remaining value of a fut
 test is only to decide which layer to PRIORITIZE (smaller mods), not whether the
 product works.
 
-Run:  $env:PYTHONPATH='D:\\Software\\DeepSeek Harness\\工作区2'; python _probe\test_time_gate_and_tooltip.py
+Run:  $env:PYTHONPATH='D:\\Software\\AI\\帝国项目'; python _probe\test_time_gate_and_tooltip.py
 """
 import os
 import sys
@@ -135,16 +135,28 @@ print("        by GAME 2 (the tree said yes there too)")
 print("     3. the panel feeds the GREYED-OUT future preview only -- plausible,")
 print("        matches the file's name and its display-only Prereq* fields,")
 print("        and is exactly what IDS_OPT_DISPLAY_FUTURE_ITEMS toggles")
-check("explanation 3 is supported by the file carrying prereq display fields",
-      True)
-print("        (measured earlier: PrereqTech on 17,228 entries, RequiredUnitID on")
-print("         28,728 -- the tree has none of these)")
+# The tree DOES carry `Prerequisite IDs` / `Prerequisite Types` (data/link
+# fields); what it lacks is the PANEL's display-only gate fields.  Test for
+# those exact names, not the "Prereq" prefix, or the tree's own link fields
+# make the assertion false.
+_PANEL_PREQ_DISPLAY = ("PrereqTech", "PrereqIconSet", "PrereqIconIndex",
+                       "PrereqStyle", "PrereqStringID")
+_tree_prereq = any(k in _PANEL_PREQ_DISPLAY for t in trees.values()
+                   for r in CT.rows_of(t) for k in r)
+check("the tree carries no Prereq* display field (only the panel does)",
+      not _tree_prereq)
+_panel_prereq = sum(1 for blk in BP.buildings(o, "Sicilians")
+                    for e in (blk.get(BP.UNITS_KEY) or [])
+                    + (blk.get(BP.TECHS_KEY) or [])
+                    if any(k.startswith("Prereq") for k in e))
+check("the panel entries carry Prereq* display fields",
+      _panel_prereq > 0, "Sicilians prereq entries: %d" % _panel_prereq)
 
 print()
 print("D  the product consequence")
 print("     aoe2mod/api.py's _build_availability writes BOTH the tree and the panel")
-check("the panel is at most 0.6% different from the tree",
-      True)
+print("     [note] the panel-vs-tree agreement (99.4%) is pinned by "
+      "_probe/test_panel_tree_agreement.py, not re-derived here")
 print("     -> with the panel-alone hypothesis refuted and the two copies 99.4%")
 print("        identical, writing both is correct whichever is consulted.")
 print("        Nothing further needs an in-game test for the product to be sound;")

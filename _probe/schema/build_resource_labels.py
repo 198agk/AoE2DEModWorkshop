@@ -190,7 +190,7 @@ json.dump({
             "a stored cost slot; it does not make the id editable -- "
             "dat_bindings.json resource_types decides that.",
     "names": {str(k): en[k] for k in sorted(en)},
-}, open(OUT_EN, "w", encoding="utf-8"), ensure_ascii=False, indent=1)
+}, open(OUT_EN, "w", newline="\n"), ensure_ascii=False, indent=1)
 
 json.dump({
     "source": "The game's own zh translation of the same 15000+ block in "
@@ -201,7 +201,7 @@ json.dump({
             "table names; an id absent here (a locale the install lacks) falls "
             "back to the English name and then to the bare number.",
     "names": {str(k): zh[k] for k in sorted(zh)},
-}, open(OUT_ZH, "w", encoding="utf-8"), ensure_ascii=False, indent=1)
+}, open(OUT_ZH, "w", newline="\n"), ensure_ascii=False, indent=1)
 
 print()
 print("wrote %s: %d names" % (os.path.basename(OUT_EN), len(en)))

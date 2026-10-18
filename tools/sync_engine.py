@@ -139,12 +139,185 @@ WRITER_PATH_HACK = re.compile(
     r"import parse_dat as _pd\s*#[^\n]*\n")
 
 
+def check_source_baseline(manifest):
+    """Refuse to vendor a research source that changed since the last accepted run.
+
+    The content checks below can prove a shipped copy is well-formed; they cannot
+    prove the research source is still the one that was verified.  Vendoring is
+    byte-copying, so ANY change in a research source is shipped by design --
+    which means "the source drifted" and "the source was improved" look
+    identical.  The only honest treatment is to make the change VISIBLE: compare
+    against the hashes recorded by the last run that passed every check, and
+    refuse unless the operator says the change is intended.
+
+    Measured reason this exists: an audit appended `WRITER_DRIFT = 'LEAKED'` to
+    `_probe/serializer/write_dat.py`, ran this script, and got six OK lines,
+    exit 0, and the drift in the shipped package.  Everything this file checked
+    was about the transform, and the transform faithfully carried the drift.
+    """
+    prev_p = os.path.join(PKG, "ENGINE_PROVENANCE.json")
+    if not os.path.exists(prev_p):
+        print("baseline: no previous provenance, so every source is new")
+        return
+    try:
+        prev = json.load(open(prev_p, encoding="utf-8"))
+    except Exception as exc:
+        print("baseline: previous provenance unreadable (%s); treating all as new" % exc)
+        return
+    old = (prev.get("sources") or {})
+    accept = "--accept-source-change" in sys.argv
+    changed, added = [], []
+    for label, entry in (manifest.get("sources") or {}).items():
+        was = (old.get(label) or {}).get("sha256")
+        now = entry.get("sha256")
+        if was is None:
+            added.append(label)
+        elif was != now:
+            changed.append((label, entry["path"], was[:12], now[:12]))
+    if added:
+        print("baseline: new sources with no recorded hash: %s" % ", ".join(added))
+    if changed and not accept:
+        for label, path, was, now in changed:
+            print("  SOURCE CHANGED %-10s %s  %s -> %s" % (label, path, was, now))
+        raise SystemExit(
+            "FATAL: %d research source(s) changed since the last verified sync.\n"
+            "Vendoring copies them verbatim, so the change WILL ship.\n"
+            "If the change is intended, re-run with --accept-source-change,\n"
+            "which records the new hashes as the baseline."
+            % len(changed))
+    if changed and accept:
+        for label, path, was, now in changed:
+            print("  ACCEPTED       %-10s %s  %s -> %s" % (label, path, was, now))
+        print("baseline: %d accepted change(s) become the new reference" % len(changed))
+
+
 def sha256(path):
     h = hashlib.sha256()
     with open(path, "rb") as fh:
         for chunk in iter(lambda: fh.read(1 << 20), b""):
             h.update(chunk)
     return h.hexdigest()
+
+
+def check(cond, msg):
+    """Verification that survives `python -O`.
+
+    Every check in this file used to be a bare `assert`, so `python -O
+    tools/sync_engine.py` executed ZERO verification while still printing six
+    "...: OK" lines and exiting 0 -- measured by an independent audit that
+    injected real drift and watched it ship.  A guard whose failure mode is
+    "silently not run" is not a guard.
+    """
+    if not cond:
+        raise SystemExit("FATAL: " + msg)
+
+
+def _table(path):
+    with open(path, encoding="utf-8") as fh:
+        return json.load(fh)
+
+
+def check_table_content():
+    """Assert the generated tables say the things the docs promise.
+
+    The previous checks compared `sha256(package copy)` against
+    `sha256(source)` immediately after `shutil.copyfile(src, dst)`.  That proves
+    the copy succeeded and nothing else: a table reduced to `{"names": {}}`
+    passed with "byte-identical ... OK" (measured).  What must be checked is the
+    CONTENT, and the facts to check are already written down in the docs -- 89
+    attributes, 62 armour classes, 55 command types, and the specific ids that
+    were the whole reason these tables exist.
+    """
+    sch = os.path.join(PKG, "schema")
+    types = _table(os.path.join(sch, "effect_command_types.json"))
+    attrs = _table(os.path.join(sch, "effect_attributes.json"))
+    classes = _table(os.path.join(sch, "armor_classes.json"))
+    res = _table(os.path.join(sch, "resource_labels.json"))
+    alabels = _table(os.path.join(sch, "attribute_labels.json"))
+    zh = _table(os.path.join(sch, "effect_labels_zh.json"))
+
+    check(len(types.get("types") or {}) == 55,
+          "effect_command_types.json must hold 55 command types, holds %d"
+          % len(types.get("types") or {}))
+    check(len(attrs.get("attributes") or {}) == 89,
+          "effect_attributes.json must hold 89 attributes, holds %d"
+          % len(attrs.get("attributes") or {}))
+    check(len(classes.get("classes") or {}) == 62,
+          "armor_classes.json must hold 62 classes, holds %d"
+          % len(classes.get("classes") or {}))
+    check(len(zh.get("attributes") or {}) == 89,
+          "effect_labels_zh.json must translate 89 attributes, has %d"
+          % len(zh.get("attributes") or {}))
+
+    # Spot checks: ids whose correct name was expensive to establish.  A table
+    # that keeps its `note` (so the branch guard passes) but has garbage values
+    # fails here -- that was the audit's S5 scenario.
+    spot = [
+        (attrs, "attributes", "0", "Hit Points"),
+        # AGE's own wording carries a parenthetical scope note for this one; the
+        # first version of this check expected the bare "Movement Speed" and was
+        # correctly rejected.
+        (attrs, "attributes", "5", "Movement Speed (types 20-80)"),
+        (classes, "classes", "0", "Archer"),
+        (alabels, "names", "0", "Hit Points"),
+        (alabels, "names", "1", "Line of Sight"),
+        # the 11 ids AGE cannot name and the game can: the entire reason
+        # build_attribute_labels.py exists
+        (alabels, "names", "118", "Damage Reflection"),
+        (alabels, "names", "158", "Train Locations Entry Mod"),
+        (res, "names", "0", "Food Storage"),
+        # the five the AGE ini could not name at all
+        (res, "names", "501", "Polemarch Build Limit"),
+        (res, "names", "506", "Achaemenid Town Center Local Upgrade"),
+        (res, "names", "514", "Helepolis Limit"),
+    ]
+    for table, key, ident, want in spot:
+        got = (table.get(key) or {}).get(ident)
+        check(got == want,
+              "%s[%r] must be %r, is %r" % (key, ident, want, got))
+
+    check(len(res.get("names") or {}) >= 300,
+          "resource_labels.json must name at least 300 ids, names %d"
+          % len(res.get("names") or {}))
+    check(len(alabels.get("names") or {}) >= 200,
+          "attribute_labels.json must name at least 200 ids, names %d"
+          % len(alabels.get("names") or {}))
+
+
+def check_vendored_python():
+    """Assert each vendored module is what its transform claims.
+
+    Neither `writer.py` nor `locate.py` nor the two name tables had ANY check:
+    an audit injected `WRITER_DRIFT = 'LEAKED'` into the research source, ran
+    this script, and watched it print six OK lines and ship the drift.  These
+    checks are about the transform's own claims -- the patched imports are
+    present, the research-side names are gone, and each file compiles.
+    """
+    writer = os.path.join(PKG, "dat", "writer.py")
+    locator = os.path.join(PKG, "dat", "locate.py")
+    wtext = open(writer, encoding="utf-8").read()
+    ltext = open(locator, encoding="utf-8").read()
+    check("from . import parser as _pd" in wtext,
+          "vendored writer does not import the packaged parser")
+    check("sys_path_guard" not in wtext,
+          "vendored writer still carries the research tree's sys.path hack")
+    check("from . import parser as P" in ltext,
+          "vendored locator does not import the packaged parser")
+    check("import parse_dat as P" not in ltext,
+          "vendored locator still imports the research module name")
+    check('if __name__ == "__main__":' not in ltext,
+          "vendored locator still carries its demo main()")
+    for path, text in ((writer, wtext), (locator, ltext)):
+        try:
+            compile(text, path, "exec")
+        except SyntaxError as exc:
+            raise SystemExit("FATAL: vendored %s does not compile: %s"
+                             % (os.path.basename(path), exc))
+    for name in ("unit_names.json", "tech_names.json"):
+        p = os.path.join(PKG, "semantic", "data", name)
+        d = _table(p)
+        check(len(d) >= 1500,
+              "%s must resolve at least 1500 ids, holds %d" % (name, len(d)))
 
 
 def ensure_dirs():
@@ -174,8 +347,6 @@ def vendor_writer():
     # the __main__ helper also does `import parse_dat`
     src = src.replace("    import parse_dat\n",
                       "    from aoe2mod.dat import parser as parse_dat\n")
-    src = src.replace("    p = parse_dat.Parser(raw)\n",
-                      "    p = parse_dat.Parser(raw)\n")
 
     header = (
         '"""write_dat.py -- re-serializer for AoE2 DE ``.dat`` files.\n\n'
@@ -186,7 +357,11 @@ def vendor_writer():
     # replace the original module docstring, keep everything after it
     body = src.split('"""', 2)[-1]
     out = header + body
-    with open(dst, "w", encoding="utf-8") as fh:
+    # newline="" keeps the source's own line endings.  Without it Windows
+    # rewrites every \n as \r\n, so a byte-identical copy shows up in git
+    # as a whole-file diff while the sha256 provenance still passes -- the
+    # two checks disagreed because only one of them looked at bytes.
+    with open(dst, "w", encoding="utf-8", newline="") as fh:
         fh.write(out)
     return dst
 
@@ -210,21 +385,28 @@ def vendor_locator():
     src = src.replace(old_import, "from . import parser as P\n", 1)
 
     # Drop the human demo: the product calls locate()/find_units() directly.
-    cut = src.find('if __name__ == "__main__":')
+    # This has to cut the `def main()` too, not just the `__main__` guard --
+    # the first version of this function cut only the guard and then its own
+    # docstring claimed "the demo main() is trimmed", so the shipped locator
+    # carried 127 lines of dead demo that write files into the package.
+    cut = src.find("\ndef main(")
     if cut < 0:
-        raise SystemExit("FATAL: locator has no __main__ guard to trim.")
+        cut = src.find('if __name__ == "__main__":')
+    if cut < 0:
+        raise SystemExit("FATAL: locator has no demo to trim.")
     src = src[:cut].rstrip() + "\n"
 
     header = (
         '"""locate.py -- find and mark the byte offsets of unit records.\n\n'
         "VENDORED from _probe/datparse/intent_patch.py by tools/sync_engine.py\n"
-        "(the demo main() is trimmed).  Do not edit here; edit the research copy\n"
-        "and re-run the sync, or the verification lineage is lost.\n\n"
+        "(the demo main() and its __main__ guard are trimmed).  Do not edit here;\n"
+        "edit the research copy and re-run the sync, or the verification lineage\n"
+        "is lost.\n\n"
         "``locate(data)`` returns ``(civs, civs_start, gv, tail)`` and\n"
         "``find_units(civs, unit_id)`` returns every per-civ physical record.\n"
         '"""\n')
     body = src.split('"""', 2)[-1]
-    with open(dst, "w", encoding="utf-8") as fh:
+    with open(dst, "w", encoding="utf-8", newline="") as fh:
         fh.write(header + body)
     return dst
 
@@ -322,6 +504,10 @@ def vendor_sldencode():
 def vendor_names():
     out = []
     for src, name in SRC_NAMES:
+        if not os.path.exists(src):
+            raise SystemExit(
+                "FATAL: %s is missing.  Run _probe/semantic/extract_ids.py then "
+                "_probe/semantic/build_semantic.py." % os.path.relpath(src, ROOT))
         dst = os.path.join(PKG, "semantic", "data", name)
         shutil.copyfile(src, dst)
         out.append((dst, len(open(dst, "rb").read())))
@@ -352,11 +538,20 @@ def main():
     for label, path in (("parser", SRC_PARSER), ("writer", SRC_WRITER),
                         ("locator", SRC_LOCATOR), ("sldlib", SRC_SLDLIB),
                         ("sldencode", SRC_SLDENCODE)):
+        if not os.path.exists(path):
+            raise SystemExit("FATAL: research source %s is missing."
+                             % os.path.relpath(path, ROOT))
         manifest["sources"][label] = {
             "path": os.path.relpath(path, ROOT).replace("\\", "/"),
             "sha256": sha256(path),
             "bytes": os.path.getsize(path),
         }
+
+    # BEFORE copying anything: has a research source changed since the last run
+    # that passed every check?  Refusing here is the only way this script can
+    # notice drift, because vendoring is a byte copy -- it ships any change by
+    # design.
+    check_source_baseline(manifest)
 
     p = vendor_parser()
     w = vendor_writer()
@@ -385,9 +580,6 @@ def main():
     ]
 
     mp = os.path.join(PKG, "ENGINE_PROVENANCE.json")
-    with open(mp, "w", encoding="utf-8") as fh:
-        json.dump(manifest, fh, indent=2)
-        fh.write("\n")
 
     print("vendored parser -> %s (%d B)"
           % (os.path.relpath(p, ROOT), os.path.getsize(p)))
@@ -406,44 +598,67 @@ def main():
     print("provenance      -> %s" % os.path.relpath(mp, ROOT))
 
     # the parser's own sha must survive byte-for-byte
-    assert sha256(p) == sha256(SRC_PARSER), "parser copy is not byte-identical"
+    check(sha256(p) == sha256(SRC_PARSER), "parser copy is not byte-identical")
     print("parser copy is byte-identical to the verified research file: OK")
-    assert sha256(sld) == sha256(SRC_SLDLIB), "sldlib copy is not byte-identical"
+    check(sha256(sld) == sha256(SRC_SLDLIB), "sldlib copy is not byte-identical")
     print("sldlib copy is byte-identical to the verified research file: OK")
     # sldencode gets one import line rewritten, so it cannot be byte-identical.
     # Assert the patched copy equals the source under exactly that one change,
     # which is stricter than comparing lengths.
     _enc_src = open(SRC_SLDENCODE, "r", encoding="utf-8").read()
     _enc_dst = open(enc, "r", encoding="utf-8").read()
-    assert _enc_dst == _enc_src.replace("\nimport sldlib as S\n",
-                                        "\nfrom . import sld as S\n"), \
-        "sldencode copy differs from the research file by more than the import"
-    assert "import sldlib" not in _enc_dst, \
-        "the vendored sldencode still imports the research module name"
+    check(_enc_dst == _enc_src.replace("\nimport sldlib as S\n",
+                                       "\nfrom . import sld as S\n"),
+          "sldencode copy differs from the research file by more than the import")
+    check("import sldlib" not in _enc_dst,
+          "the vendored sldencode still imports the research module name")
     print("sldencode copy differs from the research file only in its import: OK")
-    # and the generated tables must arrive unmodified
+    # byte-identity of the copies.  On its own this proves only that
+    # shutil.copyfile worked, so it is NOT the interesting check -- the content
+    # checks below are.
     for src, name in SRC_EFFECT_TABLES:
-        assert sha256(os.path.join(PKG, "schema", name)) == sha256(src), \
-            "effect table %s is not byte-identical to the generated file" % name
+        check(sha256(os.path.join(PKG, "schema", name)) == sha256(src),
+              "effect table %s is not byte-identical to the generated file" % name)
     print("branch-aware effect tables are byte-identical to the generated files: OK")
     if os.path.exists(SRC_LABEL_ZH):
-        assert sha256(os.path.join(PKG, "schema", "effect_labels_zh.json")) \
-            == sha256(SRC_LABEL_ZH), "effect_labels_zh.json is not byte-identical"
-    # and the resource name tables, which are generated from the game's own
-    # 15000+type string block (not from AGE's ini -- see build_resource_labels.py)
+        check(sha256(os.path.join(PKG, "schema", "effect_labels_zh.json"))
+              == sha256(SRC_LABEL_ZH),
+              "effect_labels_zh.json is not byte-identical")
     for src, name in SRC_RESOURCE_LABELS:
         if os.path.exists(src):
-            assert sha256(os.path.join(PKG, "schema", name)) == sha256(src), \
-                "resource label table %s is not byte-identical to the generated file" % name
+            check(sha256(os.path.join(PKG, "schema", name)) == sha256(src),
+                  "resource label table %s is not byte-identical to the generated "
+                  "file" % name)
     print("resource name tables are byte-identical to the generated files: OK")
-    # and the attribute name tables, generated from the game's own 12200+attribute
-    # id block (not from AGE's effect_attributes.json -- see
-    # build_attribute_labels.py)
     for src, name in SRC_ATTRIBUTE_LABELS:
         if os.path.exists(src):
-            assert sha256(os.path.join(PKG, "schema", name)) == sha256(src), \
-                "attribute label table %s is not byte-identical to the generated file" % name
+            check(sha256(os.path.join(PKG, "schema", name)) == sha256(src),
+                  "attribute label table %s is not byte-identical to the "
+                  "generated file" % name)
     print("attribute name tables are byte-identical to the generated files: OK")
+
+    # WHAT THE TABLES SAY.  Everything above is about copying; this is about
+    # content, and it is the part that would catch a generator that produced a
+    # well-formed, byte-identical, useless table.
+    check_table_content()
+    print("table contents carry the names the docs promise: OK")
+    check_vendored_python()
+    print("vendored python carries its transforms and compiles: OK")
+
+    # Rewrite the manifest LAST, now that every check has passed.  It used to be
+    # written before the asserts, so a run that failed still left a fresh
+    # provenance file describing the bad state.
+    manifest["checked"] = {
+        "table_content": True,
+        "vendored_python": True,
+        "parser_and_sldlib_byte_identical": True,
+        "sldencode_transform_only": True,
+    }
+    with open(mp, "w", encoding="utf-8", newline="\n") as fh:
+        json.dump(manifest, fh, indent=2)
+        fh.write("\n")
+    print("provenance      -> %s (written after every check passed)"
+          % os.path.relpath(mp, ROOT))
     return 0
 
 

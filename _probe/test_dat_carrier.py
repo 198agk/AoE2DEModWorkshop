@@ -33,7 +33,7 @@ is what makes that possible, so without it the call is REFUSED rather than silen
 producing an unstartable mod.  The manifest reports `dat_is_carrier` and a warning
 in place of the usual "byte-identical to base, so this mod changes nothing".
 
-Run:  $env:PYTHONPATH='D:\\Software\\DeepSeek Harness\\工作区2'; python _probe\test_dat_carrier.py
+Run:  $env:PYTHONPATH='D:\\Software\\AI\\帝国项目'; python _probe\test_dat_carrier.py
 """
 import json
 import os

@@ -269,7 +269,7 @@ def main():
         "types": zh_types_map,
     }
     out = os.path.join(HERE, "effect_labels_zh.json")
-    with open(out, "w", encoding="utf-8") as fh:
+    with open(out, "w", newline="\n") as fh:
         json.dump(doc, fh, ensure_ascii=False, indent=1)
         fh.write("\n")
 

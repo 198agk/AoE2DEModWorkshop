@@ -88,7 +88,8 @@ print("=" * 76)
 print("    mods with a .dat but no JSON under dat/ : %d  %s" % (len(dat_only), dat_only))
 print("    mods with JSON but no .dat              : %d  %s" % (len(json_only), json_only))
 print("    mods with BOTH                          : %d  %s" % (len(mixed), mixed))
-check(True, "the corpus was enumerated")
+check(len(rows) > 0, "the corpus was enumerated (%d mod(s) touch the DAT root)"
+      % len(rows))
 
 # The decisive shape: to attribute an effect to a JSON override, a mod must
 # carry that JSON AND NOT a .dat (otherwise the .dat explains it).
@@ -142,11 +143,12 @@ def sha(p):
         return hashlib.sha256(fh.read()).hexdigest()[:16]
 
 
-changed, identical, absent = [], [], []
+changed, identical, absent, compared = [], [], [], 0
 for n, fs in rows:
     for f in fs:
         if f.lower().endswith(".dat"):
             continue
+        compared += 1
         mine = os.path.join(MODS, n, DAT_REL, f)
         base = os.path.join(GAME, DAT_REL, f)
         if not os.path.exists(base):
@@ -162,7 +164,9 @@ print()
 print("    dat-layer JSON files that differ from the game's copy : %d" % len(changed))
 print("    ...that are byte-identical to the game's copy         : %d" % len(identical))
 print("    ...with no base file to compare against               : %d" % len(absent))
-check(True, "every shipped dat-layer JSON was compared against the base game's copy")
+check(len(changed) + len(identical) + len(absent) == compared,
+      "every shipped dat-layer JSON was bucketed exactly once (%d compared)"
+      % compared)
 # A JSON file identical to base is not an override attempt at all.
 for n, f in identical:
     print("        NOTE: %s ships %s unchanged -- not an override attempt" % (n, f))

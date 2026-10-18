@@ -20,6 +20,10 @@ SUITES = [
     ("_probe\\verify_tech_cost_artifact.py", "VALID"),
     ("_probe\\verify_agevariant_artifact.py", "VALID"),
     ("_probe\\test_full_sweep.py", "AGREE"),
+    # plan/build cross-boundary sweep: relocates the 85 MB tech section once per
+    # tech.effect case (~50 s each), so it lives here with the other ~20 min
+    # suites rather than in the fast run_suites.py.
+    ("_probe\\test_plan_matches_build.py", "AGREE ON EVERY CASE"),
 ]
 
 env = dict(os.environ)

@@ -7,7 +7,7 @@ real files at run time (not reciting a table). Read-only: nothing is written
 outside stdout. Full write-up: `_probe/team/auditor/REPORT.md`.
 
 Run:  $env:PYTHONIOENCODING='utf-8'
-      $env:PYTHONPATH='D:\\Software\\DeepSeek Harness\\工作区2'
+      $env:PYTHONPATH='D:\\Software\\AI\\帝国项目'
       python _probe/team_audit_design.py
 """
 

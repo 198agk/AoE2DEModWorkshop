@@ -33,3 +33,10 @@ _shots/
 # --- scratch --------------------------------------------------------------
 _probe/tmp_*.py
 _probe/_newlog.md
+
+# --- team audit artifacts --------------------------------------------------
+# Each auditor teammate copies its own aoe2mod tree and dozens of 11.4 MB .dat
+# scratch copies; keep only their REPORT.md, never the scratch/mutation forests.
+_probe/team/*/scratch/
+_probe/team/*/mutations/
+_probe/team/*/__pycache__/

@@ -42,7 +42,7 @@ added folder is noticed at all.  Nor was the failure it "explained" ever one
 clean experiment -- the single tree-only attempt (2026-10-14) could not have
 moved the menu anyway, because the menu reads the shipped panel file.
 
-Run:  $env:PYTHONPATH='D:\\Software\\DeepSeek Harness\\工作区2'; python _probe\test_mod_name_resolution.py
+Run:  $env:PYTHONPATH='D:\\Software\\AI\\帝国项目'; python _probe\test_mod_name_resolution.py
 """
 import json
 import os

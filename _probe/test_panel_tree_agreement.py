@@ -43,7 +43,7 @@ count is **10,753 entries over 70 (file, civilization) pairs**, average 160.5 pe
 civilization.  A single-node measurement is not evidence until the aggregate is
 measured the same way.
 
-Run:  $env:PYTHONPATH='D:\\Software\\DeepSeek Harness\\工作区2'; python _probe\test_panel_tree_agreement.py
+Run:  $env:PYTHONPATH='D:\\Software\\AI\\帝国项目'; python _probe\test_panel_tree_agreement.py
 """
 import os
 import sys
@@ -209,6 +209,12 @@ if len(mt) == 3:
     exe_m = mt["AoE2DE_s.exe"]
     check("the panel file is OLDER than the engine that reads it",
           panel_m < exe_m, "panel=%s exe=%s" % (panel_m, exe_m))
+else:
+    missing = ["resources/_common/dat/futuravailableunits.json",
+               "resources/_common/dat/CivTechTrees/SICILIANS.json",
+               "AoE2DE_s.exe"]
+    check("all three files exist so the mtime comparison can run",
+          False, "missing: %s" % [m for m in missing if m not in mt])
 
 print()
 print("PANEL-VS-TREE: 99.4%% identical.  The in-game experiment decides which copy")

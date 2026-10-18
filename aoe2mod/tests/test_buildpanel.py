@@ -91,12 +91,13 @@ def main():
 
     print()
     print("D  inserting a duplicate is refused, not silently doubled")
+    raised = False
     try:
         BP.insert_entry(after, key, bldg, entry)
-        check(False, "a second identical insert raises PanelError")
     except BP.PanelError as e:
-        check(True, "a second identical insert raises PanelError",
-              str(e)[:70])
+        raised = True
+        print("     refused: %s" % str(e)[:70])
+    check(raised, "a second identical insert raises PanelError")
 
     print()
     print("E  removal is surgical, and removing nothing is a no-op")

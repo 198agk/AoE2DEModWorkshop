@@ -153,13 +153,9 @@ else:
     # edits only the Champi Scout.  The invariant being pinned is about the GAME's
     # bytes, and those are checked either way -- so the contrast is derived from
     # what the mod actually contains, not assumed.
-    if 5 in _units_of(_mobj, "Britons", 87):
-        check(True, "the mod's copy ALSO gives Britons Hand Cannoneer at the Range")
-    else:
-        check(5 not in _units_of(_mobj, "Britons", 87),
-              "this mod does not touch the Hand Cannoneer entry (so no contrast "
-              "is available for it here -- that is a fact about the artifact, "
-              "not a failure)")
+    _hc_in_mod = 5 in _units_of(_mobj, "Britons", 87)
+    print("     the mod's copy %s Britons Hand Cannoneer at the Range"
+          % ("ALSO gives" if _hc_in_mod else "does NOT touch"))
     check(os.path.getsize(game_fu) != len(mt.encode("utf-8")),
           "and the two files are not the same bytes",
           "game %d B / mod %d B" % (os.path.getsize(game_fu),

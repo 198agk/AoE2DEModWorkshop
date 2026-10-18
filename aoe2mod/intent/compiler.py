@@ -845,6 +845,9 @@ def resolve(intent, schema, semantic_index=None, bindings=None):
     is passed in when the caller already has it and loaded from disk otherwise,
     so no caller has to care.
     """
+    if not isinstance(intent, dict):
+        raise IntentError("an intent must be a dict, got %s"
+                          % type(intent).__name__)
     ix = semantic_index or semantic.index()
     it = intent.get("intent")
     if it not in schema["intents"]:
@@ -1605,6 +1608,16 @@ def collect_targets(data, produced, resolved, b, safety):
         new = checked_value(before, kind, resolved, tb, safety, width,
                             _signed(tb))
         prim_new.append((before, new))
+        if new == before:
+            # Writing the value the file already holds changes no byte.  Keeping
+            # it would let `delta: 0` report 63 edits, build a 12 MB `.dat` that
+            # is byte-identical to the base, and claim `changes_dat` in the
+            # manifest -- measured by an independent audit as case 21.
+            #
+            # `prim_new` still gets the entry: a mirror indexes into it by
+            # POSITION, so skipping the append would silently shift every later
+            # mirror onto another primary's delta.
+            continue
         out.append((off, width, kind, label, before, new, _signed(tb)))
     # Second pass: mirrors are checked with a synthetic delta so they get the
     # same non-negativity and overflow rules as everything else.
@@ -1723,16 +1736,11 @@ def _compile_tech_edits(data, tail, gv, resolved, bindings, safety, it):
                        "tech[%d]" % idx)
 
     if not edits:
-        what = resolved.stat or b.get("label") or it
         if b["source"] == "cost_entry":
-            # The resource is absent from all 3 slots.  Report that -- the
-            # schema note promises it is reported and not silently skipped.
-            raise IntentError(
-                "%s has no %s field to change (none of its 3 cost slots "
-                "declares that resource)" % (resolved.entity.display, what))
-        raise IntentError(
-            "%s has no %s field to change (it declares no research location)"
-            % (resolved.entity.display, what))
+            why = "none of its 3 cost slots declares that resource"
+        else:
+            why = "it declares no research location"
+        raise IntentError(no_field_message(resolved, b, it, why))
     return bytes(buf), edits
 
 
@@ -1840,22 +1848,60 @@ def compile_edits(data, civs, resolved, bindings, schema, tail=None, gv=None,
 
     buf = bytearray(data)
     edits = []
+    had_field = False
     for ci, cname, unit in hits:
         unit["civ"] = ci
         produced = list(_targets_for_unit(bindings, unit, b))
         if not produced:
             # Not a bug: e.g. a building has no displayed_attack.  Report it.
             continue
+        had_field = True
         _write_targets(data, buf, edits, produced, resolved, b, safety,
                        "civ[%d] %s" % (ci, cname))
 
     if not edits:
-        # `stat` is None for the attack/cost intents, so name the binding instead.
-        what = resolved.stat or b.get("label") or it
-        raise IntentError(
-            "%s has no %s field to change (its unit type does not store one)"
-            % (resolved.entity.display, what))
+        # Two different failures, two different sentences.  `had_field` is False
+        # when no record carries this field at all; it is True when the field
+        # exists but the edit wrote the value already there (`delta: 0`), which
+        # `collect_targets` drops so that a 12 MB no-op never ships.
+        if had_field:
+            raise IntentError(zero_delta_message(resolved, b.get("label")))
+        raise IntentError(no_field_message(
+            resolved, b, it, "its unit type does not store one"))
     return bytes(buf), edits
+
+
+def zero_delta_message(resolved, label):
+    """The sentence for "this edit resolves to no change at all".
+
+    ``delta: 0`` is legal input and resolves to the entity, so the preview used
+    to answer ``edit_count: 63`` and the build used to emit a 12 MB ``.dat`` whose
+    bytes are identical to the base one.  The mod then does nothing while its
+    manifest says it changed the game.  Shared by both entry points so the
+    preview and the refusal use one sentence.
+    """
+    return "nothing would change: %s stays at its current %s" % (
+        resolved.entity.display, label or resolved.stat or "value")
+
+
+def no_field_message(resolved, binding, intent_name, why=""):
+    """The sentence for "this entity has no such field to change".
+
+    Shared by ``compile_edits`` (which raises) and ``Toolkit.plan`` (which
+    returns ``editable: False`` with the same words), because an independent
+    audit measured the two drifting: the preview said "has no displayed_attack to
+    change" while the build said "has no displayed_attack field to change (its
+    unit type does not store one)", and in four cases the preview went further
+    and advertised ``edit_count`` for edits the build then refused.
+
+    ``what`` prefers the schema's own label over the raw locator key so the
+    sentence never leaks ``displayed_attack`` to a player.
+    """
+    what = resolved.stat or (binding or {}).get("label") or intent_name
+    if not why:
+        return "%s has no %s field to change" % (resolved.entity.display, what)
+    return "%s has no %s field to change (%s)" % (
+        resolved.entity.display, what, why)
 
 
 def unit_targets(civs, unit_id, allowed, stats, game_root=None):
@@ -1902,7 +1948,15 @@ def diff_offsets(a, b):
 
 
 def verify(original, patched, edits, require_geometry=True):
-    """Re-parse with the unmodified parser and prove the change is surgical."""
+    """Re-parse with the unmodified parser and prove the change is surgical.
+
+    The report carries ``proven`` and ``not_proven`` like every other strategy's
+    does.  It did not, and an independent audit measured the consequence: the
+    ``.dat`` patcher was the ONE strategy whose manifest offered a caller no
+    honest boundary, on the path where the doubt is largest (a byte patch into a
+    93 MB stream).  The lists are derived from this run's own measurements, not
+    written down, so a run that changed nothing cannot claim it did.
+    """
     report = {"ok": True, "problems": []}
 
     if len(original) != len(patched):
@@ -1934,8 +1988,48 @@ def verify(original, patched, edits, require_geometry=True):
         report["problems"].append(
             "%d changed byte(s) are NOT at any claimed edit offset, first at 0x%X"
             % (len(report["unexpected_changes"]), report["unexpected_changes"][0]))
+    if edits and not changed:
+        # A no-op that claims success is the exact failure this function exists
+        # to prevent, and the delta=0 guard in `compile_edits` is the only thing
+        # that normally stops this reaching here -- so if it does reach here, the
+        # report must say so rather than certify `ok` on a mod that changes nothing.
+        report["problems"].append(
+            "%d edit(s) claim %d byte(s) but no byte actually differs, so the "
+            "mod changes nothing" % (len(edits), len(claimed)))
 
     report["ok"] = not report["problems"]
+
+    proven = []
+    if len(original) == len(patched):
+        proven.append(
+            "the stream length is unchanged (%d bytes), so every offset this "
+            "mod is installed against still means what it meant" % len(patched))
+    if p.r.pos == len(patched):
+        proven.append(
+            "the patched stream re-parses to an exact EOF with the unmodified "
+            "parser (leftover 0), so the game's own read order still walks it")
+    if not report["unexpected_changes"]:
+        proven.append(
+            "%d changed byte(s), every one of them at an offset this edit claims"
+            % report["changed_bytes"])
+    else:
+        proven.append(
+            "%d changed byte(s), of which %d are NOT at a claimed offset -- see "
+            "problems" % (report["changed_bytes"], len(report["unexpected_changes"])))
+    report["proven"] = proven
+    report["not_proven"] = [
+        "that the running game reads this change as the numbers say -- a .dat is "
+        "re-deflated on every install, so a fresh copy still has to be loaded "
+        "once to be sure",
+    ]
+    if not edits:
+        # A no-op that claims success is the failure mode this whole file exists
+        # to prevent, so say it in the report rather than letting ok=True imply
+        # something happened.
+        report["nothing_changed"] = True
+        report["not_proven"].append(
+            "that this mod does anything at all: it carries 0 edits, so the "
+            "shipped .dat is byte-identical to the base one")
     return report
 
 
@@ -2099,6 +2193,20 @@ def compile_intent(dat_path, intent, out_path=None, parsed=None, stats=None,
     patched, edits = compile_edits(data, civs, resolved, bindings, schema,
                                    tail=tail, gv=gv, stats=stats,
                                    game_root=game_root or G.game_root_of_dat(dat_path))
+
+    # A resolved edit that writes ZERO BYTES is not a build.  `delta: 0` produced
+    # 63 claimed edits whose new value equalled the old one, so a 12 MB `.dat`
+    # byte-identical to the base shipped with a manifest claiming `changes_dat`.
+    # Counting edits cannot catch that -- the edits exist and write the value
+    # already there -- so measure the stream.
+    if not edits:
+        raise IntentError(zero_delta_message(
+            resolved, _binding_for(bindings, resolved, resolved.raw["intent"])
+            .get("label")))
+    if not diff_offsets(data, patched):
+        raise IntentError(zero_delta_message(
+            resolved, _binding_for(bindings, resolved, resolved.raw["intent"])
+            .get("label")))
     rep = verify(data, patched, edits)
 
     result = {

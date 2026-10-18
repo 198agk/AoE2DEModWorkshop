@@ -29,7 +29,8 @@ from .intent import compiler as C
 from .mod import emitter as E
 from .semantic import index as semantic
 
-__all__ = ["Toolkit", "open_toolkit"]
+__all__ = ["Toolkit", "open_toolkit", "IntentError"]
+IntentError = C.IntentError
 
 _CACHE = {}
 
@@ -297,6 +298,8 @@ class Toolkit(object):
         reported by ``resolve`` with its own message, so this returns None rather
         than inventing a refusal.
         """
+        if not isinstance(intent, dict):
+            return None
         intents_schema, _ = C.load_schema()
         spec = (intents_schema.get("intents") or {}).get(intent.get("intent"))
         if spec is None:
@@ -365,8 +368,18 @@ class Toolkit(object):
             # still equals what `apply_grant` actually reports, so the two cannot
             # drift apart in silence.
             base["edit_count"] = int(_dh.get("write_operations") or 0)
+            # The build emits FOUR files for a grant that carries the .dat half,
+            # not two: the .dat, the tree file, and -- because the menu the
+            # player sees is fed by a pre-baked panel -- the panel splice
+            # (`futuravailableunits.json` / `paphosfutureavailableunits.json`).
+            # An audit measured a plan that named only the .dat + the tree file
+            # while the build wrote the panel too; naming the third file here
+            # keeps the preview honest about what will land on disk.
             base["writes"] = ("resources/_common/dat/empires2_x2_p1.dat + "
-                              "resources/_common/dat/CivTechTrees/%s.json"
+                              "resources/_common/dat/CivTechTrees/%s.json + "
+                              "the build-panel file for that civilization "
+                              "(futuravailableunits.json or "
+                              "paphosfutureavailableunits.json)"
                               % CT.civ_file_stem(civ))
             base["changes_dat"] = True
             base["dat_is_carrier"] = False
@@ -383,6 +396,15 @@ class Toolkit(object):
             base["editable"] = False
             base["description"] = rep["reason"]
             base["reason"] = rep["reason"]
+            # A plan that has just been refused must not keep advertising work.
+            # The block above sets `edit_count` and `changes_dat` from the schema
+            # BEFORE this branch runs, so a refusal used to come back saying
+            # "2 edits, changes the .dat" next to `editable: False`.  Measured by
+            # an independent audit on `{unit: 步弓手, civ: AZTECS, action: grant}`.
+            base["edit_count"] = 0
+            base["changes_dat"] = False
+            base["dat_is_carrier"] = True
+            base["mod_contains_dat"] = True
             return base
         base["editable"] = True
         base["description"] = rep["description"]
@@ -600,6 +622,12 @@ class Toolkit(object):
             base["description"] = rep["reason"]
             base["reason"] = rep["reason"]
             base["edit_count"] = 0
+            # A refused rename writes no `.dat`, so the keys that describe what
+            # the build would ship must say "nothing" rather than keep the
+            # optimistic values set above.
+            base["changes_dat"] = False
+            base["dat_is_carrier"] = False
+            base["mod_contains_dat"] = False
             return base
         rt = rep["retarget"]
         base["editable"] = True
@@ -1737,8 +1765,8 @@ class Toolkit(object):
             # Same value-legality check the write performs, so "make Loom's
             # research time -1" is refused at preview time.  A tech is one
             # global record, so the first hit speaks for the edit.
+            b = C._binding_for(bindings, r, r.raw["intent"])
             if hits:
-                b = C._binding_for(bindings, r, r.raw["intent"])
                 safety = intents["intents"][r.raw["intent"]].get("safety", {})
                 idx, tech = hits[0]
                 if b["source"] == "effect_command":
@@ -1755,10 +1783,29 @@ class Toolkit(object):
             # Same contract as the unit branch below: a plan must not promise
             # work the build then refuses.  "Change Loom's food cost" is 0
             # edits -- Loom costs gold -- and the user has to be told that here,
-            # not by an exception after they press the button.
+            # not by an exception after they press the button.  `editable` is set
+            # too, because `edit_count: 0` beside `editable: True` is exactly the
+            # contradiction an audit measured the build refusing moments later.
+            # The sentence comes from the same helper the compiler raises from,
+            # so the two cannot word one refusal two ways.
             if base.get("edit_count") == 0:
-                base["description"] = "%s has no %s to change" % (
-                    r.entity.display, r.describe_target())
+                if b.get("source") == "cost_entry":
+                    _why = "none of its 3 cost slots declares that resource"
+                elif not hits:
+                    _why = "no such record exists"
+                else:
+                    _why = "it declares no research location"
+                base["editable"] = False
+                base["changes_dat"] = False
+                base["reason"] = C.no_field_message(r, b, r.raw["intent"], _why)
+                base["description"] = base["reason"]
+            else:
+                # `editable` and `changes_dat` were absent from this branch while
+                # `_plan_availability`/`_plan_reskin` set them, so a UI keyed on
+                # either crashed on a tech edit.  An in_place_patch success always
+                # writes the .dat, so changes_dat is unconditionally True here.
+                base["editable"] = True
+                base["changes_dat"] = True
             return base
 
         allowed = C._allowed_civs(self._civs, r.civ_scope)
@@ -1796,22 +1843,49 @@ class Toolkit(object):
             if tg:
                 per_hit.append((h, tg))
         live = [h for h, _ in per_hit]
-        # Count the BYTE WRITES the build will perform, not the records.  A
-        # mirrored edit (displayed_attack + the raw class entry that actually
-        # deals the damage) writes two slots per record, so reporting the record
-        # count here would understate the change by half and disagree with the
-        # build's own edit_count.
-        writes = sum(len(tg) for _, tg in per_hit)
-        mirrors = sum(1 for _, tg in per_hit
-                      for t in tg if len(t) >= 5 and t[4] is not None)
+        # Count the BYTE WRITES the build will perform -- through the same
+        # function the build uses, so a target that would write the value the
+        # file already holds is not counted.  That is what makes `delta: 0`
+        # report 0 here instead of 63, and it is why the old `sum(len(tg))` --
+        # which counted every target including no-ops -- could disagree with the
+        # build's own `edit_count`.  A mirrored edit (displayed_attack plus the
+        # raw class entry that actually deals the damage) writes two slots per
+        # record, and `collect_targets` returns both, so mirrors stay counted.
+        writes = 0
+        mirrors = 0
+        for h, tg in per_hit:
+            got = C.collect_targets(self._raw, tg, r, b, safety)
+            writes += len(got)
+            mirrors += sum(1 for t in got[0:] if False)
+        mirrors = sum(1 for _, tg in per_hit for t in tg
+                      if len(t) >= 5 and t[4] is not None)
         base.update({"civ_count": len({c for c, _, _ in live}),
                      "edit_count": writes,
                      "civs": sorted({c for c, _, _ in live})})
         if mirrors:
             base["mirror_count"] = mirrors
         if not live:
-            base["description"] = "%s has no %s to change" % (
-                r.entity.display, r.stat or b.get("label") or r.raw["intent"])
+            # Not editable, and the words are the SAME words `compile_edits`
+            # raises -- the two must not describe the refusal differently, or a
+            # caller reading both gets two different stories about one fact.
+            base["editable"] = False
+            base["changes_dat"] = False
+            base["edit_count"] = 0
+            base["reason"] = C.no_field_message(
+                r, b, r.raw["intent"], "its unit type does not store one")
+            base["description"] = base["reason"]
+        elif not writes:
+            # The field exists and the value is legal, but the value equals what
+            # the record already holds, so not one byte would change.  Report it
+            # the same way the build will refuse it.
+            base["editable"] = False
+            base["changes_dat"] = False
+            base["edit_count"] = 0
+            base["reason"] = C.zero_delta_message(r, b.get("label"))
+            base["description"] = base["reason"]
+        else:
+            base["editable"] = True
+            base["changes_dat"] = True
         # Only worth mentioning when the edit really spans more than one record.
         if len(fam) > 1:
             base["variants"] = [i for i in fam if i != r.entity.id]
@@ -1908,6 +1982,13 @@ class Toolkit(object):
         # patch at all).  An unknown strategy is refused rather than falling
         # through to the byte patcher.
         strategy = self._strategy(intent)
+        if strategy is None:
+            # resolve() owns the "unknown intent" and "not a dict" wording, so
+            # run it here rather than falling through to "declares compile
+            # strategy None" -- that message is for a KNOWN intent whose strategy
+            # this build does not implement, a different situation.
+            intents_schema, _ = C.load_schema()
+            C.resolve(intent, intents_schema)
         if strategy == "civtechtrees_json":
             return self._build_availability(intent, out_dir, title=title,
                                             author=author,
@@ -1965,7 +2046,21 @@ class Toolkit(object):
         man["reparse_leftover"] = len(raw2) - p2.r.pos
         man["reparse_ok"] = p2.r.pos == len(raw2)
         man["verification"] = rep["verification"]
-        man["resolved"] = rep["resolved"]
+        # `resolved.describe()` is the generic three-part shape; the plan()
+        # path computes a MORE detailed sentence for some intents (a tech
+        # effect names the attribute AND the target unit; a resource row names
+        # the operation).  A build that reports only the generic shape tells a
+        # caller a shorter story than the preview showed -- D12 in the audit.
+        # Take the same sentence plan() produced, so "plan vs build" never
+        # diverge on wording.  plan() is idempotent and re-resolves the same
+        # intent, so this cannot disagree with `rep` on the actual bytes.
+        try:
+            _plan = self.plan(intent)
+            man["resolved"] = _plan.get("description") or rep["resolved"]
+        except C.IntentError:
+            # A refusal never reaches here (build raises first); this is a
+            # safety net so a wording-only failure cannot hide a valid build.
+            man["resolved"] = rep["resolved"]
         man["edits"] = len(rep["edits"])
         # `plan()` reports how many physical fields an intent reaches; `build()`
         # must report the same key or a caller cannot compare what it was

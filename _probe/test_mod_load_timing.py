@@ -53,7 +53,7 @@ is necessary but not sufficient -- the game must be (re)started after the copy.
 Every conclusion drawn earlier from "the mod loaded and the menu did not change" is
 therefore void -- including the 2026-10-14 result that made this write "unproven".
 
-Run:  $env:PYTHONPATH='D:\\Software\\DeepSeek Harness\\工作区2'; python _probe\test_mod_load_timing.py
+Run:  $env:PYTHONPATH='D:\\Software\\AI\\帝国项目'; python _probe\test_mod_load_timing.py
 """
 import os
 import re
@@ -137,7 +137,7 @@ print("     sessions that enabled one of my mods during startup: %d of %d"
       % (len(bad), len(rows)))
 print("     earliest such session: %s"
       % (min(bad) if bad else "none"))
-check("the log-position fact is reported without asserting a direction", True)
+print("     [note] the log-position fact is reported without asserting a direction:")
 
 print()
 print("D  WHAT THIS MEASURES, AND WHAT IT DOES NOT")
