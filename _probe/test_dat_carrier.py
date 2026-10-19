@@ -162,22 +162,29 @@ check("the mod still changes the JSON layers it promised",
                                   "CivTechTrees", "BRITONS.json")))
 
 print()
-print("F  a REVOKE has no verified `.dat` recipe, so it still carries")
-# The asymmetry is real and must be observable: only the grant recipe was confirmed
-# in game (m27131).  A caller that cannot tell "wrote all three layers" from "wrote
-# the two nobody has watched render" cannot warn the user honestly.
+print("F  a REVOKE now edits the `.dat` too -- since 2026-10-19 (`dsh test v17`)")
+# This section used to assert the OPPOSITE: that a revoke shipped a byte-identical
+# carrier because no recipe for taking a unit away had ever been confirmed in game.
+# `dsh test v17` confirmed one -- and confirmed the ordering rule with it (the same
+# disable won in the Castle Age and lost in the Dark Age, because the last command
+# to fire wins).  So the asymmetry is gone and what must stay observable is the
+# composition: the `.dat` IS edited, it is NOT a carrier, and the manifest reports
+# the work rather than a refusal.
 out2 = os.path.join(HERE, "out_carrier_pin_revoke")
 m2 = tk.build({"intent": "unit.availability", "unit": 692, "civ": "Vikings",
                "action": "revoke"}, out2, title="revoke pin",
               author="aoe2mod probe", overwrite=True)
 check("it still emits a mod", os.path.isdir(out2))
-check("the `.dat` is a carrier here", m2.get("dat_is_carrier") is True,
+check("the `.dat` here is NOT a carrier", m2.get("dat_is_carrier") is False,
       "got %r" % m2.get("dat_is_carrier"))
-check("changes_dat is False", m2.get("changes_dat") is False,
+check("changes_dat is True", m2.get("changes_dat") is True,
       "got %r" % m2.get("changes_dat"))
 _dh = m2.get("dat_half") or {}
-check("the manifest carries the reason the `.dat` half was skipped",
-      bool(_dh.get("reason")), "dat_half=%r" % (_dh,))
+check("the manifest reports the `.dat` operations that ran",
+      bool(_dh.get("ok")) and len(_dh.get("edits") or ()) > 0,
+      "dat_half=%r" % ({k: _dh.get(k) for k in ("ok", "tech", "edits")},))
+check("and it names which technology carried the disable",
+      isinstance(_dh.get("tech"), int), "dat_half.tech=%r" % (_dh.get("tech"),))
 
 print()
 print("DAT CARRIER: a mod writing under the DAT storage point now carries the .dat,")

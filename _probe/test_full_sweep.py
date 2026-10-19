@@ -149,7 +149,9 @@ for case in CASES:
         _dh = (intents_schema["intents"][case["intent"]]["compile"]
                .get("dat_half") or {})
         _wants_dat = case["action"] in (_dh.get("actions") or ())
-        _want_edits = int(_dh.get("write_operations") or 0) if _wants_dat else 0
+        _want_edits = int(((_dh.get("write_operations_by_action") or {})
+                           .get(case["action"], _dh.get("write_operations"))
+                           or 0)) if _wants_dat else 0
         if bool(plan.get("changes_dat")) != _wants_dat:
             bad.append((case, "plan changes_dat=%s but the schema declares a "
                               "`.dat` half for actions %s"

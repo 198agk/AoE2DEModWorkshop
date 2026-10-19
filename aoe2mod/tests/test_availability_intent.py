@@ -61,16 +61,22 @@ def main():
           "and declares that a .dat IS in the product, because a grant writes it")
     # The routing and the `.dat` half are two different machines and both are
     # declared: `strategy` routes the JSON layers, `dat_half` says which ACTION
-    # additionally gets the recipe the user confirmed in game (m27131).  A revoke
-    # has no verified recipe, so it is deliberately absent from that list.
+    # additionally gets the recipe the user confirmed in game.  BOTH actions have
+    # one now: the grant on 2026-10-16 (`dsh test v7`) and the revoke on
+    # 2026-10-19 (`dsh test v17`).
     _dh = spec["compile"].get("dat_half") or {}
-    check(_dh.get("actions") == ["grant"],
-          "and declares the `.dat` half for the grant action alone",
+    check(_dh.get("actions") == ["grant", "revoke"],
+          "and declares the `.dat` half for BOTH actions",
           json.dumps(_dh, ensure_ascii=False)[:200])
     check(int(_dh.get("write_operations") or 0) > 0,
-          "and declares how many write operations that half performs, so a "
+          "and declares how many write operations each action performs, so a "
           "preview can report a count without running the 25 s recipe",
           repr(_dh.get("write_operations")))
+    _by = _dh.get("write_operations_by_action") or {}
+    check(isinstance(_by.get("grant"), int) and isinstance(_by.get("revoke"), int),
+          "each action declares its OWN count, because they write different "
+          "numbers (a grant also patches the training button)",
+          json.dumps(_by))
     check("delta" not in spec["fields"] and "value" not in spec["fields"],
           "the intent takes no delta/value (it is a set-membership change)")
 
@@ -101,7 +107,9 @@ def main():
     # the promise -- asserting it here is what kept this test green while the plan
     # and the build disagreed.  What the plan must get right is the SHAPE and the
     # COUNT, both read from the schema so the two sides cannot drift.
-    _want_edits = int((spec["compile"]["dat_half"]).get("write_operations") or 0)
+    _want_edits = int((_by.get(plan.get("action") or "grant"))
+                      or (spec["compile"]["dat_half"]).get("write_operations")
+                      or 0)
     check(plan.get("edit_count") == _want_edits and plan.get("changes_dat") is True,
           "the plan promises the `.dat` write operations the build performs",
           json.dumps({k: plan.get(k) for k in ("edit_count", "changes_dat")}))

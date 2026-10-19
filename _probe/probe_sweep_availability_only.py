@@ -61,9 +61,13 @@ for case in CASES:
     dh = (intents_schema["intents"][case["intent"]]["compile"]
           .get("dat_half") or {})
     wants_dat = case["action"] in (dh.get("actions") or ())
-    want_edits = int(dh.get("write_operations") or 0) if wants_dat else 0
-    print("    schema dat_half: actions=%s write_operations=%s -> wants_dat=%s"
-          % (dh.get("actions") or [], dh.get("write_operations"), wants_dat))
+    want_edits = int(((dh.get("write_operations_by_action") or {})
+                      .get(case["action"], dh.get("write_operations")) or 0)
+                     if wants_dat else 0)
+    print("    schema dat_half: actions=%s write_operations_by_action=%s "
+          "-> wants_dat=%s edits=%d"
+          % (dh.get("actions") or [], dh.get("write_operations_by_action") or
+             dh.get("write_operations"), wants_dat, want_edits))
     if bool(plan.get("changes_dat")) != wants_dat:
         bad.append((label, "plan changes_dat=%s but schema wants_dat=%s"
                     % (plan.get("changes_dat"), wants_dat)))

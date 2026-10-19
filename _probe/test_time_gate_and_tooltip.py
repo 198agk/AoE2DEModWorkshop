@@ -88,21 +88,39 @@ fourth time in this investigation that shipped text was mistaken for behaviour.
     the two tree files (byte-identical `.dat` carrier, panel untouched, chains
     asserted closed) and NEITHER side moved in game.  The mod loaded.  See the
     header of this file.
-  * **the only PROVEN lever**: the `.dat` `train_location.ButtonID` byte.  `dsh
-    test v5` moved British 2550 from slot 1 to slot 4 and the button appeared.
-    `dsh test v16` (2026-10-19) isolates it with two bytes and no JSON.
+  * **ALSO REFUTED 2026-10-19**: "the `.dat` button slot alone is enough".  v16
+    sent one `.dat`, no JSON at all, exactly two bytes (British 2550 slot 1->4,
+    Incas 2550 gate `Disabled` 0->1), verified byte-exact and mounted by the
+    engine -- and the user reported neither side changed.  So v5's single byte
+    was the last missing byte of a set that already carried the `type 2` enable
+    effect; the slot decides WHICH CELL a granted unit lands in, not whether it
+    is granted at all.
+  * **the only PROVEN ingredient**: the `.dat` `type 2` enable command
+    (`a=<unit>, b=1`) hung on a civilization-owned free technology -- `dsh test
+    v5/v6/v7`, and what the product's `datgrant` recipe writes.  `dsh test v17`
+    (2026-10-19) asks the mirror question: whether `type 2, b=0` can DISABLE a
+    unit for one civilization (the shipped precedent is Armenians/Georgians
+    losing the Lumber Camp via `tech 932/940` -> `effect 944`).
   * **what the panel presumably does**: a separate 99.4%-identical copy, plausibly
     feeding the greyed-out "future items" preview (`widgetui\futuravailableunits.json`
     is an 81-byte redirect stub naming this exact file, so the engine does read it).
 
 ## Consequence for the product
 
-`unit.availability` writes **both** JSON layers plus (for `grant`) the `.dat` half.
-Given that neither JSON layer has ever been observed moving the facility menu on
-its own, **the `.dat` half is the part that actually works** and the JSON halves
-are the part whose effect is still unproven.  That inverts the earlier reading:
-`grant` writes `.dat` and has an in-game result (v7, Champi Scout in the Dark Age
-Barracks); `revoke` writes only JSON and has never been observed changing anything.
+`unit.availability` writes **both** JSON layers plus the `.dat` half, in BOTH
+directions.  Given that neither JSON layer has ever been observed moving the
+facility menu on its own, **the `.dat` half is the part that actually works** and
+the JSON halves are the part whose effect is still unproven.  That inverts the
+earlier reading: `grant` writes `.dat` and has an in-game result (v7, Champi Scout
+in the Dark Age Barracks), and since 2026-10-19 so does `revoke` (v17, the Champi
+Scout gone from the Castle Age).
+
+**2026-10-19 follow-up**: v16 showed the `.dat` half is not reducible to the button
+slot either -- grant needs the `type 2` enable command, which is exactly what
+`datgrant` writes.  So `grant` is coherent: two written bytes plus the enable
+effect.  **v17 filled the revoke hole**: `type 2, b=0` does gate the menu, and the
+ordering rule is part of the result -- the same disable hung on a 0:00 carrier
+LOST to the global enable, and on a Castle-Age carrier it WON.
 
 Run:  $env:PYTHONPATH='D:\\Software\\AI\\帝国项目'; python _probe\test_time_gate_and_tooltip.py
 """
@@ -197,9 +215,10 @@ print("     => with GAME 2 (not necessary) this excludes the panel BOTH ways.")
 
 print()
 print("C  the competitor explanations that remain, ranked by evidence")
-print("     1. the .dat BUTTON SLOT is what the facility menu follows -- PROVEN")
-print("        in game: dsh test v5 moved British 2550 from slot 1 to slot 4")
-print("        (one byte) and the button appeared.  dsh test v16 isolates it")
+print("     1. the .dat type 2 ENABLE command is the working ingredient -- PROVEN")
+print("        v5/v6/v7: hung on a civ-owned free tech, the Dark Age Barracks")
+print("        showed the Champi Scout.  But the BUTTON SLOT alone is NOT enough")
+print("        (v16: two bytes, one .dat, no JSON -> neither side moved)")
 print("     2. the TREE is what the facility menu follows           -- REFUTED")
 print("        2026-10-19 by dsh test v15: two tree files only, mod loaded,")
 print("        neither side changed in game")
@@ -240,7 +259,9 @@ print("TIME GATE + TOOLTIP: the tooltip answered nothing (shipped prose).  The t
 print("  game observations together exclude the panel both as necessary (GAME 2)")
 print("  and as sufficient (GAME 1).  They do NOT prove the tree -- dsh test v15")
 print("  (2026-10-19) wrote only the tree files, the mod loaded, and neither side")
-print("  changed in game.  The .dat button slot is the only proven lever.")
+print("  changed in game.  The .dat `type 2` enable command is the only proven")
+print("  ingredient -- and v16 showed the button slot WITHOUT that command is")
+print("  not enough either (two bytes, no JSON, neither side moved).")
 for n in fails:
     print("  FAILED: %s" % n)
 sys.exit(1 if fails else 0)

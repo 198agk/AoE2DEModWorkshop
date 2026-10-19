@@ -81,6 +81,283 @@ def enable_command(unit_id):
     return (2, unit_id, 1, -1, 0.0)
 
 
+def disable_command(unit_id):
+    """The command tuple that hides ``unit_id``: ``(2, unit, 0, -1, 0.0)``.
+
+    Confirmed in game on 2026-10-19 by `dsh test v17`: the Incas lost the Champi
+    Scout button when this command fired, and kept it before it fired.
+    """
+    return (2, unit_id, 0, -1, 0.0)
+
+
+#: The four age technologies.  ``104`` is the STARTING age: it is satisfied
+#: before the game begins, which is why a command hung on a technology requiring
+#: it fires at 0:00.  Measured: ``tech 1350 'Champi Scout (Make avail)'`` requires
+#: ``104`` and the Champi Scout is buildable from the Dark Age; ``tech 508``
+#: requires ``102`` and its command fired in the Castle Age (see `pick_revoke_tech`).
+_AGE_NAMES = {0: "Dark Age", 1: "Feudal Age", 2: "Castle Age", 3: "Imperial Age"}
+_AGE_TECH_IDS = {104: 0, 101: 1, 102: 2, 103: 3}
+
+
+def _age_ranks(techs):
+    """``{tech index: age rank}`` -- 0 = fires at 0:00, 3 = waits for Imperial.
+
+    A technology's rank is the LOWEST age rank reachable through its
+    ``required_techs`` chain, so ``[104]`` gives 0 (Dark Age is the starting age)
+    and ``[102]`` gives 2 (Castle).  A technology with no age anywhere on its
+    chain gets 0, which is the safe answer: it is treated as firing immediately
+    and therefore never qualifies as a revoke carrier by itself.
+
+    ## Two traps this function exists to avoid, both measured
+
+    The age technologies THEMSELVES must be answered before their requirements are
+    walked.  ``tech 101 'Feudal Age'`` requires ``[104, 659]``, and 104 is the
+    starting age -- so a naive "min over requirements" rule ranks the Feudal Age
+    as a Dark Age technology.  The ids in `_AGE_TECH_IDS` are the ground truth for
+    their own rank and must short-circuit.
+
+    And the answer must be CACHED for every technology it is asked about,
+    including the age technologies themselves.  An earlier draft returned the age
+    rank without storing it, so ``ranks[101]`` came back missing and callers
+    defaulted it to 0 -- which is exactly the wrong answer for a Castle-era
+    carrier, and it silently turned "this fires in the Castle Age" into "this
+    fires at 0:00".
+    """
+    cache = {}
+
+    def rank(i, seen):
+        if i in cache:
+            return cache[i]
+        if i in _AGE_TECH_IDS:
+            cache[i] = _AGE_TECH_IDS[i]
+            return cache[i]
+        if i in seen:
+            return 0
+        t = techs[i] if 0 <= i < len(techs) else None
+        if not isinstance(t, dict):
+            return 0
+        req = [x for x in (t.get("required_techs") or []) if isinstance(x, int)]
+        if not req:
+            cache[i] = 0
+            return 0
+        r = min(rank(x, seen | {i}) for x in req)
+        cache[i] = r
+        return r
+
+    for i in range(len(techs)):
+        rank(i, frozenset())
+    return cache
+
+
+def _researched_in_building(tech):
+    """True when a BUILDING has to research this technology.
+
+    ``research_locations`` is a list of ``(building_id, x, y, time)``, and a
+    technology that nothing researches still carries one entry -- ``(-1, 0, 0,
+    -1)``.  Testing the list for truthiness therefore says "user-triggered" about
+    every civilization bonus in the game, which is what made an earlier draft of
+    `pick_revoke_tech` find zero usable carriers for the Incas while three of them
+    were sitting right there.  Measured on the shipped data: ``tech 495
+    'C-Bonus, Houses +5 pop'`` has ``locations = [(-1, 0, 0, -1)]``.
+    """
+    for loc in (tech.get("research_locations") or []):
+        try:
+            # Two shapes reach this function: `read_tech` returns tuples
+            # `(building, x, y, time)`, while `locate_techs` rewrites them into
+            # dicts with named keys.  Indexing a dict raises KeyError, which is
+            # how a draft of this function crashed on the first candidate.
+            b = loc[0] if not isinstance(loc, dict) else loc.get("building_id", loc.get("building", -1))
+            if int(b) >= 0:
+                return True
+        except (TypeError, IndexError, ValueError, KeyError):
+            continue
+    return False
+
+
+def pick_revoke_tech(techs, civ_index, enable_tech_index=None):
+    """A technology of ``civ_index`` that fires LATE enough to beat the enable.
+
+    ## Why the revoke carrier is not just "any free tech"
+
+    `dsh test v17` (2026-10-19) hung `(2, 2550, 0)` on two Incas-owned free
+    technologies at once -- ``tech 495`` (no ``required_techs``, fires at 0:00) and
+    ``tech 508 'Kamayuk (make avail)'`` (requires ``102``, the Castle Age) -- and
+    the user reported the Champi Scout button **still present in the Dark Age and
+    gone in the Castle Age**.  Both byte patches were verified present in the
+    emitted `.dat`, so the two readings differed only in WHEN the command fired.
+
+    That is the whole rule: **the last command to fire wins.**  Unit 2550 is
+    enabled globally by ``tech 1350 'Champi Scout (Make avail)'``, which requires
+    ``104 'Dark Age'`` and therefore fires at game start -- after the 0:00 carrier,
+    before the Castle one.  A disable that fires first is simply overwritten.
+
+    ## Why the rank is an AGE and not a depth
+
+    Counting ``required_techs`` depth does not separate the two: ``1350`` (requires
+    ``104``) and ``508`` (requires ``102``) are both depth 1, yet one fires at game
+    start and the other in the Castle Age.  What separates them is WHICH age sits on
+    the chain, and the game's age technologies are fixed ids (104/101/102/103).  So
+    a technology's rank is the lowest age rank reachable through its requirements,
+    and a carrier must rank strictly above the technology that enables the unit.
+
+    Among equally safe carriers the earliest wins, so the unit disappears at the
+    earliest age it legitimately can rather than lingering until Imperial.
+
+    Returns ``(index, tech, rank_name)`` on success, or
+    ``(None, None, reason)``.  Callers MUST report the refusal rather than emit a
+    disable that would be overwritten -- saying "this cannot be hidden for this
+    civilization" is a real answer, writing a dead command is not.
+    """
+    ranks = _age_ranks(techs)
+    floor = 0
+    if enable_tech_index is not None and 0 <= enable_tech_index < len(techs):
+        floor = ranks.get(enable_tech_index, 0)
+    candidates = []
+    for i, t in enumerate(techs):
+        if not isinstance(t, dict) or t.get("civ") != civ_index:
+            continue
+        if _researched_in_building(t):
+            # A tech researched in a building is user-triggered; hanging a
+            # disable on one produces nothing until somebody researches it.
+            continue
+        r = ranks.get(i, 0)
+        if r <= floor:
+            continue
+        candidates.append((r, i, t))
+    if not candidates:
+        return None, None, (
+            "no technology owned by this civilization fires after the one that "
+            "makes the unit available, so a disable would be overwritten -- there "
+            "is no verified way to hide it this way")
+    candidates.sort(key=lambda it: (it[0], it[1]))
+    r, i, t = candidates[0]
+    return i, t, _AGE_NAMES.get(r, "age %d" % r)
+
+
+def enabling_techs(stats, unit_id):
+    """``[(tech index, command)]`` for every tech whose effect enables ``unit_id``.
+
+    "Enables" means an `Enable/Disable Unit` command (`type 2`) with ``a == unit_id``
+    and ``b == 1``.  There are usually several -- `tech 1350` globally, plus every
+    civilization that makes the unit available for itself -- and the one that
+    matters for a revoke is whichever fires LAST, because the last command wins.
+    """
+    out = []
+    for i, t in enumerate(stats.get("techs") or []):
+        if not isinstance(t, dict):
+            continue
+        e = t.get("effect_id")
+        if not isinstance(e, int) or not (0 <= e < len(stats.get("effects") or [])):
+            continue
+        for c in (stats["effects"][e].get("commands") or []):
+            v = c if isinstance(c, tuple) else (c.get("type"), c.get("a"),
+                                                c.get("b"), c.get("c"), c.get("d"))
+            if len(v) >= 3 and v[0] == 2 and v[1] == unit_id and v[2] == 1:
+                out.append((i, v))
+    return out
+
+
+def apply_revoke(stats, raw, gv, civ_index, tree, unit_id, tech_index=None,
+                 rank_techs=None):
+    """Make ``unit_id`` unavailable to ``civ_index`` and return ``(bytes, report)``.
+
+    ## What the evidence says this takes
+
+    `dsh test v17` (2026-10-19) is the first in-game observation of a civilization
+    losing a unit it ships with, and it answered both halves of the question at once
+    because the disable was hung on two carriers with different firing times:
+
+      * Dark Age  -- button STILL THERE  (the 0:00 carrier fired first and lost)
+      * Castle Age -- button GONE        (the Castle carrier fired later and won)
+
+    So the mechanism is confirmed and the ordering rule is confirmed with it:
+    **`type 2 b=0` gates the build menu, and the last command to fire wins.**
+
+    ## The one edit
+
+    Unlike `apply_grant` there is no button byte to move -- the unit must simply
+    stop appearing, and the button chain closes up on its own.  The edit is exactly
+    the grant's first edit with ``b = 0``: append an effect that CARRIES the
+    carrier's existing commands and adds the disable, then re-point the carrier
+    technology at it.
+
+    Carrying over is not optional: the carrier is by construction a technology the
+    civilization owns and that fires without research, which is exactly where its
+    civilization bonuses live.  Re-pointing at a fresh single-command effect would
+    delete them while reporting success -- the same trap `apply_grant` documents.
+
+    ## Why the carrier is picked, not passed
+
+    The caller supplies ``tech_index`` only when it has a reason to.  Left alone, the
+    carrier is chosen by `pick_revoke_tech`, which enforces the ordering rule and
+    REFUSES rather than emitting a disable that the enabler would overwrite.  A
+    refusal is reported as ``ok=False`` with a ``reason``; no bytes are produced.
+    """
+    from ..dat import writer as W
+
+    # AGE RANKS MUST COME FROM A MODEL THAT CARRIES `required_techs`.
+    # `parser.read_tech` consumes the six required-tech ids and does not store
+    # them, so ranking off `stats["techs"]` rates EVERY technology 0:00.  With
+    # every rank equal, no candidate can beat the floor and every revoke is
+    # refused -- which is exactly what the first run of this recipe did, on the
+    # very civilization `dsh test v17` succeeded with.  `locate.locate_techs`
+    # does keep them (`locate.py:340`), so callers that have it pass it in.
+    _rank_src = rank_techs if rank_techs is not None else (stats.get("techs") or [])
+
+    report = {"unit": unit_id, "civ_index": civ_index, "edits": []}
+    if tech_index is None:
+        _en = enabling_techs(stats, unit_id)
+        _floor_tech = None
+        if _en:
+            _ranks = _age_ranks(_rank_src)
+            _floor_tech = max(_en, key=lambda it: _ranks.get(it[0], 0))[0]
+        tech_index, _tech, why = pick_revoke_tech(
+            _rank_src, civ_index, enable_tech_index=_floor_tech)
+        if tech_index is None:
+            return None, {"ok": False, "reason": why, **report}
+        report["carrier_rank"] = why
+    report["tech"] = tech_index
+
+    old_effect = stats["techs"][tech_index].get("effect_id")
+    carried = []
+    if isinstance(old_effect, int) and 0 <= old_effect < len(stats["effects"]):
+        for c in (stats["effects"][old_effect].get("commands") or []):
+            if isinstance(c, dict):
+                carried.append((c["type"], c["a"], c["b"], c["c"], c["d"]))
+            else:
+                carried.append(tuple(c))
+    stats["effects"].append({
+        "name": "make unit %d unavailable for civ %d (was effect %s)"
+                % (unit_id, civ_index, old_effect),
+        "commands": carried + [disable_command(unit_id)],
+        "_new": True,
+    })
+    stats["effect_count"] = len(stats["effects"])
+    new_effect = len(stats["effects"]) - 1
+    # REPLACE the dict instead of mutating it.  `_dat_grant_on` copies the techs
+    # LIST but not the dicts inside it, so an in-place `effect_id` write would
+    # reach the session's cached model and change what the tool reports after the
+    # build.  The grant path avoids this by copying its known anchor up front; a
+    # revoke learns its carrier here, so it does the copy here.
+    stats["techs"][tech_index] = dict(stats["techs"][tech_index],
+                                      effect_id=new_effect)
+    report["effect"] = {"index": new_effect, "was": old_effect,
+                        "carried_commands": len(carried)}
+    report["edits"].append({"what": "effect+tech", "effect": new_effect,
+                            "tech": tech_index, "was_effect": old_effect})
+    if not carried and isinstance(old_effect, int) and old_effect >= 0:
+        report["anchor_effect_was_empty"] = True
+
+    out, rep = W.serialize_dat(stats, raw=raw, gv=gv)
+    report["serialize"] = {"bytes": len(out), "delta": len(out) - len(raw),
+                           "model_vs_raw_mismatches":
+                           rep.get("model_vs_original_mismatches")}
+    changed = [i for i in range(min(len(out), len(raw))) if out[i] != raw[i]]
+    report["bytes_changed"] = len(changed)
+    report["ok"] = True
+    return out, report
+
+
 def pick_tech(techs, civ_index, prefer_name_contains="make avail"):
     """A tech the civilization owns, to hang the effect on.
 
@@ -129,7 +406,7 @@ def pick_tech(techs, civ_index, prefer_name_contains="make avail"):
 
     def _untargeted(t):
         """0 when no building researches it, 1 when one does."""
-        return 0 if not t.get("research_locations") else 1
+        return 0 if not _researched_in_building(t) else 1
 
     owned = []
     for i, t in enumerate(techs):

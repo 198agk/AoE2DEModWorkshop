@@ -124,10 +124,12 @@ for intent, action, fields in CASES:
           bool(plan.get("changes_dat")) == declared,
           "actions=%s" % (dh.get("actions") or []))
     if declared:
+        _decl_n = int(((dh.get("write_operations_by_action") or {})
+                       .get(action, dh.get("write_operations"))) or 0)
         check("%s: the declared write_operations equals the edits performed" % label,
-              int(dh.get("write_operations") or 0) == n_edits,
+              _decl_n == n_edits,
               "declared=%s performed=%d"
-              % (dh.get("write_operations"), n_edits))
+              % (_decl_n, n_edits))
 
     # Two DIFFERENT absences, and conflating them is how `tech.availability` came
     # to declare `mod_contains_dat: false` while every build shipped a `.dat`:

@@ -126,6 +126,7 @@ for label, rel in (("WIDGETUI", WUI_REL), ("DAT", DAT_REL)):
     mods_with = 0
     deepest = 0
     sample = []
+    nested_mods = set()
     for name, p in mod_dirs():
         hits = depth_under(p, rel)
         n = len([h for h in hits if h[0] >= 1])
@@ -133,6 +134,7 @@ for label, rel in (("WIDGETUI", WUI_REL), ("DAT", DAT_REL)):
             mods_with += 1
         if n:
             nested_total += n
+            nested_mods.add(name)
             deepest = max(deepest, max(h[0] for h in hits if h[0] >= 1))
             if len(sample) < 4:
                 for d, inner in sorted(hits, key=lambda t: -t[0]):
@@ -150,6 +152,7 @@ for label, rel in (("WIDGETUI", WUI_REL), ("DAT", DAT_REL)):
     else:
         dat_nested = nested_total
         dat_sample = sample
+        dat_nested_mods = nested_mods
 
 
 # ---------------------------------------------------------------------------
@@ -198,9 +201,20 @@ for nm, d, inner in dat_sample:
 check(wui_nested > 50 and wui_deepest >= 3,
       "nested overrides are normal in a storage point whose in-game effect is known "
       "(%d files, depth %d)" % (wui_nested, wui_deepest))
-check(dat_nested <= 2,
+# The DAT half has to exclude THIS PROJECT'S OWN experiment mods ("dsh test v14/v15/v17"
+# all ship `CivTechTrees/<CIV>.json`).  Counting them made this a literal about the
+# user's mutable mod list -- the same rot that broke `test_install*.py` -- and it fired
+# the moment v17 was installed.  What the claim is really about is the SHIPPED world:
+# among mods that are not ours, nested DAT files stay rare.
+_own = {n for n in dat_nested_mods if n.lower().startswith("dsh test")}
+_dat_nested_foreign = dat_nested - sum(
+    1 for n in _own for _d, _i in depth_under(dict(mod_dirs())[n], DAT_REL) if _d >= 1)
+print("      of which this project's own experiment mods: %d (%d file(s))"
+      % (len(_own), dat_nested - _dat_nested_foreign))
+check(_dat_nested_foreign <= 2,
       "'the overlay is not recursive' is REFUTED, because nesting works elsewhere "
-      "(%d nested DAT files is not a depth limit)" % dat_nested)
+      "(%d nested DAT files outside this project's own test mods is not a depth limit)"
+      % _dat_nested_foreign)
 
 print()
 print("=" * 74)
@@ -210,12 +224,17 @@ print("OVERLAY DEPTH: storage-point overlays resolve nested subdirectories --")
 print("proven in game elsewhere (%d nested WIDGETUI files, depth %d, and the"
       % (wui_nested, wui_deepest))
 print("chibi emblem that sits 3 levels down is visible in the HUD).  So the DAT")
-print("override did not fail because of depth.  The open question is narrower:")
-print("why is `CivTechTrees/` special?  Candidates -- the tree is read before")
-print("mods are mounted; it is read from the base path only; or the panel the")
-print("user checked does not consult it (futuravailableunits.json, which sits")
-print("next to TechTreePreviewPanel in the exe string pool).")
-print("NOT PROVEN: which file the running game consults for buildability.")
+print("override did not fail because of depth.")
+print()
+print("ANSWERED SINCE (2026-10-19): the tree path is not special after all -- it")
+print("is written, it is loaded, and the build menu does not consult it.  v15 sent")
+print("only `CivTechTrees/*.json` (byte-identical `.dat` carrier) and the screen did")
+print("not move.  v17 then put the same question to the layer that DOES gate the")
+print("menu -- the `.dat` `type 2` command -- and both directions moved.  So the")
+print("candidate list below is history, not open work.")
+print("NOT PROVEN: what `CivTechTrees/` IS consulted for (the tech-tree preview")
+print("reads it; `futuravailableunits.json`, which sits next to")
+print("`TechTreePreviewPanel` in the exe string pool, is the other reader).")
 print()
 if FAILURES:
     print("FAILURES: %d" % len(FAILURES))

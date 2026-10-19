@@ -367,7 +367,7 @@ class Toolkit(object):
             # whatever the data), and `_probe/test_dat_half_count.py` asserts it
             # still equals what `apply_grant` actually reports, so the two cannot
             # drift apart in silence.
-            base["edit_count"] = int(_dh.get("write_operations") or 0)
+            base["edit_count"] = self._write_ops_for(_dh, base["action"])
             # The build emits FOUR files for a grant that carries the .dat half,
             # not two: the .dat, the tree file, and -- because the menu the
             # player sees is fed by a pre-baked panel -- the panel splice
@@ -431,14 +431,19 @@ class Toolkit(object):
         """How the reskin should be delivered: ``copy`` files, or ``rename`` records.
 
         Two products, and the difference is not cosmetic.  ``copy`` ships the
-        donor's picture once per target file name and is PROVEN in game; the
-        villager family is 466 files and 438 MB.  ``rename`` rewrites the
-        graphics records' `file` strings to point at the donor's already-shipped
-        picture: 244 record edits, the .dat gets SMALLER, and the mod is one
-        file -- but no in-game test has shown it working yet.
+        donor's picture once per target file name; the villager family is 466
+        files and 418 MB.  ``rename`` rewrites the graphics records' `file`
+        strings to point at the donor's already-shipped picture: 244 record
+        edits, the .dat gets SMALLER, and the mod is one 11.98 MB file.
 
-        Default is ``copy`` precisely because it is the proven one; asking for
-        the cheap model must be a decision, not an accident.
+        Both are PROVEN in game: ``copy`` by ``dsh test v12`` (2026-10-17) and
+        ``rename`` by ``dsh test v13`` the same day, where the user answered
+        「没问题，看了都是羊」.  ``rename`` working is what proves the engine picks
+        a graphic by its `file` string and not by the neighbouring `slp` id.
+
+        Default is ``copy`` because it composes with any data mod (it ships no
+        .dat) while ``rename`` IS a data mod, and only one data mod loads per
+        match.  Asking for the cheap model must be a decision, not an accident.
         """
         v = (r.raw or {}).get("mode")
         if isinstance(v, str):
@@ -1070,18 +1075,18 @@ class Toolkit(object):
         raise C.IntentError("no .dat civilization corresponds to the tech-tree "
                             "key %r" % civ_key)
 
-    def _dat_grant_half(self, civ, unit_id, building_id, trees):
-        """The ``.dat`` half of a grant, against this session's base stream.
+    def _dat_grant_half(self, civ, unit_id, building_id, trees, action="grant"):
+        """The ``.dat`` half of an availability edit, against this session's stream.
 
         Convenience wrapper for the single-intent path; the bundle addresses an
         explicit stream because it grows one step at a time.
         """
         return self._dat_grant_on(civ, unit_id, building_id, trees,
                                   self._raw, self._parsed[3], self._parsed[4],
-                                  self._civs, self._stats)
+                                  self._civs, self._stats, action=action)
 
     def _dat_grant_on(self, civ, unit_id, building_id, trees, raw, gv, tail, civs,
-                      stats):
+                      stats, action="grant"):
         """The in-game-proven ``.dat`` half of "let <civ> build <unit>".
 
         Returns ``(patched_raw_bytes, report)``; ``patched`` is ``None`` with a
@@ -1119,6 +1124,21 @@ class Toolkit(object):
         from .intent import datgrant as DG
         civ_index = self._civ_index(civ, civs=civs)
         techs = L.locate_techs(raw, tail, gv)
+        if action == "revoke":
+            # A revoke has no anchor to choose and no button to move: the edit is
+            # one appended effect carrying a disable, hung on a technology that
+            # fires later than whatever enables the unit (see `apply_revoke`).
+            # The model is still copied first, for the same reason the grant path
+            # copies it -- a build is a proposal on disk, not a change to the
+            # session's picture of the game.
+            stats = dict(stats)
+            stats["effects"] = list(stats["effects"])
+            stats["techs"] = list(stats["techs"])
+            patched, rep = DG.apply_revoke(
+                stats, raw, gv, civ_index, trees[civ], unit_id,
+                rank_techs=techs)
+            rep["civ"] = civ
+            return patched, rep
         tech_index, anchor, why = DG.pick_tech(techs, civ_index)
         if tech_index is None:
             return None, {"ok": False, "reason": why, "civ_index": civ_index,
@@ -1151,10 +1171,17 @@ class Toolkit(object):
         ``refusals`` is a list of ``(resolved, reason)`` for sentences that
         declare a half but cannot get one.
 
-        The schema decides which actions get a half, not this file.  A revoke has
-        no proven recipe (`type 2` with ``b = 0`` disables a unit, but nothing has
-        been confirmed in game), and the technology space has none either -- a
-        grant there would enable whatever UNIT happens to share the integer.
+        The schema decides which actions get a half, not this file.  Both
+        availability actions do: a grant was confirmed in game on 2026-10-16
+        (`dsh test v7`) and a revoke on 2026-10-19 (`dsh test v17`).  The
+        technology space has neither, because both proven commands are unit-space
+        -- `type 2` names a UNIT id, so pointing one at a tech node would touch
+        whichever unit happens to share that integer.
+
+        A revoke does not need a building.  A grant does: it moves the unit's
+        training button, so there has to be a training entry to move.  A revoke
+        only appends a disable, so refusing it for "no building" would reject
+        sentences the recipe can actually perform.
         """
         halves, refusals = [], []
         for r in resolved_list:
@@ -1166,15 +1193,19 @@ class Toolkit(object):
                                  or "this action has no verified `.dat` recipe"))
                 continue
             if AV.space_of(r.raw) != CT.UNIT_USE_TYPES:
-                refusals.append((r, "the `.dat` grant recipe is only proven for "
-                                    "units; this sentence is about the "
-                                    "technology space (%s)" % r.entity.display))
+                refusals.append((r, "the `.dat` recipe is only proven for units; "
+                                    "this sentence is about the technology space "
+                                    "(%s)" % r.entity.display))
                 continue
             civ = self._tree_civ(r.civ, trees)
             row, _inh = self._placement_row(trees, civ, r.entity.id,
                                             CT.UNIT_USE_TYPES)
             bldg = (row or {}).get("Building ID")
-            if bldg is None:
+            if bldg is None and (r.action or "grant") != "revoke":
+                # A GRANT moves the unit's training button, so it needs an entry
+                # to move.  A REVOKE only appends a disable -- no button, no
+                # building needed -- so refusing it here would reject something
+                # the recipe can perform.
                 refusals.append((r, "no building places this node for %s, so "
                                     "there is no training entry to enable" % civ))
                 continue
@@ -1205,7 +1236,8 @@ class Toolkit(object):
             civs, _cs, gv, tail = L.locate(raw, parser=p)
             patched, rep = self._dat_grant_on(civ, r.entity.id, bldg,
                                               self._trees(), raw, gv, tail,
-                                              civs, p.stats)
+                                              civs, p.stats,
+                                              action=(r.action or "grant"))
             rep["resolved"] = r.describe()
             if patched is None:
                 reps.append(rep)
@@ -1218,14 +1250,34 @@ class Toolkit(object):
         """The schema's declaration of which action gets a ``.dat`` half.
 
         Which machinery compiles a sentence is the SCHEMA's decision, not this
-        file's (`build` already says so for strategies).  A revoke has no proven
-        `.dat` recipe -- `type 2` with ``b = 0`` disables a unit, but nothing has
-        been confirmed in game -- so only the declared actions get one.
+        file's (`build` already says so for strategies).  Both availability
+        actions now have one: a grant was confirmed in game on 2026-10-16
+        (`dsh test v7`) and a revoke on 2026-10-19 (`dsh test v17`, which also
+        established the ordering rule the recipe obeys).
         """
         intents_schema, _ = C.load_schema()
         spec = (intents_schema.get("intents") or {}).get(
             (intent or {}).get("intent"), {})
         return ((spec.get("compile") or {}).get("dat_half") or {})
+
+    @staticmethod
+    def _write_ops_for(dat_half, action):
+        """How many write operations ``action`` performs, per the schema.
+
+        The counts live in ``write_operations_by_action`` because grant and revoke
+        do not write the same number: a grant also moves the training button, so
+        it reports 2, while a revoke only appends an effect and re-points a
+        technology, so it reports 1.  Falling back to the single
+        ``write_operations`` keeps older schemas readable, but a schema that
+        declares both actions and no per-action map is a defect this returns 0
+        for rather than guessing.
+        """
+        by_action = dat_half.get("write_operations_by_action") or {}
+        if action in by_action:
+            return int(by_action.get(action) or 0)
+        if by_action:
+            return 0
+        return int(dat_half.get("write_operations") or 0)
 
     def _panel_availability(self, civ, node_id, action, use_types, trees,
                             texts=None):
@@ -1398,14 +1450,19 @@ class Toolkit(object):
         files.update(panel_files)
         # The THIRD half, and the only one proven to render in game.  The two
         # JSON layers are a model of per-civ availability; the `.dat` recipe is
-        # what the user actually confirmed (m27131).  Which actions get it is the
-        # schema's declaration, because a revoke has no in-game-verified recipe.
+        # what the user actually confirmed (m27131 for a grant, and `dsh test v17`
+        # on 2026-10-19 for a revoke).  Which actions get it is the schema's
+        # declaration, not this file's.
         dat_half = self._dat_half_declared(intent)
         dat_rep, patched = None, None
         if action in (dat_half.get("actions") or ()):
             _row, _ = self._placement_row(trees, civ, r.entity.id, ut)
             _bldg = (_row or {}).get("Building ID")
-            if _bldg is None:
+            if _bldg is None and action != "revoke":
+                # A grant moves the unit's training button, so a training entry
+                # must exist to move.  A revoke only appends a disable, so the
+                # building is irrelevant and demanding one would refuse work the
+                # recipe can do.
                 dat_rep = {"ok": False, "reason":
                            "no building places this node for %s, so there is no "
                            "training entry to enable" % civ}
@@ -1420,7 +1477,7 @@ class Toolkit(object):
                            % r.entity.display}
             else:
                 patched, dat_rep = self._dat_grant_half(
-                    civ, r.entity.id, _bldg, trees)
+                    civ, r.entity.id, _bldg, trees, action=action)
         elif dat_half:
             dat_rep = {"ok": False, "reason":
                        dat_half.get("why_not_for_other_actions",
@@ -1609,15 +1666,17 @@ class Toolkit(object):
         else:
             ver["not_proven"] = [
                 "that a running game changes its build menu because of this "
-                "edit, which offers the %s in the JSON layers only (%s).  The one "
-                "in-game test of a JSON-only change (2026-10-15) produced no "
-                "change in the menu, and the newest test (2026-10-17, `dsh test "
-                "v9`) went the other way: it deleted a unit's tree row AND its "
-                "panel entry while leaving the `.dat` untouched, and the unit's "
-                "button stayed.  So the `.dat` is the only layer ever shown to "
-                "drive the menu, and neither JSON layer has been shown to change "
-                "it in either direction -- this build may therefore render "
-                "nothing at all"
+                "edit, which offers the %s in the JSON layers only (%s).  That "
+                "is now a measurement and not a doubt: `dsh test v15` "
+                "(2026-10-19) shipped ONLY `CivTechTrees/*.json` over a "
+                "byte-identical `.dat` carrier, the engine logged loading it, and "
+                "the menu did not move in either direction.  What moves the menu "
+                "is the `.dat` layer -- a `type 2` command on a technology the "
+                "civilization already owns (grant: `dsh test v7`; revoke: `dsh "
+                "test v17`, where the last command to fire wins).  So these files "
+                "are written for the readers that do use them (the tech-tree "
+                "preview reads the tree; the panel feeds the greyed-out future-"
+                "items view), and this build will not add or remove a button"
                 % (_noun, (dat_rep or {}).get("reason", "the schema declares no "
                                               "`.dat` half for this action")),
             ]
@@ -1659,9 +1718,10 @@ class Toolkit(object):
         man["action"] = action
         # The `.dat` half's own report, for the same reason the panel half has
         # one: a build can write the two JSON layers and NOT the `.dat` recipe
-        # (the action has no verified recipe, or the unit has no building), and a
-        # caller must be able to tell "wrote all three" from "wrote the two that
-        # have never been observed to render".
+        # (the schema gives that action no half, the reach is the technology
+        # space, or a revoke found no carrier that fires late enough), and a
+        # caller must be able to tell "wrote all three" from "wrote only the
+        # two that no in-game test has needed".
         man["dat_half"] = dat_rep
         man["space"] = ut[0]
         man["node_id"] = r.entity.id
@@ -2490,15 +2550,16 @@ class Toolkit(object):
                 ],
                 "not_proven": [
                     "that a running game offers the named %s to that civilization "
-                    "as a result of this edit.  The JSON layers have been tested in "
-                    "game twice and neither test showed them moving the build menu: "
-                    "on 2026-10-15 a JSON-only grant produced no change, and on "
-                    "2026-10-17 (`dsh test v9`) deleting a unit's tree row AND its "
-                    "panel entry left its button in place while the `.dat` still "
-                    "allowed it.  The `.dat` is the only layer proven to render; "
-                    "these tree/panel files have not been shown to reach the menu in "
-                    "either direction (the earlier 2026-10-14 test is void: that mod "
-                    "was never enabled)" % _named_txt,
+                    "as a result of THIS file.  It is measured, not doubted: "
+                    "`dsh test v15` (2026-10-19) shipped only `CivTechTrees/*.json` "
+                    "over a byte-identical `.dat` carrier, the engine logged "
+                    "loading it, and the menu did not move in either direction, so "
+                    "the tree is not what puts a button on the bar.  The `.dat` "
+                    "layer is -- a `type 2` command on a technology the "
+                    "civilization owns (grant `dsh test v7`, revoke `dsh test "
+                    "v17`).  These files are written for the readers that DO use "
+                    "them (the tech-tree preview reads the tree; the panel feeds "
+                    "the greyed-out future-items view)" % _named_txt,
                 ]}
 
     def plan_bundle(self, intents):
@@ -2554,7 +2615,7 @@ class Toolkit(object):
         # the recipe's own `len(edits)` so the two cannot drift apart.
         _halves, _refusals = self._declared_dat_halves(resolved_list,
                                                        self._trees())
-        _dat_half_edits = sum(int((h[3].get("write_operations") or 0))
+        _dat_half_edits = sum(self._write_ops_for(h[3], (h[0].action or "grant"))
                               for h in _halves)
         _dat_half_refusals = [{"description": r.describe(), "reason": why}
                               for r, why in _refusals]

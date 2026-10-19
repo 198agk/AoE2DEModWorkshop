@@ -836,21 +836,28 @@ print("  the emitted trees grant a UNIT to BRITONS and a TECH to GOTHS, with no 
 _rev = {"intent": "unit.availability", "unit": 41, "civ": "Goths",
         "action": "revoke"}
 _only = tk.build_bundle([_rev],
-                        os.path.join(_mix_root, "json only"),
-                        title="json only", author="test")
-assert _only["changes_dat"] is False, _only["changes_dat"]
-assert _only["dat_is_carrier"] is True, _only["dat_is_carrier"]
+                        os.path.join(_mix_root, "revoke"),
+                        title="revoke", author="test")
+# A REVOKE has had a verified `.dat` half since 2026-10-19 (`dsh test v17`: the
+# Incas lost the Champi Scout, but only from the Castle Age -- the last command to
+# fire wins).  So this bundle now EDITS the .dat rather than carrying it, and the
+# block that used to assert the opposite was pinning a fact that had stopped
+# being true.  What it must still assert is that the edit is accounted for:
+# `changes_dat`, a non-carrier `.dat`, and a count matching the recipe's edits.
+assert _only["changes_dat"] is True, _only["changes_dat"]
+assert _only["dat_is_carrier"] is False, _only["dat_is_carrier"]
 assert _only["mod_contains_dat"] is True, _only["mod_contains_dat"]
-assert _only["edit_count"] == 0, _only["edit_count"]
-assert _only["dat_half_edit_count"] == 0, _only["dat_half_edit_count"]
-assert _only["dat_half"] and _only["dat_half"][0].get("reason"), \
-    "a revoke must say WHY it has no `.dat` half: %r" % (_only["dat_half"],)
+assert _only["dat_half_edit_count"] > 0, _only["dat_half_edit_count"]
+assert _only["edit_count"] == _only["dat_half_edit_count"], \
+    (_only["edit_count"], _only["dat_half_edit_count"])
+assert _only["dat_half"] and _only["dat_half"][0].get("ok") is True, \
+    "a revoke must report the `.dat` work it did (or why it refused): %r" \
+    % (_only["dat_half"],)
 assert _only["verification"]["ok"] is True, _only["verification"]
-assert [f for f in os.listdir(os.path.join(_mix_root, "json only", "resources",
+assert [f for f in os.listdir(os.path.join(_mix_root, "revoke", "resources",
                                            "_common", "dat"))
-        if f.endswith(".dat")], "a revoke-only bundle shipped NO carrier .dat"
-print("  a revoke-only bundle changes no .dat byte, carries the carrier, and "
-      "verifies")
+        if f.endswith(".dat")], "a revoke bundle shipped NO .dat"
+print("  a revoke-only bundle edits the .dat, counts the edit, and verifies")
 
 # ...and the GRANT-only bundle is the one that must ship real `.dat` bytes.
 #
@@ -1061,11 +1068,21 @@ try:
         "the granted technology is absent from the emitted tree"
     assert len(_CT.rows_of(_t_back[_t_key])) == \
         len(_CT.rows_of(tk._trees()[_t_key])) + 1, "not exactly one row added"
-    assert "".join(sorted(os.listdir(os.path.join(_tech_root, "tech mod")))) \
-        .find(".dat") == -1, "the tech mod carries a .dat"
+    # `os.listdir` on the mod ROOT only ever shows `info.json` and `resources`,
+    # so the old assertion here (`".dat" not in the listing`) was true for every
+    # possible mod and pinned nothing.  What is true, and worth pinning, is the
+    # emitter's carrier rule: a JSON file under `resources/_common/dat/` forces
+    # the base `.dat` along or the game will not start -- so the tech mod DOES
+    # carry one, byte-identical to the shipped file.
+    _t_dat = os.path.join(_tech_root, "tech mod", "resources", "_common", "dat",
+                          "empires2_x2_p1.dat")
+    assert os.path.isfile(_t_dat), "the tech mod lost its carrier .dat"
+    assert _t_man["dat_is_carrier"] is True and _t_man["changes_dat"] is False, \
+        {k: _t_man.get(k) for k in ("dat_is_carrier", "changes_dat")}
 finally:
     shutil.rmtree(_tech_root, ignore_errors=True)
-print("  a tech.availability build adds one TECH row and no .dat")
+print("  a tech.availability build adds one TECH row, edits no .dat byte, and "
+      "carries the shipped .dat unchanged")
 
 # 8f-3. the BUILD-PANEL half.  An availability edit has to land in both the tree
 # file and the pre-baked panel file the menu is supplied from, because the tree

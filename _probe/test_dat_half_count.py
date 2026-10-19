@@ -67,7 +67,8 @@ print("A  the schema declares a count, and says why it is declared")
 intents_schema, _bindings = C.load_schema()
 spec = intents_schema["intents"]["unit.availability"]
 _dh = (spec.get("compile") or {}).get("dat_half") or {}
-DECLARED = _dh.get("write_operations")
+_by_action = (_dh.get("write_operations_by_action") or {})
+DECLARED = _by_action.get("grant", _dh.get("write_operations"))
 check("dat_half declares write_operations", DECLARED is not None,
       json.dumps(_dh, ensure_ascii=False)[:200])
 check("it is a positive integer", isinstance(DECLARED, int) and DECLARED > 0,
@@ -158,14 +159,45 @@ check("the plan reports the declared count",
 check("and the plan says the `.dat` will be edited",
       plan.get("changes_dat") is True and plan.get("dat_is_carrier") is False,
       json.dumps({k: plan.get(k) for k in ("changes_dat", "dat_is_carrier")}))
-# The revoke has no verified recipe, so the DECLARATION must not claim one --
-# otherwise the preview would promise a `.dat` write the build refuses to make.
+# A revoke DOES have a verified recipe since `dsh test v17` (2026-10-19), so the
+# declaration must claim one -- and, like the grant's, the declared count has to
+# equal what the recipe really does.  The two actions differ in WHAT they write,
+# which is why the count lives in `write_operations_by_action` at all: a revoke
+# appends one effect and re-points the carrier (1 operation), while a grant also
+# patches the unit's training ButtonID (part of recipe, reported as 2).
+_DECL_REV = (_dh.get("write_operations_by_action") or {}).get("revoke")
+check("the schema declares a separate revoke count",
+      isinstance(_DECL_REV, int) and _DECL_REV > 0, repr(_DECL_REV))
 _rev = tk.plan({"intent": "unit.availability", "unit": 692, "civ": "Vikings",
                 "action": "revoke"})
-check("a revoke reports zero, because it has no verified `.dat` recipe",
-      _rev.get("edit_count") == 0 and _rev.get("changes_dat") is False,
+check("a revoke plan reports the declared count and says the .dat is edited",
+      _rev.get("edit_count") == _DECL_REV
+      and _rev.get("changes_dat") is True
+      and _rev.get("dat_is_carrier") is False,
       json.dumps({k: _rev.get(k) for k in ("edit_count", "changes_dat",
                                            "dat_is_carrier")}))
+
+# ...and the number the preview advertised is what the recipe does.  Unit 692 is
+# a Berserk, which the VIKINGS own; the carrier is picked by firing time, so this
+# also proves the refusal path is not what answered.
+_VK = next(i for i, c in enumerate(civs) if "viking" in (c.get("name") or "").lower())
+_civs_all = tk._civs
+_rec_vk = _civs_all[_VK]
+_key_vk = CT.civ_file_stem(_rec_vk["name"])
+_stats_rev = dict(tk._stats)
+_stats_rev["effects"] = list(tk._stats["effects"])
+_stats_rev["techs"] = list(tk._stats["techs"])
+_rev_out, _rev_rep = DG.apply_revoke(_stats_rev, data, gv, _VK,
+                                     trees[_key_vk], 692,
+                                     rank_techs=tk._tech_records())
+_ACTUAL_REV = len(_rev_rep.get("edits") or ())
+print("     revoke of unit 692 for %s -> tech %r (%s), %d edit(s)"
+      % (_key_vk, _rev_rep.get("tech"), _rev_rep.get("carrier_rank"),
+         _ACTUAL_REV))
+check("the revoke recipe performs the declared number of writes",
+      _ACTUAL_REV == _DECL_REV,
+      "declared %r, recipe did %r (%s)"
+      % (_DECL_REV, _ACTUAL_REV, _rev_rep.get("reason")))
 
 print()
 print("DAT HALF COUNT: the schema's declared `.dat` write count is the recipe's own")

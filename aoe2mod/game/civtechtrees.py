@@ -152,11 +152,45 @@ changed a single byte -- ``train_location.ButtonID`` 1 -> 4 on British unit 2550
 militia line.  That is the only layer in this project ever observed moving the
 facility menu.  See ``数据模组能力目录v1.md`` section 15.4aq.
 
-Where this leaves the model: ``.dat`` is necessary (the button slot decides what
-can appear in a cell at all), and *some* narrowing layer above it is genuinely
-read -- otherwise "no Hand Cannoneer in the Briton archery range" would be
-unexplained.  Which file that is remains open; ``dsh test v16`` (2026-10-19)
-tests the ``.dat`` half alone, with two bytes and no JSON at all.
+**★★★ 2026-10-19 `dsh test v16`: THE BUTTON BYTE ALONE IS NOT ENOUGH EITHER.**
+v16 sent one `.dat` and no JSON at all, with exactly two byte edits: British
+unit 2550 ``train_location.ButtonID`` 1 -> 4 (the byte v5 was credited with) and
+Incas unit 2550 gate ``Disabled`` 0 -> 1.  The artifact was verified byte by
+byte (bare-deflate container, `CheckSum` computed, patched stream parses to EOF)
+and the log shows the engine mounted it.  **The user's reading: neither side
+changed.**  So v5's single byte was not a self-sufficient lever -- it was the
+last missing byte in a set that already carried the `type 2` enable effect.
+
+Corrected reading of v5, which is what this docstring got wrong: v5 changed ONE
+byte *relative to v4*, but v4 already carried the enable effect.  What v5 showed
+is that the button slot decides **which cell** a granted unit appears in, not
+that the slot alone makes a unit appear.
+
+Where this leaves the model, stated as narrowly as the evidence allows:
+
+  * The ``.dat`` enable command (``type 2, a=<unit>, b=1``) hung on a
+    civilization-owned free technology is the one ingredient that has ever been
+    observed producing a button (v5/v6/v7), and it is the one the product's
+    ``datgrant`` recipe writes.
+  * Nothing observed so far needs the ``CivTechTrees`` layer to explain a
+    screen, and the one experiment that isolated it (v15) showed no effect.
+  * Nothing observed so far shows the ``.dat`` bit to be *sufficient* on its
+    own for a civilization that does not already ship the unit: v16 changed the
+    British slot and the British still did not get the button.
+  * ``futuravailableunits.json`` is excluded in both directions (Poles /
+    Sicilians), which is the strongest single result in this file.
+
+**Open, and the reason `dsh test v17` exists**: whether ``type 2, b=0`` DISABLES
+a unit for one civilization -- i.e. whether ``unit.availability.revoke`` can be
+given a `.dat` half at all.  The shipped precedent is Armenians/Georgians
+losing the Lumber Camp (``tech 932/940`` -> ``effect 944`` ->
+``(2, 562, 0)``, ``(2, 584, 0)``, with their trees saying ``NotAvailable``), but
+that precedent never has to out-vote an enable: nothing ever enables 562.  Unit
+2550 IS enabled, globally, by ``tech 1350`` -- so a disable must land after it.
+``_probe/probe_inca_late_carrier.py`` measured that no Incas-owned free tech sits
+at a higher index than 1350, so v17 hangs the same disable on two carriers with
+different firing times instead (``tech 495`` at 0:00, ``tech 508`` in the Castle
+Age), plus the villager 1000 hp control.
 
 What that leaves untouched: v9's surprise (deleting the row did not remove the
 button) and v15's (adding one did not create it) are consistent with each other

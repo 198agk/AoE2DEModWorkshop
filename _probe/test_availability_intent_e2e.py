@@ -23,12 +23,14 @@ emitter always carries the base `.dat` along.  The correction was measured, not
 assumed -- `_probe/test_availability_dat_half.py` compares the emitter's own
 declaration against the bytes on disk for all four availability actions.
 
-NOT PROVEN: that a running game offers the unit.  The `.dat` half OF A GRANT was
-confirmed in game on 2026-10-16 (`dsh test v7`: the Dark Age Barracks showed the
-Champi Scout), and the build menu was shown to read the `.dat` + CivTechTrees
-layers on 2026-10-18 -- but no test has ever observed the JSON tree row itself
-granting a button, and this script says so in its own output rather than letting
-the reader assume it.
+NOT PROVEN: that a running game offers the unit for EVERY target.  The `.dat`
+half OF A GRANT was confirmed in game on 2026-10-16 (`dsh test v7`: the Dark Age
+Barracks showed the Champi Scout) and the `.dat` half OF A REVOKE on 2026-10-19
+(`dsh test v17`: the Incas lost the Champi Scout, but only from the Castle Age --
+the ordering rule is part of the result).  What is still unobserved is the JSON
+tree row itself granting a button: `dsh test v15` sent ONLY the two tree files
+and the user saw no change on either side, so this script prints that boundary
+rather than letting a reader assume the tree half works.
 """
 import io
 import json
@@ -106,10 +108,11 @@ def main():
           "and that this grant EDITS it (the datgrant recipe), rather than "
           "carrying it unchanged",
           json.dumps({k: plan.get(k) for k in ("changes_dat", "dat_is_carrier")}))
-    check(plan["edit_count"] == int(_dh.get("write_operations") or 0),
+    _want_writes = int(((_dh.get("write_operations_by_action") or {})
+                        .get("grant", _dh.get("write_operations"))) or 0)
+    check(plan["edit_count"] == _want_writes,
           "and reports the schema's declared write count",
-          "plan=%r declared=%r" % (plan["edit_count"],
-                                   _dh.get("write_operations")))
+          "plan=%r declared=%r" % (plan["edit_count"], _want_writes))
     if FAILS:
         print("  (stopping: the plan failed)")
         return 1
@@ -246,10 +249,12 @@ def main():
     print("AVAILABILITY E2E: ALL CHECKS PASSED")
     print("PROVEN: the mod's bytes, its path, its content, and that nothing else")
     print("        in the game's data or the mod was disturbed.")
-    print("NOT PROVEN here: that a running game offers the unit. For `grant` that")
-    print("        was answered in-game on 2026-10-16 (`dsh test v7`: the Dark Age")
-    print("        Barracks showed the Champi Scout); for `revoke` it has never")
-    print("        been observed, so this file proves the BYTES, not the BUTTON.")
+    print("NOT PROVEN here: that a running game offers or hides the unit for")
+    print("        every target. For `grant` that was answered in-game on")
+    print("        2026-10-16 (`dsh test v7`: the Dark Age Barracks showed the")
+    print("        Champi Scout); for `revoke` on 2026-10-19 (`dsh test v17`: the")
+    print("        Incas lost it from the Castle Age on). This file proves the")
+    print("        BYTES, not the BUTTON.")
     return 0
 
 

@@ -226,7 +226,13 @@ assert blocked_hc > 20, "the tree must block a substantial number of civs"
 print("   -> the layer says 'everyone' where the game says 'most',")
 print("      so it is not the gate on its own\n")
 
-print("PIN: the dat-side gate for buildability is still UNIDENTIFIED -- "
-      "membership, the unit record, and the type-2 layer are each refuted as "
-      "the sole mechanism. The shipped unit.availability intent writes "
-      "CivTechTrees JSON, which no in-game result has ever shown taking effect.")
+print("PIN: the SHIPPED data does not carry per-civ availability in the unit")
+print("record, in membership, or in the type-2 layer -- that is what the three")
+print("sections above measure, and it is still true.  What is NOT true any more")
+print("is the conclusion that used to follow it.  Reaching for `.dat` only to find")
+print("'everyone' does not mean `.dat` cannot express it: one `type 2` command hung")
+print("on a civilization's own free technology does the job, and both directions")
+print("are now confirmed in game (`dsh test v7` 2026-10-16 grants the Champi Scout")
+print("to the Britons, `dsh test v17` 2026-10-19 takes it away from the Incas).")
+print("The CivTechTrees layer below is written by the product but does not move the")
+print("build menu -- v15 sent only tree files and the screen stayed put.")
