@@ -120,6 +120,19 @@
   .empty { color: var(--dim); text-align: center; padding: 26px 0; }
   .err { color: var(--bad); font-size: 12px; white-space: pre-wrap; }
 
+  /* Only shown when the game's data moved under an installed mod.  The mod
+     carries a whole .dat, so it would overwrite the patch; rebuilding is the
+     one fix.  Nothing is shown for mods the guard cannot know about -- a banner
+     nobody can act on teaches people to ignore the ones they can. */
+  #banner { display: none; margin-bottom: 16px; border: 1px solid var(--warn);
+            border-radius: 8px; background: #2e2618; padding: 14px 16px;
+            grid-column: 1 / -1; }
+  #banner.open { display: block; }
+  #banner .line { display: flex; gap: 12px; align-items: flex-start; }
+  #banner .txt { flex: 1; font-size: 13px; line-height: 1.6; }
+  #banner .who { color: var(--warn); }
+  #banner .note { color: var(--dim); font-size: 12px; margin-top: 6px; }
+
   /* The pick-a-picture grid.  A name is only usable if you already know it, and
      the game's Chinese names are not the ones people use, so this exists to let
      a player point instead of type. */
@@ -159,6 +172,15 @@
 </header>
 
 <main>
+  <div id="banner">
+    <div class="line">
+      <div class="txt">
+        <div class="who" id="banner-msg"></div>
+        <div class="note" id="banner-note"></div>
+      </div>
+      <button id="btn-rebuild" class="primary">重建并重装</button>
+    </div>
+  </div>
   <div>
     <div class="box">
       <h2>你想要什么改动？用中文说就行</h2>
@@ -231,6 +253,7 @@
 const $ = (s) => document.querySelector(s);
 let META = null;
 let LAST = null;          // last successful parse payload
+let LAST_UPDATE = null;   // last /api/update-check payload
 
 function toast(msg, kind) {
   const t = $("#toast");
@@ -273,6 +296,55 @@ async function boot() {
   renderMods(META.mods);
   // The .dat facts a player cares about, phrased as facts rather than fields.
   $("#datinfo").textContent = META.civs.length + " 个文明 · 已就绪";
+  checkUpdates();
+}
+
+// ---- did the game's data move under an installed mod? ------------------
+// A mod we build ships a whole .dat, so a game patch is silently overwritten by
+// the installed copy.  The guard costs ~10 ms (a file hash and a 64-byte
+// inflate), so it runs on every load; only a stale mod is worth a banner.
+async function checkUpdates() {
+  let got;
+  try {
+    const r = await api("/api/update-check");
+    got = r.update;
+  } catch (e) {
+    return;                       // a guard that cannot run must not block the screen
+  }
+  LAST_UPDATE = got;
+  if (!got || !got.rows) { $("#banner").className = ""; return; }
+  const stale = got.rows.filter(r => r.status === "stale");
+  if (!stale.length) { $("#banner").className = ""; return; }
+  $("#banner-msg").textContent = got.banner || ("有 " + stale.length + " 个模组要重建");
+  const names = stale.map(r => r.name).join("、");
+  $("#banner-note").textContent =
+    "受影响：" + names + "。重建会用游戏现在这份数据重新生成，再装回原处。";
+  $("#btn-rebuild").onclick = () => rebuildAll(stale);
+  $("#banner").className = "open";
+}
+
+async function rebuildAll(rows) {
+  const btn = $("#btn-rebuild");
+  btn.disabled = true;
+  const done = [];
+  const failed = [];
+  for (const r of rows) {
+    btn.textContent = "重建中… (" + (done.length + failed.length + 1) + "/" + rows.length + ")";
+    try {
+      await api("/api/rebuild", {title: r.name});
+      done.push(r.name);
+    } catch (e) {
+      // One failure must not hide the others: a mod whose record lost its
+      // intents cannot be rebuilt, and the user needs to know which one.
+      failed.push(r.name + "：" + e.message);
+    }
+  }
+  btn.disabled = false;
+  btn.textContent = "重建并重装";
+  if (done.length) toast("已重建 " + done.length + " 个，重开游戏才会生效", "ok");
+  if (failed.length) toast(failed.join("；"), "bad");
+  await checkUpdates();
+  try { renderMods((await api("/api/mods")).mods); } catch (e) {}
 }
 
 function renderIntentList() {

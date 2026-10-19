@@ -211,9 +211,7 @@ class App(object):
         """
         if not intents:
             return {"ok": False, "error": "没有可构建的改动"}
-        out_dir = out_dir or os.path.join(os.path.dirname(
-            os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
-            "_mods_out")
+        out_dir = out_dir or _out_root()
         if len(intents) == 1:
             r = self.tk.build(intents[0], out_dir, title=title, author=author,
                               description=description, overwrite=True)
@@ -244,6 +242,55 @@ class App(object):
 
     def uninstall(self, name):
         return {"ok": True, "mods": self.tk.uninstall(name)}
+
+    def update_check(self):
+        """Has the game's data moved since the installed mods were built?
+
+        Cheap on purpose: 0.009 s for one hash plus a 64-byte inflate of the
+        version head, so the screen can call it on load.  The expensive
+        confirmation (inflate + hash the raw stream) only runs for a mod whose
+        base file hash actually changed -- see `mod/provenance.py`.
+        """
+        got = self.tk.update_check()
+        for row in got.get("rows") or []:
+            row["status_zh"] = STATUS_ZH.get(row.get("status"),
+                                             row.get("status") or "")
+        got["banner"] = _banner(got)
+        return {"ok": True, "update": got}
+
+    def rebuild(self, title, profile_root=None):
+        """Rebuild a stale mod from the intents its record kept, then reinstall.
+
+        This is the whole point of storing the intents: after an official patch
+        the user should not have to remember the sentence they wrote weeks ago.
+        Anything missing is reported, never approximated -- a rebuild that
+        guessed would ship a different mod under the same name.
+
+        `profile_root` is for tests, exactly as in `install()`: the one thing a
+        test must never do is edit the player's real mod list.
+        """
+        from aoe2mod.mod import provenance as PV
+        doc = PV.load()
+        entry = (doc.get("builds") or {}).get(title)
+        if entry is None:
+            return {"ok": False,
+                    "error": "没有「%s」的构建记录，没法按原样重建" % title}
+        intents = entry.get("intents")
+        if not intents:
+            return {"ok": False,
+                    "error": "「%s」的记录里没有留下当初的改动，需要重新说一遍"
+                             % title}
+        built = self.build(intents, title=title,
+                           author=entry.get("author") or "dsh",
+                           description=entry.get("description") or "",
+                           out_dir=os.path.join(_out_root(), _safe_dir(title)))
+        if not built.get("ok"):
+            return built
+        man = built["manifest"]
+        installed = self.tk.install(man["mod_dir"], name=title, title=title,
+                                    enabled=True, position=0, overwrite=True,
+                                    profile_root=profile_root)
+        return {"ok": True, "manifest": man, "installed": installed}
 
     # ---- helpers --------------------------------------------------------
     def _decorate(self, plan):
@@ -296,6 +343,49 @@ def _mods_brief(tk):
                     "enabled": bool(m.get("enabled")), "kind": m.get("kind"),
                     "priority": m.get("priority")})
     return out
+
+
+# Status words the update guard reports, in the language this screen is written
+# in.  They live here rather than in `mod/provenance.py` because that module is
+# machine-facing (its statuses are compared by tests and by callers), while these
+# strings are for reading.
+STATUS_ZH = {
+    "current": "跟得上",
+    "stale": "游戏更新过了，要重建",
+    "edited": "装着的文件被换过",
+    "unknown": "没有记录",
+    "no_dat": "不受影响",
+}
+
+
+def _banner(got):
+    """The one sentence a screen shows at the top, or None when there is none.
+
+    Only `stale` earns a banner.  `unknown` deliberately does not: it means "I
+    cannot know", and a warning nobody can act on teaches people to ignore the
+    ones they can.
+    """
+    stale = [r for r in got.get("rows") or [] if r.get("status") == "stale"]
+    if stale:
+        names = "、".join((r.get("name") or "?") for r in stale[:3])
+        more = "" if len(stale) <= 3 else "等 %d 个" % len(stale)
+        return ("游戏数据在你装这些模组之后更新过：%s%s。"
+                "它们带着旧的一整份 .dat，会把更新盖掉；重建一次就好。"
+                % (names, more))
+    return None
+
+
+def _out_root():
+    return os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(
+        os.path.abspath(__file__)))), "_mods_out")
+
+
+def _safe_dir(title):
+    """A folder name for a mod title that the filesystem will accept."""
+    keep = "-_ ()（）[]【】·"
+    out = "".join(c for c in str(title or "mod")
+                  if c.isalnum() or c in keep).strip()
+    return (out or "mod")[:60]
 
 
 # ---- HTTP wiring --------------------------------------------------------
@@ -386,6 +476,8 @@ def make_handler(app):
                 q = _query(self.path)
                 return self._guard_icon(lambda: app.emblem(
                     q.get("civ", [""])[0]))
+            if path == "/api/update-check":
+                return self._guard(app.update_check)
             return _json(self, {"ok": False, "error": "no such route"}, 404)
 
         # ---- actions ----
@@ -418,6 +510,8 @@ def make_handler(app):
                     payload["name"], bool(payload.get("enabled"))))
             if path == "/api/uninstall":
                 return self._guard(lambda: app.uninstall(payload["name"]))
+            if path == "/api/rebuild":
+                return self._guard(lambda: app.rebuild(payload["title"]))
             return _json(self, {"ok": False, "error": "no such route"}, 404)
 
         def _guard(self, fn):

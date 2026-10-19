@@ -138,6 +138,13 @@ SUITES = [
     # with an invention later.
     r"_probe\test_icons.py",
     r"_probe\test_prose_supply.py",
+    # The update guard.  Every mod this tool builds ships a whole 12 MB .dat, so
+    # a game patch is silently overwritten by the installed copy -- and nothing
+    # says so.  The guard's five statuses each have to be reachable, and two of
+    # them (a re-compressed but identical .dat, an unknown mod) exist ONLY to
+    # keep it from crying wolf: a false alarm costs the user a pointless rebuild,
+    # and after the second one they stop reading it.
+    r"_probe\test_update_guard.py",
     # The registry itself.  Ten probes rotted unrun before anyone noticed, and
     # the reason nobody noticed is that "is every test reachable?" was a question
     # only a human could answer.  This asks it mechanically, including the four

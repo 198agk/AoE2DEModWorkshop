@@ -29,6 +29,7 @@ from .game import icons as IC
 from .intent import availability as AV
 from .intent import compiler as C
 from .mod import emitter as E
+from .mod import provenance as PV
 from .semantic import index as semantic
 from .semantic import prose as PR
 
@@ -2225,7 +2226,22 @@ class Toolkit(object):
 
     def build(self, intent, out_dir, title=None, author="", description="",
               thumbnail=None, overwrite=False):
-        """Compile an intent and emit a ready-to-install mod folder."""
+        """Compile an intent and emit a ready-to-install mod folder.
+
+        A thin wrapper over ``_build_one`` so that EVERY build -- whichever of the
+        four compile strategies answered it -- gets its origin remembered in the
+        provenance file.  Doing it here rather than inside each strategy is the
+        only way to be sure a strategy added later cannot quietly skip the record:
+        the one thing this must never do is let a mod exist that the update guard
+        has never heard of while reporting that it checked.
+        """
+        man = self._build_one(intent, out_dir, title=title, author=author,
+                              description=description, thumbnail=thumbnail,
+                              overwrite=overwrite)
+        return self._remember(man, [intent])
+
+    def _build_one(self, intent, out_dir, title=None, author="", description="",
+                   thumbnail=None, overwrite=False):
         self._ensure()
         # Which machinery compiles this is the SCHEMA's decision, not this
         # method's: `compile.strategy` is read here so adding an intent with a
@@ -2995,7 +3011,18 @@ class Toolkit(object):
         mod folder carries the whole request.  Splitting here is what stops
         "villagers are tougher AND Britons can build Huskarls" from becoming two
         mods of which the engine loads only the higher-priority one.
+
+        The bundle's whole intent LIST is remembered, not just a description: a
+        stale mod has to be rebuildable without the user retyping three sentences
+        they wrote weeks ago.
         """
+        man = self._build_bundle_one(intents, out_dir, title=title, author=author,
+                                     description=description,
+                                     thumbnail=thumbnail, overwrite=overwrite)
+        return self._remember(man, list(intents))
+
+    def _build_bundle_one(self, intents, out_dir, title=None, author="",
+                          description="", thumbnail=None, overwrite=False):
         self._ensure()
         if not intents:
             # `compile_bundle_intent` used to carry this check.  `build_bundle`
@@ -3247,6 +3274,41 @@ class Toolkit(object):
                 man["verification"] = avail
         return man
 
+    # ---- provenance: which game data a mod came from ---------------------
+    def _remember(self, man, intents):
+        """Record this build's origin so an official update becomes visible.
+
+        Never raises.  A build that succeeded must not be reported as failed
+        because the record file could not be written -- the mod is real and
+        installable, and the only thing lost is the ability to say later whether
+        the game has moved under it.  The record is skipped and the manifest says
+        so, because "unknown" is the honest answer and it stays visible.
+        """
+        try:
+            entry = PV.entry_from_manifest(
+                man, self.dat_path,
+                base_raw_sha256=__import__("hashlib").sha256(self._raw).hexdigest(),
+                intents=intents, target_version=self.version)
+            PV.record(entry)
+            man["provenance"] = {"title": entry["title"],
+                                 "state_file": PV.state_path(),
+                                 "base_version": entry["base_version"]}
+        except Exception as exc:                       # noqa: BLE001
+            man["provenance"] = {"title": None, "state_file": None,
+                                 "why_not": "%s: %s" % (type(exc).__name__, exc)}
+        return man
+
+    def update_check(self, profile_root=None, game_dat=None,
+                     state_file=None):
+        """Has the game's data moved since any installed mod was built?
+
+        ``state_file`` exists so a caller (and the tests) can point at a throwaway
+        record instead of the player's real one -- the same reason ``install_mod``
+        takes ``profile_root``.
+        """
+        return PV.check(profile_root=profile_root, game_dat=game_dat,
+                        path=state_file)
+
     def mods(self):
         from .game import locations as G
         prof = G.find_profile_root()
@@ -3277,9 +3339,18 @@ class Toolkit(object):
         """
         from .game import locations as G
         prof = profile_root or G.find_profile_root()
-        return G.install_mod(mod_dir, prof, name=name, title=title, kind=kind,
-                             enabled=enabled, position=position,
-                             account=account, overwrite=overwrite)
+        man = G.install_mod(mod_dir, prof, name=name, title=title, kind=kind,
+                            enabled=enabled, position=position,
+                            account=account, overwrite=overwrite)
+        # The build record knows the game data; only the install knows the bytes
+        # the game will actually read.  Attaching that is what lets a later check
+        # tell "the game was patched" from "somebody replaced MY mod" -- two
+        # situations with opposite fixes.
+        try:
+            PV.note_installed(man)
+        except Exception as exc:                       # noqa: BLE001
+            man["provenance"] = {"why_not": "%s: %s" % (type(exc).__name__, exc)}
+        return man
 
     def uninstall(self, name, kind="local", profile_root=None, account=None,
                   remove_files=True):

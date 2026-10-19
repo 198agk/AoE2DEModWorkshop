@@ -188,6 +188,34 @@ const BROWSE = {
   },
 };
 
+// A real /api/update-check answer, captured from a live server with an installed
+// mod whose build record says the game's .dat has changed since.  Unknown rows
+// are in the same payload on purpose: the banner must count ONLY stale ones.
+const UPDATE = {
+  stale: {
+    ok: true, state_dir: "C:\\Users\\x\\AppData\\Local\\aoe2de-mod-workshop",
+    dat: { version: "VER 8.9" }, needs_attention: 1,
+    banner: "游戏数据在你装这些模组之后更新过：村民血量测试。它们带着旧的一整份 .dat，会把更新盖掉；重建一次就好。",
+    rows: [
+      { name: "村民血量测试", title: "村民血量测试", kind: "local", enabled: true,
+        status: "stale", detail: "游戏数据更新过（版本号还是 VER 8.9，但内容变了）",
+        fixable: true, built_at: "2026-10-19T22:00:00", built_version: "VER 8.9" },
+      { name: "别人做的模组", title: "别人做的模组", kind: "subscribed", enabled: true,
+        status: "unknown", detail: "没有任何构建记录", fixable: false },
+    ],
+  },
+  quiet: {
+    ok: true, state_dir: "C:\\Users\\x\\AppData\\Local\\aoe2de-mod-workshop", dat: {},
+    needs_attention: 0, banner: null,
+    rows: [
+      { name: "别人做的模组", title: "别人做的模组", kind: "subscribed", enabled: true,
+        status: "unknown", detail: "没有任何构建记录", fixable: false },
+    ],
+  },
+};
+let UPDATE_ANSWER = UPDATE.stale;
+const rebuilt = [];
+
 // ---- run the real script -------------------------------------------------
 const posted = [];
 const sandbox = {
@@ -210,6 +238,17 @@ const sandbox = {
     if (url.indexOf("/api/parse") === 0) {
       return { json: async () => FIXTURES.mixed };
     }
+    if (url.indexOf("/api/update-check") === 0) {
+      // The route wraps its answer the way the server does ({ok, update}); a stub
+      // that returned the bare rows would let a page bug (reading the wrong
+      // level) pass here and fail on screen.
+      return { json: async () => ({ ok: true, update: UPDATE_ANSWER }) };
+    }
+    if (url.indexOf("/api/rebuild") === 0) {
+      const body = opt && opt.body ? JSON.parse(opt.body) : {};
+      rebuilt.push(body.title);
+      return { json: async () => ({ ok: true, manifest: {}, installed: {} }) };
+    }
     return { json: async () => ({ ok: true, version: 54, civs: new Array(63),
       intents: [], mods: [], manifest: { mod_dir: "/tmp/x", info: {} } }) };
   },
@@ -223,6 +262,7 @@ const fn = new Function(
   "doBuild: doBuild, doParse: doParse, renderDetail: renderDetail, " +
   "loadPick: loadPick, pickCell: pickCell, pickName: pickName, " +
   "setPickKind: setPickKind, PICK: () => PICK, PINS: () => PINS, " +
+  "checkUpdates: checkUpdates, rebuildAll: rebuildAll, " +
   "setLast: (v) => { LAST = v; }};");
 const page = fn(sandbox.document, sandbox.fetch, sandbox.setTimeout,
                 sandbox.clearTimeout, sandbox.console, sandbox.JSON);
@@ -414,9 +454,45 @@ function pickChecks() {
       && n.className.indexOf("cell") >= 0);
     check("...and nothing of the previous list survives the switch",
           cells.length === 1, String(cells.length));
-    finish();
+    return updateChecks();
   }).catch((e) => { fails.push("the picker threw: " + e.message);
                     console.log("FAIL the picker threw :: " + e.stack); finish(); });
+}
+
+// ---- the update banner ---------------------------------------------------
+// A mod we build ships a whole .dat, so a game patch is silently overwritten by
+// the installed copy.  The screen has to say so -- and has to say nothing when
+// the only rows it does not recognize are ones it could never know about.
+function updateChecks() {
+  return page.checkUpdates().then(() => {
+    check("a stale mod puts a banner on the screen",
+          ids.banner.className.indexOf("open") >= 0, ids.banner.className);
+    check("the banner names the mod that needs rebuilding",
+          text(ids["banner-msg"]).indexOf("村民血量测试") >= 0,
+          text(ids["banner-msg"]));
+    // The unknown row is in the same payload.  Counting it would put a warning
+    // on screen that nobody can act on.
+    check("an unknown mod is not counted as needing attention",
+          text(ids["banner-note"]).indexOf("别人做的模组") < 0,
+          text(ids["banner-note"]));
+    check("the banner offers one button, not one per mod",
+          typeof ids["btn-rebuild"].onclick === "function");
+    return ids["btn-rebuild"].onclick();
+  }).then(() => {
+    check("the button rebuilds the stale mod by name",
+          rebuilt.length === 1 && rebuilt[0] === "村民血量测试",
+          JSON.stringify(rebuilt));
+    // After the rebuild the guard answers "nothing to do"; the banner has to go
+    // away on its own, or the user is told to fix something already fixed.
+    UPDATE_ANSWER = UPDATE.quiet;
+    return page.checkUpdates();
+  }).then(() => {
+    check("the banner disappears once nothing is stale",
+          ids.banner.className.indexOf("open") < 0, ids.banner.className);
+    finish();
+  }).catch((e) => { fails.push("the update banner threw: " + e.message);
+                    console.log("FAIL the update banner threw :: " + e.stack);
+                    finish(); });
 }
 
 function finish() {

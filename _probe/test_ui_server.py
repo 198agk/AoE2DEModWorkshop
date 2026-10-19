@@ -473,6 +473,40 @@ def main():
         check("a technology reports its icon instead of a placeholder",
               bool((d_tech.get("icon") or {}).get("ok")),
               str(d_tech.get("icon"))[:160])
+
+        # ---- the update guard over HTTP --------------------------------
+        # A mod we build ships a whole .dat, so a game patch is silently
+        # overwritten by the installed copy.  The screen asks this route on every
+        # load, so it has to answer with rows the page can print -- status words
+        # in the reader's language, not enum values.
+        st, _c, body = _get(base, "/api/update-check")
+        upd = json.loads(body.decode("utf-8")).get("update") or {}
+        check("the update guard answers over HTTP", st == 200 and
+              isinstance(upd.get("rows"), list), "%s %s" % (st, str(upd)[:160]))
+        # This machine has installed mods (the file's other checks already lean on
+        # the real installation), so an empty list means the guard failed to read
+        # the profile rather than "nothing to report" -- and `all([])` would pass
+        # the next two checks on nothing at all.
+        check("the update guard lists the mods that are installed",
+              len(upd.get("rows") or []) >= 1, str(upd)[:160])
+        check("every row carries a status word the page can print",
+              all(r.get("status") and r.get("status_zh") for r in upd.get("rows") or []),
+              str((upd.get("rows") or [{}])[0])[:200])
+        check("the route says whether a banner is needed",
+              "banner" in upd, str(sorted(upd.keys())))
+        # Unknown rows must never be counted: a banner nobody can act on trains
+        # people to ignore the ones they can act on.
+        unknown = [r for r in upd.get("rows") or [] if r.get("status") == "unknown"]
+        check("unknown rows are not counted as needing attention",
+              not unknown or upd.get("needs_attention") == 0,
+              "unknown=%d attention=%s" % (len(unknown), upd.get("needs_attention")))
+
+        # Rebuilding something we never built must say so by name, not 500 and
+        # not silently pretend it rebuilt.
+        st, rb = _post(base, "/api/rebuild", {"title": "no such mod at all"})
+        check("rebuilding an unrecorded mod refuses with a reason",
+              st == 200 and rb.get("ok") is False and "记录" in (rb.get("error") or ""),
+              str(rb)[:200])
     finally:
         httpd.shutdown()
 
