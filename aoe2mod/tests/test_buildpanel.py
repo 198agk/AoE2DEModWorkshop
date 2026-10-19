@@ -220,10 +220,14 @@ def main():
         return 1
     print("BUILD-PANEL CACHE: the writer is surgical -- an edit moves only the "
           "characters it was asked to move.")
-    print("NOT PROVEN: that the running game reads this cache.  Note that the "
-          "2026-10-14 tree edit is NOT evidence against the tree: this panel "
-          "file is a SHIPPED artifact (unchanged across 11 launches), so if the")
-    print("menu reads it, editing the tree could not have moved the menu either.")
+    print("ANSWERED 2026-10-19: the running game does NOT read this file for the")
+    print("build menu.  It is excluded in BOTH directions by plain-game runs --")
+    print("Sicilians (panel silent, the game still offered the unit) and Poles")
+    print("(panel listed the unit AND its upgrade tech, the game offered neither).")
+    print("What moves the menu is a `.dat` `type 2` Enable/Disable Unit command on")
+    print("a tech the civ owns, last one to fire wins (v7 grant / v17 revoke).")
+    print("The write is still correct and still made -- some other screen consumes")
+    print("this file, most likely the greyed-out future-items view.")
     return 0
 
 

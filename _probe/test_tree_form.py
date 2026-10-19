@@ -84,12 +84,19 @@ PROVEN here     : the engine names one tree template, `CivTechTrees/%s.json`,
                   and it is the per-civ form whose own generated field schema
                   ends immediately before it; the aggregate is a mode-only
                   artifact; the two forms are semantically identical.
-NOT PROVEN here : why the mod-side per-civ overlay had no effect in game.  Form
-                  and file name are now both cleared, so the survivors are
-                  scheduling (the tree may be read before mods are mounted) and
-                  SCREEN (the build panel the user checked may be fed by
-                  `futuravailableunits.json`, which the exe names next to
-                  `CommandPanel` and `TechTreePreviewPanel`, not by the tree).
+NOT PROVEN here : nothing -- this question has since been measured.  Form and
+                  file name were already cleared; the two survivors it listed
+                  are both now dead.  SCHEDULING is out (`dsh test v17` was
+                  installed with the game closed and selected before the match
+                  started, and it took effect).  SCREEN is out too, and in the
+                  direction this file guessed: `futuravailableunits.json` is
+                  excluded in BOTH directions by plain-game runs (Sicilians
+                  panel-silent-but-offered, Poles panel-listed-but-not-offered).
+                  The real reason a tree overlay moves nothing is that the build
+                  menu does not read the tree at all (`dsh test v15`); it reads
+                  `.dat` `type 2` Enable/Disable Unit commands, last-to-fire
+                  wins (`dsh test v7` / `v17`).  The tree IS read -- by the
+                  tech-tree PREVIEW screen.
 """
 import io
 import json
@@ -354,5 +361,10 @@ print("TREE FORM: the engine parses the per-civ template `CivTechTrees/%s.json`;
 print("the aggregate `civTechTrees.json` is a MODE-only artifact; the two forms")
 print("carry identical semantics, so `unit.availability` writes the right file in")
 print("the right form and the 2026-10-14 failure is not a naming or shape bug.")
-print("NOT PROVEN: why the mod-side overlay had no effect -- form and file name")
-print("are cleared, leaving scheduling and the SCREEN the user checked.")
+print("ANSWERED SINCE (2026-10-19): `dsh test v15` shipped exactly these files in")
+print("exactly this form, over a byte-identical `.dat`, with the engine log")
+print("confirming the mod loaded -- and the build menu moved in NEITHER direction.")
+print("So the form and the file name were never the problem, and the tree is not")
+print("what the build menu reads (the tech-tree PREVIEW does read it).  What gates")
+print("the menu is a `.dat` `type 2` command on a tech the civ owns, last one to")
+print("fire wins (v7 grant / v17 revoke).  See _交接说明.md sections 2, 2b-2d.")

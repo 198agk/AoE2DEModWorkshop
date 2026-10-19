@@ -24,9 +24,15 @@ in game is an OVERLAY problem for one specific path, not evidence that JSON is
 ignored.  Keeping those apart matters: the first is a bug to chase, the second
 would condemn the whole `*.availability` feature.
 
-NOT PROVEN (printed below too): which of the two JSON layers the build panel
-consults.  That needs one in-game look at a civ the two files disagree about,
-and those 18 pairs need no mod installed at all.
+ANSWERED SINCE (2026-10-19): neither of the two JSON layers is what the BUILD
+panel consults.  `futuravailableunits.json` is excluded in both directions by
+plain-game runs (Sicilians panel-silent-but-offered / Poles panel-listed-but-not
+-offered); the tree is read but a mod-side rewrite moves nothing (`dsh test
+v15`, two directions, byte-identical `.dat`, engine log confirming the load).
+They are still engine data -- just for OTHER screens: the tech-tree preview
+reads the tree, and the panel feeds the greyed-out future-items view.  What
+gates the build menu is a `.dat` `type 2` command on a technology the civ owns,
+last one to fire wins (`dsh test v7` grant / `dsh test v17` revoke).
 """
 
 import os as _os
@@ -161,9 +167,15 @@ else:
     print("INCONCLUSIVE -- a precondition above did not hold; fix the probe")
     print("before drawing any conclusion.")
 print("=" * 78)
-print("NOT PROVEN: which layer the build panel consults.  The 18 shipped")
-print("disagreements between the two files are observable in a plain game with")
-print("no mod installed -- that is the cheapest way to settle it.")
+print("ANSWERED SINCE (2026-10-19): the build panel consults NEITHER JSON layer.")
+print("It is excluded in both directions by in-game runs (Sicilians / Poles), and")
+print("`dsh test v15` moved two tree files in both directions over a")
+print("byte-identical `.dat` without the menu changing.  What does move it is a")
+print("`.dat` `type 2` command on a technology the civ owns, last one to fire")
+print("wins (v7 grant / v17 revoke).  The 99.45% agreement between the two files")
+print("still stands -- they are both MODELS of who may build what, and both are")
+print("read by SCREENS other than the build menu (tech-tree preview reads the")
+print("tree; the panel feeds the greyed-out future-items view).")
 
 assert distinguishes, "the JSON layers must separate a builder from a blocked civ"
 assert glob_only, "the only .dat command naming unit 5 must be global"

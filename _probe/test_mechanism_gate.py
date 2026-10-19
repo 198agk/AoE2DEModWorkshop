@@ -7,17 +7,35 @@ Both exist in the shipped data, so their coexistence proves nothing.  This file
 pins the discriminating measurement so that a future round cannot quietly
 describe one as the other.
 
-The verdict, from the shipped data:
+The shipped-data measurements below are still true, and they still disprove the
+simple readings of "type 2 gates buildability":
 
-  * An enable is NOT necessary.  War Galley (unit 21) has 56 builders and not one
-    of them owns an enable command -- they have a tree row and nothing else.
-  * An enable is NOT sufficient.  Hand Cannoneer (unit 5) is blocked
-    (`NotAvailable`) for 38 civs and every one of those 38 owns an enable
-    (a global one).  So owning an enable does not grant the ability.
+  * An enable is NOT necessary *as a mere presence*.  War Galley (unit 21) has
+    56 builders and not one of them owns an enable command -- they have a tree
+    row and nothing else.
+  * An enable is NOT sufficient *as a mere presence*.  Hand Cannoneer (unit 5)
+    is blocked (`NotAvailable`) for 38 civs and every one of those 38 owns an
+    enable (a global one).  So owning an enable does not grant the ability.
 
-Therefore the per-civ gate is the tech-tree row, which is what the shipped
-`unit.availability` intent writes.  A `type 2` command is a different lever
-(globally enabling a unit) and must never be described as "let civ X build Y".
+WHAT THIS FILE GOT WRONG, AND WHEN: it used to conclude "therefore the per-civ
+gate is the tech-tree row".  Two in-game runs refuted that inference, and the
+distinction it missed is ORDER, not presence:
+
+  * `dsh test v15` (2026-10-19): a mod carrying two `CivTechTrees/*.json`
+    rewrites over a byte-identical `.dat`, with the engine log confirming the
+    mod loaded, moved the build menu in NEITHER direction.  The tree row is
+    read (the tech-tree PREVIEW screen reads it) but it does not gate the
+    build menu.
+  * `dsh test v7` / `v17` (2026-10-16 / 2026-10-19): a `.dat` `type 2` command
+    hung on a technology the civ actually owns DOES gate it -- enable makes the
+    button appear, disable removes it, and when two commands touch the same
+    unit the LAST ONE TO FIRE wins (v17 hung the same disable on a 0:00 carrier
+    and on a Castle-age carrier; the 0:00 one lost to the global enable, the
+    Castle-age one won).
+
+So "type 2 is not a per-civ lever" is false.  What the data below really shows
+is that a `type 2` command counts only when the technology carrying it fires,
+and nothing in the shipped data lets you read that off the command alone.
 
 It also pins the boundary of the type-2 family itself, so that the irregular
 rows stay refused until there is evidence for them.
@@ -101,12 +119,16 @@ def main():
           blocked5[0])
 
     print()
-    print("=> the per-civ gate is the tech-tree row, which is what "
-          "unit.availability writes:")
+    print("=> the SHIPPED data is consistent with the tree row being the model "
+          "of who may build what:")
     check(CT.can_build(trees["BRITONS"], 5) is False
           and CT.can_build(trees["TURKS"], 5) is True,
-          "can_build tracks the row, not the enable")
+          "can_build tracks the row, not the (global) enable")
     check(len(glob) > 0, "global enables exist and span civs", len(glob))
+    print("   NOTE: this is a statement about the shipped files, NOT about what")
+    print("   the engine consults.  v15 showed a mod-side tree rewrite does not")
+    print("   move the build menu; v7/v17 showed a `type 2` command on a tech")
+    print("   the civ owns does, last-to-fire wins.  See the module docstring.")
 
     print()
     print("the type-2 family boundary (irregular rows stay refused):")
@@ -143,8 +165,13 @@ def main():
     if FAILS:
         print("MECHANISM GATE: FAILED -> %s" % FAILS)
         return 1
-    print("MECHANISM GATE: the tree row gates buildability; the enable command "
-          "is neither necessary nor sufficient.")
+    print("MECHANISM GATE: in the SHIPPED data the tree row is what models "
+          "buildability; a `type 2` command is neither necessary nor "
+          "sufficient BY ITS MERE PRESENCE.")
+    print("MECHANISM GATE (corrected 2026-10-19): that is not the whole gate. "
+          "A `type 2` command on a technology the civ owns DOES move the build "
+          "menu, and the last one to fire wins -- v7 (enable), v17 (disable). "
+          "A mod-side tree rewrite does not (v15).")
     return 0
 
 

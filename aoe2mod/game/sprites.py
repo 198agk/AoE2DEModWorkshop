@@ -54,9 +54,12 @@ HONESTY BOUNDARY
 
 Proven: the chain resolves, by-id beats by-position, the group rule reproduces
 the engine's own names, and every file is present on disk paired x1/x2.
-NOT proven: that overwriting these files changes what the running game draws.
-That needs an in-game test, the same one every other layer in this toolkit is
-waiting on.  Nothing here claims the game re-reads a loose .sld.
+ANSWERED 2026-10-17, and the answer is YES for copying: `dsh test v12` shipped
+466 loose `.sld` files and the user reported every villager job rendering as
+sheep ("都是羊了"), so a loose `.sld` at a shipped filename DOES override what
+the engine draws.  What is still unobserved is the other trick -- re-ENCODING a
+shipped file in place (`intent/repaint.py`); that path has never been looked at
+in game, and the two are not the same claim.
 """
 import collections
 import os

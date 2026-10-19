@@ -7,8 +7,10 @@ So the reskin can be 244 record renames and ONE mod file.
 
 WHAT IS PROVEN HERE: the records say what we asked, the stream reparses to its
 own length, and no record we did not touch moved.
-WHAT IS NOT PROVEN: that the running game resolves a record by `file` rather
-than by the `slp` id baked beside it.  One in-game look settles it.
+WHAT WAS NOT PROVEN AT THE TIME, AND NOW IS: that the running game resolves a
+record by `file` rather than by the `slp` id baked beside it.  v13 was loaded
+in game and the user confirmed the villagers showed as sheep -- which is why
+`aoe2mod/api.py`'s `_reskin_mode` now documents `rename` as PROVEN.
 """
 import os
 import sys

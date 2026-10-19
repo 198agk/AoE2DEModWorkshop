@@ -203,6 +203,13 @@ for uid, label, exp_can, exp_cannot, is_civ_owned in (
 print()
 print("ENABLING-RESEARCH PIN: the dat gates the OWNER of 46 unique units; the "
       "tree gates the per-civ status.")
-print("NOT PROVEN: where the Hand Cannoneer / War Galley / Knight split lives "
-      "-- still unlocated in the dat.")
+print("STILL OPEN, and now a SHARPER question (2026-10-19): where does the")
+print("  Hand Cannoneer / War Galley / Knight split live?  The `.dat` carries only")
+print("  a GLOBAL enable for unit 5, so it cannot tell 24 civs from 38.  Both JSON")
+print("  layers DO carry the split, but neither is read by the build menu (panel")
+print("  excluded in both directions; tree refuted by dsh test v15).  So SOMETHING")
+print("  ELSE still implements this split for the shipped data -- that is the")
+print("  remaining hole, and it is the one thing on this list that a mod cannot")
+print("  fake.  What is settled is the mechanism a MOD can use: a `type 2`")
+print("  command on a tech the civ owns, last one to fire wins (v7 / v17).")
 sys.exit(1 if FAILED else 0)

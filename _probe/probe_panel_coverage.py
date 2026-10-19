@@ -140,8 +140,10 @@ else:
     print("expansion, so any experiment must edit BOTH names, and the earlier")
     print("mtime result applies to the pair.")
 print("=" * 78)
-print("NOT PROVEN: which file the running game consults.  Coverage bounds")
-print("what COULD be consulted; it does not show what IS.")
+print("ANSWERED SINCE (2026-10-19): not the build menu.  The panel is excluded in")
+print("both directions by plain-game runs (Sicilians panel-silent-but-offered /")
+print("Poles panel-listed-but-not-offered), so coverage bounds something other")
+print("than the menu -- most likely the greyed-out future-items view.")
 
 if differ:
     print()

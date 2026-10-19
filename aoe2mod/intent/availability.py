@@ -24,9 +24,19 @@ WHAT IS AND IS NOT PROVEN
 PROVEN (by the end-to-end test ``test_availability_e2e.py``): the emitted tree
 re-serialises byte-exactly, the untouched rows are byte-identical to the
 shipped file, exactly one row was added, and the file sits where the engine
-looks.  NOT PROVEN: that a running game offers the unit.  This layer has never
-been observed in-game -- no mod on this install ships a CivTechTrees file -- so
-:func:`report` says so in its own output rather than letting a caller assume it.
+looks.
+
+ANSWERED 2026-10-19, and the answer is NO: a running game does not offer the
+unit because of this layer.  ``dsh test v15`` shipped two CivTechTrees files
+over a byte-identical ``.dat`` -- one granted a unit, one revoked it together
+with its whole upgrade chain -- and the engine logged loading the mod, and the
+build menu moved in neither direction.  So :func:`report` no longer says "not
+observed"; it has been observed, and it did nothing.  The tree is still worth
+writing because the tech-tree PREVIEW screen reads it (all 16 of its icon
+controls are tree enum values, and no widgetui layout names a build-panel
+field), but the build menu is gated by ``.dat`` ``type 2`` Enable/Disable Unit
+commands hung on a technology the civilization owns -- the ``.dat`` half of
+``unit.availability``, which is where the effect actually comes from.
 
 THE THREE WAYS A REQUEST CAN FAIL, AND WHY THEY ARE DIFFERENT SENTENCES
 ======================================================================

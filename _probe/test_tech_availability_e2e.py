@@ -196,8 +196,12 @@ def main():
     print("TECH AVAILABILITY E2E: ALL CHECKS PASSED")
     print("PROVEN: a byte-exact CivTechTrees file under the engine's path, "
           "with the named tech row added and no other row changed.")
-    print("NOT PROVEN: that a running game offers the technology to that "
-          "civilization (needs an in-game load).")
+    print("NOT MEASURED: whether a running game offers the TECHNOLOGY.  The")
+    print("  unit-space question was answered -- a tree-only write moves nothing")
+    print("  (v15), and a `.dat` `type 2` command on a tech the civ owns does")
+    print("  (v7/v17) -- but no experiment has ever put a tech row in front of")
+    print("  the player and looked at the research panel.  Do not extrapolate the")
+    print("  unit result to technologies without saying so.")
     return 0
 
 

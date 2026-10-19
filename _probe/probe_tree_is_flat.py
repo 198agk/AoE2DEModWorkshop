@@ -98,8 +98,12 @@ def main():
         print("         reading (H1 stays alive) -- only %d exception(s)."
               % len(unreachable))
     print()
-    print("NOT PROVEN either way: which file the running game's build panel")
-    print("reads.  That needs the second smoke mod's in-game result.")
+    print("ANSWERED SINCE (2026-10-19): neither of these two files, as it turns")
+    print("out.  The build panel reads `.dat` `type 2` Enable/Disable Unit")
+    print("commands on a technology the civ owns, last one to fire wins")
+    print("(`dsh test v7` grant / `dsh test v17` revoke).  The panel file was")
+    print("excluded in both directions; the tree is read by the tech-tree preview")
+    print("but a mod-side rewrite of it moves nothing (`dsh test v15`).")
     return 0
 
 

@@ -142,6 +142,9 @@ finally:
 print("%d checks passed" % checks)
 print("PANEL WIRE PIN: an availability build writes the tree AND the pre-baked "
       "panel, and a panel no-op is reported rather than shipped.")
-print("NOT PROVEN: that the running game reads either one -- the 2026-10-14 "
-      "tree-only test changed nothing in the menu, and no test has yet shipped "
-      "a panel file.")
+print("ANSWERED SINCE (2026-10-19): the running game reads the panel file for")
+print("SOME screen -- but not for the build menu, which is excluded in both")
+print("directions (Sicilians panel-silent-but-offered / Poles")
+print("panel-listed-but-not-offered).  It most likely feeds the greyed-out")
+print("future-items view.  What this file pins -- that the build WRITES both")
+print("files and reports a panel no-op instead of shipping one -- is unaffected.")

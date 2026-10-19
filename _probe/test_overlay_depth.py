@@ -35,8 +35,13 @@ different file).
 PROVEN here     : storage points are declared with a directory root; mods ship
                   nested files under WIDGETUI's root; the DAT root's only
                   nested mod file is the one that failed.
-NOT PROVEN here : which file the running game consults for buildability.  Only
-                  an in-game single-variable test can say.
+ANSWERED SINCE (2026-10-19): recursion was never the question.  The DAT overlay
+                  is recursive, and the tree write still moves nothing --
+                  `dsh test v15` shipped two CivTechTrees files over a
+                  byte-identical `.dat`, engine logged loading the mod, build
+                  menu unchanged in both directions.  The menu follows `.dat`
+                  `type 2` commands on a tech the civ owns, last to fire wins
+                  (v7 grant / v17 revoke).
 """
 import io
 import json

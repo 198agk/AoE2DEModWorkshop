@@ -140,8 +140,11 @@ else:
     print("So the pairing would be at most a packaging convention; do not")
     print("claim the engine derives it from `era`.")
 print("=" * 78)
-print("NOT PROVEN: that the engine consults these files at all.  A derivable")
-print("selector is a necessary condition for that, not sufficient.")
+print("ANSWERED SINCE (2026-10-19): the engine DOES read a panel file -- but not")
+print("for the build menu, which is excluded in both directions (Sicilians")
+print("panel-silent-but-offered / Poles panel-listed-but-not-offered).  Which of")
+print("the era pair a given screen loads is still unmeasured; the build menu is")
+print("not that screen.")
 
 assert len(rows) == len(entries), "position join must cover every civ"
 assert paphos_only, "the paphos file must contribute keys the main one lacks"

@@ -39,9 +39,14 @@ proposed and refuted separately and each is easy to propose again:
 PROVEN: the four .dat refutations above; the dat folder's subdirectory inventory;
         that the ONLY mod file ever placed below resources/_common/dat/ is my own
         smoke test's CivTechTrees/BRITONS.json -- the very write that failed.
-NOT PROVEN: that the engine's DAT overlay is not recursive, or that it is.  One
-        data point cannot separate those.  The experiment that can is printed at
-        the end of part F.
+NOT PROVEN: nothing here -- both open questions were measured later.  The DAT
+        overlay IS recursive (`_probe/test_overlay_depth.py`: WIDGETUI carries
+        550 nested files up to depth 4 and they render).  And the reason the
+        tree write moved nothing was never the nesting: `dsh test v15` (2026-10-19)
+        shipped the same file in the same place over a byte-identical `.dat`,
+        the engine logged loading the mod, and the build menu moved in neither
+        direction.  The menu reads `.dat` `type 2` Enable/Disable Unit commands
+        on a tech the civ owns, last one to fire wins (v7 grant / v17 revoke).
 """
 import json
 import os

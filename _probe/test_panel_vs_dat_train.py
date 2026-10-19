@@ -150,7 +150,12 @@ check("they reduce to exactly 8 distinct (unit, building) pairs",
 print()
 print("PANEL-VS-DAT: the panel names training buildings the .dat does not,")
 print("  so the two layers are not redundant and a panel write is not a no-op")
-print("  in principle.  NOT PROVEN: that the engine honours such an entry.")
+print("  in principle.")
+print("ANSWERED SINCE (2026-10-19): the engine does not honour such an entry for")
+print("  the BUILD MENU -- the panel is excluded in both directions (Sicilians")
+print("  panel-silent-but-offered / Poles panel-listed-but-not-offered).  The")
+print("  panel write is still worth making, because the file feeds a different")
+print("  screen; it just is not what puts a button on a building.")
 for n in fails:
     print("  FAILED: %s" % n)
 sys.exit(1 if fails else 0)

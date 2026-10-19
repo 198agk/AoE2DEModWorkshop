@@ -36,9 +36,12 @@ HONESTY BOUNDARY
 PROVEN: the blocks land in the right cells (copying the original bytes back
 reproduces each file byte-for-byte), the round trip decodes within 5, the file
 length never changes, and no non-main layer is touched.
-NOT PROVEN: that the game renders the result.  Loose `.sld` files ARE proven to
-load (2026-10-17, `dsh test v10`/`v12` repainted nothing -- they copied files --
-so a repainted file still needs one look in game).
+NOT PROVEN: that the game renders a RE-ENCODED file.  Loose `.sld` files are
+proven to load and to win over the shipped picture (2026-10-17, `dsh test v12`:
+466 copied files, the user saw sheep for every villager job) -- but v10/v12
+COPIED donor pictures rather than re-encoding them, so "a loose file replaces
+the picture" and "this encoder produces a file the game accepts" are two
+different claims and only the first one has been looked at in game.
 """
 import os
 

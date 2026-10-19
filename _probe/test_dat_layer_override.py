@@ -33,10 +33,17 @@ down.  Each assertion below kills or preserves one hypothesis:
   D. Row keys in the aggregate are exactly the per-civ row keys, so the two
      formats are the same object at different granularity.
 
-NOT PROVEN, and deliberately not claimed here: which file the running game's
-build panel reads, and why the tree override was ignored.  A second smoke mod
-(`_probe/build_smoke2_mod.py`, installed prio 1 on 2026-10-14) tests the
-remaining candidate -- `futuravailableunits.json` -- directly, in game.
+ANSWERED SINCE (2026-10-19), and not in the direction this file expected: the
+build panel reads NEITHER JSON file.  `futuravailableunits.json` is excluded in
+both directions by two plain-game runs (Sicilians: panel silent, the game still
+offered the unit; Poles: panel listed the unit AND its upgrade tech, the game
+offered neither).  The tree is read -- the tech-tree PREVIEW screen reads it --
+but a mod-side rewrite of it does not move the build menu (`dsh test v15`: two
+tree files, both directions, byte-identical `.dat`, engine log confirming the
+load, zero change on screen).  What DOES move the menu is a `.dat` `type 2`
+Enable/Disable Unit command hung on a technology the civilization owns, where
+the last command to fire wins (`dsh test v7` grant, `dsh test v17` revoke).
+The 2026-10-14 failure was therefore neither form, nor name, nor scheduling.
 """
 
 import json
@@ -194,8 +201,13 @@ def main():
     print("DAT-LAYER STRUCTURE: the DAT storage point is declared uniquely;")
     print("the tree is not disqualified by shape; the aggregate is mode-only.")
     print()
-    print("NOT PROVEN: which file the build panel reads.  The in-game result of")
-    print("            the second smoke mod decides that, not this probe.")
+    print("ANSWERED SINCE (2026-10-19): the question this file deferred is closed,")
+    print("            and the build panel follows none of these three JSON files.")
+    print("            The panel file is excluded in BOTH directions (Sicilians: not")
+    print("            listed, game offered it; Poles: listed with its tech, game")
+    print("            offered neither).  The tree is read but does not move the")
+    print("            menu (dsh test v15).  A `.dat` `type 2` command on a tech the")
+    print("            civ owns does, last one to fire wins (v7 grant, v17 revoke).")
     return 0
 
 

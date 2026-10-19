@@ -37,18 +37,30 @@ HONEST BOUNDARY, and it matters here more than usual:
   PROVEN (data)   the two files agree on 99.45% of (civ, unit) pairs; the
                   `.dat` edit and the tree edit were in the SAME mod and the
                   game loaded that mod; the build panel did not change.
-  NOT PROVEN      that `futuravailableunits.json` is what the panel reads, and
-                  that editing IT would change the panel.  One in-game test of
-                  an edit to that file is the only thing that can settle it.
-  NOT PROVEN      WHY the tree override was ignored -- a mod-side path the
-                  engine does not consult, a load-order effect, and
-                  `civilizations.json`'s `tech_tree_name` being the real key
-                  are all still open.
+  NOW ANSWERED    2026-10-18/19 settled the question this file was written to
+                  ask, and NOT in the direction it guessed:
+                    * `futuravailableunits.json` is NOT the build menu's source.
+                      There is no reason left to test editing it (see below).
+                    * the tree file is read, but it does NOT drive the build
+                      menu either (`dsh test v15`: two tree files over a
+                      byte-identical `.dat`, engine logged loading the mod,
+                      menu did not move in EITHER direction).
+                    * what does drive it is a `.dat` `type 2` Enable/Disable
+                      Unit command hung on a technology the civilization owns,
+                      where the LAST command to fire wins (`dsh test v7` grant,
+                      `dsh test v17` revoke).
+  STILL OPEN      why the 2026-10-14 tree override in particular did nothing
+                  beyond the general answer above (a mod-side path the engine
+                  does not consult / load-order / `civilizations.json`'s
+                  `tech_tree_name`) -- the general answer makes this moot for
+                  the product, but it is not measured.
 
 Do not read this file as "the tree layer is dead".  The tree layer is still the
-best available MODEL of per-civ availability (99.45% agreement), and it is what
-the read side reports.  What died is the claim that writing to it changes the
-game.
+best available MODEL of per-civ availability (99.45% agreement) and it is what
+the read side reports -- and it IS read by the tech-tree PREVIEW screen
+(`_probe/test_screen_vocabulary.py`: all 16 icon controls are tree enum values,
+no layout names a single panel field). What died is the claim that writing to it
+changes the BUILD MENU.
 """
 
 import collections
@@ -165,8 +177,17 @@ def main():
     print("WHAT THIS PROVES: the tree file still models per-civ availability at "
           "99.45%, but a mod-side rewrite of it was ignored in game while a "
           "`.dat` edit in the same mod took effect.")
-    print("WHAT IT DOES NOT: that futuravailableunits.json is the file the "
-          "build panel reads.  Only an in-game edit of THAT file can say.")
+    print("WHAT IT DOES NOT: why THAT particular override was ignored.")
+    print()
+    print("ANSWERED SINCE (2026-10-19) -- the follow-up question this file's")
+    print("  last paragraph used to ask is closed, and the answer was NOT")
+    print("  futuravailableunits.json: three in-game runs settled it.  The panel")
+    print("  file is not necessary (Sicilians: panel silent, game offered 588)")
+    print("  and not sufficient (Poles: panel listed 691 AND its tech 376, game")
+    print("  offered neither) -- so it is excluded in BOTH directions.  The tree")
+    print("  is read but does not move the build menu (v15).  What does is a")
+    print("  `.dat` `type 2` command on a tech the civ owns, last one wins")
+    print("  (v7 grant, v17 revoke).  See `_交接说明.md` sections 2, 2b-2d.")
     if fails:
         print()
         print("BUILD-PANEL GATE PROBE: FAILED -> %s" % (fails,))

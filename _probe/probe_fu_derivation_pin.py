@@ -221,11 +221,14 @@ def main():
         print("FU DERIVATION PIN: %d FAILED -> %s" % (len(fails), fails))
         return 1
     print("FU DERIVATION PIN: the tree is the SOURCE; "
-          "futuravailableunits.json is the PRE-BAKED artifact the game reads, "
-          "so an availability edit must write BOTH.")
-    print("NOT PROVEN: that the running game reads this cache rather than the "
-          "tree -- only an in-game load of an edited cache can show that.  "
-          "What IS proven is that the tree write alone did nothing (2026-10-14).")
+          "futuravailableunits.json is the PRE-BAKED artifact derived from it.")
+    print("CORRECTED 2026-10-19: this file used to say the game READS that cache")
+    print("for the build menu.  It does not -- the panel is excluded in both")
+    print("directions by plain-game runs (Sicilians panel-silent-but-offered /")
+    print("Poles panel-listed-but-not-offered), and `dsh test v15` showed the tree")
+    print("write alone does nothing either.  The derivation itself (panel == a")
+    print("99.45% projection of the tree) is untouched and still worth writing,")
+    print("because some OTHER screen consumes the panel.")
     return 0
 
 

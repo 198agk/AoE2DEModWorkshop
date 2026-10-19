@@ -216,8 +216,12 @@ else:
               % disagree)
         print("    projection of the tree in either direction.")
 print("=" * 78)
-print("NOT PROVEN: which file the running game consults for the build menu.")
-print("mtimes bound WHEN a file was written; they do not show who reads it.")
+print("ANSWERED SINCE (2026-10-19): the build menu consults NEITHER panel file.")
+print("Excluded in both directions by plain-game runs (Sicilians")
+print("panel-silent-but-offered / Poles panel-listed-but-not-offered).  The menu")
+print("follows `.dat` `type 2` commands on a tech the civ owns, last to fire wins")
+print("(`dsh test v7` grant / `dsh test v17` revoke).  mtimes still bound WHEN this")
+print("file was written -- it ships with the package, not as a runtime cache.")
 
 # ---- assertions: turn measurements into a pin -------------------------------
 exe_m = os.stat(os.path.join(GAME, "AoE2DE_s.exe")).st_mtime
