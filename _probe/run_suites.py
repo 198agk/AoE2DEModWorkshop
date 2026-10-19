@@ -2,6 +2,7 @@
 """Run the fast product suites and print a one-line verdict for each."""
 import os
 import re
+import shutil
 import subprocess
 import sys
 
@@ -137,6 +138,14 @@ SUITES = [
     r"_probe\probe_suite_registry.py",
 ]
 
+# Suites that are not Python.  The screen's script is JavaScript and no Python
+# test can execute it: `test_ui_server.py` calls the same App the page calls and
+# stayed green through two shipped page defects -- a refusal counted as buildable,
+# and then a ReferenceError on every render.  Run it where it actually runs.
+NODE_SUITES = [
+    r"_probe\ui_page_harness.js",
+]
+
 fails = []
 for rel in SUITES:
     path = os.path.join(ROOT, rel)
@@ -152,6 +161,29 @@ for rel in SUITES:
     # "IDS_FAILED_TO_OPEN_FILE" in probe_install_safety.py (the `_` before it
     # means no word boundary).  A crude `"FAIL" in out` flagged that suite as
     # broken while it was passing every check.
+    bad = p.returncode != 0 or _FAIL_RE.search(out) is not None
+    if bad:
+        fails.append(rel)
+    print("%-46s exit=%d  %s" % (os.path.basename(rel), p.returncode,
+                                 verdict[:96]))
+    if bad:
+        for ln in tail[-25:]:
+            print("        %s" % ln)
+
+# Node is a hard requirement rather than an optional extra: the page is part of
+# the product, and a suite that cannot run its subject must not report green.
+NODE = shutil.which("node")
+for rel in NODE_SUITES:
+    path = os.path.join(ROOT, rel)
+    if not NODE:
+        fails.append(rel)
+        print("%-46s SKIPPED  node was not found on PATH" % os.path.basename(rel))
+        continue
+    p = subprocess.run([NODE, path], cwd=ROOT,
+                       stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    out = p.stdout.decode("utf-8", "replace")
+    tail = [ln for ln in out.strip().splitlines() if ln.strip()]
+    verdict = tail[-1] if tail else "(no output)"
     bad = p.returncode != 0 or _FAIL_RE.search(out) is not None
     if bad:
         fails.append(rel)

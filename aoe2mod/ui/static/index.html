@@ -273,15 +273,31 @@ function planLine(plan) {
   return bits.join(" · ");
 }
 
+// A clause having an intent only means the SENTENCE was understood.  The plan
+// can still refuse the edit ("already has it", "nothing would change", "no such
+// field").  Counting by `c.intent` alone offered a build button for work that
+// cannot be done -- and since the build sends every intent it is given, one
+// refusal took the possible sentences down with it.  The server computes the
+// same answer and ships it as `buildable`; prefer it, and keep this fallback so
+// an older response still renders.
+function buildable(c) {
+  if (!c || !c.intent) return false;
+  if (typeof c.buildable === "boolean") return c.buildable;
+  if (!c.preview || !c.preview.ok) return false;
+  const p = c.preview.plan;
+  return !p || p.editable !== false;
+}
+
 function renderClauses(clauses) {
   const box = $("#preview");
   box.innerHTML = "";
   let good = 0;
   for (const c of clauses) {
-    const wrap = el("div", "clause " + (c.intent ? "ok" : "bad"));
+    const can = buildable(c);
+    const wrap = el("div", "clause " + (can ? "ok" : "bad"));
     wrap.appendChild(el("div", "sent", c.text));
     if (c.intent) {
-      good++;
+      if (can) good++;
       const p = c.preview && c.preview.ok ? c.preview.plan : null;
       wrap.appendChild(el("div", "main", p && p.description ? p.description : "能读懂"));
       const meta = el("div", "meta");
@@ -296,7 +312,7 @@ function renderClauses(clauses) {
         } else if (p.civ_count) meta.appendChild(el("span", "stat", "范围 " + p.civ_count + " 个文明"));
         if (p.edit_count != null) meta.appendChild(el("span", "stat", p.edit_count + " 处改动"));
         if (p.changes_dat) meta.appendChild(el("span", "stat ok", "会改游戏数据"));
-        if (p.editable === false) meta.appendChild(el("span", "stat bad", "不可编辑"));
+        if (p.editable === false) meta.appendChild(el("span", "stat bad", "做不了"));
       } else if (c.preview && !c.preview.ok) {
         meta.appendChild(el("span", "stat bad", "预览被拒"));
         wrap.appendChild(el("div", "why", c.preview.error));
@@ -329,12 +345,17 @@ function renderClauses(clauses) {
     }
     box.appendChild(wrap);
   }
+  // `can` above is block-scoped inside the loop, so it is NOT visible here --
+  // referencing it threw a ReferenceError on every render until this said
+  // buildable(c) again.
+  const refused = clauses.filter(c => c.intent && !buildable(c)).length;
   $("#commit").style.display = good ? "block" : "none";
   $("#buildnote").textContent = good
     ? "会把这些改动打进一个 mod：如果两句改的是同一条数据，分成两个 mod 会互相覆盖。"
-    : "";
+      + (refused ? "做不了的那 " + refused + " 句会被跳过，不会拦住其余的。" : "")
+    : (refused ? "这些句子看懂了，但改不了；换成能改的说法再试。" : "");
   if (good) {
-    const names = clauses.filter(c => c.intent).map(c =>
+    const names = clauses.filter(buildable).map(c =>
       (c.entity ? c.entity + " " : "") + (c.text.length > 26 ? c.text.slice(0, 26) : c.text));
     $("#title").value = ("dsh " + names.join(" + ")).slice(0, 60);
   }
@@ -343,7 +364,10 @@ function renderClauses(clauses) {
 // ---- build + install --------------------------------------------------
 async function doBuild() {
   if (!LAST) return;
-  const intents = LAST.clauses.filter(c => c.intent).map(c => c.intent);
+  // Only sentences the plan actually accepted.  Sending a refused one makes
+  // build_bundle raise, which loses the edits that WERE possible.
+  const usable = LAST.clauses.filter(buildable);
+  const intents = usable.map(c => c.intent);
   if (!intents.length) return;
   $("#btn-build").disabled = true;
   try {

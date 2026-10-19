@@ -107,8 +107,18 @@ class App(object):
                                    "name": c.display if not isinstance(c, dict) else c.get("name")}
                                   for c in (cl.candidates or [])],
                    "intent": cl.intent}
+            # An intent means the SENTENCE was understood, not that the edit is
+            # possible -- the plan can still refuse it ("already has it",
+            # "nothing would change", "no such field").  Deciding that here, not
+            # in the page, keeps one answer to "may this be built?"; the page
+            # used to ask only `c.intent`, so it offered a build button for
+            # work that could not be done and sent the refusal into the bundle.
+            row["buildable"] = False
             if cl.intent is not None:
                 row["preview"] = self._safe_plan(cl.intent)
+                if row["preview"].get("ok"):
+                    row["buildable"] = \
+                        (row["preview"].get("plan") or {}).get("editable") is not False
             out.append(row)
         return {"ok": True, "clauses": out, "intents": intents}
 

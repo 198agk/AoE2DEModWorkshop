@@ -31,9 +31,10 @@ _NOT_A_SUITE = {
         "is recorded in 数据模组能力目录v1.md.",
     r"_probe\scenario_header\test_header_parse.py":
         "walks four shipped .aoe2scenario headers and tries four zlib window "
-        "bits.  It prints `FAIL` for the three window bits that are SUPPOSED to "
-        "fail, so a runner's FAIL scan would flag a healthy run.  Conclusion "
-        "(the scenario body is raw deflate, -15) is in 数据模组能力目录v1.md.",
+        "bits.  It prints a failure line for the three window bits that are "
+        "SUPPOSED to fail, so a runner's failure scan would flag a healthy run.  "
+        "Conclusion (the scenario body is raw deflate, -15) is in "
+        "数据模组能力目录v1.md.",
     r"_probe\schema\test_branch_extract.py":
         "regenerates regen_preview.json so a human can read what the AGE branch "
         "extractor saw; the checked-in tables beside it are built from that "
@@ -61,6 +62,16 @@ def main():
     entries = re.findall(r'r"([^"]+)"', body)
     print("run_suites.py registers %d suites" % len(entries))
 
+    # The page's script is exercised from Node, not from Python -- a Python test
+    # can only read the file, and reading it is what let two page defects ship.
+    # Those suites are registered in a second list, so count them here too or the
+    # registry would under-report what a full run actually covers.
+    node_body = ""
+    if "NODE_SUITES = [" in fast_text:
+        node_body = fast_text.split("NODE_SUITES = [", 1)[1].split("]", 1)[0]
+    node_entries = re.findall(r'r"([^"]+)"', node_body)
+    print("run_suites.py additionally registers %d node suites" % len(node_entries))
+
     dupes = [e for e in set(entries) if entries.count(e) > 1]
     print("duplicates: %s" % (dupes or "none"))
 
@@ -74,9 +85,18 @@ def main():
                 rel = os.path.relpath(os.path.join(dirpath, fn), ROOT)
                 present.add(rel.replace(os.sep, "\\"))
 
-    missing_file = [e for e in entries
+    missing_file = [e for e in entries + node_entries
                     if not os.path.exists(os.path.join(ROOT, e))]
     print("registered but not on disk: %s" % (missing_file or "none"))
+
+    # A harness nobody runs is the same defect as a probe nobody runs: it reads
+    # like coverage and provides none.  `_probe/*.js` is a small enough set that
+    # this can just name them.
+    js_present = sorted(f for f in os.listdir(HERE) if f.endswith(".js"))
+    js_unrun = [f for f in js_present
+                if not any(e.endswith(f) for e in node_entries)]
+    if js_unrun:
+        print("\nUNREGISTERED .js HARNESS (%d): %s" % (len(js_unrun), js_unrun))
 
     registered_base = {os.path.basename(r) for r in registered}
     unrun = sorted(p for p in present
@@ -103,6 +123,8 @@ def main():
         print("NOT NAMED BY ANY RUNNER (%d):" % len(unrun))
         for p in unrun:
             print("  %s" % p)
+        return 1
+    if js_unrun:
         return 1
     print("every test_*.py is either reachable from a runner or declared a "
           "measurement")

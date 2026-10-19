@@ -148,6 +148,50 @@ def main():
         check("the refusal carries a reason a human can read",
               bool(((p.get("clauses") or [{}])[0]).get("why")), str(p)[:200])
 
+        # ---- understood vs possible ------------------------------------
+        # `intent is not None` means the SENTENCE was understood.  The plan can
+        # still refuse the edit, and the page used to count `c.intent` as
+        # "can build": it offered a build button for work that cannot be done,
+        # and since the build sends every intent it is given, one refusal made
+        # the whole bundle raise -- losing the sentences that WERE possible.
+        # The server now answers the question once, as `buildable`.
+        st, r1 = _post(base, "/api/parse", {"text": "给不列颠解锁村民"})
+        c1 = (r1.get("clauses") or [{}])[0]
+        check("a refused edit is still understood",
+              c1.get("intent") is not None, str(c1)[:200])
+        check("...but it is not marked buildable",
+              c1.get("buildable") is False, c1.get("buildable"))
+        st, r2 = _post(base, "/api/parse", {"text": "村民血量改成1000"})
+        check("a possible edit IS marked buildable",
+              (r2.get("clauses") or [{}])[0].get("buildable") is True,
+              (r2.get("clauses") or [{}])[0].get("buildable"))
+        st, r3 = _post(base, "/api/parse",
+                       {"text": "村民血量改成1000，织布机研究时间加0"})
+        c3 = r3.get("clauses") or []
+        check("a mixed sentence splits into two clauses", len(c3) == 2, len(c3))
+        check("only the possible half is buildable",
+              [bool(c.get("buildable")) for c in c3] == [True, False],
+              [c.get("buildable") for c in c3])
+        # The page is the half that decides what the player SEES and what gets
+        # posted.  A server that ships `buildable` while the page keeps asking
+        # `c.intent` is the same defect with extra steps, so pin the page too:
+        # no line may filter clauses for BUILD by `c.intent` alone.
+        page = open(os.path.join(S.STATIC_DIR, "index.html"), encoding="utf-8").read()
+        check("the page gates building on `buildable`, not on having an intent",
+              "buildable" in page, "<- index.html never mentions buildable")
+        # The defect is specifically "turn the clause list into intents".  A
+        # blanket "no line may mention both filter() and .intent" also matched
+        # the refusal COUNTER (`filter(c => c.intent && !can)`), which is
+        # correct code -- an assertion that fails on good code teaches people to
+        # widen it until it passes.
+        bad_gate = [ln.strip() for ln in page.splitlines()
+                    if "filter(" in ln and ".map(" in ln
+                    and ".intent)" in ln and "buildable" not in ln]
+        check("no line turns clauses straight into intents without the gate",
+              not bad_gate, bad_gate)
+        check("the build posts only the gated clauses",
+              "filter(buildable)" in page, "<- doBuild() does not use the gate")
+
         # ---- plan ------------------------------------------------------
         st, pl = _post(base, "/api/plan",
                        {"intent": {"intent": "unit.stat", "unit": 83,
@@ -205,6 +249,33 @@ def main():
         check("an unknown intent is an error document, not a traceback",
               e.get("ok") is False and bool(e.get("error")), str(e)[:200])
         check("the error still answers with HTTP 200", st == 200, st)
+
+        # ---- a bundle keeps the possible half -------------------------
+        # Two sentences reach the page, one of which the plan refuses.  The page
+        # now posts only the buildable ones; posting both still raises (that is
+        # the correct refusal) -- what must not happen is the possible half
+        # being lost, or a silent drop of the refused edit.
+        out2 = tempfile.mkdtemp(prefix="dsh_ui_half_")
+        try:
+            st, b2 = _post(base, "/api/build", {
+                "intents": [{"intent": "unit.stat", "unit": 83,
+                             "stat": "hit_points", "value": 1000}],
+                "title": "dsh ui half", "author": "dsh",
+                "description": "only the possible half", "out_dir": out2})
+            check("the possible half builds on its own",
+                  b2.get("ok") is True, str(b2)[:300])
+            st, b3 = _post(base, "/api/build", {
+                "intents": [{"intent": "unit.stat", "unit": 83,
+                             "stat": "hit_points", "value": 1000},
+                            {"intent": "tech.research_time", "tech": 22,
+                             "delta": 0}],
+                "title": "dsh ui both", "author": "dsh",
+                "description": "one possible + one refused", "out_dir": out2})
+            check("a refused intent refuses the bundle instead of silently dropping it",
+                  b3.get("ok") is False and "sentence 2" in (b3.get("error") or ""),
+                  str(b3)[:300])
+        finally:
+            shutil.rmtree(out2, ignore_errors=True)
 
         # ---- path traversal -------------------------------------------
         try:
