@@ -1,0 +1,383 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>帝国时代 2 DE · 模组工坊</title>
+<style>
+  :root {
+    --bg: #14161a;
+    --panel: #1c2027;
+    --panel2: #23282f;
+    --line: #2e343d;
+    --text: #e6e8ec;
+    --dim: #98a0ac;
+    --gold: #c9a227;
+    --ok: #4caf7d;
+    --bad: #d9534f;
+    --warn: #d9a441;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 14px/1.6 "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
+  }
+  header {
+    padding: 14px 22px; border-bottom: 1px solid var(--line);
+    display: flex; align-items: baseline; gap: 14px; background: var(--panel);
+  }
+  header h1 { font-size: 16px; margin: 0; letter-spacing: .04em; }
+  header .ver { color: var(--dim); font-size: 12px; }
+  main { display: grid; grid-template-columns: 1fr 320px; gap: 18px; padding: 18px 22px 40px; }
+  @media (max-width: 900px) { main { grid-template-columns: 1fr; } }
+
+  .box { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; }
+  .box h2 { font-size: 13px; margin: 0; padding: 10px 14px; color: var(--dim);
+            border-bottom: 1px solid var(--line); font-weight: 600; letter-spacing: .06em; }
+  .box .body { padding: 14px; }
+
+  textarea {
+    width: 100%; min-height: 92px; resize: vertical; padding: 12px;
+    background: var(--panel2); color: var(--text); border: 1px solid var(--line);
+    border-radius: 6px; font: inherit; outline: none;
+  }
+  textarea:focus { border-color: var(--gold); }
+  .hint { color: var(--dim); font-size: 12px; margin-top: 8px; }
+  .hint code { color: var(--gold); background: none; }
+
+  button {
+    font: inherit; cursor: pointer; border-radius: 6px; border: 1px solid var(--line);
+    background: var(--panel2); color: var(--text); padding: 8px 16px;
+  }
+  button:hover { border-color: var(--gold); }
+  button.primary { background: var(--gold); color: #1a1a1a; border-color: var(--gold); font-weight: 600; }
+  button.primary:disabled { background: #3a3a3a; color: #777; border-color: #3a3a3a; cursor: default; }
+  button.link { background: none; border: none; color: var(--gold); padding: 2px 6px; }
+  button.chip { padding: 3px 10px; font-size: 12px; }
+
+  .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .row.end { justify-content: flex-end; }
+  .spacer { flex: 1; }
+
+  .clause { border: 1px solid var(--line); border-radius: 6px; padding: 12px;
+            margin-bottom: 10px; background: var(--panel2); }
+  .clause.ok { border-left: 3px solid var(--ok); }
+  .clause.bad { border-left: 3px solid var(--bad); }
+  .clause .sent { color: var(--dim); font-size: 12px; margin-bottom: 6px; }
+  .clause .main { font-size: 15px; }
+  .clause .why { color: var(--warn); }
+  .clause .meta { color: var(--dim); font-size: 12px; margin-top: 6px; }
+  .cands { margin-top: 8px; display: flex; gap: 6px; flex-wrap: wrap; }
+
+  .stat { display: inline-block; padding: 1px 8px; border-radius: 10px;
+          background: #2a3038; color: var(--dim); font-size: 12px; margin-right: 6px; }
+  .stat.ok { color: var(--ok); }
+  .stat.bad { color: var(--bad); }
+
+  input[type=text] {
+    background: var(--panel2); color: var(--text); border: 1px solid var(--line);
+    border-radius: 6px; padding: 7px 10px; font: inherit; outline: none; width: 100%;
+  }
+  input[type=text]:focus { border-color: var(--gold); }
+
+  .mod { padding: 8px 0; border-bottom: 1px solid var(--line); display: flex;
+         gap: 8px; align-items: center; font-size: 13px; }
+  .mod:last-child { border-bottom: none; }
+  .mod .nm { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .mod .nm.own { color: var(--gold); }
+  .switch { width: 34px; height: 18px; border-radius: 9px; background: #3a4048;
+            position: relative; cursor: pointer; flex: none; border: none; padding: 0; }
+  .switch::after { content: ""; position: absolute; top: 2px; left: 2px; width: 14px;
+                   height: 14px; border-radius: 50%; background: #888; transition: .15s; }
+  .switch.on { background: #2f6b4f; }
+  .switch.on::after { left: 18px; background: var(--ok); }
+
+  .toast { position: fixed; left: 50%; bottom: 26px; transform: translateX(-50%);
+           background: #262c34; border: 1px solid var(--line); border-radius: 8px;
+           padding: 10px 18px; max-width: 80vw; opacity: 0; transition: .2s;
+           pointer-events: none; z-index: 20; }
+  .toast.show { opacity: 1; }
+  .toast.bad { border-color: var(--bad); }
+  .toast.ok { border-color: var(--ok); }
+  .empty { color: var(--dim); text-align: center; padding: 26px 0; }
+  .err { color: var(--bad); font-size: 12px; white-space: pre-wrap; }
+</style>
+</head>
+<body>
+<header>
+  <h1>帝国时代 2 DE · 模组工坊</h1>
+  <span class="ver" id="ver"></span>
+  <span class="spacer"></span>
+  <span class="ver" id="datinfo"></span>
+</header>
+
+<main>
+  <div>
+    <div class="box">
+      <h2>你想要什么改动？用中文说就行</h2>
+      <div class="body">
+        <textarea id="say" placeholder="例如：
+村民血量改成 1000
+弓箭手攻击力加 2
+给印加解锁蔷琵侦察兵
+波兰的伐木场成本减少 10"></textarea>
+        <div class="hint">
+          一句话一条，用「。」或换行分开。<code>改成/设为</code> 是赋值，
+          <code>加/减</code> 是增量。识别不了的句子会告诉你为什么，不会瞎猜。
+        </div>
+        <div class="row end" style="margin-top:12px">
+          <button id="btn-parse" class="primary">读一下</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="box" style="margin-top:16px">
+      <h2>预览 —— 还没动任何文件</h2>
+      <div class="body" id="preview">
+        <div class="empty">上面写点什么，然后点「读一下」。</div>
+      </div>
+      <div class="body" id="commit" style="display:none; border-top:1px solid var(--line)">
+        <div class="row">
+          <div style="flex:1">
+            <label class="hint">模组名字（游戏里显示的，最多 100 字节）</label>
+            <input type="text" id="title">
+          </div>
+          <button id="btn-build" class="primary" style="align-self:flex-end">生成并安装</button>
+        </div>
+        <div class="hint" id="buildnote"></div>
+      </div>
+    </div>
+  </div>
+
+  <aside>
+    <div class="box">
+      <h2>已安装的模组</h2>
+      <div class="body" id="mods"><div class="empty">读取中…</div></div>
+    </div>
+    <div class="box" style="margin-top:16px">
+      <h2>能做的事</h2>
+      <div class="body" id="intents" style="font-size:13px;color:var(--dim)"></div>
+    </div>
+  </aside>
+</main>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const $ = (s) => document.querySelector(s);
+let META = null;
+let LAST = null;          // last successful parse payload
+
+function toast(msg, kind) {
+  const t = $("#toast");
+  t.textContent = msg;
+  t.className = "toast show " + (kind || "");
+  clearTimeout(toast._t);
+  toast._t = setTimeout(() => { t.className = "toast " + (kind || ""); }, 4200);
+}
+
+async function api(path, body) {
+  const opt = body === undefined ? {} : {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify(body),
+  };
+  const r = await fetch(path, opt);
+  const j = await r.json();
+  if (!j.ok) throw new Error(j.error || "未知错误");
+  return j;
+}
+
+function el(tag, cls, text) {
+  const n = document.createElement(tag);
+  if (cls) n.className = cls;
+  if (text !== undefined) n.textContent = text;
+  return n;
+}
+
+// ---- boot -------------------------------------------------------------
+async function boot() {
+  try {
+    META = await api("/api/meta");
+  } catch (e) {
+    $("#preview").innerHTML = "";
+    $("#preview").appendChild(el("div", "err", "连不上本地服务：" + e.message));
+    return;
+  }
+  $("#ver").textContent = "数据版本 " + META.version;
+  renderIntentList();
+  renderMods(META.mods);
+  // The .dat facts a player cares about, phrased as facts rather than fields.
+  $("#datinfo").textContent = META.civs.length + " 个文明 · 已就绪";
+}
+
+function renderIntentList() {
+  const box = $("#intents");
+  box.innerHTML = "";
+  for (const it of META.intents) {
+    const d = el("div", "", "· " + it.title);
+    d.style.margin = "2px 0";
+    box.appendChild(d);
+  }
+}
+
+function renderMods(mods) {
+  const box = $("#mods");
+  box.innerHTML = "";
+  if (!mods.length) { box.appendChild(el("div", "empty", "一个都没有")); return; }
+  for (const m of mods) {
+    const row = el("div", "mod");
+    const nm = el("div", "nm" + (String(m.name || "").startsWith("dsh ") ? " own" : ""),
+                  m.title || m.name);
+    nm.title = m.name + (m.priority != null ? "  · 顺序 " + m.priority : "");
+    const sw = el("button", "switch" + (m.enabled ? " on" : ""));
+    sw.title = m.enabled ? "已启用（点击停用）" : "未启用（点击启用）";
+    sw.onclick = async () => {
+      try {
+        const r = await api("/api/mod", {name: m.name, enabled: !m.enabled});
+        renderMods(r.mods);
+        toast((m.enabled ? "已停用 " : "已启用 ") + (m.title || m.name), "ok");
+      } catch (e) { toast("改不动：" + e.message, "bad"); }
+    };
+    row.appendChild(nm);
+    row.appendChild(sw);
+    box.appendChild(row);
+  }
+}
+
+// ---- parse ------------------------------------------------------------
+async function doParse() {
+  const text = $("#say").value.trim();
+  if (!text) return;
+  $("#btn-parse").disabled = true;
+  $("#preview").innerHTML = "";
+  $("#preview").appendChild(el("div", "empty", "在读…"));
+  try {
+    const j = await api("/api/parse", {text});
+    LAST = j;
+    renderClauses(j.clauses);
+  } catch (e) {
+    $("#preview").innerHTML = "";
+    $("#preview").appendChild(el("div", "err", e.message));
+  } finally {
+    $("#btn-parse").disabled = false;
+  }
+}
+
+function planLine(plan) {
+  // The product already writes the sentence; do not rebuild it here.
+  const bits = [];
+  if (plan.description) bits.push(plan.description);
+  if (plan.civ_count) bits.push("影响 " + plan.civ_count + " 个文明");
+  if (plan.edit_count != null) bits.push(plan.edit_count + " 处改动");
+  return bits.join(" · ");
+}
+
+function renderClauses(clauses) {
+  const box = $("#preview");
+  box.innerHTML = "";
+  let good = 0;
+  for (const c of clauses) {
+    const wrap = el("div", "clause " + (c.intent ? "ok" : "bad"));
+    wrap.appendChild(el("div", "sent", c.text));
+    if (c.intent) {
+      good++;
+      const p = c.preview && c.preview.ok ? c.preview.plan : null;
+      wrap.appendChild(el("div", "main", p && p.description ? p.description : "能读懂"));
+      const meta = el("div", "meta");
+      if (p) {
+        meta.appendChild(el("span", "stat", p.kind === "tech" ? "科技" : "单位"));
+        // `civs` are .dat indices; the server sends names in `civ_labels`.
+        // Printing the indices straight onto the screen would say "范围 1、2、3".
+        if (p.civ_labels && p.civ_labels.length) {
+          const shown = p.civ_labels.slice(0, 4).join("、");
+          const more = p.civ_labels.length > 4 ? " 等 " + p.civ_labels.length + " 个" : "";
+          meta.appendChild(el("span", "stat", "范围 " + shown + more));
+        } else if (p.civ_count) meta.appendChild(el("span", "stat", "范围 " + p.civ_count + " 个文明"));
+        if (p.edit_count != null) meta.appendChild(el("span", "stat", p.edit_count + " 处改动"));
+        if (p.changes_dat) meta.appendChild(el("span", "stat ok", "会改游戏数据"));
+        if (p.editable === false) meta.appendChild(el("span", "stat bad", "不可编辑"));
+      } else if (c.preview && !c.preview.ok) {
+        meta.appendChild(el("span", "stat bad", "预览被拒"));
+        wrap.appendChild(el("div", "why", c.preview.error));
+      }
+      wrap.appendChild(meta);
+    } else {
+      wrap.appendChild(el("div", "main why", c.why || "没读懂"));
+      if (c.candidates && c.candidates.length) {
+        const cands = el("div", "cands");
+        cands.appendChild(el("span", "meta", "是这些里的哪一个？"));
+        for (const cand of c.candidates) {
+          const b = el("button", "chip", cand.name + " (#" + cand.id + ")");
+          b.onclick = () => {
+            // Rewrite just this sentence with the picked name, keeping the
+            // number and the verb the user already wrote.
+            const num = c.text.match(/[-+]?\d+(?:\.\d+)?/);
+            const rebuilt = cand.name + (num ? " " + num[0] : "");
+            const ta = $("#say");
+            const lines = ta.value.split("\n");
+            const at = lines.indexOf(c.text);
+            if (at >= 0) lines[at] = rebuilt;
+            else ta.value = ta.value.replace(c.text, rebuilt);
+            ta.value = lines.join("\n");
+            doParse();
+          };
+          cands.appendChild(b);
+        }
+        wrap.appendChild(cands);
+      }
+    }
+    box.appendChild(wrap);
+  }
+  $("#commit").style.display = good ? "block" : "none";
+  $("#buildnote").textContent = good
+    ? "会把这些改动打进一个 mod：如果两句改的是同一条数据，分成两个 mod 会互相覆盖。"
+    : "";
+  if (good) {
+    const names = clauses.filter(c => c.intent).map(c =>
+      (c.entity ? c.entity + " " : "") + (c.text.length > 26 ? c.text.slice(0, 26) : c.text));
+    $("#title").value = ("dsh " + names.join(" + ")).slice(0, 60);
+  }
+}
+
+// ---- build + install --------------------------------------------------
+async function doBuild() {
+  if (!LAST) return;
+  const intents = LAST.clauses.filter(c => c.intent).map(c => c.intent);
+  if (!intents.length) return;
+  $("#btn-build").disabled = true;
+  try {
+    const b = await api("/api/build", {
+      intents, title: $("#title").value.trim() || null, author: "dsh",
+    });
+    const man = b.manifest;
+    const dir = man.mod_dir;
+    const inst = await api("/api/install", {
+      mod_dir: dir, name: man.info && man.info.Title ? man.info.Title : $("#title").value.trim(),
+      enabled: true, position: 0,
+    });
+    toast("已生成并安装：" + (man.info && man.info.Title ? man.info.Title : dir), "ok");
+    const r = await api("/api/mods");
+    renderMods(r.mods);
+    const note = el("div", "hint",
+      "装好了。数据模组要开局前在游戏里的模组界面选中它，进入对局才真正加载。");
+    $("#buildnote").innerHTML = "";
+    $("#buildnote").appendChild(note);
+  } catch (e) {
+    toast("没做成：" + e.message, "bad");
+    $("#buildnote").innerHTML = "";
+    $("#buildnote").appendChild(el("div", "err", e.message));
+  } finally {
+    $("#btn-build").disabled = false;
+  }
+}
+
+$("#btn-parse").onclick = doParse;
+$("#btn-build").onclick = doBuild;
+$("#say").addEventListener("keydown", (e) => {
+  if ((e.ctrlKey || e.metaKey) && e.key === "Enter") doParse();
+});
+boot();
+</script>
+</body>
+</html>

@@ -115,6 +115,26 @@ SUITES = [
     r"_probe\test_tech_effect.py",
     r"_probe\test_install.py",
     r"_probe\test_install_e2e.py",
+    # The UI shell.  These two are product assertions in the strictest sense:
+    # the sentence parser is the only thing standing between a Chinese sentence
+    # and a wrong edit, and the server test is the only thing that exercises the
+    # HTTP layer at all (route names, JSON body shape, status codes).
+    r"_probe\test_ui_nl.py",
+    r"_probe\test_ui_server.py",
+    # Two invariants that were TRUE-BY-ACCIDENT until something measured them.
+    # The plan/build pair: every intent has two independent implementations, and
+    # a preview that promises what the build refuses sends the player one click
+    # too far (measured on `tech.research_time delta 0`).  The prose pair: the
+    # screen prints the product's own sentences, so wording produced in English
+    # is wording a Chinese player cannot read (measured at 8 of 12 strings).
+    r"_probe\test_plan_build_agreement.py",
+    r"_probe\test_prose_language.py",
+    # The registry itself.  Ten probes rotted unrun before anyone noticed, and
+    # the reason nobody noticed is that "is every test reachable?" was a question
+    # only a human could answer.  This asks it mechanically, including the four
+    # files that are named test_* but are measurements -- declared, with reasons,
+    # and checked for staleness.
+    r"_probe\probe_suite_registry.py",
 ]
 
 fails = []

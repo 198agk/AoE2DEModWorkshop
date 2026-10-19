@@ -122,6 +122,7 @@ import contextlib
 import io
 import json
 import os
+import re
 import struct
 import zlib
 
@@ -1889,9 +1890,19 @@ def zero_delta_message(resolved, label):
     bytes are identical to the base one.  The mod then does nothing while its
     manifest says it changed the game.  Shared by both entry points so the
     preview and the refusal use one sentence.
+
+    The sentence is Chinese because a Chinese player reads it verbatim: the
+    screen prints the product's own words rather than re-wording them (a second
+    layer would drift from this one), so the wording has to be right HERE.
+
+    It does NOT print the current value: `Resolved` carries the requested amount,
+    not the value the file holds, and inventing one here would be the same class
+    of lie as a preview that disagrees with its build.  Saying "已经是这个值" is
+    honest without a number.
     """
-    return "nothing would change: %s stays at its current %s" % (
-        resolved.entity.display, label or resolved.stat or "value")
+    what = label or resolved.stat or "数值"
+    return "%s 的%s已经是这个值了，这样改不会有任何变化" % (
+        resolved.entity.display, what)
 
 
 def no_field_message(resolved, binding, intent_name, why=""):
@@ -1905,13 +1916,72 @@ def no_field_message(resolved, binding, intent_name, why=""):
     and advertised ``edit_count`` for edits the build then refused.
 
     ``what`` prefers the schema's own label over the raw locator key so the
-    sentence never leaks ``displayed_attack`` to a player.
+    sentence never leaks ``displayed_attack`` to a player.  Chinese, for the same
+    reason as `zero_delta_message`: the screen prints this verbatim.
     """
     what = resolved.stat or (binding or {}).get("label") or intent_name
+    what = _label_zh(what, getattr(resolved, "resource", None))
     if not why:
-        return "%s has no %s field to change" % (resolved.entity.display, what)
-    return "%s has no %s field to change (%s)" % (
-        resolved.entity.display, what, why)
+        return "%s 没有「%s」这项可以改" % (resolved.entity.display, what)
+    return "%s 没有「%s」这项可以改（%s）" % (
+        resolved.entity.display, what, _why_zh(why))
+
+
+#: The handful of reasons `plan()`/`compile_edits` pass in, in Chinese.  A table
+#: rather than translating at the call site: the same reason is produced in three
+#: places and they must not disagree about how to say it.
+_WHY_ZH = {
+    "its unit type does not store one": "这类单位没有存这一项",
+    "none of its 3 cost slots declares that resource": "三个成本槽里都没有这种资源",
+    "no such record exists": "游戏里没有这条记录",
+    "it declares no research location": "这条科技没有研究地点",
+}
+
+#: Schema/locator keys that would otherwise reach a player.  Only the ones that
+#: reality surfaces; an unknown key falls through unchanged rather than becoming
+#: an empty string.
+_FIELD_ZH = {
+    "hit_points": "生命值", "displayed_attack": "攻击力",
+    "displayed_melee_armour": "近战护甲", "displayed_pierce_armour": "远程护甲",
+    "displayed_range": "射程", "speed": "移动速度",
+    "research_time": "研究时间", "cost": "成本", "attack": "攻击",
+    "melee_armour": "近战护甲", "pierce_armour": "远程护甲",
+    "line_of_sight": "视野", "garrison_capacity": "驻扎上限",
+}
+
+
+#: Labels that are already complete English-free phrases.  A cost binding's
+#: label, by contrast, is "成本 wood" -- Chinese scaffold plus a raw enum name.
+_RESOURCE_ZH = {
+    "food": "食物", "wood": "木材", "gold": "黄金", "stone": "石头",
+    "build_time": "建造时间", "research_time": "研究时间",
+    "trade_goods": "贸易品", "relics": "圣物",
+}
+
+
+def _label_zh(label, resource=None):
+    """Turn a binding label into something a Chinese player reads cleanly.
+
+    Two shapes arrive.  A stat binding's label is already Chinese ("生命值").  A
+    cost binding's label is "成本" plus a raw enum name, and Chinese puts the
+    resource first: "木材成本", not "成本木材".  Written the other way round the
+    first time, then again as "成本 wood木材" by appending instead of replacing --
+    both were caught by reading the output, which is the only way to catch it.
+    """
+    text = _FIELD_ZH.get(label, label)
+    if resource:
+        zh = _RESOURCE_ZH.get(resource)
+        if zh:
+            text = text.replace(resource, "").strip()
+            text = "%s%s" % (zh, text)
+    return text
+
+
+def _why_zh(why):
+    """A reason in Chinese, or the original when it is already Chinese."""
+    if re.search(r"[\u4e00-\u9fff]", why or ""):
+        return why
+    return _WHY_ZH.get(why, why)
 
 
 def unit_targets(civs, unit_id, allowed, stats, game_root=None):

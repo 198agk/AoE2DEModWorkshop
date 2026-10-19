@@ -166,7 +166,7 @@ def describe(trees, node_id, display="unit", use_types=CT.UNIT_USE_TYPES):
 
 
 def plan(trees, civ, node_id, action, display="unit",
-         use_types=CT.UNIT_USE_TYPES):
+         use_types=CT.UNIT_USE_TYPES, civ_zh=None, donor_zh=None):
     """Validate one availability request WITHOUT producing any bytes.
 
     Returns a dict.  ``ok`` False carries ``reason`` -- user-facing prose, never
@@ -175,6 +175,10 @@ def plan(trees, civ, node_id, action, display="unit",
     donor the row came from, and every field the donor copy inherits.
 
     ``use_types`` selects the id space; see :func:`describe`.
+    ``civ_zh`` is the civilization's Chinese name, used only in the sentence
+    this returns: the tree keys are stems like ``INCAS``, and a screen that
+    Chinese-language players read should not print that.  ``donor_zh`` is the
+    same for the donor civilization named when a row is copied.
     """
     if action not in ACTIONS:
         return {"ok": False,
@@ -195,11 +199,11 @@ def plan(trees, civ, node_id, action, display="unit",
         # what the tree shows without changing what the civ can build.
         if not CT.can_build(tree, node_id, use_types):
             return {"ok": False,
-                    "reason": "%s cannot %s %s in the first place, so there "
-                              "is nothing to take away" % (civ, _en, display)}
+                    "reason": "%s本来就不能%s %s，没有可以取消的"
+                              % (civ_zh or civ, _zh, display)}
         return {"ok": True, "civ": civ, "node_id": node_id, "action": action,
                 "mode": "remove_row", "was_status": current,
-                "description": "%s 不再能%s %s" % (civ, _zh, display)}
+                "description": "%s 不再能%s %s" % (civ_zh or civ, _zh, display)}
 
     # --- grant -----------------------------------------------------------
     # "Can build" is can_build(), not has(): a civ whose row reads
@@ -209,13 +213,12 @@ def plan(trees, civ, node_id, action, display="unit",
     # NotAvailable, or no row at all, is something a grant can actually fix.
     if current == "ResearchedCompleted":
         return {"ok": False,
-                "reason": "%s can already %s %s; nothing would change"
-                          % (civ, _en, display)}
+                "reason": "%s已经可以%s %s了，改了不会有任何变化"
+                          % (civ_zh or civ, _zh, display)}
     if current == "ResearchRequired":
         return {"ok": False,
-                "reason": "%s can already %s %s once the prerequisite is "
-                          "researched; nothing would change"
-                          % (civ, _en, display)}
+                "reason": "%s研究完前置科技就能%s %s了，改了不会有任何变化"
+                          % (civ_zh or civ, _zh, display)}
     if current is not None:
         # The row exists and reads NotAvailable: listed, but not obtainable.
         # That is a real edit -- a status change on the existing row, which is a
@@ -223,16 +226,15 @@ def plan(trees, civ, node_id, action, display="unit",
         return {"ok": True, "civ": civ, "node_id": node_id, "action": action,
                 "mode": "set_status", "was_status": current,
                 "description": "%s 改为可%s %s（原来%s）"
-                               % (civ, _zh, display, _status_zh(current))}
+                               % (civ_zh or civ, _zh, display, _status_zh(current))}
 
     donor_civ, donor = CT.donor_row(trees, node_id, use_types)
     if donor is None:
         # Every civ either has no row or has one that reads NotAvailable.  Say
         # what is actually wrong: the unit is not in any tech tree at all.
         return {"ok": False,
-                "reason": "no civilization in this game can %s %s, so there "
-                          "is no row to give %s -- it is not part of any tech "
-                          "tree" % (_en, display, civ)}
+                "reason": "这局游戏里没有任何文明能%s %s，所以没有可以复制给%s的记录"
+                          "——它不属于任何科技树" % (_zh, display, civ_zh or civ)}
     # Warnings are produced by the REAL grant so the preview and the write cannot
     # report a different set -- but on a copy, because `grant` appends.  The copy
     # must be deep enough that the row LIST is not shared: `dict(tree)` is
@@ -248,7 +250,7 @@ def plan(trees, civ, node_id, action, display="unit",
     return {"ok": True, "civ": civ, "node_id": node_id, "action": action,
             "mode": "add_row", "donor": donor_civ, "warnings": warnings,
             "description": "%s 可以%s %s（复制 %s 的条目）"
-                           % (civ, _zh, display, donor_civ)}
+                           % (civ_zh or civ, _zh, display, donor_zh or donor_civ)}
 
 
 def apply(trees, civ, node_id, action, status="ResearchedCompleted",

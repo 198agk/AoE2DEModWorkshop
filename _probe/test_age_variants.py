@@ -1,4 +1,4 @@
-﻿# -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 """The age-variant fix, tested through the PRODUCT path (not the helper).
 
 probe_building_ageup_defect.py showed the defect the old way: "Barracks hp +100"
@@ -114,7 +114,7 @@ print("Barracks attack plan: %s | edits %d" % (ap2["description"], ap2["edit_cou
 check("unit.attack_class on a Barracks plans 0 edits", ap2["edit_count"] == 0,
       ap2["edit_count"])
 check("and its description says so, rather than promising 252",
-      "no" in ap2["description"] and ap2["description"] != "兵营 基础攻击 +1",
+      "没有" in ap2["description"] and ap2["description"] != "兵营 基础攻击 +1",
       ap2["description"])
 try:
     C.compile_intent(tk.dat_path, {"intent": "unit.attack_class", "unit": 12,

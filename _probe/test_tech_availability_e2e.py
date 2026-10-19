@@ -142,17 +142,23 @@ def main():
         shutil.rmtree(tmp, ignore_errors=True)
 
     # ---- the 'no's stay different sentences -----------------------------
+    # The separate sentences are the CONTRACT; the exact wording is not.  These
+    # used to assert English words ("already", "nothing to take away"), which
+    # made a legitimate wording change look like a regression -- and would have
+    # blocked translating the sentence for the player who actually reads it.
     already = tk.plan({"intent": "tech.availability", "tech": yeomen,
                        "civ": "British", "action": "grant"})
-    check(already["editable"] is False and "already" in already["description"],
+    check(already["editable"] is False and bool(already["description"]),
           "a civ that already has it is refused in its own words",
           already["description"])
     absent = tk.plan({"intent": "tech.availability", "tech": yeomen,
                       "civ": "Goths", "action": "revoke"})
-    check(absent["editable"] is False
-          and "nothing to take away" in absent["description"],
+    check(absent["editable"] is False and bool(absent["description"]),
           "revoking what it never had says so",
           absent["description"])
+    check(already["description"] != absent["description"],
+          "and the two refusals are DIFFERENT sentences, not one repeated",
+          "%r vs %r" % (already["description"], absent["description"]))
 
     # A NotAvailable row is a THIRD case: the civ is listed and cannot get it,
     # so the answer is a status change, not an added row.  Measured in

@@ -256,7 +256,55 @@ DECLARED_INTENTS = sorted(intents_schema["intents"])
 # segments would be silently mis-derived and then reported as unswept forever.
 _covered_intents = {i for i in DECLARED_INTENTS
                     if any(k == i or k.startswith(i + ".") for k in exercised)}
+
+# Not every declared intent can be swept HERE.  This file measures one specific
+# invariant -- "the preview and the .dat byte patcher agree" -- and two intents do
+# not produce .dat bytes at all: `unit.art` repaints an .sld and `unit.sprite`
+# ships loose files, so `compile_intent` refuses them by design at
+# compiler.py:1825-1831 ("compiles through the %r strategy, not by patching the
+# .dat").  Before this table existed the guard simply reported them as "declared
+# but unswept" forever, which is the shape of a red test nobody can fix: the
+# sweep was asking the byte patcher to cover a strategy that has no bytes.
+#
+# What is required of an intent that lives outside this sweep is that it name the
+# file that DOES verify it, and that the named file exist.  A strategy word with
+# no verifier behind it is the hole this closes -- adding an eleventh intent with
+# a new strategy now fails here until someone says, in one place, who measures
+# it.  These are coverage claims, and the file check is what keeps a claim from
+# outliving the file it points at (the same failure as a test no runner calls).
+_VERIFIED_ELSEWHERE = {
+    "unit.art":
+        ("_probe/test_reskin.py",
+         "repaint_sld: encodes .sld blocks itself; verified for the byte chain "
+         "only -- schema `not_verified_reason` still says no running game has "
+         "drawn a hand-encoded block"),
+    "unit.sprite":
+        ("_probe/test_retarget.py",
+         "loose_files: the loose override is proven in game (2026-10-17, "
+         "`dsh test v10`); this test pins the family scope that the first "
+         "version got wrong"),
+}
+for _i, (_f, _why) in sorted(_VERIFIED_ELSEWHERE.items()):
+    if _i not in intents_schema["intents"]:
+        bad.append((_i, "exempted from this sweep but no longer declared in the "
+                        "schema; drop the entry"))
+        continue
+    if not os.path.isfile(os.path.join(ROOT, _f)):
+        bad.append((_i, "declared as verified outside this sweep by %s, which "
+                        "does not exist" % _f))
+        continue
+    if _i in _covered_intents:
+        # It got a built case after all -- then the exemption is stale and the
+        # guard below must not keep papering over it.
+        bad.append((_i, "listed as covered elsewhere by %s, but this sweep now "
+                        "builds a case for it; drop the exemption" % _f))
+        continue
+    _covered_intents.add(_i)
 _missing_intents = [i for i in DECLARED_INTENTS if i not in _covered_intents]
+print("verified outside this sweep: %s"
+      % (sorted(_VERIFIED_ELSEWHERE) or "none"))
+for _i, (_f, _why) in sorted(_VERIFIED_ELSEWHERE.items()):
+    print("  %-14s by %s -- %s" % (_i, _f, _why))
 print()
 print("declared intents            : %d %s" % (len(DECLARED_INTENTS),
                                               DECLARED_INTENTS))

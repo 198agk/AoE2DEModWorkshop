@@ -236,7 +236,10 @@ def main():
             check(not bad.get("editable", True),
                   "a unit that is in no tech tree is refused",
                   str(bad.get("description")))
-            check("tech tree" in (bad.get("description") or ""),
+            # The reason must be the real one (this unit is in no tech tree), and
+            # the player reads it in Chinese -- "tech tree" was the English word
+            # this used to assert, which pinned the language rather than the fact.
+            check("科技树" in (bad.get("description") or ""),
                   "   and the refusal says WHY, not 'unknown unit'",
                   str(bad.get("description")))
     finally:

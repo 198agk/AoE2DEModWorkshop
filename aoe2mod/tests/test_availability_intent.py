@@ -172,18 +172,26 @@ def main():
               "  and the tool's own tree for BRITONS still lacks the unit")
 
         # ---- 5. the three refusals are three different sentences ---------
+        # The CONTRACT is that each no keeps its own sentence, not that any
+        # particular English word appears in it.  These used to assert
+        # "already" / "tech tree" / "nothing to take away", which made the
+        # translation below look like a regression -- and would have blocked
+        # shipping a sentence the player can actually read.  So: assert the real
+        # reason where a wrong branch would be visible (this unit is in no tech
+        # tree), and assert PAIRWISE DISTINCTNESS for the rest, which is exactly
+        # what collapsing two situations into one message would break.
         already = tk.plan({"intent": "unit.availability", "unit": NODE,
                            "civ": "Goths", "action": "grant"})
         check(already.get("editable") is False, "'already has it' is refused")
-        check("already" in (already.get("description") or ""),
-              "  with a sentence about already having it",
+        check(bool((already.get("description") or "").strip()),
+              "  in its own words, not an empty string",
               already.get("description"))
 
         nothing = tk.plan({"intent": "unit.availability", "unit": 12,
                            "civ": "British", "action": "grant"})
         check(nothing.get("editable") is False,
               "a unit in no tech tree is refused")
-        check("tech tree" in (nothing.get("description") or ""),
+        check("科技树" in (nothing.get("description") or ""),
               "  with a sentence about tech trees, not 'unknown unit'",
               nothing.get("description"))
 
@@ -209,8 +217,9 @@ def main():
                         "civ": "British", "action": "revoke"})
         check(take.get("editable") is False,
               "revoking what the civ never had is refused")
-        check("nothing to take away" in (take.get("description") or ""),
-              "  with a sentence about having nothing to take away",
+        check(bool((take.get("description") or "").strip())
+              and take.get("description") != already.get("description"),
+              "  with a sentence of its own, not the 'already has it' one",
               take.get("description"))
 
         # An unknown ACTION is a schema violation, not a game state: it fails
@@ -262,13 +271,16 @@ def main():
 
         # "Can build once researched" is a different refusal from "already has
         # it": the change would be a no-op either way, but the player needs to
-        # know their civ is not missing the unit, only the prerequisite.
+        # know their civ is not missing the unit, only the prerequisite.  This is
+        # one of the two places where the wording IS the distinction -- the four
+        # refusals above just have to differ from each other, but this one and
+        # "already has it" are the pair a player can actually confuse.
         _pending = tk.describe(21)["availability"]["pending_in"][0]
         _pend = tk.plan({"intent": "unit.availability", "unit": 21,
                          "civ": _pending, "action": "grant"})
         check(_pend.get("editable") is False,
               "granting what the civ can already research is refused")
-        check("prerequisite" in (_pend.get("description") or ""),
+        check("前置科技" in (_pend.get("description") or ""),
               "  with a sentence about the prerequisite, not about already having it",
               _pend.get("description"))
 

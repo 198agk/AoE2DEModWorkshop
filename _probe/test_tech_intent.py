@@ -262,8 +262,8 @@ except C.IntentError as exc:
     print("     delta 0 -> %s" % exc)
     check("delta 0 is refused", True)
     check("and the sentence blames the VALUE, not a missing field",
-          "nothing would change" in str(exc)
-          and "no research location" not in str(exc), str(exc))
+          "已经是这个值" in str(exc)
+          and "研究位置" not in str(exc), str(exc))
     check("and it names the tech and the field",
           "织布机" in str(exc) and "研究时间" in str(exc), str(exc))
 

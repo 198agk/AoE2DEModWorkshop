@@ -23,6 +23,7 @@ from .dat import locate as L
 from .dat import families as F
 from .dat import writer as W
 from .game import civtechtrees as CT
+from .game import civnames as CN
 from .game import buildpanel as BP
 from .intent import availability as AV
 from .intent import compiler as C
@@ -340,7 +341,8 @@ class Toolkit(object):
         civ = self._tree_civ(r.civ, trees)
         ut = AV.space_of(r.raw)
         rep = AV.plan(trees, civ, r.entity.id, r.action or "grant",
-                      display=r.entity.display, use_types=ut)
+                      display=r.entity.display, use_types=ut,
+                      civ_zh=CN.chinese(civ))
         # "Who has it" is worth showing even when the answer is "you already do"
         # -- and it is the only way a UI can offer a different civilization.
         base["civ"] = civ
@@ -1869,6 +1871,7 @@ class Toolkit(object):
             # research time -1" is refused at preview time.  A tech is one
             # global record, so the first hit speaks for the edit.
             b = C._binding_for(bindings, r, r.raw["intent"])
+            writes = None
             if hits:
                 safety = intents["intents"][r.raw["intent"]].get("safety", {})
                 idx, tech = hits[0]
@@ -1880,9 +1883,23 @@ class Toolkit(object):
                     C.plan_effect_edit(effects, tech, r.raw.get("command"),
                                        r.op, r.amount, fanout=self._effect_fanout())
                 else:
-                    C.collect_targets(self._raw,
-                                      C._targets_for_tech(b, tech, idx),
-                                      r, b, safety)
+                    # KEEP the count.  `_describe_tech_targets` reports how many
+                    # places the field LIVES (`research_time` is one number per
+                    # research location), which is a structural fact -- it says 1
+                    # for "Loom research time +0" too, because Loom does have one
+                    # location.  `collect_targets` is the function the write
+                    # calls, and it drops a target whose new value equals the old
+                    # one.  Discarding its result made the preview promise an edit
+                    # that `build` then refused with "nothing would change",
+                    # measured on `{tech.research_time, tech: 22, delta: 0}`:
+                    # plan said `editable: True, changes_dat: True, 1 edit`,
+                    # build raised.  The unit branch below has always used the
+                    # collected count; this one now does the same.
+                    writes = len(list(C.collect_targets(
+                        self._raw, C._targets_for_tech(b, tech, idx), r, b,
+                        safety)))
+                    if writes != base.get("edit_count"):
+                        base["edit_count"] = writes
             # Same contract as the unit branch below: a plan must not promise
             # work the build then refuses.  "Change Loom's food cost" is 0
             # edits -- Loom costs gold -- and the user has to be told that here,
@@ -1896,6 +1913,15 @@ class Toolkit(object):
                     _why = "none of its 3 cost slots declares that resource"
                 elif not hits:
                     _why = "no such record exists"
+                elif writes == 0:
+                    # The field is there and the value is legal; the value just
+                    # equals what the file holds.  Say that, rather than blaming
+                    # a missing research location the tech clearly has.
+                    base["editable"] = False
+                    base["changes_dat"] = False
+                    base["reason"] = C.zero_delta_message(r, b.get("label"))
+                    base["description"] = base["reason"]
+                    return base
                 else:
                     _why = "it declares no research location"
                 base["editable"] = False
