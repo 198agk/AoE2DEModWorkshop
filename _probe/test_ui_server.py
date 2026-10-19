@@ -117,6 +117,23 @@ def main():
                   str(pv)[:200])
             check("the preview says how many civilizations are touched",
                   inner.get("civ_count") == 63, inner.get("civ_count"))
+            # The page needs the id, not just the name, to ask for a picture and
+            # a description.  It cannot recover it from the display name: 弓箭手
+            # is not any unit's name and 城堡 is both a building and part of a
+            # technology's name, so the resolver's pick has to travel with it.
+            #
+            # Checked against the INTENT, not against a literal: 「村民」 resolves
+            # to the sexless record 1810 rather than 83, and pinning 83 here
+            # would fail on correct code (the first version did exactly that).
+            # The invariant that matters is "the picture is of the thing being
+            # edited".
+            check("the clause carries the entity id the icon route needs",
+                  cls[0].get("entity_id") == (cls[0].get("intent") or {}).get("unit")
+                  and cls[0].get("entity_id") is not None,
+                  "%r vs %r" % (cls[0].get("entity_id"),
+                                (cls[0].get("intent") or {}).get("unit")))
+            check("the clause says whether it is a unit or a technology",
+                  cls[0].get("kind") == "unit", cls[0].get("kind"))
 
         # ---- a sentence that names one civilization ---------------------
         # `plan()["civs"]` is a list of .dat indices.  The screen used to join
@@ -284,6 +301,89 @@ def main():
         except urllib.error.HTTPError as ex:
             leaked = ex.code not in (200,)
         check("/static/ cannot walk out of the folder", leaked)
+
+        # ---- icons and prose ------------------------------------------
+        # The picture routes answer with IMAGE bytes, not JSON.  A client that
+        # gets a JSON error where it expected a PNG shows a broken-image glyph,
+        # so the content type is half the contract.
+        st, ctype, body = _get(base, "/api/icon?kind=unit&id=83&size=32")
+        check("a unit icon is served as an image/png",
+              st == 200 and ctype.startswith("image/png"), "%s %s" % (st, ctype))
+        check("the icon body is a real PNG",
+              body.startswith(b"\x89PNG\r\n\x1a\n"), repr(body[:8]))
+        check("the icon is small enough for a list view", len(body) < 200000,
+              "%d bytes" % len(body))
+
+        st, _c, body_t = _get(base, "/api/icon?kind=tech&id=22&size=32")
+        check("a technology icon is served too",
+              st == 200 and body_t.startswith(b"\x89PNG"), repr(body_t[:8]))
+
+        # The two icon tables draw DIFFERENT pictures for the same number, and a
+        # build-menu button is not a training portrait.  Asking for each and
+        # comparing bytes is the only way to see that the choice happened.
+        # Use unit 83 (villager): its default section is Units, so the override
+        # must move it.  Unit 12 (barracks) is the wrong subject -- its default
+        # is ALREADY Buildings, so the first version of this check compared a
+        # picture with itself and "failed" while the routing was correct.
+        _s, _c1, default_83 = _get(base, "/api/icon?kind=unit&id=83&size=32")
+        _s, _c2, forced_83 = _get(base,
+                                  "/api/icon?kind=unit&id=83&size=32&section=Buildings")
+        check("the section override draws a different picture",
+              default_83 != forced_83, "both %d bytes" % len(default_83))
+        # And a building must default to the Buildings table, or the build-menu
+        # buttons and the training portraits are mixed up the other way round.
+        _s, _c3, building_12 = _get(base, "/api/icon?kind=unit&id=12&size=32")
+        _s, _c4, forced_units_12 = _get(base,
+                                        "/api/icon?kind=unit&id=12&size=32&section=Units")
+        check("a barracks defaults to the build-menu table, not the portrait",
+              building_12 != forced_units_12, "both %d bytes" % len(building_12))
+
+        # A unit whose icon cannot be resolved must fail with a REASON, not a
+        # zero-byte image: a blank square looks like a missing asset, and this
+        # build has 1,349 units that legitimately have no picture.
+        st, ctype, body_bad = _get(base, "/api/icon?kind=unit&id=99999")
+        if ctype.startswith("application/json"):
+            err = json.loads(body_bad.decode("utf-8"))
+            check("an unresolvable icon answers with a reason",
+                  err.get("ok") is False and bool(err.get("error")), str(err)[:160])
+        else:
+            check("an unresolvable icon answers with a reason", False, ctype)
+
+        # Emblems: three spellings, one file.  `French` is the .dat name and
+        # `FRANKS` the tree stem, and the file is neither.
+        st, ctype, em = _get(base, "/api/emblem?civ=British")
+        check("a civilization emblem is served as a PNG",
+              st == 200 and ctype.startswith("image/png")
+              and em.startswith(b"\x89PNG"), "%s %s %r" % (st, ctype, em[:8]))
+        st2, _c2, em2 = _get(base, "/api/emblem?civ=BRITONS")
+        check("the tree-stem spelling finds the same emblem", em2 == em,
+              "%d vs %d bytes" % (len(em2), len(em)))
+        st3, _c3, em3 = _get(base, "/api/emblem?civ=French")
+        check("a civilization whose file is spelled differently still resolves",
+              st3 == 200 and em3.startswith(b"\x89PNG"), "%s %s" % (st3, _c3))
+
+        # Prose: the API must say a unit has NO description rather than let the
+        # screen draw an empty box, which reads as a bug in this product.
+        st, _c, body = _get(base, "/api/describe?kind=unit&id=83")
+        d_unit = json.loads(body.decode("utf-8")).get("entity") or {}
+        prose = d_unit.get("prose") or {}
+        check("a unit reports that it has no description",
+              prose.get("ok") is False and bool(prose.get("why")), str(prose)[:200])
+        check("the missing-description reason is in Chinese",
+              "没有" in (prose.get("why") or ""), prose.get("why"))
+        check("describe carries the unit's icon",
+              bool((d_unit.get("icon") or {}).get("ok")),
+              str(d_unit.get("icon"))[:160])
+
+        st, _c, body = _get(base, "/api/describe?kind=tech&id=22")
+        d_tech = json.loads(body.decode("utf-8")).get("entity") or {}
+        tprose = d_tech.get("prose") or {}
+        check("a technology reports its real description",
+              bool(((tprose.get("fields") or {}).get("description") or {}).get("zh")),
+              str(tprose)[:200])
+        check("a technology reports its icon instead of a placeholder",
+              bool((d_tech.get("icon") or {}).get("ok")),
+              str(d_tech.get("icon"))[:160])
     finally:
         httpd.shutdown()
 

@@ -22,14 +22,44 @@ const src = m[1];
 
 // ---- a DOM just big enough ------------------------------------------------
 function node(tag) {
-  return {
+  const n = {
     tagName: (tag || "div").toUpperCase(),
     className: "", textContent: "", innerHTML: "", style: {},
     children: [], value: "", disabled: false, onclick: null, title: "",
-    appendChild(c) { this.children.push(c); return c; },
+    parentNode: null,
+    appendChild(c) { c.parentNode = this; this.children.push(c); return c; },
     addEventListener() {},
     setAttribute(k, v) { this[k] = v; },
+    // Enough of the real DOM for the page's own "replace, do not stack" logic:
+    // find the first descendant with a class, and detach a child.
+    querySelector(sel) {
+      const want = String(sel).replace(/^\./, "");
+      for (const c of this.children) {
+        if ((c.className || "").split(/\s+/).indexOf(want) >= 0) return c;
+        const deeper = c.querySelector ? c.querySelector(sel) : null;
+        if (deeper) return deeper;
+      }
+      return null;
+    },
+    remove() {
+      const p = this.parentNode;
+      if (!p) return;
+      const at = p.children.indexOf(this);
+      if (at >= 0) p.children.splice(at, 1);
+      this.parentNode = null;
+    },
   };
+  // `box.innerHTML = ""` is how the page starts every render.  In a real DOM
+  // that detaches the old children; a stub that just stores the string keeps
+  // them, so a later assertion sees the PREVIOUS payload's nodes and reports a
+  // phantom defect (it said "3 pictures for a 2-clause payload").  Assigning
+  // empty HTML must therefore clear the child list, as the browser does.
+  let html = "";
+  Object.defineProperty(n, "innerHTML", {
+    get() { return html; },
+    set(v) { html = String(v); if (html === "") n.children.length = 0; },
+  });
+  return n;
 }
 const ids = {};
 const document = {
@@ -60,13 +90,15 @@ const FIXTURES = {
   mixed: {
     ok: true,
     clauses: [
-      { text: "村民血量改成1000", kind: "unit", entity: "村民", why: null,
+      { text: "村民血量改成1000", kind: "unit", entity: "村民", entity_id: 83,
+        why: null,
         notes: [], candidates: [], intent: { intent: "unit.stat", unit: 83,
         stat: "hit_points", value: 1000 }, buildable: true,
         preview: { ok: true, plan: { description: "村民 生命值 =1000",
           kind: "unit", civ_count: 63, edit_count: 1701, changes_dat: true,
           civ_labels: ["不列颠"], editable: true } } },
-      { text: "织布机研究时间加0", kind: "tech", entity: "织布机", why: null,
+      { text: "织布机研究时间加0", kind: "tech", entity: "织布机", entity_id: 22,
+        why: null,
         notes: [], candidates: [], intent: { intent: "tech.research_time",
           tech: 22, delta: 0 }, buildable: false,
         preview: { ok: true, plan: {
@@ -77,7 +109,8 @@ const FIXTURES = {
   refusedOnly: {
     ok: true,
     clauses: [
-      { text: "织布机研究时间加0", kind: "tech", entity: "织布机", why: null,
+      { text: "织布机研究时间加0", kind: "tech", entity: "织布机", entity_id: 22,
+        why: null,
         notes: [], candidates: [], intent: { intent: "tech.research_time",
           tech: 22, delta: 0 }, buildable: false,
         preview: { ok: true, plan: {
@@ -94,12 +127,42 @@ const FIXTURES = {
   },
 };
 
+// Two real /api/describe answers, captured from the live server: one unit (this
+// build has no unit prose at all) and one technology (it does have a
+// description).  The screen must print both -- a blank where a description goes
+// reads as our bug, and printing nothing at all for a refusal loses the reason.
+const DESCRIBE = {
+  unit: {
+    id: 83, kind: "unit", name: "村民 (男性)", en: "Villager (Male)", zh: "村民 (男性)",
+    resolved: true, civ_variants: [],
+    prose: { ok: false, fields: {}, missing: {}, why: "这个版本没有单位描述：游戏"
+      + "的字符串表里没有单位帮助文本（英文和中文都是空的，不是缺翻译）" },
+    icon: { ok: true, file: "textures/ingame/units/015_50730.dds" },
+  },
+  tech: {
+    id: 22, kind: "tech", name: "织布机", en: "Loom", zh: "织布机",
+    resolved: true, civ_variants: [],
+    prose: { ok: true, missing: { help: "帮助文本：记录声明的 107022 在这份字符串表里没有内容" },
+      fields: { description: { name_string_id: 7022,
+        zh: "研究织布机 (村民的生命值 +15，近战护甲 +1/远程护甲 +2)",
+        en: "Research Loom (Villagers +15 HP, +1 melee/+2 pierce armour)" } } },
+    icon: { ok: true, file: "textures/ingame/tech/006_loom.dds" },
+  },
+};
+
 // ---- run the real script -------------------------------------------------
 const posted = [];
 const sandbox = {
   document,
   fetch: async (url, opt) => {
     posted.push({ url, body: opt && opt.body ? JSON.parse(opt.body) : null });
+    // /api/describe answers with one of the two captured entities.  The page's
+    // "what does the game say" button must render BOTH the text and the
+    // refusal, so the stub has to answer with the real shapes.
+    if (url.indexOf("/api/describe") === 0) {
+      const kind = (url.match(/kind=([a-z]+)/) || [])[1];
+      return { json: async () => ({ ok: true, entity: DESCRIBE[kind] }) };
+    }
     return { json: async () => ({ ok: true, version: 54, civs: new Array(63),
       intents: [], mods: [], manifest: { mod_dir: "/tmp/x", info: {} } }) };
   },
@@ -110,7 +173,8 @@ const sandbox = {
 const fn = new Function(
   "document", "fetch", "setTimeout", "clearTimeout", "console", "JSON",
   src + "\n;return {renderClauses: renderClauses, buildable: buildable, " +
-  "doBuild: doBuild, setLast: (v) => { LAST = v; }};");
+  "doBuild: doBuild, renderDetail: renderDetail, " +
+  "setLast: (v) => { LAST = v; }};");
 const page = fn(sandbox.document, sandbox.fetch, sandbox.setTimeout,
                 sandbox.clearTimeout, sandbox.console, sandbox.JSON);
 
@@ -153,6 +217,75 @@ try {
         text(ids.preview).indexOf("这是在提问") >= 0, text(ids.preview));
 
   page.setLast(FIXTURES.mixed);
+  // Render it again: the two checks above rendered the OTHER payloads, and the
+  // preview box holds only the last one.  (Reading it without re-rendering found
+  // 0 pictures -- a real answer to the wrong question, not a page defect.)
+  page.renderClauses(FIXTURES.mixed.clauses);
+  const boxes = walk(ids.preview, []);
+  const icos = boxes.filter((n) => n.tagName === "IMG");
+  check("each understood clause asks for its own picture",
+        icos.length === 2, String(icos.length));
+  check("the picture is requested from the real route with the entity id",
+        icos.length > 0 && icos[0].src.indexOf("/api/icon?kind=unit&id=83") === 0,
+        icos.length ? icos[0].src : "(none)");
+  const dets = boxes.filter((n) => n.className === "detailrow");
+  check("an understood clause offers the game's own words", dets.length === 2,
+        String(dets.length));
+
+  // ---- the detail panel, both shapes -----------------------------------
+  // A unit: the product refuses, and the screen must print the REASON.  An empty
+  // description area would look like a bug in this product instead of a fact
+  // about the build.
+  const unitDetail = text(page.renderDetail(DESCRIBE.unit));
+  check("a unit with no prose still prints the reason",
+        unitDetail.indexOf("没有单位描述") >= 0, unitDetail);
+  check("...and the reason is not left as a blank box",
+        unitDetail.trim().length > 10, unitDetail);
+  // A technology: it has text, and the screen must show it plus the gap.
+  const techDetail = text(page.renderDetail(DESCRIBE.tech));
+  check("a technology's description reaches the screen",
+        techDetail.indexOf("研究织布机") >= 0, techDetail);
+  check("...and a field that could not be filled says so",
+        techDetail.indexOf("107022") >= 0, techDetail);
+  check("the entity's own name heads the panel",
+        techDetail.indexOf("织布机") >= 0, techDetail);
+
+  // ---- clicking it twice must replace, not stack ------------------------
+  // The button had no memory of its previous answer, so two clicks printed the
+  // same paragraph twice.  Exercised through the REAL click handler rather than
+  // by calling the renderer, because the bug lived in the handler -- and the
+  // handler is async, so counting synchronously after `onclick()` reads zero
+  // panels and an assertion written that way would test nothing.
+  const rows = boxes.filter((n) => n.className === "detailrow" &&
+                                   n.children.some((c) => c.tagName === "BUTTON"));
+  check("the detail link is a real button", rows.length === 2,
+        boxes.map((n) => n.className).join("|"));
+  if (!rows.length) { buildChecks(); return; }
+  const row = rows[0];
+  const button = row.children.filter((c) => c.tagName === "BUTTON")[0];
+  const panels = () => row.children.filter(
+    (c) => (c.className || "").split(/\s+/).indexOf("detail") >= 0).length;
+  button.onclick().then(() => {
+    check("a click puts one answer under the clause", panels() === 1,
+          String(panels()));
+    button.disabled = false;
+    return button.onclick();
+  }).then(() => {
+    check("clicking again replaces the answer instead of stacking a second copy",
+          panels() === 1, String(panels()));
+    return buildChecks();
+  }).catch((e) => {
+    fails.push("the detail click threw: " + e.message);
+    console.log("FAIL the detail click threw :: " + e.stack);
+    finish();
+  });
+} catch (e) {
+  fails.push("renderClauses threw: " + e.message);
+  console.log("FAIL renderClauses threw :: " + e.stack);
+  finish();
+}
+
+function buildChecks() {
   page.doBuild().then(() => {
     const call = posted.filter((p) => p.url === "/api/build")[0];
     check("build was called", !!call, JSON.stringify(posted.map((p) => p.url)));
@@ -165,10 +298,6 @@ try {
     finish();
   }).catch((e) => { fails.push("doBuild threw: " + e.message);
                     console.log("FAIL doBuild threw :: " + e.stack); finish(); });
-} catch (e) {
-  fails.push("renderClauses threw: " + e.message);
-  console.log("FAIL renderClauses threw :: " + e.stack);
-  finish();
 }
 
 function finish() {

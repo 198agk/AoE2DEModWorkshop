@@ -12,9 +12,10 @@ replaceable, themeable, and inspectable without a build step.
 What this server is NOT
 -----------------------
 It is not a general-purpose API.  It binds 127.0.0.1, it has no auth, and it
-exposes five calls.  Anything that needs a decision (which of three archers, is
-this edit safe) is answered by the CLIENT asking the user, not by the server
-guessing -- the refusals carry reasons precisely so the screen can show them.
+exposes the calls one screen needs.  Anything that needs a decision (which of
+three archers, is this edit safe) is answered by the CLIENT asking the user, not
+by the server guessing -- the refusals carry reasons precisely so the screen can
+show them.
 
 Design notes that are load-bearing
 ----------------------------------
@@ -91,6 +92,53 @@ class App(object):
     def describe(self, kind, entity_id):
         return {"ok": True, "entity": self.tk.describe(int(entity_id), kind=kind)}
 
+    def icon(self, kind, entity_id, section=None, max_side=0):
+        """The picture for one entity, as PNG bytes plus what it is.
+
+        Decoding a DDS per request would be wasteful, but so is caching bytes in
+        a process that may run for one sentence; the browser is told to keep the
+        image, which is where the repetition actually happens (a list of 60 units
+        asks for the same sprite once).
+
+        `section` is an override for the one thing the caller may know better
+        than the rule does: nothing, today -- it exists so a test can prove the
+        two tables draw different pictures, and so a future "show me the button"
+        view does not need a new route.
+        """
+        from aoe2mod.game import ddstex as D
+        got = self.tk.icon_for(kind, int(entity_id))
+        if section and got.get("icon_id"):
+            got = self.tk.icons.picture(section, got["icon_id"])
+            got["witness"] = "the caller asked for the %s table" % (section,)
+        if not got.get("ok"):
+            return {"ok": False, "error": got.get("why") or "no picture"}
+        body = D.to_png(got["path"], max_side=int(max_side or 0))
+        return {"ok": True, "png": body, "icon": {k: got.get(k) for k in
+                                                  ("section", "icon_id", "file",
+                                                   "witness", "material")}}
+
+    def emblem(self, civ):
+        """A civilization's emblem, as the PNG the game already ships.
+
+        The three spellings the product deals in (`British` from the .dat,
+        `BRITONS` from the tree stems, `britons` on disk) all have to land on the
+        same file, which is what `civnames.chinese` plus the tree-stem table are
+        for -- the first version looked the aliased name up in icons.json and
+        found nothing for the two civs whose file is spelled differently.
+        """
+        from aoe2mod.game import civtechtrees as CT
+        stem = CT.civ_file_stem(civ) if civ else ""
+        path = self.tk.icons.emblem_path(stem.lower())
+        if not path:
+            # Some callers hold the icons.json stem already ("inCas"), and some
+            # the localised name; try the plain lowercase form before giving up.
+            path = self.tk.icons.emblem_path(str(civ or "").lower())
+        if not path:
+            return {"ok": False, "error": "没有「%s」的徽章" % (civ,)}
+        # Emblems are already PNG on disk -- no decode step, unlike unit icons.
+        with open(path, "rb") as fh:
+            return {"ok": True, "png": fh.read()}
+
     def parse(self, text):
         """Sentence -> {intents, refusals}.  No bytes touched."""
         intents, clauses = nl.read(text, self.vocab(),
@@ -102,6 +150,13 @@ class App(object):
                    "entity": (cl.entity.display if cl.entity is not None
                               and not isinstance(cl.entity, dict)
                               else (cl.entity.get("name") if isinstance(cl.entity, dict) else None)),
+                   # The id is what the icon and detail routes need.  The page
+                   # cannot get it from the display name: 弓箭手 is not any unit's
+                   # name, and 城堡 is both a building and part of a technology's
+                   # name -- the resolver already picked one, so carry the pick.
+                   "entity_id": (getattr(cl.entity, "id", None)
+                                 if not isinstance(cl.entity, dict)
+                                 else (cl.entity or {}).get("id")),
                    "why": cl.why, "notes": cl.notes,
                    "candidates": [{"id": c.id if not isinstance(c, dict) else c["id"],
                                    "name": c.display if not isinstance(c, dict) else c.get("name")}
@@ -292,6 +347,16 @@ def make_handler(app):
                 q = _query(self.path)
                 return self._guard(lambda: app.describe(
                     q.get("kind", ["unit"])[0], q.get("id", ["0"])[0]))
+            if path == "/api/icon":
+                q = _query(self.path)
+                return self._guard_icon(lambda: app.icon(
+                    q.get("kind", ["unit"])[0], q.get("id", ["0"])[0],
+                    section=(q.get("section", [None])[0]),
+                    max_side=q.get("size", [0])[0]))
+            if path == "/api/emblem":
+                q = _query(self.path)
+                return self._guard_icon(lambda: app.emblem(
+                    q.get("civ", [""])[0]))
             return _json(self, {"ok": False, "error": "no such route"}, 404)
 
         # ---- actions ----
@@ -334,6 +399,33 @@ def make_handler(app):
                 return _json(self, {"ok": False,
                                     "error": "%s: %s" % (type(exc).__name__, exc),
                                     "where": tb})
+
+        def _guard_icon(self, fn):
+            """A route that answers with an IMAGE, not JSON.
+
+            Kept separate from `_guard` on purpose: wrapping a 200 KB PNG in a
+            JSON envelope would force the page to base64-decode it, and encoding
+            failures would then look like "the icon is missing".  The failure
+            path still answers JSON so the page can print a reason.
+            """
+            try:
+                got = fn()
+            except Exception as exc:                   # noqa: BLE001
+                return _json(self, {"ok": False,
+                                    "error": "%s: %s" % (type(exc).__name__, exc),
+                                    "where": traceback.format_exc(limit=4)})
+            if not got.get("ok"):
+                return _json(self, {"ok": False,
+                                    "error": got.get("error") or "no picture"})
+            body = got["png"]
+            self.send_response(200)
+            self.send_header("Content-Type", "image/png")
+            self.send_header("Content-Length", str(len(body)))
+            # The files come off the installed game and do not change while it
+            # is installed; a list view asks for the same sprite repeatedly.
+            self.send_header("Cache-Control", "max-age=86400")
+            self.end_headers()
+            self.wfile.write(body)
 
     return Handler
 

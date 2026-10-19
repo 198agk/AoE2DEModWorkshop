@@ -25,10 +25,12 @@ from .dat import writer as W
 from .game import civtechtrees as CT
 from .game import civnames as CN
 from .game import buildpanel as BP
+from .game import icons as IC
 from .intent import availability as AV
 from .intent import compiler as C
 from .mod import emitter as E
 from .semantic import index as semantic
+from .semantic import prose as PR
 
 __all__ = ["Toolkit", "open_toolkit", "IntentError"]
 IntentError = C.IntentError
@@ -54,6 +56,7 @@ class Toolkit(object):
         self._civtrees = None
         self._civtrees_dir_present = None
         self._sprites = None
+        self._icons = None
 
     # ---- lazy game-data load ---------------------------------------------
     def _ensure(self):
@@ -104,6 +107,60 @@ class Toolkit(object):
         self._ensure()
         return [c["name"] for c in self._civs]
 
+    @property
+    def icons(self):
+        """The icon tables (icons.json + materials.json), read once.
+
+        Built lazily and separately from the .dat: a screen that only draws
+        emblems must not pay for a 93 MB parse.
+        """
+        if self._icons is None:
+            self._icons = IC.IconBook(self.game_root)
+        return self._icons
+
+    def icon_for(self, kind, entity_id):
+        """Which picture represents this entity, and how that was decided.
+
+        Units are the hard case: the same number means two different drawings in
+        the "Units" and "Buildings" tables (a portrait vs a build-menu button),
+        and which one applies depends on how the thing reaches the player.  That
+        rule is measured, not guessed -- see `aoe2mod/game/icons.py`.  The
+        `witness` field is returned so a screen (or a person) can tell a measured
+        choice from the documented default.
+        """
+        self._ensure()
+        if kind == "tech":
+            e = semantic.index().get("tech", entity_id)
+            if e is None:
+                return {"ok": False, "why": "no tech with id %s" % (entity_id,)}
+            raw = getattr(e, "_extra", None) or {}
+            got = self.icons.picture(IC.TECHS, raw.get("icon_id"))
+            got["witness"] = "technologies are always drawn from the Techs table"
+            return got
+        if kind != "unit":
+            return {"ok": False, "why": "icons exist for units and technologies"}
+        hits = L.find_units(self._civs, entity_id)
+        if not hits:
+            return {"ok": False, "why": "no unit with id %s" % (entity_id,)}
+        u = hits[0][2]
+        producers = [t.get("unit_id") for t in (u.get("train_locations") or [])]
+        by_builder = IC.BUILDER_UNIT_ID in producers
+        by_building = False
+        for producer in producers:
+            if producer in (None, -1):
+                continue
+            got = L.find_units(self._civs, producer)
+            if got and (got[0][2].get("type") == 80):
+                by_building = True
+                break
+        e = semantic.index().get("unit", entity_id)
+        section, witness = self.icons.unit_section(
+            u.get("icon_id"), made_by_builder=by_builder,
+            made_by_building=by_building, english_name=(e.en if e else None))
+        got = self.icons.picture(section, u.get("icon_id"))
+        got["witness"] = witness
+        return got
+
     # ---- stage 1: search, never guessing ---------------------------------
     def search(self, query, kind="unit", limit=25):
         """Candidate entities for a user-typed name.  Never raises."""
@@ -124,6 +181,12 @@ class Toolkit(object):
         out = {"id": e.id, "kind": e.kind, "name": e.display,
                "en": e.en, "zh": e.zh, "resolved": e.resolved,
                "civ_variants": e.civ_variants}
+        # Prose is reported with its GAPS, not just its hits: this build ships no
+        # unit descriptions at all, and a screen that renders an empty box where a
+        # description belongs would look like a bug in this product rather than a
+        # fact about the game.  `missing` carries the reason per field.
+        out["prose"] = PR.for_entity(e)
+        out["icon"] = self.icon_for(kind, entity_id)
 
         if kind == "tech":
             # One GLOBAL record per tech -- not one per civ -- so reporting a

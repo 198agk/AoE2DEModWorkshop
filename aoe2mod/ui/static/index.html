@@ -60,14 +60,32 @@
   .spacer { flex: 1; }
 
   .clause { border: 1px solid var(--line); border-radius: 6px; padding: 12px;
-            margin-bottom: 10px; background: var(--panel2); }
+            margin-bottom: 10px; background: var(--panel2);
+            display: flex; gap: 12px; align-items: flex-start; }
   .clause.ok { border-left: 3px solid var(--ok); }
   .clause.bad { border-left: 3px solid var(--bad); }
+  /* The text column has to be allowed to shrink, or a long sentence pushes the
+     box wider than the page (flex items default to min-width:auto). */
+  .clause .cbody { flex: 1; min-width: 0; }
+  /* The game's own picture, at 48px, sitting where the player's eye lands first.
+     `image-rendering` keeps a 256px source crisp at that size instead of the
+     browser's blurry default. */
+  .clause .ico { width: 48px; height: 48px; border-radius: 4px;
+                 image-rendering: pixelated; background: #11151a; flex: none; }
   .clause .sent { color: var(--dim); font-size: 12px; margin-bottom: 6px; }
   .clause .main { font-size: 15px; }
   .clause .why { color: var(--warn); }
   .clause .meta { color: var(--dim); font-size: 12px; margin-top: 6px; }
   .cands { margin-top: 8px; display: flex; gap: 6px; flex-wrap: wrap; }
+  .detailrow { margin-top: 8px; }
+  .detail { margin-top: 6px; padding: 10px; border-radius: 6px;
+            background: #171b21; border: 1px solid var(--line); }
+  .detailhead { margin-bottom: 6px; display: flex; gap: 8px; align-items: baseline; }
+  .detailhead .name { font-size: 14px; }
+  .detailtext { font-size: 13px; line-height: 1.6; white-space: pre-wrap;
+                color: var(--text); }
+  .detailtext.why { color: var(--warn); }
+  .detailtext.dim { color: var(--dim); font-size: 12px; }
 
   .stat { display: inline-block; padding: 1px 8px; border-radius: 10px;
           background: #2a3038; color: var(--dim); font-size: 12px; margin-right: 6px; }
@@ -288,6 +306,70 @@ function buildable(c) {
   return !p || p.editable !== false;
 }
 
+// A link that opens what the game itself says about this entity.  It is a
+// click, not part of the preview line, because the answer can be a paragraph --
+// and for every unit in this build the answer is "there is no description",
+// which is a fact the player should read once rather than a blank space that
+// looks like our bug.
+function detailButton(c) {
+  const row = el("div", "detailrow");
+  const b = el("button", "link", "游戏里怎么说的？");
+  b.onclick = async () => {
+    b.disabled = true;
+    // Clicking again must REPLACE the answer, not stack a second copy of it.
+    // (`row.innerHTML = ""` would also drop the button itself, so only the
+    // previous detail box is removed.)  The first version appended, so two
+    // clicks printed the same paragraph twice.
+    const old = row.querySelector(".detail");
+    if (old) old.remove();
+    try {
+      const j = await api("/api/describe?kind=" + encodeURIComponent(c.kind) +
+                          "&id=" + encodeURIComponent(c.entity_id));
+      // The route wraps the entity: {"ok": true, "entity": {...}}.  Reading the
+      // top level as if it were the entity printed an empty header.
+      row.appendChild(renderDetail(j.entity || {}));
+    } catch (e) {
+      row.appendChild(el("div", "why", "读不到：" + e.message));
+    } finally { b.disabled = false; }
+  };
+  row.appendChild(b);
+  return row;
+}
+
+function renderDetail(d) {
+  const box = el("div", "detail");
+  const head = el("div", "detailhead");
+  // `describe` ships `name` (already the Chinese one when it has one), plus the
+  // raw `zh`/`en`.  Do not look for `name_zh`: that key does not exist, and
+  // reading a missing key here showed a header with nothing in it.
+  head.appendChild(el("span", "name", d.zh || d.name || ("#" + d.id)));
+  if (d.en && d.en !== (d.zh || d.name)) head.appendChild(el("span", "stat", d.en));
+  box.appendChild(head);
+
+  // A refusal is information.  Print the product's own sentence -- it already
+  // says WHY there is nothing (this build's string table has no unit help
+  // text), which is the difference between a missing feature and a missing file.
+  if (d.prose && !d.prose.ok && d.prose.why) {
+    box.appendChild(el("div", "detailtext why", d.prose.why));
+  }
+  if (d.prose && d.prose.ok) {
+    const f = d.prose.fields || {};
+    for (const k of ["description", "help", "tech_tree"]) {
+      const blk = f[k];
+      const t = blk && (blk.zh || blk.en);
+      if (t) box.appendChild(el("div", "detailtext", t));
+    }
+    const miss = d.prose.missing || {};
+    for (const k in miss) {
+      box.appendChild(el("div", "detailtext why", miss[k]));
+    }
+  }
+  if (d.icon && d.icon.ok) {
+    box.appendChild(el("div", "detailtext dim", "图标：" + d.icon.file));
+  }
+  return box;
+}
+
 function renderClauses(clauses) {
   const box = $("#preview");
   box.innerHTML = "";
@@ -295,11 +377,27 @@ function renderClauses(clauses) {
   for (const c of clauses) {
     const can = buildable(c);
     const wrap = el("div", "clause " + (can ? "ok" : "bad"));
-    wrap.appendChild(el("div", "sent", c.text));
+    // The picture comes from the game's own files, through /api/icon, so the
+    // screen shows what the player would see in the build menu.  A missing
+    // picture is a fact about the game (1,349 units have none), so it is simply
+    // not rendered rather than shown as a broken-image box.
+    if (c.entity_id != null && c.kind) {
+      const img = document.createElement("img");
+      img.className = "ico";
+      img.src = "/api/icon?kind=" + encodeURIComponent(c.kind) +
+                "&id=" + encodeURIComponent(c.entity_id) + "&size=48";
+      img.alt = c.entity || "";
+      img.onerror = () => { img.style.display = "none"; };
+      wrap.appendChild(img);
+    }
+    // Everything textual lives in one column so a long sentence wraps instead of
+    // pushing the box past the page width.
+    const body = el("div", "cbody");
+    body.appendChild(el("div", "sent", c.text));
     if (c.intent) {
       if (can) good++;
       const p = c.preview && c.preview.ok ? c.preview.plan : null;
-      wrap.appendChild(el("div", "main", p && p.description ? p.description : "能读懂"));
+      body.appendChild(el("div", "main", p && p.description ? p.description : "能读懂"));
       const meta = el("div", "meta");
       if (p) {
         meta.appendChild(el("span", "stat", p.kind === "tech" ? "科技" : "单位"));
@@ -315,11 +413,12 @@ function renderClauses(clauses) {
         if (p.editable === false) meta.appendChild(el("span", "stat bad", "做不了"));
       } else if (c.preview && !c.preview.ok) {
         meta.appendChild(el("span", "stat bad", "预览被拒"));
-        wrap.appendChild(el("div", "why", c.preview.error));
+        body.appendChild(el("div", "why", c.preview.error));
       }
-      wrap.appendChild(meta);
+      body.appendChild(meta);
+      if (c.entity_id != null && c.kind) body.appendChild(detailButton(c));
     } else {
-      wrap.appendChild(el("div", "main why", c.why || "没读懂"));
+      body.appendChild(el("div", "main why", c.why || "没读懂"));
       if (c.candidates && c.candidates.length) {
         const cands = el("div", "cands");
         cands.appendChild(el("span", "meta", "是这些里的哪一个？"));
@@ -340,9 +439,10 @@ function renderClauses(clauses) {
           };
           cands.appendChild(b);
         }
-        wrap.appendChild(cands);
+        body.appendChild(cands);
       }
     }
+    wrap.appendChild(body);
     box.appendChild(wrap);
   }
   // `can` above is block-scoped inside the loop, so it is NOT visible here --

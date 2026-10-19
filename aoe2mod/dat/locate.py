@@ -135,7 +135,12 @@ def walk_unit(r, ci):
     r.i16(); r.f32()
     r.u8(); r.u8(); r.u8(); r.u8(); r.u8()
     r.f32(); r.u8()
-    r.i32(); r.i32()
+    # Unit.cpp:125-126 -- LanguageDLLHelp then LanguageDLLHotKeyText.  Both were
+    # read and dropped.  Help is the string id behind the in-game description
+    # panel, so a UI that wants to explain a unit needs it; keeping it costs
+    # nothing because these bytes are already being consumed positionally.
+    u["_dll_help"] = r.i32()                  # LanguageDLLHelp
+    r.i32()                                   # LanguageDLLHotKeyText
     # Unit.cpp:128 -- pre-C30 carriers hold an extra hotkey int32 that the engine
     # copies into Creatable.HotKeyFromUnit.  This guard MUST mirror
     # parse_dat.read_unit() exactly; without it every legacy record (VER 7.8 and

@@ -130,6 +130,14 @@ SUITES = [
     # is wording a Chinese player cannot read (measured at 8 of 12 strings).
     r"_probe\test_plan_build_agreement.py",
     r"_probe\test_prose_language.py",
+    # The material layer (D direction).  `test_icons.py` pins the two icon tables
+    # to different pictures -- the wrong table shows a player the picture of
+    # something else, and nothing else in the suite would notice.  The prose pair
+    # pins what text this build actually ships: technologies have descriptions,
+    # units have NONE, and an honest gap is the first thing to get "filled in"
+    # with an invention later.
+    r"_probe\test_icons.py",
+    r"_probe\test_prose_supply.py",
     # The registry itself.  Ten probes rotted unrun before anyone noticed, and
     # the reason nobody noticed is that "is every test reachable?" was a question
     # only a human could answer.  This asks it mechanically, including the four
