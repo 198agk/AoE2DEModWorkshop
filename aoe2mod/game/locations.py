@@ -502,12 +502,20 @@ def make_status_entry(name, kind="local", title=None, enabled=True,
 
 def upsert_mod_entry(doc, name, kind="local", title=None, enabled=True,
                      position=0, workshop_id=0, checksum="0",
-                     last_update=None):
+                     last_update=None, move=False):
     """Insert or update one entry without reordering anyone else.
 
     ``position`` is 0-based and only applies to a NEW entry (``0`` = top of the
-    list = highest priority = wins file conflicts).  Updating an existing entry
-    keeps it where the user put it.
+    list = highest priority = wins file conflicts).
+
+    ``move=True`` also relocates an entry that ALREADY exists.  Installing needs
+    that: the game itself registers a local mod folder it finds on disk, so a
+    mod we are installing for the first time can already be in the list -- at
+    the bottom, disabled.  Treating that as "an entry the user positioned by
+    hand" left a fresh install at the end of the list (measured 2026-10-19,
+    `dsh test v15`: entry present, `Enabled` written, `Priority` 11 of 11, so
+    the game loaded it last).  A hand-positioned mod is only at risk when the
+    caller is updating in place, which is why this defaults to ``False``.
     """
     rel = "%s//%s" % (kind, name)
     entries = doc.setdefault("Mods", [])
@@ -527,8 +535,14 @@ def upsert_mod_entry(doc, name, kind="local", title=None, enabled=True,
         found["Enabled"] = bool(enabled)
         if title:
             found["Title"] = title
-        # Leave it exactly where it already sits: an update must never move a
-        # mod the user positioned by hand.
+        if move:
+            # `install` asked for a position and this entry is not the one the
+            # user hand-placed: lift it out and re-insert at `position`.
+            entries.remove(found)
+            at = max(0, min(int(position), len(entries)))
+            entries.insert(at, found)
+        # Otherwise leave it exactly where it already sits: an update must never
+        # move a mod the user positioned by hand.
     renumber_priorities(entries)
     return found
 
@@ -597,7 +611,7 @@ def install_mod(mod_dir, profile_root, name=None, title=None, kind="local",
 
     doc, acc, _ = read_status_doc(profile_root, account=acc)
     entry = upsert_mod_entry(doc, name, kind=kind, title=title,
-                             enabled=enabled, position=position)
+                             enabled=enabled, position=position, move=True)
     bak = write_status_doc(acc, doc, backup=backup)
 
     dat = os.path.join(target, DAT_REL)

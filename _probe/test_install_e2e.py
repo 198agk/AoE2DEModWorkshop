@@ -36,6 +36,20 @@ def check(label, cond, detail=""):
         FAILS.append(label)
 
 
+def _snapshot(mods_dir):
+    """Every file under the live mods directory with its size + mtime."""
+    seen = {}
+    for root, _dirs, files in os.walk(mods_dir):
+        for f in files:
+            p = os.path.join(root, f)
+            try:
+                st = os.stat(p)
+            except OSError:
+                continue
+            seen[os.path.relpath(p, mods_dir)] = (st.st_size, st.st_mtime_ns)
+    return seen
+
+
 def main():
     tmp = tempfile.mkdtemp(prefix="aoe2e2e_")
     try:
@@ -49,6 +63,15 @@ def main():
         before = open(real_status, "rb").read()
         shutil.copy2(real_status, os.path.join(accdir, "mod-status.json"))
         os.makedirs(os.path.join(prof, "0", "mods", "local", "x"))
+        # The live profile is MUTABLE -- it gains and loses entries (the product
+        # itself installed a local mod; the user removed test mods).  Every count
+        # below is therefore stated relative to the fixture, never as a literal:
+        # a literal goes stale and then the suite fails for a reason that says
+        # nothing about install().  `_snapshot` keeps the absolute promise ("THIS
+        # run wrote nothing to the real profile") in the form it can be checked.
+        _live = json.loads(open(real_status, encoding="utf-8-sig").read())
+        n0 = len(_live["Mods"])
+        real_before = _snapshot(os.path.dirname(real_status))
 
         print("=== 1. open the real game ===")
         tk = A.open_toolkit()
@@ -98,8 +121,8 @@ def main():
                           profile_root=prof)
         check("installed", inst["installed"] is True)
         check("status backup taken", os.path.exists(inst["status_backup"]))
-        check("list is 8 long", inst["status_entries"] == 8,
-              str(inst["status_entries"]))
+        check("list grew by exactly one", inst["status_entries"] == n0 + 1,
+              "%s vs %s" % (inst["status_entries"], n0 + 1))
         check("it is priority 1", inst["priority"] == 1, str(inst["priority"]))
         check("path field is local//", inst["path_field"].startswith("local//"),
               inst["path_field"])
@@ -114,12 +137,11 @@ def main():
         check("title round-trips as UTF-8",
               doc["Mods"][0]["Title"] == "弓箭手攻击力+1",
               doc["Mods"][0]["Title"])
-        check("all 7 originals are still present, in order",
+        check("every original mod is still present, in order",
               [e["Title"] for e in doc["Mods"][1:]] ==
-              [e["Title"] for e in json.loads(raw.decode("utf-8-sig"))["Mods"]][1:]
-              or len(doc["Mods"]) == 8)
-        check("priorities are 1..8",
-              [e["Priority"] for e in doc["Mods"]] == list(range(1, 9)))
+              [e["Title"] for e in _live["Mods"]])
+        check("priorities are 1..n0+1",
+              [e["Priority"] for e in doc["Mods"]] == list(range(1, n0 + 2)))
 
         print("=== 6. the installed .dat, re-parsed from where it landed ===")
         raw_dat, how = P.load_dat(inst["dat"])
@@ -159,18 +181,26 @@ def main():
         check("uninstalled: 1 entry gone", res["entries_removed"] == 1)
         check("uninstalled: folder gone", res["folder_removed"])
         doc2, _, _ = G.read_status_doc(prof)
-        check("back to 7 entries", len(doc2["Mods"]) == 7, str(len(doc2["Mods"])))
-        check("priorities back to 1..7",
-              [e["Priority"] for e in doc2["Mods"]] == list(range(1, 8)))
+        check("back to n0 entries", len(doc2["Mods"]) == n0,
+              str(len(doc2["Mods"])))
+        check("priorities back to 1..n0",
+              [e["Priority"] for e in doc2["Mods"]] == list(range(1, n0 + 1)))
 
         print("=== 8. the real profile was never touched ===")
         check("real status file byte-identical",
               open(real_status, "rb").read() == before)
-        check("no .bak beside the real file",
-              not os.path.exists(real_status + ".bak"))
-        check("real local/ still empty",
-              os.listdir(os.path.join(REAL_PROFILE, REAL_ACCOUNT, "mods",
-                                      "local")) == [])
+        _after = _snapshot(os.path.dirname(real_status))
+        check("nothing added to the real profile",
+              not (set(_after) - set(real_before)),
+              str(sorted(set(_after) - set(real_before))))
+        check("nothing removed from the real profile",
+              not (set(real_before) - set(_after)),
+              str(sorted(set(real_before) - set(_after))))
+        check("nothing modified in the real profile",
+              not [k for k in set(real_before) & set(_after)
+                   if real_before[k] != _after[k]],
+              str([k for k in set(real_before) & set(_after)
+                   if real_before[k] != _after[k]]))
 
     finally:
         shutil.rmtree(tmp, ignore_errors=True)

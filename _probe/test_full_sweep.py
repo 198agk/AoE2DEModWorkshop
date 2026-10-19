@@ -130,7 +130,7 @@ for case in CASES:
         shape.setdefault(key, [0, 0])[0] += 1
         # The strategy must be the one that routes to the JSON builder, and the
         # .dat compiler must refuse it -- if it ever stopped refusing, this
-        # intent would silently start shipping a .dat.
+        # intent would silently start shipping a .dat through the byte patcher.
         try:
             C.compile_intent(tk.dat_path, case, parsed=tk._parsed,
                              stats=tk._stats)
@@ -138,11 +138,35 @@ for case in CASES:
                               "must route through the JSON strategy"))
         except C.IntentError:
             pass
-        if plan.get("mod_contains_dat") is not False:
-            bad.append((case, "availability plan does not declare mod_contains_dat"))
-        if plan.get("edit_count") != 0:
-            bad.append((case, "availability plan claims %s .dat edits"
-                        % plan.get("edit_count")))
+        # What the preview may promise is DECLARED BY THE SCHEMA
+        # (`compile.dat_half.actions`), and this block used to hard-code the
+        # opposite: `edit_count == 0` and `mod_contains_dat is False`, i.e. "this
+        # intent never writes a .dat".  That was true when availability was
+        # JSON-only, and it became a false alarm the moment the in-game-proven
+        # `datgrant` recipe was wired to `grant`.  Reading the declaration instead
+        # of restating it means adding or removing a `.dat` half is a data edit
+        # and this sweep follows, rather than contradicting it.
+        _dh = (intents_schema["intents"][case["intent"]]["compile"]
+               .get("dat_half") or {})
+        _wants_dat = case["action"] in (_dh.get("actions") or ())
+        _want_edits = int(_dh.get("write_operations") or 0) if _wants_dat else 0
+        if bool(plan.get("changes_dat")) != _wants_dat:
+            bad.append((case, "plan changes_dat=%s but the schema declares a "
+                              "`.dat` half for actions %s"
+                        % (plan.get("changes_dat"), _dh.get("actions") or [])))
+        if int(plan.get("edit_count") or 0) != _want_edits:
+            bad.append((case, "plan claims %s .dat edits, schema declares %d"
+                        % (plan.get("edit_count"), _want_edits)))
+        # `mod_contains_dat` is NOT the same question as `changes_dat`: every
+        # availability build writes its JSON under `resources/_common/dat/`, and a
+        # mod that overrides that folder without `empires2_x2_p1.dat` makes the
+        # game fail to start, so the emitter always carries the base `.dat` --
+        # byte-identical when only JSON changed.  A plan saying "no .dat" here
+        # would be describing a mod folder that cannot exist.
+        if plan.get("mod_contains_dat") is not True:
+            bad.append((case, "availability plan says mod_contains_dat=%s, but a "
+                              "JSON file under the DAT storage point forces a "
+                              "carried .dat" % plan.get("mod_contains_dat")))
         continue
     try:
         plan = tk.plan(case)
@@ -247,3 +271,10 @@ for u in uncovered:
     bad.append((u, "declared option never exercised"))
 print()
 print("FULL CROSS-PRODUCT SWEEP: %s" % ("AGREE ON EVERY CASE" if not bad else "INCONSISTENCIES FOUND"))
+
+# This file printed its verdict and then fell off the end, so it exited 0 even
+# when it said INCONSISTENCIES FOUND.  `_probe/run_long.py` treats a non-zero
+# exit as failure and had to match the verdict string instead -- which meant a
+# sweep that found real defects still showed up as `exit=0` in the log, one
+# character away from looking green.  A test must fail the way a test fails.
+sys.exit(1 if bad else 0)

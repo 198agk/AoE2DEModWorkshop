@@ -19,6 +19,7 @@ SUITES = [
     r"aoe2mod\tests\test_api.py",
     r"aoe2mod\tests\test_civtechtrees.py",
     r"aoe2mod\tests\test_civtechtrees_writer.py",
+    r"_probe\test_revoke_chain_closed.py",
     r"aoe2mod\tests\test_buildpanel.py",
     r"_probe\test_panel_edit.py",
     r"_probe\test_panel_wire.py",
@@ -64,6 +65,16 @@ SUITES = [
     r"aoe2mod\tests\test_availability_e2e.py",
     r"aoe2mod\tests\test_availability_intent.py",
     r"_probe\test_tech_availability_e2e.py",
+    # The plan's promise about the `.dat` half is checked against BYTES here.
+    # It stayed wrong for a whole round -- `mod_contains_dat: false` in the
+    # schema while every availability build shipped a 11.9 MB `.dat` -- because
+    # nothing in the fast set ever opened the emitted file.
+    r"_probe\test_availability_dat_half.py",
+    # Black-box grant through the PUBLIC API (`tk.plan` / `tk.build`), i.e. the
+    # path a user takes, including the `datgrant` recipe -- the product test
+    # `aoe2mod/tests/test_availability_e2e.py` exercises the tree/emitter
+    # functions directly and so would keep passing if the API wiring broke.
+    r"_probe\test_availability_intent_e2e.py",
     r"_probe\test_donor_rule.py",
     r"_probe\test_mechanism_gate.py",
     r"_probe\test_type3_scope.py",
@@ -86,9 +97,24 @@ SUITES = [
     r"_probe\test_families.py",
     r"_probe\test_declared_resources.py",
     r"_probe\test_unit_sprite_chain.py",
+    r"_probe\test_sprite_chain.py",
+    r"_probe\test_sld_encode.py",
     r"_probe\test_reskin.py",
     r"_probe\test_repaint.py",
     r"_probe\test_retarget.py",
+    # The ten below sat in `_probe/` registered with NOBODY -- not in this list,
+    # not in run_long.py -- so nothing ever ran them.  Four of them had rotted
+    # silently (a renamed API key, a cosmetic field the parser started surfacing,
+    # two literals counting the user's own mod list, and a `delta: 0` contract
+    # the product deliberately changed).  A test no runner calls is not a test.
+    r"_probe\test_age_variants.py",
+    r"_probe\test_dat_availability_layers.py",
+    r"_probe\test_effect_walk.py",
+    r"_probe\test_tech_intent.py",
+    r"_probe\test_tech_cost.py",
+    r"_probe\test_tech_effect.py",
+    r"_probe\test_install.py",
+    r"_probe\test_install_e2e.py",
 ]
 
 fails = []

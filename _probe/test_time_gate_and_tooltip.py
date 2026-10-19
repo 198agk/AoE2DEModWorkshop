@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-r"""PIN: the in-game experiment is DONE, and it says the menu is NOT panel-driven.
+r"""PIN: the menu is NOT panel-driven.  It is ALSO not tree-driven alone (v15).
 
 ## What the user ran (2026-10-15, no effective mod -- my bundle was `Enabled: false`)
 
@@ -14,9 +14,50 @@ nor 320 (`Units` = 8 entries, `Techs` = [96, 255, 257, 239]), and
 
 **GAME 2 alone refutes "the menu is fed by futuravailableunits.json".**
 
-## GAME 1, Poles, dock -- and why its tooltip must NOT be over-read
+## GAME 1, Poles, dock -- ANSWERED 2026-10-18 (this used to say "no usable evidence")
 
-Their Poles screenshot shows the Cannon Galleon tooltip containing
+The user re-ran GAME 1 against the shipped game and reported the decisive fact
+directly: **the Polish dock has NO Elite Cannon Galleon upgrade button.**
+
+That closes the half GAME 2 left open, because the panel is now excluded from
+BOTH directions:
+
+    panel lists 691 in Units AND 376 in Techs   -> the button should exist
+    the user saw no button                      -> **the panel is NOT sufficient**
+
+Together with GAME 2 (panel silent, button existed -> the panel is NOT necessary),
+`futuravailableunits.json` is now excluded as the source of the facility menu.
+
+## ⚠️ 2026-10-19: "so the tree supplies it" was WRONG -- v15 refuted that
+
+This file used to continue "...and the tree is the only layer consistent with
+every observation", which was an overreach: excluding one layer is not evidence
+for another.  `dsh test v15` tested it directly.
+
+`_probe/build_dshtest_v15.py` shipped **two `CivTechTrees/<CIV>.json` files and
+nothing else** -- the `.dat` was a byte-identical carrier (sha256 asserted), the
+panel was untouched, and both trees were asserted chain-closed (Incas loses 2550
+with its whole chain `[2550, 2552, 2554, 2588]`, Britons gains a 2550 row in the
+Dark Age Barracks).  The same mod also carried a `.dat` edit already proven to
+render in game (villagers 25 -> 1000 hp), so "did the mod load?" was answerable.
+
+The user's reading: **the villagers were 1000 hp (the control worked) and
+NEITHER tree change showed up** -- Incas still had the Champi Scout, Britons
+still did not.  The mod demonstrably loaded (`MainLog.txt` shows `Enabling mod`),
+so the JSON was written, mounted, and still not read by the facility menu.
+
+**The only layer this project has ever observed moving that menu is a `.dat`
+byte**: `dsh test v5` (2026-10-16) changed British unit 2550's
+`train_location.ButtonID` 1 -> 4 -- one byte -- and the button appeared, because
+slot 1 was already full with the five-unit militia line.  `dsh test v16`
+(2026-10-19) isolates that: two `.dat` bytes, no JSON layer touched at all.
+
+Side note on the old screenshot: the Poles cannon-galleon tooltip containing
+`升级：升级到精锐炮舰` is still not evidence of anything -- see below.
+
+## Why that Poles tooltip must NOT be over-read
+
+The user's first Poles screenshot showed the Cannon Galleon tooltip containing
 
     升级：升级到精锐炮舰
 
@@ -39,22 +80,29 @@ fourth time in this investigation that shipped text was mistaken for behaviour.
 
 ## The honest state of the answer
 
-  * **refuted**: "the facility menu is fed by `futuravailableunits.json` alone"
-    (GAME 2 observed).
-  * **consistent with everything observed**: the **tree** is what the facility menu
-    follows; the panel is a separate (99.4%-identical) copy, plausibly feeding the
-    greyed-out "future items" preview.
-  * **still unproven**: that the tree alone is authoritative for Poles 691 -- GAME 1
-    produced no usable evidence, because the only Poles-specific datum (the dock's
-    button set) was not captured in a readable form, and the tooltip is static.
+  * **refuted, both directions**:
+      - not NECESSARY: GAME 2 -- panel silent on 588/320, both were on screen.
+      - not SUFFICIENT: GAME 1 -- panel lists 691 and 376, no button appeared.
+    Therefore `futuravailableunits.json` does not supply the facility menu.
+  * **REFUTED 2026-10-19**: "the tree is what the menu follows".  v15 wrote only
+    the two tree files (byte-identical `.dat` carrier, panel untouched, chains
+    asserted closed) and NEITHER side moved in game.  The mod loaded.  See the
+    header of this file.
+  * **the only PROVEN lever**: the `.dat` `train_location.ButtonID` byte.  `dsh
+    test v5` moved British 2550 from slot 1 to slot 4 and the button appeared.
+    `dsh test v16` (2026-10-19) isolates it with two bytes and no JSON.
+  * **what the panel presumably does**: a separate 99.4%-identical copy, plausibly
+    feeding the greyed-out "future items" preview (`widgetui\futuravailableunits.json`
+    is an 81-byte redirect stub naming this exact file, so the engine does read it).
 
 ## Consequence for the product
 
-`unit.availability` already writes **both** layers.  Since they encode the same model
-to within 0.6%, and the panel alone is now refuted as the menu source, writing both
-remains correct and needs no further in-game work.  The remaining value of a future
-test is only to decide which layer to PRIORITIZE (smaller mods), not whether the
-product works.
+`unit.availability` writes **both** JSON layers plus (for `grant`) the `.dat` half.
+Given that neither JSON layer has ever been observed moving the facility menu on
+its own, **the `.dat` half is the part that actually works** and the JSON halves
+are the part whose effect is still unproven.  That inverts the earlier reading:
+`grant` writes `.dat` and has an in-game result (v7, Champi Scout in the Dark Age
+Barracks); `revoke` writes only JSON and has never been observed changing anything.
 
 Run:  $env:PYTHONPATH='D:\\Software\\AI\\帝国项目'; python _probe\test_time_gate_and_tooltip.py
 """
@@ -127,12 +175,37 @@ print("     重型投石车 and the unit 重型投石车 in that workshop.")
 print("     => the facility menu is NOT fed by the panel alone.  REFUTED.")
 
 print()
+print("B2 GAME 1 observed 2026-10-18 -- the OTHER direction: panel says YES")
+_o = panels[BP.panel_path_for(GAME, "Poles")[1]]["obj"]
+_pk = BP.civ_key_for(panels, "POLES")
+_blk = BP.building_block(_o, _pk, 45)
+_pu = {e.get("ID") for e in (_blk.get(BP.UNITS_KEY) or [])}
+_pt = {e.get("ID") for e in (_blk.get(BP.TECHS_KEY) or [])}
+check("the panel lists unit 691 at the Poles' dock", 691 in _pu, "Units=%s"
+      % sorted(_pu))
+check("the panel lists upgrade tech 376 at the Poles' dock", 376 in _pt,
+      "Techs=%s" % sorted(_pt))
+check("the tree marks unit 691 NotAvailable",
+      CT.node_status(trees["POLES"], 691, CT.UNIT_USE_TYPES) == "NotAvailable")
+check("the tree has NO row for tech 376 at all",
+      CT.row_for(trees["POLES"], 376, CT.TECH_USE_TYPES) is None)
+print("     The user looked at the Polish dock in the shipped game and saw NO")
+print("     Elite Cannon Galleon upgrade button.")
+print("     => a panel that lists the unit AND its upgrade tech did not produce a")
+print("        button.  The panel is NOT SUFFICIENT either.")
+print("     => with GAME 2 (not necessary) this excludes the panel BOTH ways.")
+
+print()
 print("C  the competitor explanations that remain, ranked by evidence")
-print("     1. the TREE is what the facility menu follows         -- consistent")
-print("        with everything observed, and with the panel being a 99.4% copy")
-print("     2. the menu UNIONS tree and panel                     -- not excluded")
-print("        by GAME 2 (the tree said yes there too)")
-print("     3. the panel feeds the GREYED-OUT future preview only -- plausible,")
+print("     1. the .dat BUTTON SLOT is what the facility menu follows -- PROVEN")
+print("        in game: dsh test v5 moved British 2550 from slot 1 to slot 4")
+print("        (one byte) and the button appeared.  dsh test v16 isolates it")
+print("     2. the TREE is what the facility menu follows           -- REFUTED")
+print("        2026-10-19 by dsh test v15: two tree files only, mod loaded,")
+print("        neither side changed in game")
+print("     3. the menu UNIONS tree and panel                     -- refuted for the")
+print("        panel half by GAME 1 (the union would have shown the button)")
+print("     4. the panel feeds the GREYED-OUT future preview only -- plausible,")
 print("        matches the file's name and its display-only Prereq* fields,")
 print("        and is exactly what IDS_OPT_DISPLAY_FUTURE_ITEMS toggles")
 # The tree DOES carry `Prerequisite IDs` / `Prerequisite Types` (data/link
@@ -157,14 +230,17 @@ print("D  the product consequence")
 print("     aoe2mod/api.py's _build_availability writes BOTH the tree and the panel")
 print("     [note] the panel-vs-tree agreement (99.4%) is pinned by "
       "_probe/test_panel_tree_agreement.py, not re-derived here")
-print("     -> with the panel-alone hypothesis refuted and the two copies 99.4%")
-print("        identical, writing both is correct whichever is consulted.")
-print("        Nothing further needs an in-game test for the product to be sound;")
-print("        a future test would only decide which copy to PRIORITIZE.")
+print("     -> neither JSON layer has ever been observed moving the facility menu")
+print("        on its own; the .dat half is the part with an in-game result (v7).")
+print("        Writing both stays correct, but the panel is the least supported")
+print("        of the three layers -- keep it only for the greyed-out preview.")
 
 print()
-print("TIME GATE + TOOLTIP: the experiment answered one question and the tooltip")
-print("  answered none -- it was shipped prose, as the strings show.")
+print("TIME GATE + TOOLTIP: the tooltip answered nothing (shipped prose).  The two")
+print("  game observations together exclude the panel both as necessary (GAME 2)")
+print("  and as sufficient (GAME 1).  They do NOT prove the tree -- dsh test v15")
+print("  (2026-10-19) wrote only the tree files, the mod loaded, and neither side")
+print("  changed in game.  The .dat button slot is the only proven lever.")
 for n in fails:
     print("  FAILED: %s" % n)
 sys.exit(1 if fails else 0)

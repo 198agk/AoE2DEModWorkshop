@@ -246,13 +246,26 @@ after = [d["research_time"] for d in
 print("     value=7 -> %s" % after)
 check("absolute value sets the field", after == [7])
 
-print("\n=== E. a zero delta still produces a verifiable, honest result ===")
-rep = C.compile_intent(BASE, {"intent": "tech.research_time", "tech": 22,
-                              "delta": 0}, parsed=parsed)
-print("     delta 0 -> verification ok=%s changed=%d"
-      % (rep["verification"]["ok"], rep["verification"].get("changed_bytes")))
-check("delta 0 produces a verifiable result", rep["verification"]["ok"])
-check("delta 0 changes nothing", rep["verification"].get("changed_bytes") == 0)
+print("\n=== E. a zero delta is refused with a sentence that names the FIELD ===")
+# The product used to accept `delta: 0`, emit a `.dat` byte-identical to the
+# base, and ship a manifest claiming it changed the game (independent audit,
+# case 21) -- so a refusal is the intended behaviour.  What this section pins is
+# the SENTENCE: the tech path lacked the unit path's `had_field` flag, so a
+# zero delta fell through to "it declares no research location" -- a plain lie
+# about a record that accepted `value: 7` two lines above.  A user reading that
+# would go looking for a research location that is already there.
+try:
+    C.compile_intent(BASE, {"intent": "tech.research_time", "tech": 22,
+                            "delta": 0}, parsed=parsed)
+    check("delta 0 is refused", False, "a no-op build was accepted")
+except C.IntentError as exc:
+    print("     delta 0 -> %s" % exc)
+    check("delta 0 is refused", True)
+    check("and the sentence blames the VALUE, not a missing field",
+          "nothing would change" in str(exc)
+          and "no research location" not in str(exc), str(exc))
+    check("and it names the tech and the field",
+          "织布机" in str(exc) and "研究时间" in str(exc), str(exc))
 
 print("\n%s" % ("ALL TECH CHECKS PASSED" if not FAIL
                 else "FAILURES: %s" % FAIL))

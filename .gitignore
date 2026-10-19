@@ -40,3 +40,14 @@ _probe/_newlog.md
 _probe/team/*/scratch/
 _probe/team/*/mutations/
 _probe/team/*/__pycache__/
+
+# The artifact emitter's scratch: 11.4 MB of .dat per run, regenerable by
+# _probe/datparse/emit_mod.py (which verify_artifact.py then checks).
+_probe/datparse/out_modtest/
+
+# _probe/verify_agevariant_artifact.py's scratch mod (11.9 MB .dat).  Note the
+# pattern above (_probe/out_*/) does NOT cover a directory named just out.
+_probe/out/
+
+# _probe/test_sld_encode.py writes a repainted .sld here (703 KB, regenerable).
+_probe/_sld_out/

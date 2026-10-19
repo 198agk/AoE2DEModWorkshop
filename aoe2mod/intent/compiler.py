@@ -1726,16 +1726,26 @@ def _compile_tech_edits(data, tail, gv, resolved, bindings, safety, it):
 
     buf = bytearray(data)
     edits = []
+    had_field = False
     for idx, tech in hits:
         produced = list(_targets_for_tech(b, tech, idx))
         if not produced:
             # A pre-C31 record always has the scalar; a C31+ record with zero
             # research locations genuinely stores no time anywhere.
             continue
+        had_field = True
         _write_targets(data, buf, edits, produced, resolved, b, safety,
                        "tech[%d]" % idx)
 
     if not edits:
+        # Two different failures, two different sentences -- the same split the
+        # unit path makes, and the absence of it here was a lie: `delta: 0` on a
+        # tech fell through to "it declares no research location" even though
+        # the record plainly has one (the same id accepted `value: 7` a moment
+        # earlier).  `collect_targets` drops a target whose new value equals the
+        # old one, so zero edits does NOT mean "no field".
+        if had_field:
+            raise IntentError(zero_delta_message(resolved, b.get("label")))
         if b["source"] == "cost_entry":
             why = "none of its 3 cost slots declares that resource"
         else:

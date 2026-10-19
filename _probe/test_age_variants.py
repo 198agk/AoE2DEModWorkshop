@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+﻿# -*- coding: utf-8 -*-
 """The age-variant fix, tested through the PRODUCT path (not the helper).
 
 probe_building_ageup_defect.py showed the defect the old way: "Barracks hp +100"
@@ -36,9 +36,9 @@ print("=== A. a plan for a building must report the whole family ===")
 bp = tk.plan({"intent": "unit.stat", "unit": 12, "stat": "hit_points", "delta": 100})
 print("Barracks plan: %s | edits %d | civs %d | variants %s"
       % (bp["description"], bp["edit_count"], bp["civ_count"],
-         bp.get("age_variants")))
+         bp.get("variants")))
 check("Barracks plan reports 4 age variants",
-      sorted(bp.get("age_variants") or []) == [20, 132, 498], bp.get("age_variants"))
+      sorted(bp.get("variants") or []) == [20, 132, 498], bp.get("variants"))
 check("Barracks plan writes 63 civs x 4 ages = 252 records",
       bp["edit_count"] == 252 and bp["civ_count"] == 63, bp["edit_count"])
 check("Barracks plan lists every unit id it touches",
@@ -46,17 +46,17 @@ check("Barracks plan lists every unit id it touches",
 
 hp_plan = tk.plan({"intent": "unit.stat", "unit": 70, "stat": "hit_points", "delta": 100})
 print("House plan: edits %d variants %s"
-      % (hp_plan["edit_count"], hp_plan.get("age_variants")))
+      % (hp_plan["edit_count"], hp_plan.get("variants")))
 check("House plan reports 5 variants and 63 x 6 = 378 edits",
-      sorted(hp_plan.get("age_variants") or []) == [191, 192, 463, 464, 465]
+      sorted(hp_plan.get("variants") or []) == [191, 192, 463, 464, 465]
       and hp_plan["edit_count"] == 378, hp_plan["edit_count"])
 
 print()
 print("=== B. a lone unit must NOT be dragged into a family ===")
 ap = tk.plan({"intent": "unit.stat", "unit": "Archer", "stat": "hit_points",
               "delta": 5})
-print("Archer plan: edits %d variants %r" % (ap["edit_count"], ap.get("age_variants")))
-check("Archer plan has no age variants", not ap.get("age_variants"))
+print("Archer plan: edits %d variants %r" % (ap["edit_count"], ap.get("variants")))
+check("Archer plan has no age variants", not ap.get("variants"))
 check("Archer plan is still 63 records", ap["edit_count"] == 63, ap["edit_count"])
 
 print()
@@ -103,9 +103,9 @@ print()
 print("=== D. the other two unit intents also span the family ===")
 cp = tk.plan({"intent": "unit.cost", "unit": 12, "resource": "wood", "delta": 10})
 print("Barracks wood cost plan: edits %d variants %s"
-      % (cp["edit_count"], cp.get("age_variants")))
+      % (cp["edit_count"], cp.get("variants")))
 check("unit.cost on a Barracks spans the family too",
-      len(cp.get("age_variants") or []) == 3, cp.get("age_variants"))
+      len(cp.get("variants") or []) == 3, cp.get("variants"))
 
 # A building has no displayed_attack, so unit.attack_class on one must not
 # promise edits the build would refuse.
@@ -127,18 +127,18 @@ except C.IntentError as exc:
 print()
 print("=== E. the sentinel cost slot never reaches the user ===")
 d = tk.describe(70, "unit")
-print("House costs: %s | age_variants: %s" % (d["stats"]["costs"], d.get("age_variants")))
+print("House costs: %s | variants: %s" % (d["stats"]["costs"], d.get("variants")))
 check("no 'type -1' leaks into describe()",
       all("type -1" not in str(c) for c in d["stats"]["costs"]),
       d["stats"]["costs"])
 check("describe() reports the family it belongs to",
-      sorted(d.get("age_variants") or []) == [191, 192, 463, 464, 465],
-      d.get("age_variants"))
+      sorted(d.get("variants") or []) == [191, 192, 463, 464, 465],
+      d.get("variants"))
 
 d2 = tk.describe(4, "unit")
-print("Archer costs: %s | age_variants: %r" % (d2["stats"]["costs"],
-                                               d2.get("age_variants")))
-check("Archer has no age variants in describe()", not d2.get("age_variants"))
+print("Archer costs: %s | variants: %r" % (d2["stats"]["costs"],
+                                               d2.get("variants")))
+check("Archer has no age variants in describe()", not d2.get("variants"))
 # An Archer really does pay population (that is the 1-population slot), so the
 # expectation is all three slots, not just the two resources.
 check("Archer costs are real (wood 25, gold 45, population 1)",

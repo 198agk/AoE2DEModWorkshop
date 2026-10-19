@@ -200,7 +200,7 @@
       "title": "改变某个文明能否研究某科技",
       "title_en": "Change whether a civilization can research a technology",
       "applies_to": "tech",
-      "description": "Give or take away a technology for ONE civilization. Like unit.availability this writes a CivTechTrees JSON file and no .dat, but it addresses the OTHER id space: a tech row's Node ID is the .dat tech ARRAY INDEX, and the same integer is a unit id in the unit space, so the two must never be mixed.",
+      "description": "Give or take away a technology for ONE civilization. Like unit.availability this changes no .dat BYTE, but it addresses the OTHER id space: a tech row's Node ID is the .dat tech ARRAY INDEX, and the same integer is a unit id in the unit space, so the two must never be mixed.",
       "fields": {
         "tech": {
           "type": "entity_ref",
@@ -227,8 +227,9 @@
       "compile": {
         "strategy": "civtechtrees_json",
         "why_not_dat": "Same reason as unit.availability: the .dat holds one GLOBAL tech record and no per-civ byte, so 62 identical records cannot express 'civ X may research this'. Measured in _probe/probe_tech_rows.py (5244 tech rows, 238 distinct ids, none outside the .dat array).",
+        "why_no_dat_half": "Unlike unit.availability's grant, no recipe here has ever been confirmed in game, so this intent declares no dat_half at all and edits no .dat byte. It is not the same claim as 'no .dat is present': a tech row lives under the DAT storage point, and a mod that overrides that folder without empires2_x2_p1.dat makes the game fail to start (mod/emitter.py), so the emitter always carries the base .dat along -- byte-identical, hence dat_is_carrier and never changes_dat. `_probe/test_availability_dat_half.py` checks this against the bytes, because `mod_contains_dat` here said `false` while the disk said otherwise.",
         "writes_per_civ": 1,
-        "mod_contains_dat": false
+        "mod_contains_dat": true
       },
       "safety": {"field_width_bits": 0, "signed": false}
     },

@@ -1378,6 +1378,14 @@ class Toolkit(object):
         proposal = dict(trees)
         proposal[civ] = edited
 
+        # What a revoke is SUPPOSED to remove, computed before the edit.  A revoke
+        # cascades up the upgrade chain so the file stays chain-closed (no row may
+        # Link ID a node the file lacks -- all 62 shipped files obey this, and a
+        # dangling target is grounds for the game to reject the whole tree, which
+        # is what invalidated the v9 experiment).  Verification needs the intended
+        # set or the intended cascade would be reported as collateral damage.
+        cascade = (CT.chain_closure(edited, r.entity.id, use_types=ut)
+                   if action == "revoke" else None)
         rep = AV.apply(proposal, civ, r.entity.id, action, use_types=ut)
         files, rel = AV.emit_files(proposal, civ)
         # The OTHER half.  The tree is a model; the menu the player sees is
@@ -1433,7 +1441,8 @@ class Toolkit(object):
         emitted_path = os.path.join(out_dir, rel)
         with open(emitted_path, "rb") as fh:
             on_disk = fh.read()
-        ver = AV.verify_files(orig, edited, shipped, r.entity.id, use_types=ut)
+        ver = AV.verify_files(orig, edited, shipped, r.entity.id, use_types=ut,
+                              cascade_ids=cascade)
         ver["emitted_matches_intended"] = (on_disk == files[rel.replace(
             os.sep, "/")])
         ver["emitted_bytes"] = len(on_disk)
@@ -2387,6 +2396,11 @@ class Toolkit(object):
                 originals[civ] = o
                 proposal[civ] = _json.loads(
                     _json.dumps(trees[civ], ensure_ascii=False))
+            # Closure of this revoke, before it runs: `apply` deletes the revoked
+            # node's upgrade successors too, so the verification below must know
+            # they were supposed to go (see `AV.verify_files`).
+            cascade = (CT.chain_closure(proposal[civ], r.entity.id, use_types=ut)
+                       if action == "revoke" else set())
             rep = AV.apply(proposal, civ, r.entity.id, action, use_types=ut)
             notes.append({"civ": civ, "requested": r.civ, "action": action,
                           "intent": r.raw, "resolved": r.describe(),
@@ -2396,6 +2410,7 @@ class Toolkit(object):
                           "unit_name": r.entity.display,
                           "node_id": r.entity.id,
                           "node_name": r.entity.display,
+                          "cascade": cascade,
                           "rep": rep})
         files = {}
         for civ in originals:
@@ -2440,7 +2455,8 @@ class Toolkit(object):
                 os.sep, "/")
             v = AV.verify_files(originals[civ], proposal[civ], shipped,
                                 n["node_id"],
-                                use_types=(n.get("space") or "Unit",))
+                                use_types=(n.get("space") or "Unit",),
+                                cascade_ids=n.get("cascade"))
             on_disk = os.path.join(out_dir, rel)
             try:
                 with open(on_disk, "rb") as fh:

@@ -125,12 +125,43 @@ widgets named in tree vocabulary (``NotAvailIcon``, ``UpgradeRequiredIcon``,
 `techtreepreviewpanel.json` mentions none of them -- so "the preview reads the
 tree" rests on the screen's own asset names, not on a layout binding.
 
-**What is STILL open**: which layer the build menu follows, and whether the
-panel file matters anywhere.  The strongest next experiment changes exactly ONE
-layer (panel only, or tree only) with the `.dat` untouched, on a subject the
-`.dat` allows, and leaves no dangling reference behind -- v9 showed that
-changing both changes nothing, and it changed the tree into a state the game
-never produces.
+**ANSWERED HALF WAY 2026-10-18, THEN WALKED BACK 2026-10-19**: the panel is
+excluded in both directions, but **the tree is NOT shown to be what the menu
+follows**.  The user ran the two half-experiments the shipped game already
+contained, and together they exclude ``futuravailableunits.json`` from BOTH
+directions:
+
+  * NOT NECESSARY -- Sicilians, Imperial, siege workshop (2026-10-15): the panel
+    lists neither unit 588 nor its upgrade tech 320, and the game offered both the
+    "升级到重型投石车" upgrade and the 重型投石车 button.
+  * NOT SUFFICIENT -- Poles, dock (2026-10-18, the observation that used to be
+    missing): the panel lists unit 691 in ``Units`` *and* upgrade tech 376 in
+    ``Techs``, and **no Elite Cannon Galleon upgrade button appeared**.
+
+What that pair does NOT establish is that the tree supplies the menu.  This
+module's docstring said it did; that was an overreach.  **2026-10-19, `dsh test
+v15`** sent the two ``CivTechTrees/<CIV>.json`` files and *nothing else* (the
+``.dat`` was a byte-identical carrier, the panel untouched, both trees asserted
+chain-closed): Incas lose unit 2550's row, Britons gain one.  The user's in-game
+reading was **neither side changed** -- Incas still had the Champi Scout, Britons
+still did not.  So writing this layer alone does not move the button.
+
+The ``.dat`` is where the one *proven* lever lives: ``dsh test v5`` (2026-10-16)
+changed a single byte -- ``train_location.ButtonID`` 1 -> 4 on British unit 2550
+-- and the button appeared, because slot 1 was already full with the five-unit
+militia line.  That is the only layer in this project ever observed moving the
+facility menu.  See ``数据模组能力目录v1.md`` section 15.4aq.
+
+Where this leaves the model: ``.dat`` is necessary (the button slot decides what
+can appear in a cell at all), and *some* narrowing layer above it is genuinely
+read -- otherwise "no Hand Cannoneer in the Briton archery range" would be
+unexplained.  Which file that is remains open; ``dsh test v16`` (2026-10-19)
+tests the ``.dat`` half alone, with two bytes and no JSON at all.
+
+What that leaves untouched: v9's surprise (deleting the row did not remove the
+button) and v15's (adding one did not create it) are consistent with each other
+-- this layer is written, loaded (``MainLog.txt`` shows ``Enabling mod``), and
+still not what the menu reads.
 
 And it separates perfectly: Huskarl is `ResearchedCompleted` for GOTHS and the
 row is ABSENT for all 61 other civs; Archer/Villager are `ResearchedCompleted`
@@ -635,21 +666,164 @@ def grant(tree, node_id, source_row, status="ResearchedCompleted",
     return row, warnings
 
 
-def revoke(tree, node_id, use_types=UNIT_USE_TYPES):
-    """Remove ``node_id`` from ``tree``.  Returns the number of rows removed.
+def _link_of(row):
+    """The predecessor this row upgrades from, or -1 when it is a chain head."""
+    if not isinstance(row, dict):
+        return -1
+    v = row.get("Link ID")
+    if v is None:
+        return -1
+    try:
+        return int(v)
+    except (TypeError, ValueError):
+        return -1
 
-    Removing is what makes a civ UNABLE to obtain something, and 0 is a legitimate
-    answer (the civ never had it), not an error.
+
+def clear_links_to(tree, gone_ids, use_types=None):
+    """Drop ``Link ID`` from any kept row that points at a removed node.
+
+    A removed node can be referenced two ways, and they need different repairs:
+
+    * a row of the SAME use type linking to it is an UPGRADE SUCCESSOR -- the
+      row is meaningless without its predecessor, so :func:`revoke` deletes it.
+    * a row of ANOTHER use type linking to it is a DISPLAY attachment.  Measured on
+      the 62 shipped files: of the 2,367 Tech rows carrying a Link ID, 2,320 point
+      at Techs/Buildings and only 7 point at a Unit; those 7 are unrelated research
+      entries (tech 602 "Arson" -> unit 1699 "Flemish Militia") whose
+      ``Draw Node Type`` is ``UnitTech``.  And 2,877 Tech rows ship with NO Link ID
+      at all, in the very same shapes -- so clearing the field is an ordinary,
+      shipped form, while deleting the research would remove something the user
+      never asked to touch.
+
+    Returns the number of rows whose Link ID was cleared.
+    """
+    cleared = 0
+    for key in (UNITS_KEY, BUILDINGS_KEY):
+        rows = tree.get(key)
+        if not isinstance(rows, list):
+            continue
+        for e in rows:
+            if not isinstance(e, dict):
+                continue
+            if use_types is not None and e.get("Use Type") in use_types:
+                continue
+            if _link_of(e) in gone_ids:
+                e.pop("Link ID", None)
+                cleared += 1
+    return cleared
+
+
+def dangling_links(tree):
+    """Every (use type, node id, missing link target) a file still carries.
+
+    Empty is the invariant: all 62 shipped files have zero, and anything this
+    module writes must too, because a missing chain target gives the game licence
+    to reject the whole tree.
     """
     for key in (UNITS_KEY, BUILDINGS_KEY):
         rows = tree.get(key)
         if not isinstance(rows, list):
             continue
-        kept = [e for e in rows
-                if not (isinstance(e, dict) and e.get("Node ID") == node_id
-                        and e.get("Use Type") in use_types)]
-        removed = len(rows) - len(kept)
-        if removed:
-            tree[key] = kept
-            return removed
-    return 0
+        have = set()
+        for e in rows:
+            if isinstance(e, dict):
+                nid = e.get("Node ID")
+                if isinstance(nid, int):
+                    have.add(nid)
+        out = []
+        for e in rows:
+            if not isinstance(e, dict):
+                continue
+            link = _link_of(e)
+            if link >= 0 and link not in have:
+                out.append((e.get("Use Type"), e.get("Node ID"), link))
+        if out:
+            return out
+    return []
+
+
+def chain_closure(tree, node_id, use_types=UNIT_USE_TYPES):
+    """Every node id ``revoke(tree, node_id)`` would remove, including itself.
+
+    ``revoke`` deletes a node and then any row that upgraded from it, walking up
+    the chain until nothing links to a removed id.  A caller that is verifying an
+    already-performed edit needs the same set to know which vanished rows were
+    supposed to vanish -- otherwise a legitimate cascade looks like collateral
+    damage.  Computed from the tree BEFORE the edit.
+    """
+    out = {node_id}
+    changed = True
+    while changed:
+        changed = False
+        for key in (UNITS_KEY, BUILDINGS_KEY):
+            rows = tree.get(key)
+            if not isinstance(rows, list):
+                continue
+            for e in rows:
+                if not isinstance(e, dict):
+                    continue
+                if e.get("Use Type") not in use_types:
+                    continue
+                if _link_of(e) in out and e.get("Node ID") not in out:
+                    out.add(e.get("Node ID"))
+                    changed = True
+    return out
+
+
+def revoke(tree, node_id, use_types=UNIT_USE_TYPES, revoked_ids=None):
+    """Remove ``node_id`` from ``tree`` and re-close every chain it was part of.
+
+    Returns the number of rows removed.  Removing is what makes a civ UNABLE to
+    obtain something, and 0 is a legitimate answer (the civ never had it), not an
+    error.
+
+    The removal CASCADES up the upgrade chain.  Deleting a node while leaving a
+    row that still says ``Link ID = node_id`` produces a dangling reference that no
+    shipped file contains (measured: 62 files, 3,686 unit rows, 0 dangling links),
+    and the game is entitled to reject the whole tree over it.  The cascade is
+    also what the caller MEANS: "this civilization may not have this unit" implies
+    its upgrades are gone too, since nothing can be upgraded from a unit the civ
+    cannot field.
+
+    Rows of other use types that merely DISPLAY-attach to a removed node keep their
+    row and lose the link (:func:`clear_links_to`), because those are unrelated
+    research entries and deleting them would remove more than was asked.
+
+    ``revoked_ids`` may be a set/list; the ids removed are added to it so callers
+    can report what went.
+    """
+    total = 0
+    gone = set()
+    for key in (UNITS_KEY, BUILDINGS_KEY):
+        rows = tree.get(key)
+        if not isinstance(rows, list):
+            continue
+        # Every pass deletes the rows carrying a doomed id, then the rows whose
+        # Link ID pointed at anything deleted become doomed themselves; the chain
+        # is walked until nothing more matches.
+        doomed = {node_id}
+        while doomed:
+            kept = []
+            deleted = set()
+            for e in rows:
+                if isinstance(e, dict) and e.get("Use Type") in use_types:
+                    eid = e.get("Node ID")
+                    if eid in doomed:
+                        deleted.add(eid)
+                        if revoked_ids is not None:
+                            revoked_ids.add(eid)
+                        continue
+                kept.append(e)
+            step = len(rows) - len(kept)
+            if not step:
+                break
+            rows = kept
+            tree[key] = rows
+            total += step
+            gone |= deleted
+            doomed = {e.get("Node ID") for e in rows
+                      if isinstance(e, dict) and _link_of(e) in gone}
+    if gone:
+        clear_links_to(tree, gone)
+    return total
+

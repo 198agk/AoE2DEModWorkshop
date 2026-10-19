@@ -12,6 +12,16 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 PY = sys.executable
 
+# Artifacts produced by a generator rather than checked in.  `.gitignore` excludes
+# `_probe/out_*/`, so after a fresh clone -- and after this workspace was restored
+# from session logs, which recovered sources but no binaries -- they are absent,
+# and the suites that read them fail with a bare FileNotFoundError that says
+# nothing about the real cause.  Regenerate them first, and say so.
+PREPARE = [
+    ("_probe\\datparse\\emit_mod.py",
+     "_probe\\datparse\\out_modtest\\ArcherAttackPlus2_probe\\info.json"),
+]
+
 SUITES = [
     ("aoe2mod\\tests\\test_roundtrip.py", "BYTE-EXACT"),
     ("_probe\\sweep_tech_effect.py", "CLEAN"),
@@ -28,6 +38,20 @@ SUITES = [
 
 env = dict(os.environ)
 env["PYTHONIOENCODING"] = "utf-8"
+
+for gen, produced in PREPARE:
+    if os.path.isfile(os.path.join(ROOT, produced)):
+        continue
+    path = os.path.join(ROOT, gen)
+    if not os.path.isfile(path):
+        print("%-46s NO GENERATOR" % os.path.basename(gen))
+        continue
+    print("%-46s regenerating %s" % (os.path.basename(gen), os.path.basename(produced)))
+    r = subprocess.run([PY, path], cwd=ROOT, env=env,
+                       stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    if r.returncode != 0 or not os.path.isfile(os.path.join(ROOT, produced)):
+        print("  generator FAILED (exit=%d): %s"
+              % (r.returncode, r.stdout.decode("utf-8", "replace").strip()[-300:]))
 
 fails = []
 for rel, want in SUITES:

@@ -11,12 +11,24 @@ PROVEN by this script:
   * it lands at resources/_common/dat/CivTechTrees/BRITONS.json;
   * it re-parses, and the named unit is `ResearchedCompleted` in it;
   * exactly one row was added and every other row is unchanged;
-  * the mod contains NO .dat;
+  * the `.dat` in the mod is the EDITED one -- this is a `grant`, so the
+    in-game-proven `datgrant` recipe ran and changed bytes in it;
   * a second civ's file is untouched on disk.
 
-NOT PROVEN: that a running game offers the unit.  This layer has never been
-observed in-game (no mod on this install ships a CivTechTrees file), and this
-script says so in its own output rather than letting the reader assume it.
+"no .dat byte changed" and "no .dat in the mod" are NOT the same claim, and this
+file used to assert the second one.  It is false: the mod writes under
+`resources/_common/dat/`, and a mod that overrides that folder without
+`empires2_x2_p1.dat` makes the game fail to start (`mod/emitter.py`), so the
+emitter always carries the base `.dat` along.  The correction was measured, not
+assumed -- `_probe/test_availability_dat_half.py` compares the emitter's own
+declaration against the bytes on disk for all four availability actions.
+
+NOT PROVEN: that a running game offers the unit.  The `.dat` half OF A GRANT was
+confirmed in game on 2026-10-16 (`dsh test v7`: the Dark Age Barracks showed the
+Champi Scout), and the build menu was shown to read the `.dat` + CivTechTrees
+layers on 2026-10-18 -- but no test has ever observed the JSON tree row itself
+granting a button, and this script says so in its own output rather than letting
+the reader assume it.
 """
 import io
 import json
@@ -32,6 +44,7 @@ if ROOT not in sys.path:
 
 import aoe2mod.api as A                                          # noqa: E402
 from aoe2mod.game import civtechtrees as CT                      # noqa: E402
+from aoe2mod.intent import compiler as C                         # noqa: E402
 
 FAILS = []
 
@@ -82,7 +95,21 @@ def main():
     check(plan["mode"] == "add_row", "the mode is add_row", str(plan.get("mode")))
     check(plan["civ"] == "BRITONS", "the civ resolved to the tree key BRITONS",
           str(plan.get("civ")))
-    check(plan["mod_contains_dat"] is False, "the plan says no .dat is written")
+    # A GRANT carries the in-game-proven `datgrant` recipe (2026-10-16, `dsh test
+    # v7`), so the `.dat` in this mod is EDITED, not a carrier -- and the count is
+    # the schema's declaration, so a change to the recipe shows up as a schema
+    # edit rather than as a silently stale preview.
+    _dh = (C.load_schema()[0]["intents"]["unit.availability"]["compile"]
+           .get("dat_half") or {})
+    check(plan["mod_contains_dat"] is True, "the plan says a .dat comes along")
+    check(plan["changes_dat"] is True and plan["dat_is_carrier"] is False,
+          "and that this grant EDITS it (the datgrant recipe), rather than "
+          "carrying it unchanged",
+          json.dumps({k: plan.get(k) for k in ("changes_dat", "dat_is_carrier")}))
+    check(plan["edit_count"] == int(_dh.get("write_operations") or 0),
+          "and reports the schema's declared write count",
+          "plan=%r declared=%r" % (plan["edit_count"],
+                                   _dh.get("write_operations")))
     if FAILS:
         print("  (stopping: the plan failed)")
         return 1
@@ -150,16 +177,30 @@ def main():
         check(CT.node_status(goths, uid) == "ResearchedCompleted",
               "the donor civilization (GOTHS) still has it on disk")
 
-        # ---- 4. no .dat anywhere in the mod -----------------------------
+        # ---- 4. the .dat in the mod is the EDITED one --------------------
+        # This block used to assert "the mod contains no .dat at all", which was
+        # true while this intent was JSON-only and stopped being true twice over:
+        # the emitter always carries the base `.dat` for any mod writing under
+        # the DAT storage point, and since 2026-10-16 a grant edits it on purpose.
+        # What must hold is that the `.dat` which landed is an EDITED one.
         dat_files = []
         for dirpath, _dirs, files in os.walk(out):
             for fn in files:
                 if fn.lower().endswith(".dat"):
                     dat_files.append(os.path.join(dirpath, fn))
-        check(not dat_files, "the mod contains no .dat file", str(dat_files))
-        check(man.get("mod_contains_dat") is False, "and the manifest says so")
-        check(man.get("edit_count") == 0,
-              "and edit_count is 0 .dat bytes", str(man.get("edit_count")))
+        check(len(dat_files) == 1, "the mod carries exactly one .dat", str(dat_files))
+        check(man.get("mod_contains_dat") is True, "and the manifest says so")
+        check(man.get("changes_dat") is True and man.get("dat_is_carrier") is False,
+              "and that .dat was EDITED by the grant recipe",
+              json.dumps({k: man.get(k) for k in ("changes_dat",
+                                                  "dat_is_carrier")}))
+        # The count must be the recipe's OWN, not a number written down twice.
+        check(man.get("edit_count") == len((man.get("dat_half") or {})
+                                           .get("edits") or ()),
+              "and edit_count counts the recipe's own operations",
+              "edit_count=%r edits=%r"
+              % (man.get("edit_count"),
+                 (man.get("dat_half") or {}).get("edits")))
 
         # ---- 5. a second civ is untouched on disk -----------------------
         with open(other_path, "rb") as fh:
@@ -205,8 +246,10 @@ def main():
     print("AVAILABILITY E2E: ALL CHECKS PASSED")
     print("PROVEN: the mod's bytes, its path, its content, and that nothing else")
     print("        in the game's data or the mod was disturbed.")
-    print("NOT PROVEN: that a running game offers the unit. This layer has never")
-    print("        been observed in-game.")
+    print("NOT PROVEN here: that a running game offers the unit. For `grant` that")
+    print("        was answered in-game on 2026-10-16 (`dsh test v7`: the Dark Age")
+    print("        Barracks showed the Champi Scout); for `revoke` it has never")
+    print("        been observed, so this file proves the BYTES, not the BUTTON.")
     return 0
 
 

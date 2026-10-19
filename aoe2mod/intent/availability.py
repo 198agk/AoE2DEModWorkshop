@@ -250,9 +250,18 @@ def apply(trees, civ, node_id, action, status="ResearchedCompleted",
     """
     tree = trees[civ]
     if action == "revoke":
-        n = CT.revoke(tree, node_id, use_types)
+        gone = set()
+        n = CT.revoke(tree, node_id, use_types, revoked_ids=gone)
+        # `revoke` cascades up the upgrade chain so the file stays chain-closed
+        # (no row may Link ID a node the file lacks -- all 62 shipped files obey
+        # it, and a dangling target gives the game licence to reject the whole
+        # tree, which is exactly what invalidated the v9 experiment).  Report the
+        # extra ids so a UI can say "this took its upgrades with it" instead of
+        # silently removing more rows than were asked for.
+        extra = sorted(i for i in gone if i != node_id)
         return {"civ": civ, "node_id": node_id, "action": action,
-                "rows_removed": n, "rows_added": 0, "warnings": []}
+                "rows_removed": n, "rows_added": 0,
+                "cascaded_ids": extra, "warnings": []}
 
     current = CT.node_status(tree, node_id, use_types)
     if current is not None:
@@ -283,7 +292,7 @@ def emit_files(trees, civ):
 
 
 def verify_files(orig_tree, new_tree, shipped_bytes, node_id,
-                 use_types=CT.UNIT_USE_TYPES):
+                 use_types=CT.UNIT_USE_TYPES, cascade_ids=None):
     """Check the emitted bytes against the shipped file.  Returns a report dict.
 
     THREE separate claims, each of which can fail alone:
@@ -298,6 +307,14 @@ def verify_files(orig_tree, new_tree, shipped_bytes, node_id,
     * ``untouched_rows_identical`` -- every row the edit did not touch compares
       equal to the shipped row at the same identity.  A grant appends, so rows
       0..n-1 must be unchanged and row n is the addition; a revoke removes.
+
+    ``cascade_ids`` is the set of node ids the edit was SUPPOSED to remove, from
+    :func:`civtechtrees.chain_closure` computed before the edit.  A revoke now
+    deletes the revoked node's upgrade successors too, because a file that links
+    to a node it no longer contains is a state no shipped file has and the game is
+    entitled to reject; passing the closure here keeps that intended cascade from
+    being counted as collateral damage while still catching a row vanishing that
+    was not in the plan.
     """
     rep = {}
     # 1. Can the serializer reproduce this exact file?  If not, every other
@@ -309,17 +326,19 @@ def verify_files(orig_tree, new_tree, shipped_bytes, node_id,
     if reason:
         rep["reason"] = reason
     # 3. Are the untouched rows untouched?  Stated as a multiset comparison of
-    #    everything EXCEPT the one node the user named.  Index-based comparison
-    #    would be wrong for a revoke (which removes a row from the middle, so the
-    #    whole tail shifts) and for a grant (which appends, so only the tail
-    #    changes) -- identity is the claim that actually holds for all three
-    #    modes, and it catches a row vanishing anywhere.
+    #    everything EXCEPT the nodes this edit intended to remove.  Index-based
+    #    comparison would be wrong for a revoke (which removes a row from the
+    #    middle, so the whole tail shifts) and for a grant (which appends, so only
+    #    the tail changes) -- identity is the claim that actually holds for all
+    #    three modes, and it catches a row vanishing anywhere.
     #
     #    The whole file is compared, not just the rows in this node's space: a
     #    grant into the tech space must not disturb a unit row either.
     before = [e for e in CT.rows_of(orig_tree) if isinstance(e, dict)]
     after = [e for e in CT.rows_of(new_tree) if isinstance(e, dict)]
-    node_key = (node_id, use_types[0] if use_types else None)
+    intended = {(node_id, use_types[0] if use_types else None)}
+    if cascade_ids:
+        intended |= {(i, use_types[0] if use_types else None) for i in cascade_ids}
 
     def key(row):
         return (row.get("Node ID"), row.get("Use Type"))
@@ -328,7 +347,7 @@ def verify_files(orig_tree, new_tree, shipped_bytes, node_id,
         out = {}
         for row in rows:
             k = key(row)
-            if k == node_key:
+            if k in intended:
                 continue
             out[k] = out.get(k, 0) + 1
         return out
@@ -348,10 +367,15 @@ def verify_files(orig_tree, new_tree, shipped_bytes, node_id,
 
     # What happened to the node the user named.  Reported so a caller can tell
     # "the row was added" from "the row's status changed" without re-reading.
+    node_key = (node_id, use_types[0] if use_types else None)
     rep["node_rows_before"] = sum(1 for r in before if key(r) == node_key)
     rep["node_rows_after"] = sum(1 for r in after if key(r) == node_key)
     rep["node_status_before"] = CT.node_status(orig_tree, node_id, use_types)
     rep["node_status_after"] = CT.node_status(new_tree, node_id, use_types)
+    # Closure is now part of "the file is what we meant to write": a tree whose
+    # rows link to nodes it no longer has is a state no shipped file contains.
+    rep["chain_closed"] = not CT.dangling_links(new_tree)
     rep["ok"] = bool(rep["serializer_is_exact"] and rep["serialize_reparses"]
-                     and rep["untouched_rows_identical"])
+                     and rep["untouched_rows_identical"]
+                     and rep["chain_closed"])
     return rep

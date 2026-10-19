@@ -59,11 +59,46 @@ def make_mod_dir(root, title):
     return d
 
 
+def _snapshot(mods_dir):
+    """Every file under the live mods directory with its size + mtime.
+
+    The "the real profile was not written" promise used to be checked as "local/
+    is empty" and "no mod-status.json.bak exists".  Both are statements about the
+    user's configuration, not about install(): the live profile legitimately
+    holds entries and backups from earlier days, so the suite failed while the
+    product was behaving perfectly.  A before/after diff says exactly what the
+    promise means -- THIS RUN changed nothing.
+    """
+    seen = {}
+    for root, _dirs, files in os.walk(mods_dir):
+        for f in files:
+            p = os.path.join(root, f)
+            try:
+                st = os.stat(p)
+            except OSError:
+                continue
+            seen[os.path.relpath(p, mods_dir)] = (st.st_size, st.st_mtime_ns)
+    return seen
+
+
 def main():
     tmp = tempfile.mkdtemp(prefix="aoe2install_")
     try:
         prof = make_sandbox(tmp)
         src_root = os.path.join(tmp, "_out")
+
+        # The live profile is MUTABLE: it gains and loses entries (a local mod the
+        # product itself installed, a test mod the user removed).  Pinning a
+        # literal count made this suite fail for a reason that says nothing about
+        # `install()`, so every expectation below is stated as "one more than the
+        # fixture had" instead of "8".  What must stay absolute is the promise
+        # that the REAL profile is not written -- and that is checked as a
+        # before/after diff of the whole mods directory, not as "it is empty".
+        real = os.path.join(REAL_PROFILE, REAL_ACCOUNT, "mods", "mod-status.json")
+        before = open(real, "rb").read()
+        real_local = os.path.join(REAL_PROFILE, REAL_ACCOUNT, "mods", "local")
+        real_before = _snapshot(os.path.dirname(real))
+        n_sandbox = None                      # set after the fixture is read
 
         print("=== account discovery ===")
         accs = [os.path.basename(a) for a in G.find_accounts(prof)]
@@ -80,15 +115,15 @@ def main():
         accdir = os.path.join(prof, REAL_ACCOUNT)
 
         print("=== baseline: the real file is untouched by reading ===")
-        real = os.path.join(REAL_PROFILE, REAL_ACCOUNT, "mods", "mod-status.json")
-        before = open(real, "rb").read()
         doc0, acc, raw0 = G.read_status_doc(prof)
         check("read_status_doc resolves the live account",
               os.path.normcase(acc) == os.path.normcase(accdir), acc)
         check("read-only did not modify the real file",
               open(real, "rb").read() == before)
-        check("7 entries read", len(doc0["Mods"]) == 7, str(len(doc0["Mods"])))
+        check("the fixture carries the live entry count (%d)" % len(doc0["Mods"]),
+              len(doc0["Mods"]) > 0, str(len(doc0["Mods"])))
         check("Unsub preserved", doc0.get("Unsub") == [])
+        n0 = len(doc0["Mods"])
 
         print("=== install at position 0 (highest priority) ===")
         mod = make_mod_dir(src_root, "我的测试模组")
@@ -100,8 +135,9 @@ def main():
               man["path_field"])
         check("priority is 1 (top of list)", man["priority"] == 1,
               str(man["priority"]))
-        check("status has 8 entries now", man["status_entries"] == 8,
-              str(man["status_entries"]))
+        check("status has one more entry than the fixture",
+              man["status_entries"] == n0 + 1,
+              "%s vs %s" % (man["status_entries"], n0 + 1))
         check("backup was written", bool(man["status_backup"])
               and os.path.exists(man["status_backup"]))
         check("backup is byte-identical to the original",
@@ -114,10 +150,10 @@ def main():
         ents = doc1["Mods"]
         check("new mod is FIRST in the array", ents[0]["Path"] == "local//我的测试模组",
               ents[0]["Path"])
-        check("priorities renumbered 1..8",
-              [e["Priority"] for e in ents] == list(range(1, 9)),
+        check("priorities renumbered 1..n+1",
+              [e["Priority"] for e in ents] == list(range(1, n0 + 2)),
               str([e["Priority"] for e in ents]))
-        check("the 7 original mods keep relative order",
+        check("the original mods keep relative order",
               [e["Title"] for e in ents[1:]] == [e["Title"] for e in doc0["Mods"]])
         check("no BOM", raw1[:3] != b"\xef\xbb\xbf", repr(raw1[:3]))
         check("no trailing newline", raw1[-1:] == b"}", repr(raw1[-3:]))
@@ -146,10 +182,10 @@ def main():
         print("=== re-install WITH overwrite must not duplicate the entry ===")
         man2 = G.install_mod(mod, prof, title="我的测试模组", position=0,
                              overwrite=True)
-        check("still 8 entries", man2["status_entries"] == 8,
+        check("still n0+1 entries", man2["status_entries"] == n0 + 1,
               str(man2["status_entries"]))
         doc2, _, _ = G.read_status_doc(prof)
-        check("entry count in file is 8", len(doc2["Mods"]) == 8)
+        check("entry count in file is unchanged", len(doc2["Mods"]) == n0 + 1)
         check("the mod appears exactly once",
               [e["Path"] for e in doc2["Mods"]].count("local//我的测试模组") == 1)
 
@@ -165,14 +201,15 @@ def main():
         print("=== install at the BOTTOM ===")
         mod_b = make_mod_dir(src_root, "底部模组")
         man_b = G.install_mod(mod_b, prof, title="底部模组", position=99)
-        check("priority is 9 (bottom)", man_b["priority"] == 9, str(man_b["priority"]))
+        check("priority is n0+2 (bottom)", man_b["priority"] == n0 + 2,
+              str(man_b["priority"]))
         doc4, _, _ = G.read_status_doc(prof)
         check("it is LAST in the array",
               doc4["Mods"][-1]["Path"] == "local//底部模组",
               doc4["Mods"][-1]["Path"])
         check("top mod still first", doc4["Mods"][0]["Path"] == "local//我的测试模组")
-        check("renumbered 1..9",
-              [e["Priority"] for e in doc4["Mods"]] == list(range(1, 10)))
+        check("renumbered 1..n0+2",
+              [e["Priority"] for e in doc4["Mods"]] == list(range(1, n0 + 3)))
 
         print("=== uninstall ===")
         res = G.uninstall_mod(prof, "底部模组")
@@ -180,12 +217,12 @@ def main():
         check("folder removed", res["folder_removed"]
               and not os.path.exists(res["mod_dir"]))
         doc5, _, _ = G.read_status_doc(prof)
-        check("back to 8 entries", len(doc5["Mods"]) == 8)
-        check("renumbered 1..8",
-              [e["Priority"] for e in doc5["Mods"]] == list(range(1, 9)))
+        check("back to n0+1 entries", len(doc5["Mods"]) == n0 + 1)
+        check("renumbered 1..n0+1",
+              [e["Priority"] for e in doc5["Mods"]] == list(range(1, n0 + 2)))
         check("the other local mod survived",
               any(e["Path"] == "local//我的测试模组" for e in doc5["Mods"]))
-        check("all 7 originals survived",
+        check("every original mod survived",
               [e["Title"] for e in doc5["Mods"][1:]] == [e["Title"] for e in doc0["Mods"]])
 
         print("=== uninstall something that is not there ===")
@@ -209,11 +246,16 @@ def main():
         print("=== the real profile was never written ===")
         check("real status file unchanged",
               open(real, "rb").read() == before)
-        check("no .bak left beside the real file",
-              not os.path.exists(real + ".bak"),
-              real + ".bak")
-        check("no local/ mods appeared in the real profile",
-              os.listdir(os.path.join(REAL_PROFILE, REAL_ACCOUNT, "mods", "local")) == [])
+        after_snap = _snapshot(os.path.dirname(real))
+        added = sorted(set(after_snap) - set(real_before))
+        removed = sorted(set(real_before) - set(after_snap))
+        changed = sorted(k for k in set(real_before) & set(after_snap)
+                         if real_before[k] != after_snap[k])
+        check("nothing was added to the real profile", not added, str(added))
+        check("nothing was removed from the real profile", not removed,
+              str(removed))
+        check("nothing was modified in the real profile", not changed,
+              str(changed))
 
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
