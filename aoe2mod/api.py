@@ -57,6 +57,7 @@ class Toolkit(object):
         self._civtrees_dir_present = None
         self._sprites = None
         self._icons = None
+        self._uifacts = None
 
     # ---- lazy game-data load ---------------------------------------------
     def _ensure(self):
@@ -139,29 +140,88 @@ class Toolkit(object):
             return got
         if kind != "unit":
             return {"ok": False, "why": "icons exist for units and technologies"}
-        hits = L.find_units(self._civs, entity_id)
-        if not hits:
+        facts = self._unit_facts().get(entity_id)
+        if facts is None:
             return {"ok": False, "why": "no unit with id %s" % (entity_id,)}
-        u = hits[0][2]
-        producers = [t.get("unit_id") for t in (u.get("train_locations") or [])]
-        by_builder = IC.BUILDER_UNIT_ID in producers
-        by_building = False
-        for producer in producers:
-            if producer in (None, -1):
-                continue
-            got = L.find_units(self._civs, producer)
-            if got and (got[0][2].get("type") == 80):
-                by_building = True
-                break
         e = semantic.index().get("unit", entity_id)
         section, witness = self.icons.unit_section(
-            u.get("icon_id"), made_by_builder=by_builder,
-            made_by_building=by_building, english_name=(e.en if e else None))
-        got = self.icons.picture(section, u.get("icon_id"))
+            facts.get("icon_id"), made_by_builder=facts.get("builder", False),
+            made_by_building=facts.get("building", False),
+            english_name=(e.en if e else None))
+        got = self.icons.picture(section, facts.get("icon_id"))
         got["witness"] = witness
         return got
 
     # ---- stage 1: search, never guessing ---------------------------------
+    def _unit_facts(self):
+        """One pass over every unit record, kept: icon id and how it reaches you.
+
+        `icon_for` used to re-scan 2,693 records per call (31.2 ms measured), so a
+        grid of 1,219 icons would have spent 38 seconds doing nothing but
+        lookups.  The records are immutable once loaded, so walk them once.
+        """
+        self._ensure()
+        if self._uifacts is not None:
+            return self._uifacts
+        types = {}
+        facts = {}
+        for civ in self._civs:
+            for u in civ["units"]:
+                uid = u.get("id")
+                types.setdefault(uid, u.get("type"))
+                if uid in facts:
+                    continue
+                producers = [t.get("unit_id")
+                             for t in (u.get("train_locations") or [])]
+                facts[uid] = {"icon_id": u.get("icon_id"),
+                              "producers": producers,
+                              "builder": IC.BUILDER_UNIT_ID in producers}
+        # A unit's TYPE does not vary by civilization (measured: 0 ids differ),
+        # so the first record's value speaks for all of them, and a producer that
+        # is a building (type 80) means this unit is trained, not placed.
+        for row in facts.values():
+            row["building"] = any(types.get(p) == 80 for p in row["producers"]
+                                  if p not in (None, -1))
+        self._uifacts = facts
+        return facts
+
+    def browse(self, kind="unit", query="", limit=60, offset=0):
+        """Entities a screen can put in a grid, with the icon facts it needs.
+
+        Why this is not `search`: a browser needs a STABLE list in a stable order
+        (so the grid does not reshuffle between visits), needs to know up front
+        which cells will show a picture -- the game ships no picture for 1,349 of
+        its 2,693 units, and 1,057 of them have no name at all -- and needs to
+        page it, because decoding 1,219 sprites costs 18 seconds.
+
+        Rows carry `has_icon`, not bytes: the page asks `/api/icon` only for the
+        cells it actually draws, and the browser caches those.
+        """
+        ix = semantic.index()
+        table = ix.units if kind == "unit" else ix.techs
+        facts = self._unit_facts() if kind == "unit" else None
+        q = str(query or "").strip().lower()
+        rows = []
+        for uid in sorted(table):
+            e = table[uid]
+            if not e.is_visible:
+                continue
+            if q and q not in (e.zh or "").lower() \
+                    and q not in (e.en or "").lower() \
+                    and q not in (e.internal or "").lower():
+                continue
+            if kind == "unit":
+                icon_id = (facts.get(uid) or {}).get("icon_id")
+            else:
+                icon_id = (getattr(e, "_extra", None) or {}).get("icon_id")
+            rows.append({"id": uid, "kind": kind, "name": e.display,
+                         "en": e.en, "zh": e.zh,
+                         "has_icon": bool(icon_id and int(icon_id) > 0),
+                         "icon_id": icon_id})
+        return {"ok": True, "kind": kind, "total": len(rows),
+                "offset": offset, "limit": limit,
+                "rows": rows[offset:offset + limit]}
+
     def search(self, query, kind="unit", limit=25):
         """Candidate entities for a user-typed name.  Never raises."""
         ix = semantic.index()

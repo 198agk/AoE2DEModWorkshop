@@ -119,6 +119,35 @@
   .toast.ok { border-color: var(--ok); }
   .empty { color: var(--dim); text-align: center; padding: 26px 0; }
   .err { color: var(--bad); font-size: 12px; white-space: pre-wrap; }
+
+  /* The pick-a-picture grid.  A name is only usable if you already know it, and
+     the game's Chinese names are not the ones people use, so this exists to let
+     a player point instead of type. */
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(62px, 1fr));
+          gap: 8px; margin-top: 10px; }
+  .cell { display: flex; flex-direction: column; align-items: center; gap: 4px;
+          padding: 6px 2px; background: var(--panel2); border: 1px solid var(--line);
+          border-radius: 6px; overflow: hidden; }
+  .cell:hover { border-color: var(--gold); }
+  .cell img { width: 44px; height: 44px; image-rendering: pixelated; flex: none; }
+  .cell .nm { font-size: 10px; color: var(--dim); line-height: 1.25; text-align: center;
+              max-width: 100%; overflow: hidden; text-overflow: ellipsis;
+              white-space: nowrap; }
+  /* 1,349 of the game's 2,693 units ship no picture.  Saying so beats a hole. */
+  .cell.noicon .blank { width: 44px; height: 44px; display: flex; align-items: center;
+                        justify-content: center; color: var(--line); font-size: 18px;
+                        border: 1px dashed var(--line); border-radius: 4px; }
+  .tabs { display: flex; gap: 6px; align-items: center; margin-top: 10px; }
+  .tabs button.on { border-color: var(--gold); color: var(--gold); }
+  /* `input[type=text]` is width:100% for the standalone title field; inside this
+     flex row that would push the row wider than the panel. */
+  .tabs input[type=text] { width: auto; flex: 1; min-width: 90px; padding: 4px 8px;
+                           font-size: 12px; }
+  #pick { display: none; margin-top: 12px; border-top: 1px solid var(--line);
+          padding-top: 12px; }
+  #pick.open { display: block; }
+  .pickscroll { max-height: 320px; overflow-y: auto; padding-right: 4px; }
+  .cell { cursor: pointer; }
 </style>
 </head>
 <body>
@@ -144,7 +173,24 @@
           <code>加/减</code> 是增量。识别不了的句子会告诉你为什么，不会瞎猜。
         </div>
         <div class="row end" style="margin-top:12px">
+          <button id="btn-pick" class="chip">▦ 看着选</button>
+          <span class="spacer"></span>
           <button id="btn-parse" class="primary">读一下</button>
+        </div>
+
+        <div id="pick">
+          <div class="tabs">
+            <button id="tab-unit" class="chip on">单位</button>
+            <button id="tab-tech" class="chip">科技</button>
+            <input type="text" id="pickq" placeholder="在这个列表里找…" style="flex:1">
+            <span class="hint" id="pickcount" style="margin:0"></span>
+          </div>
+          <div class="hint">点一个图标，就把它填进上面的框里。有些东西游戏本身没有图（1,349 个单位没有），
+            那些格子画成虚线框，仍然可以点。</div>
+          <div class="pickscroll"><div class="grid" id="pickgrid"></div></div>
+          <div class="row end" style="margin-top:8px">
+            <button id="pickmore" class="chip">再多看一些</button>
+          </div>
         </div>
       </div>
     </div>
@@ -263,6 +309,104 @@ function renderMods(mods) {
   }
 }
 
+// ---- pick by picture --------------------------------------------------
+// Typing a name only works if you already know the name, and the game's Chinese
+// names are not the ones players use: 弓箭手 is not any unit's name, and 城堡 is
+// both a building and part of a technology's name.  This panel lets a player
+// point at a picture instead, which is also the only way to find the 1,349 units
+// whose name in this build is an internal code name.
+const PICK = {kind: "unit", query: "", offset: 0, total: 0, busy: false};
+const PICK_STEP = 60;
+// Picks are sent back with the sentence so a clicked picture keeps its id.
+const PINS = [];
+
+function pickName(row) { return row.zh || row.name || ("#" + row.id); }
+
+async function loadPick(append) {
+  if (PICK.busy) return;
+  PICK.busy = true;
+  const grid = $("#pickgrid");
+  try {
+    const j = await api("/api/browse?kind=" + encodeURIComponent(PICK.kind) +
+                        "&q=" + encodeURIComponent(PICK.query) +
+                        "&limit=" + PICK_STEP + "&offset=" + PICK.offset);
+    const b = j.browse;
+    if (!append) grid.innerHTML = "";
+    PICK.total = b.total;
+    for (const row of b.rows) grid.appendChild(pickCell(row));
+    PICK.offset = b.offset + b.rows.length;
+    $("#pickcount").textContent = PICK.offset + " / " + b.total;
+    $("#pickmore").style.display = PICK.offset < b.total ? "" : "none";
+  } catch (e) {
+    grid.innerHTML = "";
+    grid.appendChild(el("div", "err", "读不到列表：" + e.message));
+  } finally { PICK.busy = false; }
+}
+
+function pickCell(row) {
+  const cell = el("div", "cell" + (row.has_icon ? "" : " noicon"));
+  cell.title = pickName(row) + (row.en ? " · " + row.en : "") + "  (#" + row.id + ")";
+  if (row.has_icon) {
+    const img = document.createElement("img");
+    img.src = "/api/icon?kind=" + encodeURIComponent(row.kind) +
+              "&id=" + encodeURIComponent(row.id) + "&size=48";
+    img.alt = pickName(row);
+    // A record can declare an icon id whose texture is missing from this
+    // install; falling back to the labelled blank keeps the grid honest
+    // instead of showing a broken-image glyph.
+    img.onerror = () => {
+      cell.className = "cell noicon";
+      img.remove();
+      cell.insertBefore(el("div", "blank", "?"), cell.firstChild);
+    };
+    cell.appendChild(img);
+  } else {
+    cell.appendChild(el("div", "blank", "?"));
+  }
+  cell.appendChild(el("div", "nm", pickName(row)));
+  cell.onclick = () => {
+    const ta = $("#say");
+    const name = pickName(row);
+    // Append rather than replace: a sentence often needs a number typed after
+    // the name, and clobbering what the player already wrote would lose it.
+    ta.value = (ta.value.trim() ? ta.value.replace(/\s*$/, "") + "\n" : "") + name + " ";
+    // The name alone does not identify the record: 城门 is 29 ids and 城镇中心
+    // is 20, so "城门 血量改成1000" edits the smallest id, not the picture that
+    // was clicked.  Remember the pick and send it with the sentence; the server
+    // honours it only while the name is still spelled out.
+    PINS.unshift({kind: row.kind, id: row.id, name});
+    if (PINS.length > 12) PINS.length = 12;
+    ta.focus();
+    ta.selectionStart = ta.selectionEnd = ta.value.length;
+    toast("已填进上面的框，接着写要改什么", "ok");
+  };
+  return cell;
+}
+
+function setPickKind(kind) {
+  PICK.kind = kind;
+  PICK.offset = 0;
+  $("#tab-unit").className = "chip" + (kind === "unit" ? " on" : "");
+  $("#tab-tech").className = "chip" + (kind === "tech" ? " on" : "");
+  loadPick(false);
+}
+
+$("#btn-pick").onclick = () => {
+  const p = $("#pick");
+  p.className = p.className === "open" ? "" : "open";
+  if (p.className === "open" && !$("#pickgrid").children.length) loadPick(false);
+};
+$("#tab-unit").onclick = () => setPickKind("unit");
+$("#tab-tech").onclick = () => setPickKind("tech");
+$("#pickmore").onclick = () => loadPick(true);
+$("#pickq").addEventListener("input", () => {
+  PICK.query = $("#pickq").value.trim();
+  PICK.offset = 0;
+  // Searching is cheap (one pass over the name table), so it is not debounced
+  // into feeling laggy; but a half-typed word is still a valid query here.
+  loadPick(false);
+});
+
 // ---- parse ------------------------------------------------------------
 async function doParse() {
   const text = $("#say").value.trim();
@@ -271,7 +415,7 @@ async function doParse() {
   $("#preview").innerHTML = "";
   $("#preview").appendChild(el("div", "empty", "在读…"));
   try {
-    const j = await api("/api/parse", {text});
+    const j = await api("/api/parse", {text, pins: PINS});
     LAST = j;
     renderClauses(j.clauses);
   } catch (e) {

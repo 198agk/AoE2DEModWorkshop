@@ -1,4 +1,4 @@
-﻿# -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 """Chinese sentence -> intent dict, offline, no AI.
 
 Why this exists
@@ -147,6 +147,18 @@ class Vocabulary(object):
                     longest = max(longest, len(key))
                     self._names[kind].setdefault(key, []).append((e, field))
         self.max_len = max(2, min(longest, 24))
+        # Names that contain a sentence separator ("草坪，绿", "25% 的木材、75%
+        # 的黄金").  Splitting the paragraph on the comma inside such a name
+        # tears the name in half, and the halves are not names, so the sentence
+        # is refused.  Collected here once so `_pieces` can protect them.
+        self.comma_names = []
+        for kind, table in self.tables.items():
+            for uid, e in table.items():
+                for field in ("zh", "tw"):
+                    name = getattr(e, field, "") or ""
+                    if name and any(c in name for c in "，,、"):
+                        self.comma_names.append(_norm(name))
+        self.comma_names = sorted(set(self.comma_names), key=len, reverse=True)
 
     def spans(self, text, kind=None):
         """[(entity, matched_text, kind, all_candidates)] -- longest, non-overlapping.
@@ -168,7 +180,15 @@ class Vocabulary(object):
         n = len(low)
         while i < n:
             found = False
-            for length in range(min(self.max_len, n - i), 1, -1):
+            for length in range(min(self.max_len, n - i), 0, -1):
+                # One-character names exist (鹿, 鹰, 空, 烟, 鹳) and the old
+                # floor of 2 made them unnameable: a sentence about the map
+                # decoration 鹿 could never be read.  They only count when the
+                # character stands alone, because 空 also occurs inside ordinary
+                # words and matching there would edit a decoration nobody asked
+                # about.
+                if length == 1 and not _alone(low, i):
+                    continue
                 window = low[i:i + length]
                 hits = [(e, f, k) for k in kinds
                         for e, f in self._names[k].get(window, ())]
@@ -230,6 +250,26 @@ class Vocabulary(object):
 
 def _norm(text):
     return (text or "").strip().lower()
+
+
+def _cjk(ch):
+    return bool(ch) and "\u3400" <= ch <= "\u9fff"
+
+
+def _alone(low, i):
+    """True when `low[i]` is a one-character name standing on its own.
+
+    A single character counts only with a boundary on BOTH sides.  The unit
+    named 鹿 is a map decoration and 空 is seven separate records; both also
+    occur inside ordinary words -- "空气血量改成1000" would edit the decoration
+    空 and report success, which is a wrong answer rather than a refusal.  So
+    "鹿 血量改成1000" (with the space a picture click inserts) works, and 空气
+    does not.  Typing 鹿blood-tight is refused rather than guessed; the picture
+    grid carries the id for exactly that case.
+    """
+    left = low[i - 1] if i > 0 else ""
+    right = low[i + 1] if i + 1 < len(low) else ""
+    return (not _cjk(left)) and (not _cjk(right))
 
 
 def _first_word(text, table):
@@ -325,7 +365,67 @@ def _residual(raw, vocab, civ_names=None, civ_zh=None):
     return out.strip()
 
 
-def read_clause(text, vocab, civ_names=None, civ_zh=None):
+def _pinned(low, vocab, pins):
+    """The entity the player CLICKED, if the sentence still spells its name.
+
+    A name is not a key.  城门 is 29 records and 城镇中心 is 20, so name-only
+    resolution took the smallest id: clicking 靶场(14) in the picture grid and
+    typing "血量改成1000" edited 靶场(10) instead.  The grid therefore hands the
+    clicked ids along with the sentence, and a pin wins over name matching.
+
+    A pin is only honoured while its name is still in the sentence -- if the
+    player deleted it, the sentence is about something else and the pin must not
+    hijack the edit.
+    """
+    for pin in pins or ():
+        try:
+            kind = pin.get("kind") or "unit"
+            uid = int(pin.get("id"))
+        except (AttributeError, TypeError, ValueError):
+            continue
+        table = (vocab.tables.get(kind) or {})
+        ent = table.get(uid)
+        if ent is None:
+            continue
+        for field in ("zh", "en", "tw", "internal"):
+            name = getattr(ent, field, "") or ""
+            if name and _norm(name) in low:
+                return ent, kind, name, uid
+    return None, None, None, None
+
+
+def _strip_names(raw, ent):
+    """The sentence with the entity's own name cut out.
+
+    Numbers are read before words because they are the only unambiguous token --
+    but some shipped names CONTAIN numbers ("25% 的木材、75% 的黄金").  Reading
+    "25% 的木材、75% 的黄金 研究时间减5" straight would take 25 as the amount
+    and answer "reduce research time by 25% of nothing in particular": a
+    wrong answer, not a refusal.  The amount belongs to the part of the sentence
+    that is not the thing's name, so the name goes first.
+
+    Longest name first, and every column, so an English name is stripped too.
+    """
+    if ent is None:
+        return raw
+    names = []
+    for field in ("zh", "tw", "en", "internal"):
+        name = getattr(ent, field, "") or ""
+        if name:
+            names.append(name)
+    names.sort(key=len, reverse=True)
+    out = raw
+    for name in names:
+        if name in out:
+            out = out.replace(name, " ")
+            continue
+        m = re.search(re.escape(name), out, re.IGNORECASE)
+        if m:
+            out = out[:m.start()] + " " + out[m.end():]
+    return out
+
+
+def read_clause(text, vocab, civ_names=None, civ_zh=None, pins=None):
     """Read one sentence into a Clause.  Never raises; never guesses."""
     cl = Clause(text)
     raw = (text or "").strip()
@@ -343,7 +443,14 @@ def read_clause(text, vocab, civ_names=None, civ_zh=None):
     prefer = "tech" if tech_hint else "unit"
     ent = None
     kind = None
-    if spans:
+    # What the player CLICKED beats what the sentence alone can say.  A name is
+    # not unique -- 城门 is 29 records, 城镇中心 20 -- so default resolution
+    # takes the smallest id, and a click on 靶场(14) used to edit 靶场(10).  The
+    # pin carries the id; the name in the sentence is only how the UI spells it.
+    ent, kind, pin_name, pin_id = _pinned(low, vocab, pins)
+    if ent is not None:
+        cl.notes.append("按你点的那个「%s」（第 %d 号）读" % (pin_name, pin_id))
+    if ent is None and spans:
         # Prefer the longest span; the sentence's own 科技/研究 hint breaks a
         # tie toward tech, and otherwise the unit wins -- a Chinese player
         # writing "城堡" means the building, and that name also happens to sit
@@ -389,23 +496,28 @@ def read_clause(text, vocab, civ_names=None, civ_zh=None):
         return cl
 
     # --- number ---------------------------------------------------------
-    value, _is_float = _number(raw)
+    # Read the amount off the sentence WITHOUT the entity's own name: names can
+    # carry digits and resource words ("25% 的木材、75% 的黄金"), and taking those
+    # as the amount produces a confident wrong answer.
+    bare = _strip_names(raw, ent)
+    bare_low = _norm(bare)
+    value, _is_float = _number(bare)
     if value is None:
         cl.why = "这句话里没有数字，没有要改成的值" if not (wants_grant or wants_revoke) \
             else "要改「能不能造」的可用性，得说清是哪个文明"
         return cl
-    op = _operation(low)
+    op = _operation(bare_low)
     if op is None:
         op = "set"
         cl.notes.append("没写改动方式，按「设为」读")
 
     eid = _eid(ent)
-    res = _first_word(low, RESOURCE_WORDS)
-    stat = _first_word(low, STAT_WORDS)
+    res = _first_word(bare_low, RESOURCE_WORDS)
+    stat = _first_word(bare_low, STAT_WORDS)
     if kind == "tech":
-        if "研究时间" in low or "研发时间" in low:
+        if "研究时间" in bare_low or "研发时间" in bare_low:
             cl.intent = {"intent": "tech.research_time", "tech": eid}
-        elif "成本" in low or "费用" in low or res:
+        elif "成本" in bare_low or "费用" in bare_low or res:
             cl.intent = {"intent": "tech.cost", "tech": eid,
                          "resource": (res[0] if res else "food")}
         else:
@@ -440,7 +552,7 @@ def _eid(entity):
     return entity["id"] if isinstance(entity, dict) else entity.id
 
 
-def _pieces(text):
+def _pieces(text, vocab=None):
     """Split a Chinese paragraph into one edit per piece.
 
     Two passes, because the two separators mean different things.  A full stop,
@@ -452,27 +564,53 @@ def _pieces(text):
     "村民血量改成1000，弓箭手攻击力加2" came back as ONE clause and silently
     applied the second half's stat to the first half's entity -- a wrong answer,
     not a refusal, which is the worst shape a bug can take here.
+
+    A shipped name may CONTAIN a comma (草坪，绿 / 25% 的木材、75% 的黄金).
+    Those are swapped out first, so the name survives the split whole; the
+    halves of such a name are not names, and splitting them refuses a sentence
+    the picture grid itself produced.
     """
     body = _DIGIT_COMMA_RE.sub("\u0000", text or "")
+    guarded = {}
+    if vocab is not None:
+        # Swap each shipped comma-bearing name for a token, remembering the
+        # text exactly as the player wrote it (a case-insensitive match must not
+        # lower-case English names on the way back out).  Longest first, so
+        # "植物 (灌木丛，绿)" is protected before "植物 (灌木，绿)" can claim part.
+        for name in getattr(vocab, "comma_names", ()) or ():
+            if not name:
+                continue
+            m = re.search(re.escape(name), body, re.IGNORECASE)
+            if not m:
+                continue
+            token = "\u0001%d\u0001" % len(guarded)
+            guarded[token] = m.group(0)
+            body = body[:m.start()] + token + body[m.end():]
     out = []
     for big in _SPLIT_RE.split(body):
         for part in _COMMA_RE.split(big):
             part = part.replace("\u0000", "，").strip()
+            for token, name in guarded.items():
+                part = part.replace(token, name)
             if part:
                 out.append(part)
     return out
 
 
-def read(text, vocab, civ_names=None, civ_zh=None):
+def read(text, vocab, civ_names=None, civ_zh=None, pins=None):
     """Split on sentence punctuation and read every part.
 
     Returns (intents, clauses).  Intents are the actionable dicts; clauses carry
     the refusals with their reasons, so a UI can show "这句没读懂：……" next to the
     ones that worked instead of failing the whole request.
+
+    `pins` are the entities the player clicked in the picture grid -- see
+    `_pinned` for why a name is not enough.
     """
     intents, clauses = [], []
-    for part in _pieces(text):
-        cl = read_clause(part, vocab, civ_names=civ_names, civ_zh=civ_zh)
+    for part in _pieces(text, vocab):
+        cl = read_clause(part, vocab, civ_names=civ_names, civ_zh=civ_zh,
+                         pins=pins)
         clauses.append(cl)
         if cl.intent is not None:
             intents.append(cl.intent)

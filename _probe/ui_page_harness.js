@@ -28,6 +28,17 @@ function node(tag) {
     children: [], value: "", disabled: false, onclick: null, title: "",
     parentNode: null,
     appendChild(c) { c.parentNode = this; this.children.push(c); return c; },
+    // The pick-a-picture grid inserts a placeholder at the FRONT of a cell when a
+    // declared icon turns out to have no file, and moves focus into the textarea
+    // after a pick.  Both are ordinary DOM calls the page really makes.
+    insertBefore(c, ref) {
+      c.parentNode = this;
+      const at = ref ? this.children.indexOf(ref) : -1;
+      if (at >= 0) this.children.splice(at, 0, c);
+      else this.children.push(c);
+      return c;
+    },
+    focus() { this.focused = true; },
     addEventListener() {},
     setAttribute(k, v) { this[k] = v; },
     // Enough of the real DOM for the page's own "replace, do not stack" logic:
@@ -48,6 +59,7 @@ function node(tag) {
       if (at >= 0) p.children.splice(at, 1);
       this.parentNode = null;
     },
+    get firstChild() { return this.children[0] || null; },
   };
   // `box.innerHTML = ""` is how the page starts every render.  In a real DOM
   // that detaches the old children; a stub that just stores the string keeps
@@ -150,6 +162,32 @@ const DESCRIBE = {
   },
 };
 
+// A real /api/browse answer, captured from the live server: a page of units
+// where the third row has no picture at all.  1,349 of the game's 2,693 units
+// ship no icon, so "no picture" is the ordinary case, not an error -- the grid
+// must still offer the cell, labelled, because the name is the only handle the
+// player has on it.
+const BROWSE = {
+  unit: {
+    ok: true,
+    browse: { ok: true, kind: "unit", total: 1651, offset: 0, limit: 3, rows: [
+      { id: 83, kind: "unit", name: "村民 (男性)", zh: "村民 (男性)",
+        en: "Villager (Male)", has_icon: true, icon_id: 15 },
+      { id: 4, kind: "unit", name: "步弓手", zh: "步弓手", en: "Archer",
+        has_icon: true, icon_id: 17 },
+      { id: 1258, kind: "unit", name: "攻城锤", zh: "攻城锤", en: "Battering Ram",
+        has_icon: false, icon_id: -1 },
+    ] },
+  },
+  tech: {
+    ok: true,
+    browse: { ok: true, kind: "tech", total: 536, offset: 0, limit: 1, rows: [
+      { id: 22, kind: "tech", name: "织布机", zh: "织布机", en: "Loom",
+        has_icon: true, icon_id: 6 },
+    ] },
+  },
+};
+
 // ---- run the real script -------------------------------------------------
 const posted = [];
 const sandbox = {
@@ -163,6 +201,15 @@ const sandbox = {
       const kind = (url.match(/kind=([a-z]+)/) || [])[1];
       return { json: async () => ({ ok: true, entity: DESCRIBE[kind] }) };
     }
+    if (url.indexOf("/api/browse") === 0) {
+      const kind = (url.match(/kind=([a-z]+)/) || [])[1];
+      return { json: async () => BROWSE[kind] };
+    }
+    // A parse answer is also forwarded to renderClauses, so the stub has to
+    // hand back a real one rather than the generic meta-shaped object.
+    if (url.indexOf("/api/parse") === 0) {
+      return { json: async () => FIXTURES.mixed };
+    }
     return { json: async () => ({ ok: true, version: 54, civs: new Array(63),
       intents: [], mods: [], manifest: { mod_dir: "/tmp/x", info: {} } }) };
   },
@@ -173,7 +220,9 @@ const sandbox = {
 const fn = new Function(
   "document", "fetch", "setTimeout", "clearTimeout", "console", "JSON",
   src + "\n;return {renderClauses: renderClauses, buildable: buildable, " +
-  "doBuild: doBuild, renderDetail: renderDetail, " +
+  "doBuild: doBuild, doParse: doParse, renderDetail: renderDetail, " +
+  "loadPick: loadPick, pickCell: pickCell, pickName: pickName, " +
+  "setPickKind: setPickKind, PICK: () => PICK, PINS: () => PINS, " +
   "setLast: (v) => { LAST = v; }};");
 const page = fn(sandbox.document, sandbox.fetch, sandbox.setTimeout,
                 sandbox.clearTimeout, sandbox.console, sandbox.JSON);
@@ -295,9 +344,79 @@ function buildChecks() {
     check("the refusal never reaches /api/build",
           !sent.some((i) => i.intent === "tech.research_time"),
           JSON.stringify(sent));
-    finish();
+    return pickChecks();
   }).catch((e) => { fails.push("doBuild threw: " + e.message);
                     console.log("FAIL doBuild threw :: " + e.stack); finish(); });
+}
+
+// ---- pick a picture ------------------------------------------------------
+// The grid is the only entry that does not require already knowing the name,
+// so it has to survive the ordinary awkward cases: a row with no picture at
+// all, and a name that the sentence parser would not have accepted on its own.
+function pickChecks() {
+  return page.loadPick(false).then(() => {
+    const grid = ids.pickgrid;
+    const cells = (grid.children || []).filter((n) => n.className
+      && n.className.indexOf("cell") >= 0);
+    check("the grid asks the browse route for a page of units",
+          posted.some((p) => p.url.indexOf("/api/browse?kind=unit") === 0),
+          JSON.stringify(posted.map((p) => p.url)));
+    check("every row becomes a cell", cells.length === 3, String(cells.length));
+    check("a row WITH a picture draws an <img> for that id",
+          cells[0].children.some((c) => c.tagName === "IMG"
+            && c.src.indexOf("/api/icon?kind=unit&id=83") === 0),
+          JSON.stringify(cells[0].children.map((c) => c.tagName)));
+    // 1,349 units ship no icon; the cell must still exist and still be usable.
+    const blank = cells.filter((c) => c.className.indexOf("noicon") >= 0);
+    check("a row with NO picture is still a cell, drawn as a blank",
+          blank.length === 1, String(blank.length));
+    check("...and it carries no <img> that would render as a broken image",
+          blank.length === 1 && !blank[0].children.some((c) => c.tagName === "IMG"),
+          JSON.stringify(blank.length ? blank[0].children.map((c) => c.tagName) : []));
+    check("...and the name is printed even without a picture",
+          text(blank[0] || { textContent: "", children: [] }).indexOf("攻城锤") >= 0,
+          text(blank[0] || { textContent: "", children: [] }));
+    // Picking must append a usable name to the sentence box, not replace it.
+    ids.say.value = "村民血量改成1000\n";
+    cells[0].onclick();
+    check("picking a cell appends its name to the sentence box",
+          ids.say.value.indexOf("村民血量改成1000") === 0
+          && ids.say.value.indexOf("村民 (男性)") > 0, ids.say.value);
+    // ...and the text it appends has to be one the parser can find again.
+    // (A name it cannot read would make the grid a dead end.)
+    check("the appended name ends with a space so a number can follow",
+          /\s$/.test(ids.say.value), JSON.stringify(ids.say.value));
+    // A name is not a key: 靶场 is 10 records, 城门 is 29.  The click has to
+    // remember WHICH one, or the sentence comes back pointing at a different
+    // record and the player's edit lands on the wrong thing.
+    const pins = page.PINS();
+    check("picking a cell remembers the id it drew",
+          pins.length === 1 && pins[0].id === 83 && pins[0].kind === "unit",
+          JSON.stringify(pins));
+    // ...and that memory must travel with the sentence.
+    ids.say.value = "村民血量改成1000";
+    return page.doParse();
+  }).then(() => {
+    const call = posted.filter((p) => p.url.indexOf("/api/parse") === 0).pop();
+    check("the parse request carries the clicked ids",
+          call && call.body && Array.isArray(call.body.pins)
+          && call.body.pins.length === 1 && call.body.pins[0].id === 83,
+          JSON.stringify(call && call.body));
+    return Promise.resolve();
+  }).then(() => {
+    page.setPickKind("tech");
+    return page.loadPick(false);
+  }).then(() => {
+    check("switching to technologies asks for technologies",
+          posted.some((p) => p.url.indexOf("/api/browse?kind=tech") === 0),
+          JSON.stringify(posted.map((p) => p.url)));
+    const cells = (ids.pickgrid.children || []).filter((n) => n.className
+      && n.className.indexOf("cell") >= 0);
+    check("...and nothing of the previous list survives the switch",
+          cells.length === 1, String(cells.length));
+    finish();
+  }).catch((e) => { fails.push("the picker threw: " + e.message);
+                    console.log("FAIL the picker threw :: " + e.stack); finish(); });
 }
 
 function finish() {
@@ -307,5 +426,6 @@ function finish() {
                 JSON.stringify(fails));
     process.exit(1);
   }
-  console.log("PAGE SCRIPT: THE SCREEN RENDERS EVERY SHAPE AND POSTS ONLY WHAT IT CAN BUILD");
+  console.log("PAGE SCRIPT: THE SCREEN RENDERS EVERY SHAPE, LETS YOU PICK A " +
+              "PICTURE, AND POSTS ONLY WHAT IT CAN BUILD");
 }

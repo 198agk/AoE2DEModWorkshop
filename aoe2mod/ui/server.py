@@ -89,6 +89,23 @@ class App(object):
     def search(self, q, kind="unit", limit=25):
         return {"ok": True, "hits": self.tk.search(q, kind=kind, limit=limit)}
 
+    def browse(self, kind="unit", query="", limit=60, offset=0):
+        """A paged grid of things a player can pick by LOOKING at them.
+
+        Typing a name only works if you already know the name -- and the game's
+        Chinese names are not the ones people use ("弓箭手" is not any unit's
+        name at all; "城堡" is a building AND part of a technology's name).  This
+        route exists so a player can point at a picture instead.
+
+        The rows say whether a picture exists at all: 1,349 of the game's 2,693
+        units ship no icon, so a grid that silently renders holes would look
+        broken.  `has_icon` lets the page draw a labelled cell instead.
+        """
+        return {"ok": True,
+                "browse": self.tk.browse(kind=kind, query=query,
+                                         limit=int(limit or 60),
+                                         offset=int(offset or 0))}
+
     def describe(self, kind, entity_id):
         return {"ok": True, "entity": self.tk.describe(int(entity_id), kind=kind)}
 
@@ -139,11 +156,16 @@ class App(object):
         with open(path, "rb") as fh:
             return {"ok": True, "png": fh.read()}
 
-    def parse(self, text):
-        """Sentence -> {intents, refusals}.  No bytes touched."""
+    def parse(self, text, pins=None):
+        """Sentence -> {intents, refusals}.  No bytes touched.
+
+        `pins` are [{kind, id}] for the pictures the player clicked.  A name is
+        not unique (城门 is 29 records, 城镇中心 20) and name-only resolution
+        takes the smallest id, so the click has to travel with the sentence.
+        """
         intents, clauses = nl.read(text, self.vocab(),
                                    civ_names=self.tk.civ_names,
-                                   civ_zh=nl.CIV_ZH)
+                                   civ_zh=nl.CIV_ZH, pins=pins)
         out = []
         for cl in clauses:
             row = {"text": cl.text, "kind": cl.kind,
@@ -343,6 +365,13 @@ def make_handler(app):
                 q = _query(self.path).get("q", [""])[0]
                 kind = _query(self.path).get("kind", ["unit"])[0]
                 return self._guard(lambda: app.search(q, kind=kind))
+            if path == "/api/browse":
+                q = _query(self.path)
+                return self._guard(lambda: app.browse(
+                    kind=q.get("kind", ["unit"])[0],
+                    query=q.get("q", [""])[0],
+                    limit=q.get("limit", [60])[0],
+                    offset=q.get("offset", [0])[0]))
             if path == "/api/describe":
                 q = _query(self.path)
                 return self._guard(lambda: app.describe(
@@ -369,7 +398,8 @@ def make_handler(app):
             except ValueError as exc:
                 return _json(self, {"ok": False, "error": "bad json: %s" % exc})
             if path == "/api/parse":
-                return self._guard(lambda: app.parse(payload.get("text") or ""))
+                return self._guard(lambda: app.parse(payload.get("text") or "",
+                                                     payload.get("pins") or []))
             if path == "/api/plan":
                 return self._guard(lambda: app.plan(payload["intent"]))
             if path == "/api/build":

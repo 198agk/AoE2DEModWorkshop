@@ -158,6 +158,33 @@ def main():
               (pv3.get("civ_labels") or [None])[0] == "印加",
               pv3.get("civ_labels"))
 
+        # ---- a picture click carries the id -----------------------------
+        # 靶场 is 10 unit records and 城门 is 29; a name alone sends the edit to
+        # the lowest id.  Measured over the whole list: 287 of 1,651 names came
+        # back as a different record.  So the click's id travels with the
+        # sentence, and the server must route it into the reader.
+        st, np1 = _post(base, "/api/parse", {"text": "靶场 血量改成1000"})
+        i1 = ((np1.get("clauses") or [{}])[0].get("intent") or {})
+        st, pp1 = _post(base, "/api/parse",
+                        {"text": "靶场 血量改成1000",
+                         "pins": [{"kind": "unit", "id": 14}]})
+        c1 = (pp1.get("clauses") or [{}])[0]
+        i2 = (c1.get("intent") or {})
+        check("without a pin a shared name goes to the lowest id",
+              i1.get("unit") == 10, i1)
+        check("the pinned id wins over the name's lowest id",
+              i2.get("unit") == 14, i2)
+        check("the pinned clause previews the record that was clicked",
+              "靶场" in ((c1.get("preview") or {}).get("plan") or {}).get(
+                  "description", ""), str(c1.get("preview"))[:200])
+        # The pin must not hijack a sentence that no longer names it.
+        st, pp2 = _post(base, "/api/parse",
+                        {"text": "血量改成1000",
+                         "pins": [{"kind": "unit", "id": 14}]})
+        c2r = (pp2.get("clauses") or [{}])[0]
+        check("a pin is ignored when its name is gone from the sentence",
+              not c2r.get("intent") and not c2r.get("entity"), str(c2r)[:200])
+
         # ---- parse a refusal -------------------------------------------
         st, p = _post(base, "/api/parse", {"text": "这是什么"})
         check("a question comes back refused, not crashed", p.get("ok") is True,
@@ -301,6 +328,68 @@ def main():
         except urllib.error.HTTPError as ex:
             leaked = ex.code not in (200,)
         check("/static/ cannot walk out of the folder", leaked)
+
+        # ---- browse (pick a picture instead of typing a name) ----------
+        # The grid exists because a name only works if you already know it, and
+        # the game's Chinese names are not the ones players use.  What the page
+        # needs from this route: a stable order (the grid must not reshuffle),
+        # pageable rows, and an honest answer about which cells have no picture
+        # at all (1,349 of 2,693 units have none).
+        st, _c, body = _get(base, "/api/browse?kind=unit&limit=10")
+        b1 = json.loads(body.decode("utf-8")).get("browse") or {}
+        check("browse returns a page of units", st == 200 and body and
+              b1.get("ok") is True and len(b1.get("rows") or []) == 10,
+              "%s rows=%d" % (st, len(b1.get("rows") or [])))
+        check("browse reports the full count, not just the page",
+              (b1.get("total") or 0) > 1000, b1.get("total"))
+        # A grid that reshuffles between visits makes the player hunt for the
+        # same picture twice, so the order has to be the same answer twice.
+        _st, _c, again = _get(base, "/api/browse?kind=unit&limit=10")
+        b1b = json.loads(again.decode("utf-8")).get("browse") or {}
+        check("browse pages come back in a stable order",
+              [r["id"] for r in b1b.get("rows") or []] ==
+              [r["id"] for r in b1["rows"]],
+              "%s vs %s" % ([r["id"] for r in b1["rows"]][:5],
+                            [r["id"] for r in b1b.get("rows") or []][:5]))
+        st, _c, body = _get(base, "/api/browse?kind=unit&limit=10&offset=10")
+        b2 = json.loads(body.decode("utf-8")).get("browse") or {}
+        check("the next page continues instead of repeating",
+              not ({r["id"] for r in b2.get("rows") or []} &
+                   {r["id"] for r in b1["rows"]}), "overlap")
+
+        # Every row must be usable by the routes the grid calls: a row whose id
+        # could not be drawn or described would be a dead cell.
+        row = b1["rows"][0]
+        check("a row carries what the grid needs to draw and to pick",
+              all(k in row for k in ("id", "kind", "name", "has_icon")),
+              sorted(row))
+        # `has_icon` has to agree with the icon route, or the grid draws a hole
+        # exactly where it promised a picture.
+        with_icon = [r for r in b1["rows"] if r["has_icon"]]
+        without = [r for r in b1["rows"] if not r["has_icon"]]
+        if with_icon:
+            _s, ctype_i, body_i = _get(base, "/api/icon?kind=unit&id=%d&size=32"
+                                       % with_icon[0]["id"])
+            check("a row marked has_icon really draws an image",
+                  ctype_i.startswith("image/png") and
+                  body_i.startswith(b"\x89PNG"), "%s %s" %
+                  (ctype_i, body_i[:8]))
+        # Units with no icon are the ORDINARY case (1,349 of them), so the route
+        # must be able to report one rather than the grid only ever seeing hits.
+        st, _c, body = _get(base, "/api/browse?kind=unit&q=%E6%94%BB%E5%9F%8E%E9%94%A4")
+        bq = json.loads(body.decode("utf-8")).get("browse") or {}
+        check("browse can be narrowed to a word the player typed",
+              (bq.get("total") or 0) >= 1 and
+              "攻城锤" in (bq["rows"][0].get("name") or ""), str(bq)[:160])
+
+        st, _c, body = _get(base, "/api/browse?kind=tech&limit=5")
+        bt = json.loads(body.decode("utf-8")).get("browse") or {}
+        check("browse covers technologies too",
+              bt.get("kind") == "tech" and len(bt.get("rows") or []) == 5,
+              str(bt)[:160])
+        check("a technology row carries its icon id for the grid",
+              all("icon_id" in r for r in bt.get("rows") or []),
+              str((bt.get("rows") or [{}])[0])[:120])
 
         # ---- icons and prose ------------------------------------------
         # The picture routes answer with IMAGE bytes, not JSON.  A client that

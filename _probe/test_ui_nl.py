@@ -32,8 +32,8 @@ def main():
     vocab = nl.Vocabulary(idx.units, idx.techs)
     civs = [e for e in ()]  # filled from the .dat only when available
 
-    def read(text):
-        return nl.read(text, vocab, civ_names=None, civ_zh=nl.CIV_ZH)
+    def read(text, pins=None):
+        return nl.read(text, vocab, civ_names=None, civ_zh=nl.CIV_ZH, pins=pins)
 
     # ---- plain stat edits ------------------------------------------------
     intents, clauses = read("村民血量改成 1000")
@@ -156,6 +156,86 @@ def main():
 
     intents, _ = read("城堡血量改成 5000")
     check("a building name resolves too", len(intents) == 1, intents)
+
+    # ---- a picture click carries the id --------------------------------
+    # Measured: of the 1,651 visible unit names, only 1,316 come back to the
+    # record the player clicked -- 287 land on a different record because a
+    # name like 靶场 or 城门 belongs to 10..29 records and the reader takes the
+    # lowest id.  The clicked id therefore travels with the sentence.
+    intents, _ = read("靶场 血量改成1000")
+    check("without a pin a shared name takes the lowest id",
+          intents and intents[0].get("unit") == 10, intents)
+
+    intents, clauses = read("靶场 血量改成1000", pins=[{"kind": "unit", "id": 14}])
+    check("a pin overrides the lowest-id guess",
+          intents and intents[0].get("unit") == 14, intents)
+    check("the clause says which picture it followed",
+          clauses and any("14" in n for n in clauses[0].notes), clauses and clauses[0].notes)
+
+    intents, _ = read("城门 血量改成1000", pins=[{"kind": "unit", "id": 1579}])
+    check("a pin works on the worst name (29 records)", intents
+          and intents[0].get("unit") == 1579, intents)
+
+    intents, clauses = read("血量改成1000", pins=[{"kind": "unit", "id": 14}])
+    check("a pin does not act when its name is gone from the sentence",
+          not intents and clauses and not clauses[0].entity, intents)
+
+    intents, _ = read("织布机 研究时间减5", pins=[{"kind": "tech", "id": 22}])
+    check("a pin works for technologies too",
+          intents and intents[0].get("tech") == 22, intents)
+
+    # ---- names the reader used to be unable to say ----------------------
+    intents, _ = read("鹿 血量改成1000")
+    check("a one-character name standing alone resolves",
+          intents and intents[0].get("unit") == 65, intents)
+
+    intents, clauses = read("空气血量改成1000")
+    check("a one-character name inside a word does NOT resolve",
+          not intents and clauses and not clauses[0].entity, intents)
+
+    intents, _ = read("草坪，绿 血量改成1000")
+    check("a comma inside a shipped name is not a sentence break",
+          len(intents) == 1 and intents[0].get("unit") == 301, intents)
+
+    intents, clauses = read("村民血量改成1000，弓箭手攻击力加2")
+    check("protecting comma-names did not stop ordinary comma splitting",
+          len(clauses) == 2 and len(intents) == 2, (len(intents), len(clauses)))
+
+    # "25% 的木材、75% 的黄金" is a shipped technology name with digits in it;
+    # reading the amount before the name answered -25 instead of -5.
+    intents, _ = read("25% 的木材、75% 的黄金 研究时间减5")
+    check("a digit inside a name is not the amount",
+          intents and intents[0].get("delta") == -5, intents)
+
+    # ---- every name the grid can offer must come back to its own id ------
+    # The grid lists 1,651 units and 536 technologies; a click posts the id
+    # along with the name.  Measured before the pin existed: 287 unit names and
+    # 4 technology names came back as a DIFFERENT record, and 48 + 13 were
+    # refused -- so a third of the grid was a dead end that looked alive.  This
+    # sweep is the only way to know that every row still works, including the
+    # ones nobody would think to write a case for (single characters, names
+    # containing commas, names containing digits).
+    idx = SI.index()
+    for kind, template, key in (("unit", "{} 血量改成1000", "unit"),
+                                ("tech", "{} 研究时间加5", "tech")):
+        table = idx.units if kind == "unit" else idx.techs
+        wrong, refused, total = [], [], 0
+        for uid, ent in table.items():
+            if not ent.is_visible:
+                continue
+            name = ent.zh or ent.en
+            if not name:
+                continue
+            total += 1
+            intents, clauses = read(template.format(name),
+                                    pins=[{"kind": kind, "id": uid}])
+            got = intents[0].get(key) if intents else None
+            if got != uid:
+                (refused if got is None else wrong).append(
+                    (uid, name, got, clauses[0].why if clauses else None))
+        check("every %s name the grid offers comes back to its own id (%d rows)"
+              % (kind, total), not wrong and not refused,
+              "wrong=%r refused=%r" % (wrong[:6], refused[:6]))
 
     # ---- honesty: every clause carries either an intent or a reason ------
     _, clauses = read("随便写点什么")
