@@ -32,7 +32,7 @@ def main():
     chk(r["retarget"]["no_sld_shipped"] is True, "the plan ships no .sld")
     chk(r["retarget"]["rename_count"] > 0,
         "rename_count %d" % r["retarget"]["rename_count"])
-    chk("no .sld file is shipped" in r["description"],
+    chk("不复制" in r["description"],
         "the description says no picture is copied")
 
     print("B. apply it and reparse")
@@ -56,9 +56,13 @@ def main():
     # Assert the message is a SENTENCE about these two units, not which words it
     # happens to use: an earlier version of this check demanded "record" or
     # "picture" and failed on a perfectly readable message that said "art".
+    # This version had the same bug in a smaller font -- it pinned "already
+    # share", which is the English spelling of the fact rather than the fact.
+    # What actually has to be true: it names a real shared file, so the reader
+    # can go and look at it.
     _why = bad["reason"] or ""
-    chk(len(_why) > 30 and "already share" in _why,
-        "the refusal explains itself: %r" % _why[:110])
+    chk(len(_why) > 30 and ".sld" in _why,
+        "the refusal explains itself, and names the shared file: %r" % _why[:110])
 
     print("D. whole family costs the same .dat, not 614 MB of pictures")
     fam = RT.plan(game, stats["graphics"], tk._civs, 83, 594,

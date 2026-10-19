@@ -21,6 +21,16 @@ from aoe2mod.ui import nl                                     # noqa: E402
 FAILS = []
 
 
+#: How many effect commands a technology has, as far as this file is concerned.
+#: 織布機 (22) really has 3 -- measured with `Toolkit.effect_count` on 2026-10-20,
+#: along with "371 of the 1,040 technologies that have any command have exactly
+#: one".  A double is honest HERE because the reader must work without a `.dat`
+#: (that is why `effect_count` is injected at all); the real counts are pinned by
+#: `_probe/test_ui_server.py`, which does load the game.
+def _effect_count(tech_id):
+    return {22: 3}.get(tech_id, 1)
+
+
 def check(name, ok, detail=""):
     if not ok:
         FAILS.append("%s :: %s" % (name, detail))
@@ -33,7 +43,8 @@ def main():
     civs = [e for e in ()]  # filled from the .dat only when available
 
     def read(text, pins=None):
-        return nl.read(text, vocab, civ_names=None, civ_zh=nl.CIV_ZH, pins=pins)
+        return nl.read(text, vocab, civ_names=None, civ_zh=nl.CIV_ZH, pins=pins,
+                       effect_count=_effect_count)
 
     # ---- plain stat edits ------------------------------------------------
     intents, clauses = read("村民血量改成 1000")
@@ -236,6 +247,95 @@ def main():
         check("every %s name the grid offers comes back to its own id (%d rows)"
               % (kind, total), not wrong and not refused,
               "wrong=%r refused=%r" % (wrong[:6], refused[:6]))
+
+    # ---- the five intents the screen could not say ----------------------
+    # Each of these was measured as a wrong answer or a dead end before the
+    # branch existed, so the assertions record the observed reading, not the
+    # hoped-for one.
+    intents, _ = read("步弓手对骑兵攻击加2")
+    check("a class bonus reads as unit.attack_class, not as plain attack",
+          intents and intents[0]["intent"] == "unit.attack_class"
+          and intents[0].get("class_id") == 12
+          and intents[0].get("kind") == "attack"
+          and intents[0].get("delta") == 2, intents)
+
+    intents, _ = read("步弓手对骑兵防御加2")
+    check("the other half of the class bonus is armour",
+          intents and intents[0].get("kind") == "armour", intents)
+
+    intents, clauses = read("步弓手对骑兵加2")
+    check("a class bonus with no attack/armour word is REFUSED, not guessed",
+          not intents and clauses and "攻击" in (clauses[0].why or ""),
+          intents or (clauses and [c.why for c in clauses]))
+
+    # The class name only counts right after 对: "骑兵的血量" is about the CLASS
+    # as an entity..., which is not a thing, so the safe reading is a refusal.
+    intents, clauses = read("骑兵的血量改成1000")
+    check("a class name is not treated as an entity on its own",
+          not intents, intents)
+
+    intents, _ = read("织布机第2条效果加5")
+    check("the second command of a technology is addressed by position",
+          intents and intents[0]["intent"] == "tech.effect"
+          and intents[0].get("command") == 1
+          and intents[0].get("delta") == 5, intents)
+
+    intents, _ = read("织布机第1条效果改成10")
+    check("the position is not read as the amount",
+          intents and intents[0].get("value") == 10
+          and intents[0].get("command") == 0, intents)
+
+    intents, clauses = read("织布机效果加5")
+    check("an unnumbered effect on a 3-command technology is refused",
+          not intents and clauses and "第几条" in (clauses[0].why or ""),
+          intents or (clauses and [c.why for c in clauses]))
+
+    intents, clauses = read("织布机第9条效果加5")
+    check("asking for a command that does not exist is refused with the count",
+          not intents and clauses and "3" in (clauses[0].why or ""),
+          intents or (clauses and [c.why for c in clauses]))
+
+    # ---- 研究 is a verb players use for technologies ---------------------
+    intents, _ = read("印加不能研究织布机")
+    check("'cannot research' reads as a technology revoke",
+          intents and intents[0]["intent"] == "tech.availability"
+          and intents[0].get("action") == "revoke"
+          and intents[0].get("tech") == 22, intents)
+
+    # ---- word order decides which unit is which -------------------------
+    intents, _ = read("把村民的样子换成步弓手")
+    check("the unit before 样子 is the one being changed",
+          intents and intents[0]["intent"] == "unit.sprite"
+          and intents[0].get("unit") == 1810
+          and intents[0].get("donor") == 4, intents)
+
+    intents, _ = read("把步弓手的样子换成村民")
+    check("and swapping the two names swaps the direction",
+          intents and intents[0].get("unit") == 4
+          and intents[0].get("donor") == 1810, intents)
+
+    intents, clauses = read("把村民的样子换成村民")
+    check("the same unit on both sides is refused",
+          not intents and clauses and "一个单位" in (clauses[0].why or ""),
+          intents or (clauses and [c.why for c in clauses]))
+
+    intents, clauses = read("把村民的样子换成步弓手，连干活的样子一起换")
+    check("a trailing 'and its working poses too' joins the first edit",
+          len(intents) == 1 and intents[0].get("whole_family") is True, intents)
+    check("...instead of becoming a second refusal",
+          len(clauses) == 1, [c.text for c in clauses])
+
+    # ---- a picture path, and nothing else, selects unit.art -------------
+    intents, _ = read("给村民换张图 D:\\pics\\a.png")
+    check("a path in the sentence reads as unit.art",
+          intents and intents[0]["intent"] == "unit.art"
+          and intents[0].get("unit") == 1810
+          and intents[0].get("picture") == "D:\\pics\\a.png", intents)
+
+    intents, clauses = read("给织布机换张图 D:\\pics\\a.png")
+    check("a technology has no picture of its own to replace",
+          not intents and clauses and "科技" in (clauses[0].why or ""),
+          intents or (clauses and [c.why for c in clauses]))
 
     # ---- honesty: every clause carries either an intent or a reason ------
     _, clauses = read("随便写点什么")

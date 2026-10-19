@@ -153,7 +153,7 @@ check("the `.dat` on disk differs from the shipped one",
       m.get("dat_identical_to_base") is not True,
       "got %r" % m.get("dat_identical_to_base"))
 _w = " ".join(m.get("warnings") or [])
-check("the row warnings are present", "inherited Name" in _w,
+check("the row warnings are present", ("照抄" in _w and "名字" in _w),
       "warnings=%r" % (m.get("warnings"),))
 check("but the carrier warning is NOT (it would deny the edit)",
       "carried UNMODIFIED" not in _w, "warnings=%r" % (m.get("warnings"),))

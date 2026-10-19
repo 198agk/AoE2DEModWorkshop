@@ -647,6 +647,26 @@ def reaches_building(tree, building_id):
     return False
 
 
+#: The ten JSON keys ``grant`` copies from the donor row, in the player's words.
+#: The keys themselves are the game's own field names and must not be translated
+#: -- they are what the file says -- but a sentence that only reads
+#: ``inherited Picture Index=12`` tells a Chinese player nothing about what went
+#: wrong, so each one gets a name here.  Unknown keys fall back to the raw one
+#: rather than disappearing.
+_FIELD_ZH = {
+    "Name": "名字",
+    "Name String ID": "名字文本编号",
+    "Picture Index": "图标编号",
+    "Help String ID": "帮助文本编号",
+    "Building ID": "建筑编号",
+    "Age ID": "时代",
+    "Link ID": "升级自哪个节点",
+    "Trigger Tech ID": "触发科技编号",
+    "Prerequisite IDs": "前置节点",
+    "Prerequisite Types": "前置类型",
+}
+
+
 def grant(tree, node_id, source_row, status="ResearchedCompleted",
           use_types=UNIT_USE_TYPES):
     """Add ``node_id`` to ``tree`` as a COPY of ``source_row``.
@@ -655,6 +675,11 @@ def grant(tree, node_id, source_row, status="ResearchedCompleted",
     describe fields the copy inherited that are arguably the donor civ's, and the
     caller decides (``Name``/``Name String ID``/``Picture Index``/``Help String
     ID``/``Building ID``/``Age ID``).
+
+    The sentences are Chinese because they reach the player: the preview prints
+    them verbatim, and 1,497 of 14,687 unit grants carry the receiver warning
+    below, so "inherited Building ID" was a sentence a Chinese player had to read
+    in English.
 
     One warning is about the RECEIVER, not the donor: measured on this install,
     1,497 of 14,687 unit grants and 224 of 10,369 tech grants inherit a
@@ -671,8 +696,12 @@ def grant(tree, node_id, source_row, status="ResearchedCompleted",
     warnings = []
     existing = row_for(tree, node_id, use_types)
     if existing is not None:
-        return existing, ["%s already has node %s; nothing was added"
-                          % (tree.get("civ_id"), node_id)]
+        # The tree's own `civ_id` is the FILE stem ("ARMENIANS"), which is not
+        # what a player calls that civilization.  These sentences reach the
+        # screen through `availability.plan`'s `warnings`.
+        from .civnames import chinese as _civ_zh
+        return existing, ["%s 本来就有第 %s 号节点，什么都没加"
+                          % (_civ_zh(tree.get("civ_id")), node_id)]
     if source_row is None:
         raise ValueError("cannot grant node %s without a source row" % node_id)
     row = dict(source_row)
@@ -687,15 +716,27 @@ def grant(tree, node_id, source_row, status="ResearchedCompleted",
               "Building ID", "Age ID", "Link ID", "Trigger Tech ID",
               "Prerequisite IDs", "Prerequisite Types"):
         if f in row:
-            warnings.append("inherited %s=%r from the donor row"
-                            % (f, row[f]))
+            # Numbers are quoted because they are what the player would have to
+            # look up.  A STRING value here is the donor's own identifier written
+            # in the data file's English ("Missionary"), and printing that on a
+            # Chinese screen adds an English word to a Chinese sentence without
+            # telling the player anything they can act on -- the real news is
+            # that the field was copied at all.
+            _val = row[f]
+            _zh = _FIELD_ZH.get(f, f)
+            if isinstance(_val, str):
+                warnings.append("「%s」是从捐赠方那一行照抄下来的，不是为这个文明写的"
+                                % _zh)
+            else:
+                warnings.append("「%s」是从捐赠方那一行照抄下来的（%r），"
+                                "不是为这个文明写的" % (_zh, _val))
     # The receiver-aware one.  Kept separate from the loop above because it is
     # the only inherited field whose problem is about the civ RECEIVING it.
     _b = row.get("Building ID")
     if _b is not None and not reaches_building(tree, _b):
         warnings.append(
-            "the donor's Building ID=%r is not in this civilization's tree, so "
-            "the copied row may have no building to appear at" % (_b,))
+            "捐赠方那一行的「建筑编号」是 %r，而这个文明的科技树里根本没有这座建筑，"
+            "所以照抄过来的条目可能没有地方出现" % (_b,))
     tree.setdefault(UNITS_KEY, []).append(row)
     return row, warnings
 

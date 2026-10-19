@@ -80,22 +80,26 @@ ESSENTIAL_TOKENS = ("idle", "walk", "attack", "death")
 #: `carry` and `seed`.  Those keys exist ONLY inside the villager families, so no
 #: outside donor can ever supply them and this is the ordinary case, not a corner.
 #:
-#: The prose stays in English like every other message this package emits; only
-#: the entity NAMES are localized, and those come from the game's own strings.
+#: The words are CHINESE because they end up inside sentences the screen prints
+#: verbatim.  An earlier version kept them in English on the theory that this
+#: package emits English, which was true and was exactly the bug: a Chinese
+#: player read "unchanged while it is working (chopping, mining, farming)" on a
+#: Chinese screen.  Only entity names were localized, and that is not enough when
+#: the rest of the sentence is ours.
 MOMENT_WORD = {
-    "idle": "standing still",
-    "walk": "walking",
-    "attack": "attacking",
-    "death": "dying",
-    "decay": "decaying",
-    "work": "working (chopping, mining, farming, building)",
-    "task": "working (chopping, mining, farming, building)",
-    "carry": "walking while carrying something",
-    "seed": "sowing",
-    "idlec": "its idle fidget",
-    "conversion": "being converted",
-    "heal": "healing",
-    "build": "building",
+    "idle": "站着不动",
+    "walk": "走路",
+    "attack": "攻击",
+    "death": "倒下",
+    "decay": "腐烂",
+    "work": "干活（砍树、挖矿、种田、盖房）",
+    "task": "干活（砍树、挖矿、种田、盖房）",
+    "carry": "搬着东西走路",
+    "seed": "播种",
+    "idlec": "闲着没事动一下",
+    "conversion": "被招降",
+    "heal": "治疗",
+    "build": "盖房",
 }
 
 
@@ -111,6 +115,22 @@ def _moments(tokens):
                   key=lambda s: (order.index(next(
                       (k for k in order if MOMENT_WORD[k] == s), "zzz")), s))
     return hits
+
+
+def _moment_names(tokens):
+    """Player-facing words for animation tokens OR their engine labels.
+
+    The tokens arriving here are `t.get("label") or t["token"]`, so they may be
+    "Idle" or "idle"; an unknown label is printed as-is instead of being dropped,
+    because a missing animation in the sentence reads as a missing problem.
+    """
+    out = []
+    for t in tokens:
+        key = str(t or "").strip().lower().replace(" ", "")
+        word = MOMENT_WORD.get(key) or str(t)
+        if word not in out:
+            out.append(word)
+    return out
 
 
 def _sha(data):
@@ -189,20 +209,20 @@ def plan(game_root, graphics, civs, target_id, donor_id, scope="all",
             d_rec = tables[ci].get(donor_id)
             if t_rec is None or d_rec is None:
                 skipped.append({"civ": civ_name, "target": tid, "reason":
-                                "this civilization has no record for unit %d or %d"
+                                "这个文明没有第 %d 号或第 %d 号单位的记录"
                                 % (tid, donor_id)})
                 continue
             ta = idx.art(t_rec)
             da = idx.art(d_rec)
             if not ta or ta.get("kind") != "loose":
                 skipped.append({"civ": civ_name, "target": tid, "reason":
-                                "unit %d has no loose art here (%s)"
-                                % (tid, (ta or {}).get("reason", "no standing graphic"))})
+                                "第 %d 号单位在这里没有散图（%s）"
+                                % (tid, (ta or {}).get("reason", "没有站立图像"))})
                 continue
             if not da or da.get("kind") != "loose":
                 skipped.append({"civ": civ_name, "target": tid, "reason":
-                                "unit %d has no loose art here (%s)"
-                                % (donor_id, (da or {}).get("reason", "no standing graphic"))})
+                                "第 %d 号单位在这里没有散图（%s）"
+                                % (donor_id, (da or {}).get("reason", "没有站立图像"))})
                 continue
             try:
                 pairs, unmapped, _extra, filled = S.plan_swap_full(ta, da, fill=fill)
@@ -267,14 +287,12 @@ def plan(game_root, graphics, civs, target_id, donor_id, scope="all",
         if len(distinct) == 1:
             reason = distinct[0]
             if len(skipped) > 1:
-                reason += " (for all %d civilization%s)" % (
-                    len(skipped), "" if len(skipped) == 1 else "s")
+                reason += "（%d 个文明都是这样）" % len(skipped)
         elif distinct:
-            reason = ("no civilization pairs these two into any file: %s"
-                      % "; ".join(distinct[:3]))
+            reason = ("没有任何文明能把这两个单位配成同一个文件：%s"
+                      % "；".join(distinct[:3]))
         else:
-            reason = ("no civilization pairs these two into any file: "
-                      "nothing to copy")
+            reason = "没有任何文明能把这两个单位配成同一个文件：没有可复制的图"
         return {"ok": False, "files": {}, "conflicts": [], "warnings": [],
                 "reason": reason, "skipped": skipped, "per_civ": per_civ,
                 "filled": filled_all, "fill": bool(fill)}
@@ -292,10 +310,9 @@ def plan(game_root, graphics, civs, target_id, donor_id, scope="all",
     if conflicts:
         return {"ok": False, "files": wanted, "conflicts": conflicts,
                 "warnings": [], "skipped": skipped, "per_civ": per_civ,
-                "reason": "two civilizations need %s to hold different "
-                          "pictures (%s), and one file cannot do that"
+                "reason": "两个文明需要 %s 这个文件装不同的图（%s），一个文件做不到"
                           % (os.path.basename(conflicts[0]["file"]),
-                             " vs ".join(conflicts[0]["claims"]))}
+                             " 与 ".join(conflicts[0]["claims"]))}
 
     # -- and when a target is also a donor, the answer depends on order ------
     # Checked AFTER the conflict test, because a self-reskin names the same file
@@ -310,10 +327,8 @@ def plan(game_root, graphics, civs, target_id, donor_id, scope="all",
     if both:
         return {"ok": False, "files": wanted, "conflicts": [],
                 "warnings": [], "skipped": skipped, "per_civ": per_civ,
-                "reason": "these two already share art, so a file would have to "
-                          "be both the thing copied FROM and the thing copied "
-                          "TO, and which one wins depends on the order the "
-                          "copies happen in: %s" % ", ".join(
+                "reason": "这两个单位本来就共用同一批图，改下去一个文件会既是来源"
+                          "又是目标，谁赢取决于复制顺序：%s" % "、".join(
                               os.path.basename(b) for b in both[:4])}
 
     warnings = []
@@ -321,14 +336,14 @@ def plan(game_root, graphics, civs, target_id, donor_id, scope="all",
     lost_tokens = sorted(set(t.get("label") or t["token"] for t in lost))
     if lost_tokens:
         warnings.append(
-            "the donor has no %s animation, so the target keeps its OWN picture "
-            "for %s -- it will change shape mid-animation in game"
-            % ("/".join(lost_tokens), "/".join(lost_tokens)))
+            "换来的图里没有「%s」这几个动作，所以这个单位在这些时候还是用自己"
+            "原来的图，画面上会从中途变样"
+            % "/".join(_moment_names(lost_tokens)))
     other_tokens = sorted(set(t.get("label") or t["token"] for t in unmapped_all)
                           - set(lost_tokens))
     if other_tokens:
-        warnings.append("the target has animations the donor lacks, which stay "
-                        "unchanged: %s" % ", ".join(other_tokens))
+        warnings.append("这个单位有、换来的图里没有的动作会保持原样：%s"
+                        % "、".join(_moment_names(other_tokens)))
 
     # A copy whose frame grids agree renders exactly like the donor.  When they
     # do not, the engine pairs the art with the record's frame_count and plays
@@ -352,22 +367,21 @@ def plan(game_root, graphics, civs, target_id, donor_id, scope="all",
         first = by_anim[order[0]]
         # the variant most civilizations actually see
         v = max(first["variants"], key=lambda g: len(g["civs"]))
-        rest = (", and %d other animation%s (%s)"
-                % (len(order) - 1, "" if len(order) == 2 else "s",
-                   ", ".join(order[1:4]))
+        rest = ("，另外还有 %d 个动作也一样（%s）"
+                % (len(order) - 1, "、".join(_moment_names(order[1:4])))
                 if len(order) > 1 else "")
         spread = ("" if len(first["variants"]) == 1 else
-                  ", and which grids differ depends on the civilization (%s)"
-                  % "; ".join("%s instead of %s in %d civilization(s)"
-                              % (_fmt(g["donor"]), _fmt(g["target"]),
-                                 len(g["civs"]))
+                  "，而且哪些文明对不上还不一样（%s）"
+                  % "；".join("%d 个文明是 %s，不是 %s"
+                              % (len(g["civs"]), _fmt(g["donor"]),
+                                 _fmt(g["target"]))
                               for g in sorted(first["variants"],
                                               key=lambda g: -len(g["civs"]))))
         warnings.append(
-            "the donor's %s animation is a different frame grid than the "
-            "target's (%s vs %s), so the game may play the wrong frames rather "
-            "than say anything%s%s"
-            % (order[0], _fmt(v["donor"]), _fmt(v["target"]), spread, rest))
+            "换来的「%s」动画帧格子和原来的不一样（%s 对 %s），游戏可能照着"
+            "错的行列去播，而不是报错%s%s"
+            % (_moment_names([order[0]])[0], _fmt(v["donor"]), _fmt(v["target"]),
+               spread, rest))
 
     # Two files in ONE unit's art can carry the same engine label (the hero
     # Themistocles ships an infantry and a naval idle, both "Themistocles
@@ -389,9 +403,8 @@ def plan(game_root, graphics, civs, target_id, donor_id, scope="all",
     if dropped:
         d0 = dropped[0]
         warnings.append(
-            "%s has two pictures the game labels '%s' (%s and %s), and only one "
-            "can be replaced by name; the other keeps its own art in %d "
-            "civilization(s)"
+            "第 %s 号单位有两张图在游戏里都叫「%s」（%s 和 %s），按名字只能换掉"
+            "其中一张，另一张在 %d 个文明里还是原来的样子"
             % (target_id, d0["animation"], d0["kept"], d0["dropped"], len(dropped)))
 
     # -- the rest of the unit's family -----------------------------------------
@@ -476,32 +489,30 @@ def plan(game_root, graphics, civs, target_id, donor_id, scope="all",
         if uncovered and not family_scope:
             shown = uncovered[0]
             warnings.append(
-                "this unit has %d pictures for %d different jobs and this reskin "
-                "replaces %d of them: %s keeps the old art, so it will look "
-                "unchanged while it is %s"
+                "这个单位有 %d 张图、分别用在 %d 种活上，这次只换掉其中 %d 张："
+                "%s 还是原来的图，所以它%s的时候看上去没变"
                 % (members_with_art, len(stems), len(touched & stems),
-                   shown["stem"],
-                   "/".join(shown["labels"][:4]).lower()))
+                   _moment_names([shown["stem"]])[0],
+                   "、".join(_moment_names(shown["labels"][:4]))))
         if filled_all:
             # Name what stood in for what, in the player's terms.  "carry <- walk"
             # is the mechanism; "while carrying something it walks" is the thing
             # the player will actually see, so both are in the sentence.
+            _filled_keys = sorted(set(f["animation"] for f in filled_all))
             warnings.append(
-                "the donor has no picture for %s, so a nearby animation of the "
-                "same donor stands in for %s instead of leaving the old art"
-                % (", ".join(sorted(set(f["animation"] for f in filled_all))),
-                   " / ".join(_moments(sorted(set(f["animation"]
-                                                   for f in filled_all))))))
+                "换来的图里没有「%s」，所以这些时候借用同一个单位附近动作的图，"
+                "而不是留原来的样子"
+                % "、".join(_moment_names(_filled_keys)))
         if still_old:
             # The animation keys are internal; the player sees moments.  "carry,
             # idlec, seed, task, work" tells a reader nothing about when their
             # villager will revert, while "chopping, mining, farming" says exactly
             # what the in-game report described.
             warnings.append(
-                "no single donor supplies the %s animation(s), so while %s the "
-                "unit keeps its own picture whatever scope is used"
-                % ("/".join(still_old),
-                   " / ".join(_moments(still_old))))
+                "没有任何一个单位能提供「%s」的图，所以不管范围选多大，这个单位"
+                "在%s的时候都还是自己的样子"
+                % ("、".join(_moment_names(still_old)),
+                   "、".join(_moment_names(still_old))))
 
     return {"ok": True, "files": wanted, "conflicts": [],
             "agreed_with_the_same_donor": agreed,
@@ -575,11 +586,17 @@ def verify_files(game_root, plan_rep, written):
     return rep
 
 
-def describe(rep):
-    """The one sentence a preview shows."""
+def describe(rep, target_name=None, donor_name=None):
+    """The one sentence a preview shows.
+
+    `target_name` / `donor_name` are the localized unit names when the caller has
+    them.  Without them the sentence falls back to the engine's stem, which is
+    what a filename is made of and not what a player calls the unit.
+    """
     if not rep.get("ok"):
-        return rep.get("reason") or "this reskin cannot be done"
+        return rep.get("reason") or "这个换皮做不了"
     n = rep["file_count"]
-    return ("%d file(s) copied from %s to %s, covering %d civilization(s)"
-            % (n, "/".join(rep.get("donor_stems") or ["?"]),
-               "/".join(rep.get("target_stems") or ["?"]), rep.get("civ_count", 0)))
+    tgt = target_name or "/".join(rep.get("target_stems") or ["?"])
+    dnr = donor_name or "/".join(rep.get("donor_stems") or ["?"])
+    return ("把 %s 的 %d 个动画文件换成 %s 的，覆盖 %d 个文明"
+            % (tgt, n, dnr, rep.get("civ_count", 0)))

@@ -82,6 +82,40 @@ CASES = [
                                      "civ": "AZTECS", "action": "grant"}),
     ("tech research time, no-op", {"intent": "tech.research_time", "tech": 22,
                                    "delta": 0}),
+    # The class bonus used to print "基础攻击 class 12" -- the class id in
+    # English, on a Chinese screen.  This case exists because that sentence was
+    # "partly Chinese" and a character-range check would have passed it.
+    ("attack class bonus, ok", {"intent": "unit.attack_class", "unit": 4,
+                                "class_id": 12, "kind": "attack", "delta": 2}),
+    ("armour class bonus, ok", {"intent": "unit.attack_class", "unit": 4,
+                                "class_id": 3, "kind": "armour", "delta": 1}),
+    ("tech effect, ok", {"intent": "tech.effect", "tech": 22, "command": 0,
+                         "delta": 5}),
+    # A sprite swap is the third producer of player-facing prose, and it was
+    # English for its whole life: "%d file(s) copied from X to Y".  Plan only --
+    # nothing is written, so this stays cheap.
+    ("sprite swap, ok", {"intent": "unit.sprite", "unit": 83, "donor": 4}),
+    ("sprite swap, rename model", {"intent": "unit.sprite", "unit": 83,
+                                   "donor": 4, "mode": "rename"}),
+]
+
+#: Sentences that live OUTSIDE `description`/`reason` and would otherwise never
+#: be checked: the per-file warnings a reskin emits, which a UI prints under the
+#: preview.  They were English until 2026-10-20.
+WARNING_CASES = [
+    ("sprite swap onto a distant unit", {"intent": "unit.sprite", "unit": 4,
+                                         "donor": 8}),
+    ("renaming a family", {"intent": "unit.sprite", "unit": 83, "donor": 594,
+                           "whole_family": True}),
+    # The third producer: `civtechtrees.grant` copies a donor row and reports
+    # what it copied.  1,497 of 14,687 unit grants carry the receiver warning,
+    # so this is not a rare sentence -- and until 2026-10-20 it read
+    # "inherited Building ID=104 from the donor row" on a Chinese screen.
+    # ARMENIANS has no building 104 (its own Monk reads 1806), so the
+    # receiver-aware sentence is guaranteed to appear.
+    ("availability grant with an unreachable building",
+     {"intent": "unit.availability", "unit": 775, "civ": "Armenians",
+      "action": "grant"}),
 ]
 
 
@@ -126,12 +160,36 @@ def main():
             check("%s.%s names the civilization in Chinese" % (label, field),
                   False, text[:120])
 
+    # ---- the words that live outside description/reason --------------------
+    # A reskin emits one sentence per thing the player will SEE go wrong, and an
+    # empty warning list is the happy case.  Both halves matter: a warning that is
+    # English fails here, and a reskin that produces no warning at all cannot be
+    # checked -- so the case list must actually produce one.
+    warned = 0
+    for label, raw in WARNING_CASES:
+        plan = tk.plan(raw)
+        warns = [str(w) for w in (plan.get("warnings") or ())]
+        if not warns:
+            check("%s: produces at least one warning to check" % label, False,
+                  "no warnings: this case cannot test anything")
+            continue
+        warned += len(warns)
+        for i, text in enumerate(warns):
+            check("%s.warn#%d has Chinese in it" % (label, i),
+                  bool(CJK.search(text)), text[:140])
+            check("%s.warn#%d has no English words" % (label, i),
+                  not LATIN_WORD.search(text), text[:140])
+            check("%s.warn#%d has no doubled CJK" % (label, i),
+                  not re.search(r"([\u4e00-\u9fff]{2})\1", text), text[:140])
+            check("%s.warn#%d does not print a raw file stem" % (label, i),
+                  "_x1" not in text and "_x2" not in text, text[:140])
+
     print()
     if FAIL:
         print("PLAYER-FACING TEXT FAILED (%d): %s" % (len(FAIL), FAIL))
         return 1
     print("EVERY PLAYER-FACING SENTENCE IS CHINESE AND NAMES REAL THINGS"
-          " (%d strings)" % len(seen))
+          " (%d strings, %d warnings)" % (len(seen), warned))
     return 0
 
 

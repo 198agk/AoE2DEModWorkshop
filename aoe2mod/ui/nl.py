@@ -70,10 +70,34 @@ SET_WORDS = ("改成", "改为", "改到", "设为", "设成", "调到", "调成
 DELTA_WORDS = ("增加", "提高", "添加", "加上", "加", "+", "多")
 REDUCE_WORDS = ("减少", "降低", "减去", "减", "-", "少")
 
-GRANT_WORDS = ("解锁", "可以造", "能造", "可以建", "启用", "开放", "获得")
-REVOKE_WORDS = ("不能造", "禁用", "禁止", "取消", "去掉", "移除", "删除", "拿掉", "封掉")
+GRANT_WORDS = ("解锁", "可以造", "能造", "可以建", "启用", "开放", "获得",
+               # A technology is not built, it is researched.  "印加不能研究
+               # 织布机" used to be refused with "这句话里没有数字", because the
+               # only verbs here described construction -- a refusal the player
+               # could not act on, since the sentence was already right.
+               "能研究", "可以研究", "能研发", "可以研发")
+REVOKE_WORDS = ("不能造", "禁用", "禁止", "取消", "去掉", "移除", "删除", "拿掉", "封掉",
+                "不能研究", "不能研发", "研究不了", "研发不了")
 
 TECH_HINTS = ("科技", "研究", "研发", "技术")
+
+# "把村民的样子换成步弓手" -- a reskin names a RELATIONSHIP between two units.
+# The hint words are required: without them "村民换成1000" would be read as a
+# donor swap.  The verb alone is not enough because 换成/改成 also introduce a
+# plain value.
+SPRITE_HINTS = ("样子", "造型", "外观", "模样", "长相", "皮肤", "换皮", "外壳")
+
+# "给村民换一张图 C:\...\pic.png" -- the object is a file on disk.
+ART_HINTS = ("换图", "换一张图", "图片", "立绘", "贴图", "图案", "画像", "海报")
+_PICTURE_RE = re.compile(
+    r"(?:[A-Za-z]:)?[\\/][^\s\"'<>|]*?\.(?:png|bmp|dds|jpg|jpeg)"
+    r"|[^\s\"'<>|]+\.(?:png|bmp|dds|jpg|jpeg)", re.IGNORECASE)
+
+# "第2条效果" / "第二条" / "第 3 个命令".  A technology is a LIST of commands and
+# the number the player wants to change is a position in it.
+_ORDINAL_ZH = {"一": 1, "二": 2, "三": 3, "四": 4, "五": 5,
+               "六": 6, "七": 7, "八": 8, "九": 9, "十": 10}
+_ORDINAL_RE = re.compile(r"第\s*([0-9]+|[一二三四五六七八九十]+)\s*(?:条|个|行|项)?")
 
 # Sentences that mean "I want to know", not "I want to change".
 QUESTION_WORDS = ("多少", "怎么", "为什么", "是什么", "什么", "吗", "？", "?")
@@ -160,18 +184,14 @@ class Vocabulary(object):
                         self.comma_names.append(_norm(name))
         self.comma_names = sorted(set(self.comma_names), key=len, reverse=True)
 
-    def spans(self, text, kind=None):
-        """[(entity, matched_text, kind, all_candidates)] -- longest, non-overlapping.
+    def spans_at(self, text, kind=None):
+        """[(start, end, entity, matched_text, kind, candidates)] with offsets.
 
-        This is the part `SemanticIndex.find` cannot do: it resolves one name,
-        and a sentence is many words.  Scanning spans in both kinds at once
-        avoids the "is 织布机 a tech or a unit?" question entirely -- whatever
-        the shipped tables actually name wins.
-
-        BOTH kinds are reported for the same window, not just the first one
-        found.  "城堡" is a unit name AND appears in some tech's other name
-        columns; stopping at the first kind would silently pick the tech and
-        then refuse the sentence as "unclear which field of the tech".
+        Same scan as `spans`, but carrying where each name sits in the
+        sentence.  Word order is meaning in Chinese -- "把村民的样子换成步弓手"
+        makes the villager the TARGET and the archer the DONOR -- and without
+        offsets the only ordering available is name length, which reverses that
+        sentence (步弓手 is three characters, 村民 is two).
         """
         kinds = [kind] if kind else ["tech", "unit"]
         low = _norm(text)
@@ -203,13 +223,28 @@ class Vocabulary(object):
                     for k in kinds:
                         if k in by_kind:
                             ents = by_kind[k]
-                            out.append((ents[0], window, k, ents))
+                            out.append((i, i + length, ents[0], window, k, ents))
                     i += length
                     found = True
                     break
             if not found:
                 i += 1
         return out
+
+    def spans(self, text, kind=None):
+        """[(entity, matched_text, kind, all_candidates)] -- longest, non-overlapping.
+
+        This is the part `SemanticIndex.find` cannot do: it resolves one name,
+        and a sentence is many words.  Scanning spans in both kinds at once
+        avoids the "is 织布机 a tech or a unit?" question entirely -- whatever
+        the shipped tables actually name wins.
+
+        BOTH kinds are reported for the same window, not just the first one
+        found.  "城堡" is a unit name AND appears in some tech's other name
+        columns; stopping at the first kind would silently pick the tech and
+        then refuse the sentence as "unclear which field of the tech".
+        """
+        return [(e, t, k, g) for _s, _e, e, t, k, g in self.spans_at(text, kind)]
 
     def find_partial(self, word, kind=None, limit=8):
         """Entities whose name CONTAINS `word`, best (shortest name) first.
@@ -292,6 +327,122 @@ def _number(text):
         return None, False
     raw = m.group(0)
     return (float(raw) if "." in raw else int(raw)), "." in raw
+
+
+def _ordinal(text):
+    """The position the sentence names ("第2条" -> 1), or None.
+
+    A technology's effect is a LIST of commands and 669 of them have two or
+    more, so "效果加5" alone cannot say which number to rewrite.  The player
+    says "第2条" -- and this is a POSITION, so what comes back is 1-based; the
+    caller subtracts one.  Returning the 1-based number keeps the conversion
+    visible where it happens instead of hiding a -1 in two places.
+    """
+    m = _ORDINAL_RE.search(text or "")
+    if not m:
+        return None
+    raw = m.group(1)
+    if raw.isdigit():
+        return int(raw)
+    # 十二 / 二十 are written without a 第 here on purpose: the table stops at
+    # ten because no shipped technology has more than ten commands a player
+    # would address by position, and inventing a parser for numbers nobody
+    # types is how a wrong answer gets a plausible-looking path in.
+    return _ORDINAL_ZH.get(raw)
+
+
+def _picture_in(text):
+    """The image path the sentence carries, or None.  Never guesses one."""
+    m = _PICTURE_RE.search(text or "")
+    return m.group(0) if m else None
+
+
+# Class names ("骑兵", "建筑", "弓箭手") come from the same vendored tables the
+# compiler uses, so a new game version is a JSON edit here too.  Cached in the
+# module because building it walks two files.
+_CLASS_CACHE = {}
+
+
+def class_names():
+    """{class id: [names]} from the shipped vocabulary.  Never raises."""
+    if "table" in _CLASS_CACHE:
+        return _CLASS_CACHE["table"]
+    table = {}
+    try:
+        from aoe2mod.intent.compiler import load_effect_tables
+        tables = load_effect_tables()
+        zh = (tables.get("zh") or {}).get("classes") or {}
+        en = (tables.get("classes") or {}).get("classes") or {}
+        for key in set(zh) | set(en):
+            try:
+                cid = int(key)
+            except (TypeError, ValueError):
+                continue
+            names = [n for n in (zh.get(key), en.get(key)) if n]
+            if names:
+                table[cid] = names
+    except Exception:
+        # The class table is an OPTIONAL layer: without it "对骑兵攻击" is
+        # refused as unclear instead of being read as a plain stat edit, which
+        # is the safe direction.  A shipped install always has it.
+        table = {}
+    _CLASS_CACHE["table"] = table
+    return table
+
+
+def _class_in(text, table):
+    """(class id, matched name) named immediately after 对, or None.
+
+    The position matters.  "步弓手对骑兵攻击加2" is about the CAVALRY class;
+    matching a class name anywhere in the sentence would also fire on a
+    sentence that merely mentions one ("骑兵的血量改成1000"), where the class
+    is the entity, not the target of a bonus.  Requiring it right after 对 is
+    what separates the two.
+
+    Longest name wins, so "攻城武器" does not lose to a hypothetical shorter
+    prefix, and 精通 names containing another class-name as a prefix stay whole.
+    """
+    if not table:
+        return None
+    low = _norm(text)
+    pos = low.find("对")
+    if pos < 0:
+        return None
+    tail = low[pos + 1:].lstrip()
+    best = None
+    for cid, names in table.items():
+        for name in names:
+            key = _norm(name)
+            if not key or not tail.startswith(key):
+                continue
+            if best is None or len(key) > len(best[1]):
+                best = (cid, key)
+    return best
+
+
+# Attack vs armour is a different command in the .dat, so the sentence must say
+# which.  "攻击" and "护甲/防御" are the shipped words; the single characters are
+# here because players type them.
+ATTACK_WORDS = ("攻击", "攻击力", "伤害", "打击")
+ARMOUR_WORDS = ("护甲", "护甲值", "防御", "防御力")
+
+
+def _sprite_hint_at(low):
+    """Where the sentence says it is about looks, or None.
+
+    The POSITION is the point: the unit named before that word is the one being
+    changed and the unit named after it is the one being copied.  "把村民的样子
+    换成步弓手" and "把步弓手的样子换成村民" are opposite edits with the same two
+    names, and nothing else in the sentence separates them.  Earliest hint wins;
+    a sentence that repeats the word is about the first thing it named.
+    """
+    best = None
+    for w in SPRITE_HINTS:
+        pos = low.find(w)
+        if pos >= 0 and (best is None or pos < best):
+            best = pos
+    return best
+
 
 
 def _operation(text):
@@ -425,7 +576,29 @@ def _strip_names(raw, ent):
     return out
 
 
-def read_clause(text, vocab, civ_names=None, civ_zh=None, pins=None):
+def _effect_count(tech_id, counter):
+    """How many effect commands a tech has, or None when nobody can say.
+
+    The reader itself has no .dat: this file turns sentences into dicts and must
+    keep working with no game installed.  The count comes from the caller (the
+    screen layer has a Toolkit), and None means "unknown" -- which is why the
+    caller must treat an unknown count as "edit the first entry and SAY so"
+    rather than as "there is exactly one entry".
+    """
+    if counter is None:
+        return None
+    try:
+        n = counter(tech_id)
+    except Exception:
+        return None
+    try:
+        return int(n)
+    except (TypeError, ValueError):
+        return None
+
+
+def read_clause(text, vocab, civ_names=None, civ_zh=None, pins=None,
+                effect_count=None):
     """Read one sentence into a Clause.  Never raises; never guesses."""
     cl = Clause(text)
     raw = (text or "").strip()
@@ -438,7 +611,8 @@ def read_clause(text, vocab, civ_names=None, civ_zh=None, pins=None):
         cl.why = "这是在提问，不是在修改"
         return cl
 
-    spans = vocab.spans(raw)
+    sps = vocab.spans_at(raw)
+    spans = [(e, t, k, g) for _s, _e, e, t, k, g in sps]
     tech_hint = any(w in low for w in TECH_HINTS)
     prefer = "tech" if tech_hint else "unit"
     ent = None
@@ -482,6 +656,7 @@ def read_clause(text, vocab, civ_names=None, civ_zh=None, pins=None):
 
     cl.kind = kind
     cl.entity = ent
+    eid = _eid(ent)
 
     civ = _civ_in(raw, low, civ_names, civ_zh)
 
@@ -490,9 +665,76 @@ def read_clause(text, vocab, civ_names=None, civ_zh=None, pins=None):
     wants_revoke = any(w in low for w in REVOKE_WORDS)
     if (wants_grant or wants_revoke) and civ:
         cl.intent = {"intent": "%s.availability" % kind,
-                     ("unit" if kind == "unit" else "tech"): _eid(ent),
+                     ("unit" if kind == "unit" else "tech"): eid,
                      "civ": civ,
                      "action": "revoke" if wants_revoke else "grant"}
+        return cl
+
+    # --- unit.art: the sentence hands over a file on disk ----------------
+    # A path is the one unambiguous thing a Chinese sentence can carry, so it
+    # decides on its own: no hint word needed, and nothing else in the sentence
+    # can be mistaken for it.
+    pic = _picture_in(raw)
+    if pic:
+        if kind != "unit":
+            cl.why = "换图只能用在单位上；科技没有自己的图"
+            return cl
+        cl.intent = {"intent": "unit.art", "unit": eid, "picture": pic}
+        if civ:
+            cl.intent["civs"] = [civ]
+            cl.notes.append("只改「%s」，不是全部文明" % civ)
+        return cl
+
+    # --- unit.sprite: "把A的样子换成B" -----------------------------------
+    # The hint word is required.  "换成/改成" also introduce plain values
+    # ("村民换成1000"), so the verb alone cannot separate a reskin from a stat
+    # edit; 样子/造型/外观 is what says a SECOND unit is involved.
+    hint = _sprite_hint_at(low)
+    if hint is not None:
+        # Word order decides which unit is which: in "把村民的样子换成步弓手"
+        # the villager is what gets changed and the archer is what it is changed
+        # INTO.  Resolving the target by name length (or by lowest id) turns
+        # that sentence into the opposite edit -- measured: it produced
+        # unit=4 donor=1810, i.e. "make the archer look like a villager".
+        before = [s for s in sps if s[1] <= hint and s[4] == "unit"]
+        after = [s for s in sps if s[0] >= hint and s[4] == "unit"]
+        if before:
+            _s, _e, tgt, _t, _k, _g = before[0]
+        elif after and len(after) > 1:
+            _s, _e, tgt, _t, _k, _g = after[0]
+            after = after[1:]
+        else:
+            tgt = ent if kind == "unit" else None
+        donor = None
+        for s in (after or []):
+            if getattr(s[2], "id", None) != _eid(tgt):
+                donor = s[2]
+                break
+        if tgt is None:
+            # The only entity named was a technology: a technology has no art of
+            # its own, so there is nothing to restyle.  Saying "which unit should
+            # 步弓手 look like" here would answer a question nobody asked.
+            cl.why = "换造型只能用在单位上；科技没有自己的样子"
+            return cl
+        if donor is None:
+            cl.why = ("要让「%s」换成哪个单位的样子？这句里只看出一个单位"
+                      % tgt.display)
+            return cl
+        kind = "unit"
+        ent = tgt
+        eid = _eid(tgt)
+        cl.kind = kind
+        cl.entity = ent
+        cl.intent = {"intent": "unit.sprite", "unit": eid, "donor": donor.id}
+        # A villager is 27 records with 18 different pictures (Builder, Lumberjack,
+        # Farmer ...), so "连干活的样子一起换" is a different, much larger edit:
+        # measured 466 files / 418 MB instead of 20 files / 18 MB.
+        if any(w in low for w in ("干活", "全部", "所有", "整套", "全家")):
+            cl.intent["whole_family"] = True
+            cl.notes.append("连它干活时的样子一起换，文件会多很多")
+        if civ:
+            cl.intent["civs"] = [civ]
+            cl.notes.append("只改「%s」，不是全部文明" % civ)
         return cl
 
     # --- number ---------------------------------------------------------
@@ -511,10 +753,88 @@ def read_clause(text, vocab, civ_names=None, civ_zh=None, pins=None):
         op = "set"
         cl.notes.append("没写改动方式，按「设为」读")
 
-    eid = _eid(ent)
     res = _first_word(bare_low, RESOURCE_WORDS)
     stat = _first_word(bare_low, STAT_WORDS)
+
+    # --- unit.attack_class: "步弓手对骑兵攻击加2" ------------------------
+    # Checked BEFORE the plain stat branch, because "攻击" alone would otherwise
+    # read as displayed_attack and the "对骑兵" half would be dropped on the
+    # floor -- a confident wrong answer, which is the worst shape here.  The
+    # class name only counts right after 对 (see `_class_in`).
+    if kind == "unit":
+        cls = _class_in(bare, class_names())
+        if cls is not None:
+            cid, cname = cls
+            is_attack = any(w in bare_low for w in ATTACK_WORDS)
+            is_armour = any(w in bare_low for w in ARMOUR_WORDS)
+            if not (is_attack or is_armour):
+                cl.why = ("「对%s」要改的是攻击还是护甲？说「攻击」或「护甲」"
+                          % cname)
+                return cl
+            cl.intent = {"intent": "unit.attack_class", "unit": eid,
+                         "class_id": cid,
+                         "kind": "attack" if is_attack else "armour"}
+            if op == "set":
+                cl.intent["value"] = value
+            elif op == "sub":
+                cl.intent["delta"] = -value
+            else:
+                cl.intent["delta"] = value
+            if civ:
+                cl.intent["civs"] = [civ]
+                cl.notes.append("只改「%s」，不是全部文明" % civ)
+            return cl
+
     if kind == "tech":
+        # --- tech.effect: "织布机第2条效果加5" ---------------------------
+        # A technology's effect is a LIST, and 669 shipped techs have two or
+        # more commands, so "效果加5" alone cannot say which one.  371 have
+        # exactly one, where the position is unambiguous and the player should
+        # not have to count anything.
+        ordv = _ordinal(bare)
+        wants_effect = ordv is not None or "效果" in bare_low
+        if wants_effect:
+            # The position is a NUMBER in the sentence too, and it sits in front
+            # of the amount: "第2条效果加5" read amount 2 and edited the second
+            # command by +2 -- both halves wrong, and the preview looked normal.
+            # Take the amount from the sentence with the ordinal cut out.
+            amount = value
+            if ordv is not None:
+                _m = _ORDINAL_RE.search(bare)
+                if _m:
+                    _rest = bare[:_m.start()] + " " + bare[_m.end():]
+                    _v2, _ = _number(_rest)
+                    if _v2 is not None:
+                        amount = _v2
+            if amount is None:
+                cl.why = "这句话里没有数字，没有要改成的值"
+                return cl
+            count = _effect_count(eid, effect_count)
+            if ordv is not None:
+                idx = ordv - 1
+                if count is not None and idx >= count:
+                    cl.why = ("「%s」只有 %d 条效果，没有第 %d 条"
+                              % (ent.display, count, ordv))
+                    return cl
+            elif count == 0:
+                cl.why = "「%s」没有任何效果可以改" % ent.display
+                return cl
+            elif count is not None and count > 1:
+                cl.why = ("「%s」有 %d 条效果，说清改第几条（例如「第2条」）"
+                          % (ent.display, count))
+                return cl
+            else:
+                idx = 0
+                if count is None:
+                    cl.notes.append("没点名第几条，按第 1 条读")
+            cl.intent = {"intent": "tech.effect", "tech": eid, "command": idx}
+            if op == "set":
+                cl.intent["value"] = amount
+            elif op == "sub":
+                cl.intent["delta"] = -amount
+            else:
+                cl.intent["delta"] = amount
+            return cl
         if "研究时间" in bare_low or "研发时间" in bare_low:
             cl.intent = {"intent": "tech.research_time", "tech": eid}
         elif "成本" in bare_low or "费用" in bare_low or res:
@@ -597,7 +917,7 @@ def _pieces(text, vocab=None):
     return out
 
 
-def read(text, vocab, civ_names=None, civ_zh=None, pins=None):
+def read(text, vocab, civ_names=None, civ_zh=None, pins=None, effect_count=None):
     """Split on sentence punctuation and read every part.
 
     Returns (intents, clauses).  Intents are the actionable dicts; clauses carry
@@ -605,12 +925,31 @@ def read(text, vocab, civ_names=None, civ_zh=None, pins=None):
     ones that worked instead of failing the whole request.
 
     `pins` are the entities the player clicked in the picture grid -- see
-    `_pinned` for why a name is not enough.
+    `_pinned` for why a name is not enough.  `effect_count(tech_id)` answers "how
+    many effect commands does this technology have", which is what makes "第2条"
+    checkable; without it the reader edits the first command and says so.
     """
     intents, clauses = [], []
     for part in _pieces(text, vocab):
         cl = read_clause(part, vocab, civ_names=civ_names, civ_zh=civ_zh,
-                         pins=pins)
+                         pins=pins, effect_count=effect_count)
+        # "把村民的样子换成步弓手，连干活的样子一起换" splits at the comma into
+        # two pieces, and the second one names no entity -- read alone it is a
+        # refusal sitting next to an edit that ignored half of what the player
+        # said.  It is not a second edit; it is a qualifier on the first one.
+        # Only the sprite case is merged, because it is the one where a tail
+        # piece has a meaning of its own ("一起换" cannot introduce a new target).
+        prev = clauses[-1] if clauses else None
+        tail_only = (cl.intent is None and cl.entity is None
+                     and any(w in _norm(part) for w in
+                             ("干活", "全部", "所有", "整套", "全家")))
+        if (prev is not None and tail_only
+                and (prev.intent or {}).get("intent") == "unit.sprite"):
+            prev.intent["whole_family"] = True
+            note = "连它干活时的样子一起换，文件会多很多"
+            if note not in prev.notes:
+                prev.notes.append(note)
+            continue
         clauses.append(cl)
         if cl.intent is not None:
             intents.append(cl.intent)

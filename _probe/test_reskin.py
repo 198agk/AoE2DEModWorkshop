@@ -93,9 +93,16 @@ def main():
     for w in rep_c.get("warnings") or ():
         print("  warn %s" % w)
     check(rep_c.get("ok") is True, "a donor missing only some animations is not refused")
-    check(any("own picture" in w.lower() and "walk" in w.lower()
+    # Assert the FACT: the warning must name the animation that stays old and say
+    # it keeps the unit's own picture.  The first version of this check looked
+    # for the English words "own picture" and "walk", which made a correct
+    # Chinese sentence fail -- the assertion was pinned to the wording, not to
+    # what the player needs to be told.
+    check(any(("自己原来的图" in w or "原来的样子" in w)
+              and ("走路" in w or "walk" in w.lower() or "Walk" in w)
               for w in (rep_c.get("warnings") or ())),
-          "the animation the donor lacks is warned about loudly")
+          "the animation the donor lacks is warned about loudly: %r"
+          % (rep_c.get("warnings"),))
 
     print("== C3. the frame grid a swap changes ==")
     # The engine pairs an animation with the art by frame_count/angle_count and
@@ -110,26 +117,29 @@ def main():
               % (_t, _d, len(_gm), [x["animation"] for x in _gm]))
         check(any(x["animation"] == _anim for x in _gm),
               "the %s grid change is reported for %d <- %d" % (_anim, _t, _d))
-        check(any("frame grid" in w for w in (_r.get("warnings") or ())),
+        check(any("帧格子" in w for w in (_r.get("warnings") or ())),
               "and it reaches the user as a warning")
     # The villager's attack grid is 60x16 for 57 civilizations and 45x16 for the
     # six Chronicles ones, so the warning must not claim one number for all.
+    # The assertion is about the FACT (the sentence says the answer depends on
+    # the civilization), not about which words carry it -- pinning the English
+    # wording made the sentence untranslatable.
     _rv = R.plan(root, g, civs, 83, 4)
-    _wv = [w for w in (_rv.get("warnings") or ()) if "frame grid" in w]
-    check(_wv and "depends on the civilization" in _wv[0],
+    _wv = [w for w in (_rv.get("warnings") or ()) if "帧格子" in w]
+    check(_wv and "文明" in _wv[0],
           "a grid that varies by civilization is reported as varying: %s" % _wv)
     # sheep <- archer changes no grid at all in the 57 main civilizations, so a
     # swap whose grids agree must NOT be warned about.
     _ok_rep = R.plan(root, g, civs, 594, 4)
-    check(not any("frame grid" in w for w in (_ok_rep.get("warnings") or ())
-                  if "different" in w),
+    check(not any("帧格子" in w for w in (_ok_rep.get("warnings") or ())
+                  if "不一样" in w),
           "a swap whose grids agree is not warned about a grid change")
 
     print("== D1. reskin something onto itself ==")
     rep_d = R.plan(root, g, civs, 2550, 2550)
     print("  ok=%s reason=%s" % (rep_d.get("ok"), rep_d.get("reason")))
     check(rep_d.get("ok") is False, "a self-reskin is refused")
-    check("share art" in (rep_d.get("reason") or ""),
+    check("共用" in (rep_d.get("reason") or ""),
           "and the reason says why: the same file would be both source and target")
 
     print("== D2. Dark Age Barracks <- Feudal Age Barracks ==")
@@ -164,8 +174,11 @@ def main():
     # refusing is the right answer -- and the message has to name both pictures
     # or the user cannot tell which two civilizations disagree.
     check(rep_f.get("ok") is False, "an ambiguous reverse direction is refused")
-    check("different pictures" in (rep_f.get("reason") or ""),
-          "and the reason names the contradiction")
+    # Same lesson again: pin the fact (two different pictures are named for one
+    # file), not the sentence that carries it.
+    _why_f = rep_f.get("reason") or ""
+    check(len(_why_f) > 30 and "不同的图" in _why_f,
+          "and the reason names the contradiction: %r" % _why_f[:110])
     # ...and the SAME request scoped to one civilization must succeed, because
     # that is the whole point of asking for one picture.
     rep_f2 = R.plan(root, g, civs, 8, 4, scope=["British"])
@@ -280,7 +293,7 @@ def main():
           "a one-record reskin leaves some jobs on the old art "
           "(%r of %r stems)" % (fam.get("stems_replaced"),
                                 fam.get("distinct_stems")))
-    check(any("pictures for" in w for w in (one.get("warnings") or ())),
+    check(any("张图" in w for w in (one.get("warnings") or ())),
           "and it says so in the user's words: %r" % (one.get("warnings"),))
 
     whole = tk2.plan({"intent": "unit.sprite", "unit": 83, "donor": 594,

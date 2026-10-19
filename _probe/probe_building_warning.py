@@ -7,9 +7,10 @@ granted thing has no place to be produced. No donor choice fixes most of it
 (0 fixable in the unit space), so it is inherent to the data and the honest
 product move is to SAY SO rather than to pick cleverer.
 
-`grant` already emits `inherited Building ID=45 from the donor row`. This prints
-that warning next to what the receiver can actually reach, to decide whether the
-generic wording is enough or the change is worth a receiver-aware sentence.
+`grant` already emits `inherited Building ID=45 from the donor row` (Chinese
+since 2026-10-20: 「建筑编号」是从捐赠方那一行照抄下来的). This prints that warning
+next to what the receiver can actually reach, to decide whether the generic
+wording is enough or the change is worth a receiver-aware sentence.
 
 Read-only.  Prints, asserts nothing.
 """

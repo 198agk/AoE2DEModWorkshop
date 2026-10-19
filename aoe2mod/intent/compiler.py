@@ -185,6 +185,28 @@ def _vocab(entry, zh_entry):
     return zh_entry or entry or None
 
 
+def class_label(class_id):
+    """A readable name for an armour class id, never a bare ``class 12``.
+
+    The preview sentence is printed verbatim on screen, so "基础攻击 class 12"
+    told a Chinese player nothing -- it is the shipped schema's own key leaking
+    into a sentence.  Order: our Chinese table, then AGE's English name, then a
+    bare number as the last resort (an unnamed id is a fact about the table, not
+    something to invent a word for).
+    """
+    if class_id is None:
+        return ""
+    try:
+        tables = load_effect_tables()
+        zh = (tables.get("zh") or {}).get("classes") or {}
+        en = (tables.get("classes") or {}).get("classes") or {}
+        key = str(int(class_id))
+        return _vocab((en.get(key) or {}).get("label") if isinstance(en.get(key), dict)
+                      else en.get(key), zh.get(key)) or ("第 %d 类" % int(class_id))
+    except Exception:
+        return "第 %s 类" % class_id
+
+
 _RESOURCE_LABELS = {}
 
 
@@ -766,7 +788,8 @@ class Resolved(object):
         if it == "unit.attack_class":
             what = "基础%s%s" % ("攻击" if self.raw.get("kind", "attack") == "attack"
                                  else "护甲",
-                                 (" class %d" % self.class_id) if self.class_id is not None else "")
+                                 ("·%s" % class_label(self.class_id))
+                                 if self.class_id is not None else "")
         elif it in ("unit.cost", "tech.cost"):
             # Both cost intents address their target by RESOURCE, so the
             # sentence must name it: "织布机 成本 +1" does not tell the user

@@ -390,6 +390,22 @@ class Toolkit(object):
                                 else None),
                 "command_count": len(rows), "rows": rows}
 
+    def effect_count(self, tech):
+        """How many effect commands a technology has.  Cheap; no full row build.
+
+        The sentence reader needs this to answer "第2条" honestly: 669 of the
+        1,040 technologies with commands have two or more, so a bare "效果加5"
+        cannot say which one, while 371 have exactly one and there the position
+        is unambiguous.  Building the full rows here would walk the vocabulary
+        tables for every sentence typed, so only the length is counted.
+        """
+        idx, rec = self._resolve_tech(tech)
+        eid = rec.get("effect_id")
+        effects = self._effect_records()
+        if eid is None or eid < 0 or eid >= len(effects):
+            return 0
+        return len(effects[eid].get("commands") or ())
+
     def _resolve_tech(self, tech):
         """Accept a tech id or a name, and refuse ambiguity instead of picking.
 
@@ -682,7 +698,8 @@ class Toolkit(object):
                     base[k] = rep[k]
             return base
         base["editable"] = True
-        base["description"] = RK.describe(rep)
+        base["description"] = RK.describe(
+            rep, target_name=r.entity.display, donor_name=r.donor.display)
         base["edit_count"] = rep["file_count"]
         base["file_count"] = rep["file_count"]
         base["civ_count"] = rep["civ_count"]
@@ -734,7 +751,9 @@ class Toolkit(object):
                       scope=self._reskin_scope(r),
                       families=self._families(),
                       family_scope=self._reskin_family_flag(r),
-                      fill=self._reskin_fill_flag(r))
+                      fill=self._reskin_fill_flag(r),
+                      target_name=r.entity.display,
+                      donor_name=r.donor.display)
         base["shape"] = "sprite"
         base["sprite_mode"] = "rename"
         base["target_id"] = r.entity.id
@@ -930,7 +949,7 @@ class Toolkit(object):
                       family_scope=self._reskin_family_flag(r),
                       fill=self._reskin_fill_flag(r))
         if not rep.get("editable"):
-            raise C.IntentError(rep.get("reason") or "this rename cannot be made")
+            raise C.IntentError(rep.get("reason") or "这个改名做不了")
 
         raw = self._raw if base_raw is None else base_raw
         stats = self._stats if base_stats is None else base_stats
@@ -1114,7 +1133,9 @@ class Toolkit(object):
                    or pre.get("not_the_donor")
                    or pre.get("absent_targets")))
 
-        info = E.make_info(title or rep and RK.describe(rep), author=author,
+        info = E.make_info(title or rep and RK.describe(
+            rep, target_name=r.entity.display, donor_name=r.donor.display),
+                           author=author,
                            description=description)
         man = E.emit_json_mod(out_dir, payload, info, thumbnail=thumbnail,
                               base_dir=self.game_root, overwrite=overwrite)
@@ -2428,13 +2449,15 @@ class Toolkit(object):
                               scope=self._reskin_scope(r),
                               families=self._families(),
                               family_scope=self._reskin_family_flag(r),
-                              fill=self._reskin_fill_flag(r))
+                              fill=self._reskin_fill_flag(r),
+                              target_name=r.entity.display,
+                              donor_name=r.donor.display)
             except Exception as exc:                      # noqa: BLE001
                 refusals.append({"description": r.describe(), "reason": str(exc)})
                 continue
             if not rep.get("editable"):
                 refusals.append({"description": r.describe(),
-                                 "reason": rep.get("reason") or "cannot rename"})
+                                 "reason": rep.get("reason") or "这个改名做不了"})
                 continue
             stats = dict(p.stats)
             stats["graphics"] = [dict(g) for g in p.stats["graphics"]]
@@ -2869,7 +2892,9 @@ class Toolkit(object):
                                   scope=self._reskin_scope(r),
                                   families=self._families(),
                                   family_scope=self._reskin_family_flag(r),
-                                  fill=self._reskin_fill_flag(r))
+                                  fill=self._reskin_fill_flag(r),
+                                  target_name=r.entity.display,
+                                  donor_name=r.donor.display)
                 except Exception as exc:                  # noqa: BLE001
                     sprite_refusals.append({"description": r.describe(),
                                             "reason": str(exc)})
@@ -2877,7 +2902,7 @@ class Toolkit(object):
                 if not rep.get("editable"):
                     sprite_refusals.append({"description": r.describe(),
                                             "reason": rep.get("reason")
-                                            or "cannot rename"})
+                                            or "这个改名做不了"})
                     continue
                 rename_edits += rep["retarget"]["rename_count"]
                 sprites.append({"description": rep["description"],

@@ -50,7 +50,8 @@ DERIVED_SUFFIX = "_x2"
 
 
 def plan(game_root, graphics, civs, target_id, donor_id, scope="all",
-         families=None, family_scope=False, fill=True):
+         families=None, family_scope=False, fill=True,
+         target_name=None, donor_name=None):
     """Work out which graphics records to rename, without touching any bytes.
 
     Returns the same decision report as `reskin.plan` plus a ``retarget`` dict
@@ -72,7 +73,7 @@ def plan(game_root, graphics, civs, target_id, donor_id, scope="all",
         "retarget": None,
     }
     if not rep.get("ok"):
-        base["reason"] = rep.get("reason") or "this swap cannot be expressed"
+        base["reason"] = rep.get("reason") or "这个换皮没法用改名实现"
         return base
 
     want, clash = {}, {}
@@ -88,8 +89,8 @@ def plan(game_root, graphics, civs, target_id, donor_id, scope="all",
     if clash:
         name = sorted(clash)[0]
         base["reason"] = (
-            "two civilizations need %s.sld to show different pictures (%s), and "
-            "one record cannot name two files" % (name, " vs ".join(sorted(clash[name]))))
+            "两个文明需要 %s.sld 这个文件显示不同的图（%s），而一条记录只能写一个文件名"
+            % (name, " 与 ".join(sorted(clash[name]))))
         return base
 
     gdir = SP.graphics_dir(game_root)
@@ -97,8 +98,8 @@ def plan(game_root, graphics, civs, target_id, donor_id, scope="all",
                     if not os.path.exists(os.path.join(gdir, d + ".sld")))
     if absent:
         base["reason"] = (
-            "%d donor picture(s) that this rename would point at are not on "
-            "disk, starting with %s.sld" % (len(absent), absent[0]))
+            "这次改名要指到的 %d 张捐赠方图片不在盘上，第一张是 %s.sld"
+            % (len(absent), absent[0]))
         return base
 
     by_name = {}
@@ -108,8 +109,7 @@ def plan(game_root, graphics, civs, target_id, donor_id, scope="all",
             by_name.setdefault(f, []).append(g)
     if not by_name:
         base["reason"] = (
-            "no graphics record names any of the %d target file(s), so a rename "
-            "would change nothing" % len(want))
+            "没有任何图像记录用这 %d 个目标文件名，改名等于什么也没做" % len(want))
         return base
 
     edits = []
@@ -155,10 +155,10 @@ def plan(game_root, graphics, civs, target_id, donor_id, scope="all",
     base["fill"] = rep.get("fill")
     base["resource_variants"] = list(rep.get("resource_variants") or [])
     base["description"] = (
-        "%d graphics record(s) repointed from %s to %s, covering %d "
-        "civilization(s); no .sld file is shipped"
-        % (len(edits), " / ".join(rep.get("target_stems") or []),
-           " / ".join(rep.get("donor_stems") or []),
+        "把 %s 的 %d 条图像记录改指向 %s 的图，覆盖 %d 个文明；一张图都不复制，只改记录"
+        % (target_name or " / ".join(rep.get("target_stems") or []) or "这个单位",
+           len(edits),
+           donor_name or " / ".join(rep.get("donor_stems") or []) or "那个单位",
            int(rep.get("civ_count") or 0)))
     return base
 
@@ -178,12 +178,11 @@ def apply(stats, retarget):
         hits = by_id.get(e["graphic_id"]) or []
         if not hits:
             raise RetargetError(
-                "graphics record %d is not in this model" % e["graphic_id"])
+                "这份数据里没有第 %d 号图像记录" % e["graphic_id"])
         for g in hits:
             if (g.get("file") or "") != e["was"]:
                 raise RetargetError(
-                    "graphics record %d names %r, not the %r this plan was made "
-                    "against -- rebuild the plan"
+                    "图像记录 %d 现在写的是 %r，不是这次计划针对的 %r —— 请重新生成计划"
                     % (e["graphic_id"], g.get("file"), e["was"]))
             g["file"] = e["now"]
             changed.append(e)

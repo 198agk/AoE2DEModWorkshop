@@ -165,7 +165,8 @@ class App(object):
         """
         intents, clauses = nl.read(text, self.vocab(),
                                    civ_names=self.tk.civ_names,
-                                   civ_zh=nl.CIV_ZH, pins=pins)
+                                   civ_zh=nl.CIV_ZH, pins=pins,
+                                   effect_count=self.tk.effect_count)
         out = []
         for cl in clauses:
             row = {"text": cl.text, "kind": cl.kind,

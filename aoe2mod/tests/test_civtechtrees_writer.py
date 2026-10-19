@@ -127,8 +127,8 @@ def main():
     check(CT.has(britons, 41), "after grant, BRITONS has Huskarl")
     check(len(warns) > 0, "the grant REPORTS the fields it inherited",
           "no warnings -- an inherited Name/Building ID would show silently")
-    check(any("Name String ID" in w for w in warns),
-          "  the display-name inheritance is among the warnings")
+    check(any("名字文本编号" in w for w in warns),
+          "  the display-name inheritance is among the warnings", str(warns[:2]))
     # The copy must not have mutated the donor.
     check(CT.node_status(trees["GOTHS"], 41) == "ResearchedCompleted",
           "the donor civ is unchanged by the copy")
@@ -139,8 +139,9 @@ def main():
     _row2, warns2 = CT.grant(britons, 41, donor)
     check(len(CT.unit_rows(britons)) == before,
           "granting an already-present node does not duplicate it")
-    check(warns2 and "already has" in warns2[0],
-          "  and it says so rather than failing silently")
+    check(warns2 and "本来就有第" in warns2[0],
+          "  and it says so rather than failing silently",
+          str(warns2[:1]))
 
     # Revoke removes exactly one row and reports the count.
     removed = CT.revoke(britons, 41)
@@ -263,7 +264,7 @@ def main():
     # there, not a list.  The count to assert is the tree's.
     _row9, w9 = CT.grant(fake2["A"], 9, r9, use_types=TU)
     check(len(CT.rows_of(fake2["A"])) == 1
-          and any("already has node" in w for w in w9),
+          and any("本来就有第" in w for w in w9),
           "  granting a tech that already has a row adds nothing and says so",
           "rows=%d warnings=%s" % (len(CT.rows_of(fake2["A"])), w9))
     check(len(CT.unit_rows(fake2["A"])) == 0,
@@ -294,7 +295,7 @@ def main():
     back = json.loads(blob.decode("utf-8"))
     check(CT.node_status(back, 3, use_types=TU) == "ResearchedCompleted",
           "  the re-parsed bytes still say GOTHS offers Yeomen")
-    check(not warns or all(("inherited" in w) or ("is not in this civilization" in w)
+    check(not warns or all(("照抄" in w) or ("科技树里根本没有这座建筑" in w)
                            for w in warns),
           "  every grant warning is inherited-field or receiver-building",
           str(warns[:2]))
@@ -388,7 +389,7 @@ def main():
     _p6 = {k: (list(v) if isinstance(v, list) else v) for k, v in _am.items()}
     _p6.pop("path", None)
     _r6, _w6 = CT.grant(_p6, 775, _dr6, use_types=CT.UNIT_USE_TYPES)
-    check(any("is not in this civilization's tree" in w for w in _w6),
+    check(any("科技树里根本没有这座建筑" in w for w in _w6),
           "granting Missionary to ARMENIANS warns about the unreachable building",
           str(_w6))
     # ... and stays quiet when the receiver CAN reach it.
@@ -400,9 +401,9 @@ def main():
         _r7, _w7 = CT.grant(_p7, 775, _dr7, use_types=CT.UNIT_USE_TYPES)
         _b7 = str(_dr7.get("Building ID"))
         if CT.reaches_building(_gb, _b7):
-            check(not any("is not in this civilization's tree" in w for w in _w7),
+            check(not any("科技树里根本没有这座建筑" in w for w in _w7),
                   "  and is silent when the receiver does reach the building")
-        check(any("inherited Building ID" in w for w in _w7),
+        check(any("建筑编号" in w and "照抄" in w for w in _w7),
               "  the plain inherited-Building-ID warning is still emitted",
               str(_w7[:2]))
 

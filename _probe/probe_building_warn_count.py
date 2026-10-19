@@ -18,7 +18,11 @@ sys.path.insert(0, ROOT)
 from aoe2mod.game import civtechtrees as CT  # noqa: E402
 
 GAME = r"D:\Games\Steam\steamapps\common\AoE2DE"
-MARK = "is not in this civilization's tree"
+#: The receiver-aware sentence's marker.  It was English until 2026-10-20; this
+#: probe counts the sentences the SHIPPED `grant` emits, so the marker has to be
+#: the shipped wording -- otherwise every count silently becomes zero, which
+#: reads exactly like "the data has no such grants".
+MARK = "科技树里根本没有这座建筑"
 
 
 def main():

@@ -1011,15 +1011,18 @@ print("  not-in-any-tech-tree records report availability None, not empty lists"
 # decoration, and the user has no other clue.  Hand-verified case: ARMENIANS has
 # no building 104 anywhere in its 173 rows (its own Monk reads 1806), while
 # BRITONS does.  Same request, different truth for the two civs.
+# These sentences are shown to the player verbatim, so the assertions look for
+# the FACT (the tree has no such building / the field was copied) rather than one
+# English phrase: pinning the wording turned a translation into a crash.
 _pa = tk.plan({"intent": "unit.availability", "unit": 775,
                "civ": "Armenians", "action": "grant"})
 _pb = tk.plan({"intent": "unit.availability", "unit": 775,
                "civ": "British", "action": "grant"})
-_warn = "is not in this civilization's tree"
+_warn = "科技树里根本没有这座建筑"
 assert _pa.get("editable") is True, _pa
 assert any(_warn in w for w in (_pa.get("warnings") or [])), _pa.get("warnings")
 assert not any(_warn in w for w in (_pb.get("warnings") or [])), _pb.get("warnings")
-assert any("inherited Building ID" in w for w in _pb.get("warnings") or []), \
+assert any("建筑编号" in w and "照抄" in w for w in _pb.get("warnings") or []), \
     "the plain inherited-Building-ID note must still be emitted: %s" % _pb
 print("  and names a building the receiver can't reach, silently for one that can")
 
@@ -1250,7 +1253,7 @@ try:
     assert "death" in _s_anims, _s_anims
     _s_gm0 = _sprite_plan["grid_mismatches"][0]
     assert _s_gm0["target"] and _s_gm0["donor"], _s_gm0
-    assert any("frame grid" in w for w in _sprite_plan.get("warnings") or ()), \
+    assert any("帧格子" in w for w in _sprite_plan.get("warnings") or ()), \
         _sprite_plan.get("warnings")
     # ... and a swap whose grids agree must not invent one.
     _s_ok = tk.plan({"intent": "unit.sprite", "unit": 594, "donor": 4})
