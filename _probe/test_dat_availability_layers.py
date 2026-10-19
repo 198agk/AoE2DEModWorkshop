@@ -35,10 +35,16 @@ D. SOMETHING ELSE GATES TOO.  The same layer says Hand Cannoneer is enabled
    NotAvailable.  A layer that says "everyone" where the game says "most" is not
    the gate.  (`Persians`/War Elephant is the one unique-unit miss in C.)
 
-VERDICT: the dat-side gate for "can civ X build unit Y" is still UNIDENTIFIED.
-What follows from that is a product claim, not a format claim: the shipped
-`unit.availability` intent writes `CivTechTrees/<CIV>.json`, and no in-game result
-has ever shown that write changing anything.
+VERDICT: none of the three layers listed above is the gate ON ITS OWN.  The gate
+that was later confirmed in game is a fourth thing these three sections do not
+name: a `type 2` Enable/Disable Unit command hung on a technology the
+civilization itself owns, where THE LAST COMMAND TO FIRE WINS (`dsh test v7`
+2026-10-16 grants unit 2550 to the Britons; `dsh test v17` 2026-10-19 takes it
+away from the Incas, but only from the Castle Age -- its 0:00 carrier lost to the
+global enable).  The product's `unit.availability` intent writes that `.dat` half
+for BOTH directions now (`datgrant.apply_grant` / `apply_revoke`).
+What v15 did refute is the other product half: writing `CivTechTrees/<CIV>.json`
+alone does not move the build menu.
 """
 import json
 import os

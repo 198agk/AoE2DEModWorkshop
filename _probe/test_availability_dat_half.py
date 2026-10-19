@@ -134,8 +134,13 @@ for intent, action, fields in CASES:
     # Two DIFFERENT absences, and conflating them is how `tech.availability` came
     # to declare `mod_contains_dat: false` while every build shipped a `.dat`:
     #
-    #   * the schema declares a `.dat` half but EXCLUDES this action (unit.revoke)
-    #     -> the builder must say why it will not write one;
+    #   * the schema declares a `.dat` half but EXCLUDES this action
+    #     -> the builder must say why it will not write one.  NO availability
+    #     action is in this state any more: `unit.availability` excluded `revoke`
+    #     until `dsh test v17` (2026-10-19) confirmed the disable recipe, and the
+    #     branch is kept because the schema is allowed to refuse an action again
+    #     (and because a refusal without a reason is the failure mode this file
+    #     exists to catch);
     #   * the schema declares no `.dat` half AT ALL (tech.availability, both
     #     actions) -> there is nothing to refuse, and what must be true instead is
     #     that the `.dat` on disk is an unedited carrier.

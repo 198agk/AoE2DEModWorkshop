@@ -8,8 +8,11 @@ probably moddable" from inference to evidence:
     directly here: mods `550749` and `551103` both ship
     `resources/_common/dat/linkedTechs.json` (4,203 B each) where the base file is
     3,947 B, and mod `297820` ships `civilizations.json`.
-  * `CivTechTrees/` is a SUBDIRECTORY of that storage point, and no mod on this
-    machine ships it -- so the subdirectory case needs support from elsewhere.
+  * `CivTechTrees/` is a SUBDIRECTORY of that storage point, and at the time of
+    this measurement no mod on this machine shipped it -- so the subdirectory
+    case needed support from elsewhere.  (Since 2026-10-19 this project's own
+    `dsh test v14`/`v15` mods DO ship it, and the build menu still did not
+    move; see the VERDICT line at the end.)
   * If ANY storage point is overridden at a NESTED path, then resolution walks
     subdirectories, and `CivTechTrees/<CIV>.json` resolves the same way.
 
@@ -89,8 +92,16 @@ def main():
         "same directory-walking lookup that `widgetui/textures/...` already does.\n"
         "Combined with the DIRECT proof that the DAT storage point is overridable,\n"
         "this makes the CivTechTrees write path evidenced rather than assumed --\n"
-        "with the caveat that no mod on this machine ships that exact file, so it\n"
-        "has never been observed in game."
+        "with the caveat that at the time of this measurement no mod on this\n"
+        "machine shipped that exact file, so it had never been observed in game.\n"
+        "\n"
+        "ANSWERED SINCE (2026-10-19): `dsh test v14` and `v15` DID ship\n"
+        "`CivTechTrees/<CIV>.json` in a mod, the engine logged `Enabling mod #0`\n"
+        "for them, and the build menu did not move in either direction. So this\n"
+        "probe's question (does the lookup reach a nested path?) is still YES and\n"
+        "still relevant, but 'the write path is evidenced' must not be read as\n"
+        "'the build menu reads it' -- it does not. The tree file is read by the\n"
+        "tech-tree PREVIEW, which is a different screen."
         if nested_any else
         "no nested override observed; cannot conclude."))
     return 0

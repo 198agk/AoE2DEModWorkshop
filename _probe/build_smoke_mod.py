@@ -1,7 +1,22 @@
 # -*- coding: utf-8 -*-
 """Build the mod that answers the LAST unverified question.
 
-Two things in this project have never been observed by a running game:
+⚠ HISTORICAL (2026-10-19): this script builds the `smoke5` experiment, which the
+audit team judged AMBIGUOUS and which was uninstalled.  Both questions below
+have since been answered, and NOT in the direction this file assumed:
+
+  * the CivTechTrees/<CIV>.json override IS read by the engine, but it does NOT
+    drive the build menu (2026-10-19 `dsh test v15`: two tree files over a
+    byte-identical `.dat`, engine logged loading the mod, menu did not move);
+  * the task-swap family fix WAS confirmed in game -- the user reported "都是羊了"
+    for `dsh test v12`;
+  * and the lever that actually moves the build menu is a `.dat` `type 2`
+    Enable/Disable Unit command on a technology the civilization owns
+    (`dsh test v7` grant, `dsh test v17` revoke).
+
+Kept as a record of the experiment design.  Do not re-run it expecting a verdict.
+
+Two things this project had never observed when the file was written:
 
   1. a CivTechTrees/<CIV>.json override -- no mod on this machine has ever
      shipped one, so "the engine reads that file" is a measurement, not a

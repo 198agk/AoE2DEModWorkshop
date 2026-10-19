@@ -820,12 +820,16 @@ assert _CT.node_status(_mix_tree, 3, use_types=_CT.TECH_USE_TYPES) \
 print("  the emitted trees grant a UNIT to BRITONS and a TECH to GOTHS, with no "
       "leak between the spaces")
 
-# A bundle of only REVOKE availability sentences must not CHANGE any .dat byte.
-# It DOES carry an unmodified copy, because the game fails to start when a mod
-# overrides `resources/_common/dat/` without `empires2_x2_p1.dat` -- reported by
-# the user in game twice (`_probe/test_dat_carrier.py`).  The trade-off is real
-# and is stated rather than hidden: the carried copy pins the base .dat to
-# today's bytes, which is the lesser evil compared with a mod that cannot launch.
+# A bundle of only REVOKE availability sentences DOES edit the .dat now -- see
+# the note below the build call, which has the date and the in-game evidence.
+# The paragraph that used to sit here said the opposite ("must not CHANGE any
+# .dat byte") and described the mod as carrying an unmodified copy; that was
+# true until `dsh test v17` (2026-10-19) and was left behind when the assertion
+# was corrected, so it is rewritten rather than deleted: what stays true is WHY
+# a .dat is in the mod at all (the game fails to start when a mod overrides
+# `resources/_common/dat/` without `empires2_x2_p1.dat`, reported by the user in
+# game twice -- `_probe/test_dat_carrier.py`).  A carrier is still the right
+# answer for any JSON-only edit; it is simply no longer what a revoke emits.
 #
 # GRANT is the other case now, and it is the one this section got wrong.  A
 # grant has a `.dat` half (the recipe the user confirmed in game, m27131), so

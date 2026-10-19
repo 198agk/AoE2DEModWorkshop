@@ -1532,30 +1532,46 @@ class Toolkit(object):
         # `.dat` half took effect, and this half did NOT -- in either mode
         # (add_row and set_status).  So the tree file is a MODEL of per-civ
         # availability, not a proven input.  Do not upgrade this wording back to
-        # a promise without a new in-game result.
+        # a promise without a new in-game result.  (Superseded in the useful
+        # direction by `dsh test v15` -- see the "status of the tree write"
+        # paragraph below: the model is not merely unproven, it is measured NOT
+        # to move the build menu.)
         #
-        # What the failure does NOT mean is "there is some other layer to write
-        # instead".  A later round refuted six candidate per-civ gates inside the
-        # `.dat` (membership, the record, the effect layer, prerequisite
-        # transitivity, the shipped TechTree -- which is a GLOBAL singleton -- and
-        # the overlay depth), so `CivTechTrees/` is the ONLY place a per-civ gate
-        # could live; that is why it is a directory with one file per civ.
+        # ⚠ THIS PARAGRAPH WAS HALF WRONG AND IS KEPT ONLY AS A WARNING.
+        # It used to argue: six candidate per-civ gates inside the `.dat` were
+        # refuted (membership, the record, the effect layer, prerequisite
+        # transitivity, the shipped TechTree singleton, overlay depth), so
+        # `CivTechTrees/` "is the ONLY place a per-civ gate could live".
+        #   * The six refutations are still measurements and still hold.
+        #   * The conclusion drawn from them does NOT.  A seventh dat-side
+        #     mechanism was never tested by those six: a `type 2` Enable/Disable
+        #     Unit command hung on a technology the civilization ITSELF owns, with
+        #     the LAST command to fire winning.  `dsh test v7` (2026-10-16) used it
+        #     to give unit 2550 to the Britons and `dsh test v17` (2026-10-19) used
+        #     its mirror (`b = 0`) to take 2550 away from the Incas -- but only from
+        #     the Castle Age, because the 0:00 carrier fired before the global
+        #     enable and lost.  Absence of evidence in six candidate sites was read
+        #     as evidence of absence everywhere, which is the same mistake this
+        #     project keeps paying for.
         #
-        # Two cheaper explanations for the 2026-10-14 failure are now REFUTED and
-        # must not be revived: "the overlay does not recurse into subdirectories"
-        # (`_probe/test_overlay_depth.py`: the WIDGETUI storage root has 550
-        # nested mod files, deepest 4 levels, and a depth-3 emblem is visible in
-        # game) and "the file name or FORM is wrong" (`_probe/test_tree_form.py`:
-        # the exe names `CivTechTrees/%s.json` exactly once, with its own
-        # generated field table ending immediately before it).
+        # Two cheaper explanations for the 2026-10-14 failure are still REFUTED
+        # and must not be revived: "the overlay does not recurse into
+        # subdirectories" (`_probe/test_overlay_depth.py`: the WIDGETUI storage
+        # root has 550 nested mod files, deepest 4 levels, and a depth-3 emblem is
+        # visible in game) and "the file name or FORM is wrong"
+        # (`_probe/test_tree_form.py`: the exe names `CivTechTrees/%s.json`
+        # exactly once, with its own generated field table ending immediately
+        # before it).
         #
-        # And the test itself may have been pointed at the wrong FILE: the
-        # sibling `futuravailableunits.json` is a SHIPPED artifact, not a runtime
-        # cache (its mtime is the same unpack as the tree files, and 11 game
-        # launches since have not rewritten it -- `_probe/probe_panel_provenance.py`).
-        # If the menu that was checked is fed by THAT file, rewriting the tree
-        # could not have changed it.  So treat the 2026-10-14 result as "the tree
-        # write is unproven", NOT as "the tree write is disproven".
+        # The status of the tree write is no longer "unproven" either.  `dsh test
+        # v15` (2026-10-19) sent ONLY two `CivTechTrees/*.json` over a
+        # byte-identical `.dat` carrier, asserted both trees chain-closed, kept
+        # the panel untouched, and the engine logged loading the mod -- the menu
+        # did not move in either direction.  That is a measurement, so: THE TREE
+        # LAYER DOES NOT ADD OR REMOVE A BUILD-MENU BUTTON.  It is still written,
+        # because a different screen reads it (the tech-tree preview's controls
+        # map to tree enum values 16 of 16, `_probe/test_screen_vocabulary.py`)
+        # -- but it is not what the sentence below may promise.
         #
         # 2026-10-15 narrowed it further, WITHOUT any mod installed: the shipped
         # `futuravailableunits.json` is SILENT about Sicilians' Siege Onager (`588`
@@ -1564,12 +1580,18 @@ class Toolkit(object):
         # `ResearchedCompleted` -- and a running game OFFERED both the upgrade and
         # the unit.  So the build menu does NOT follow the panel alone
         # (`_probe/test_time_gate_and_tooltip.py`).  That is evidence about the
-        # shipped files; it still does not show that a MOD EDIT to either file is
-        # honoured.
+        # shipped files; the 2026-10-19 runs (v15 tree-only, v16 button-byte-only)
+        # are what finally showed that a MOD EDIT to either JSON file is not what
+        # the button follows.
         #
         # The two layers are also 99.4% the same data (3,107 of 3,126 (civ, unit)
-        # pairs agree -- `_probe/test_panel_tree_agreement.py`), which is why this
-        # method writes BOTH: whatever the engine consults, it sees the edit.
+        # pairs agree -- `_probe/test_panel_tree_agreement.py`).  That used to be
+        # the stated reason this method writes BOTH ("whatever the engine
+        # consults, it sees the edit").  Both writes are STILL correct, but not
+        # for that reason: neither file is what adds or removes a build-menu
+        # button (v15 / v16, 2026-10-19).  They are written because other screens
+        # consume them, and because leaving them stale would make the two data
+        # layers disagree with the `.dat` the same mod ships.
         # The sentence names WHAT is being offered ("the unit" / "the technology"),
         # because that is the question the reader is asking; the tests assert the
         # noun is present, so dropping it is a silent regression in the wording.
@@ -1592,7 +1614,8 @@ class Toolkit(object):
         # veto what the `.dat` allows -- and that model is now REFUTED.
         #
         # The replacement model written here next was TOO STRONG, and an
-        # independent review cut it down.  What the evidence supports:
+        # independent review cut it down -- correctly.  What the evidence
+        # supported at that point:
         #
         #     the `.dat` is the only layer SHOWN to move the build menu;
         #     it is not shown to be the only layer that CAN move it
@@ -1606,20 +1629,23 @@ class Toolkit(object):
         #     its 2550 row was deleted, and no shipped tree file has a dangling
         #     link id, so the game may have fallen back to the `.dat` default
         #     tree.  That session also ran 43 s after the mod loaded with no map
-        #     load, so match entry cannot be confirmed.
+        #     load, so match entry cannot be confirmed.  (`revoke` no longer emits
+        #     that shape: `CT.revoke` cascades and `dangling_links` is asserted.)
         #   * 2026-10-15 JSON-only grant (`.dat` said no, JSON said yes)  -> hidden.
         #     Its log is gone, so this line cannot be cited as evidence.
         #
-        # Why the `.dat` cannot be the whole story: for units whose `type 2`
-        # enable is global (civ = -1) with no per-civ enable, the shipped `.dat`
-        # holds no per-civ availability signal at all.  32 units are like that,
-        # the Champi Scout among them.  The `.dat` DOES use per-civ enables for
-        # other units (8 -> civ 1, 11 -> civ 12, 763 -> civ 16), so it is a fact
-        # about those 32 rather than a blind spot.  Something outside the `.dat`
-        # decides which civs see their button, and the two dat-folder JSON layers
-        # are the only shipped data encoding that 4-civ split -- yet v9 deleted
-        # both and the button stayed, which is exactly the observation now marked
-        # provisional above.
+        # "Why the `.dat` cannot be the whole story" -- the paragraph that used to
+        # sit here -- is ANSWERED, and the answer went the other way.  It argued
+        # that for the 32 units whose `type 2` enable is global (civ = -1, no
+        # per-civ enable; the Champi Scout is one) the shipped `.dat` carries no
+        # per-civ signal, so something outside the `.dat` must decide.  Both JSON
+        # layers were then deleted in v9 and the button stayed.  What that
+        # paragraph missed is that the `.dat` can express it without touching the
+        # unit record: hang a `type 2` command on a technology the civilization
+        # OWNS, and the last command to fire wins.  The shipped data has nine
+        # disable commands (`_probe/probe_revoke_mechanism.py`), e.g. Armenians and
+        # Georgians lose the Lumber Camp through `tech 932/940 -> effect 944`.
+        # v17 confirmed the mechanism in game for unit 2550.
         #
         # That these files are READ is still supported, by weaker evidence than an
         # earlier revision of this comment claimed: `futuravailableunits.json`
@@ -1629,12 +1655,17 @@ class Toolkit(object):
         # the dat-folder copy -- a fixed engine entry point, with nothing said
         # about what the engine does with it.  `linkedTechs.json` separately
         # carries Cycle groupings the `.dat` cannot express.  The tech-tree screen
-        # `widgetui/screentechtree.json` has 17 icon widgets named in tree
-        # vocabulary, while `techtreepreviewpanel.json` mentions none of them, so
-        # "the preview reads the tree" rests on asset names, not a layout binding.
+        # `widgetui/screentechtree.json` has 16 icon widgets and all 16 map to
+        # tree enum values, while `techtreepreviewpanel.json` mentions none of
+        # them, so "the preview reads the tree" rests on asset names, not a
+        # layout binding.
         #
         # It means this module's JSON write side is a MODEL whose effect on the
-        # running build menu has not been demonstrated in either direction.
+        # running build menu has since been measured as NO effect (v15 for the
+        # tree, v16 for the button byte, v17 for the `.dat`).  Both files are
+        # still written, because the tree feeds the tech-tree preview and the
+        # panel feeds the greyed-out future-items view -- not because they gate a
+        # button.
         #
         # So the sentence below may not claim a JSON layer changes the menu.  It
         # says which layers this build wrote and which of them has ever been shown
@@ -1718,10 +1749,13 @@ class Toolkit(object):
         man["action"] = action
         # The `.dat` half's own report, for the same reason the panel half has
         # one: a build can write the two JSON layers and NOT the `.dat` recipe
-        # (the schema gives that action no half, the reach is the technology
-        # space, or a revoke found no carrier that fires late enough), and a
+        # (the reach is the technology space, which has no unit to enable or
+        # disable, or a revoke found no carrier that fires late enough), and a
         # caller must be able to tell "wrote all three" from "wrote only the
-        # two that no in-game test has needed".
+        # two JSON layers".  Both directions of the `.dat` recipe ARE in-game
+        # proven -- grant by `dsh test v7` (2026-10-16), revoke by
+        # `dsh test v17` (2026-10-19) -- so a refusal here is a limitation of
+        # this particular request, never the state of the art.
         man["dat_half"] = dat_rep
         man["space"] = ut[0]
         man["node_id"] = r.entity.id
