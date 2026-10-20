@@ -1568,8 +1568,15 @@ class Toolkit(object):
         # Preview first, using the SAME function the plan uses.  A build that
         # skipped this could write a duplicate row for a civ that already has the
         # unit -- a file whose parse is fine and whose meaning is undefined.
+        #
+        # `civ_zh` is passed for the same reason `plan` passes it: the refusal
+        # this can raise is player-facing prose, and `civ` is a file stem
+        # (INCAS).  Without it, the same rule would read "INCAS 本来就不能..."
+        # here and "印加 本来就不能..." from the preview -- two spellings of one
+        # answer, depending on which entry point the player used.
         pre = AV.plan(trees, civ, r.entity.id, action,
-                      display=r.entity.display, use_types=ut)
+                      display=r.entity.display, use_types=ut,
+                      civ_zh=CN.chinese(civ))
         if not pre["ok"]:
             raise C.IntentError(pre["reason"])
 
@@ -2682,7 +2689,8 @@ class Toolkit(object):
             # for a civ that already has the unit -- a file that parses fine and
             # means something undefined.
             pre = AV.plan(proposal, civ, r.entity.id, action,
-                          display=r.entity.display, use_types=ut)
+                          display=r.entity.display, use_types=ut,
+                          civ_zh=CN.chinese(civ))
             if not pre["ok"]:
                 raise C.IntentError(pre["reason"])
             if civ not in originals:
