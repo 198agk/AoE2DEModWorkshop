@@ -28,6 +28,21 @@ Rules
    the page.  A required key the page omits is a 500 on the first click.
 3. Every POST route the page calls must exist on the server, and every POST route
    that exists must be reachable from the page or listed as internal.
+4. The same three rules on the QUERY STRING: every `?key=` the page appends must
+   be a key the GET handler reads, and every GET route that reads a query but has
+   no caller must be listed as a decision rather than silently decorative.
+
+Rule 4 was added because the body half can pass while the query half is unchecked,
+and the query half is where the screen does most of its work: every grid cell asks
+`/api/icon` and every detail panel asks `/api/describe`.  A wrong key there fails
+QUIETLY -- `App.describe` is called with whatever the route's default was, so the
+answer is a well-formed `{"ok": true, "entity": ...}` for the wrong record, and no
+fetch stub and no server test can see it, because the stub answers whatever it is
+asked and the server test calls `App.describe` directly.
+
+Nothing was wrong on the day this rule was written.  It is here because the body
+rule was written the same way -- after the fact -- and the cost of a renamed key in
+either half is identical, so the guard belongs on both.
 
 Parsing the page by regex is ugly; the alternative is a JS parser, and the two
 shapes it must understand (object literals in argument position) are simple.  The
@@ -102,7 +117,8 @@ def server_reads(src):
     """{route: (required, optional)} for every POST handler.
 
     Bracket access is required (`payload["mod_dir"]`), `.get` is optional.  The
-    GET routes are ignored: they read the query string, not a body.
+    GET routes are handled separately by `server_queries`: they read the query
+    string, not a body.
     """
     out = {}
     posts = src.split("def do_POST(self):", 1)[1]
@@ -120,6 +136,50 @@ def server_reads(src):
         required = set(re.findall(r'payload\[\s*"([A-Za-z_]+)"\s*\]', head))
         optional = set(re.findall(r'payload\.get\(\s*"([A-Za-z_]+)"', head))
         out[m.group(1)] = (required, optional)
+    return out
+
+
+def page_queries(html):
+    """{route: set(keys)} for every `/api/...?...` URL the page builds.
+
+    The page assembles these by concatenation (`"/api/icon?kind=" + ... + "&id="
+    + ...`), so the keys do not all sit in the literal that names the route.  A
+    bounded window over the expression is enough: the keys are always spelled as
+    `?key=` or `&key=` between string literals, and nothing else in the page
+    writes that shape.
+    """
+    out = {}
+    for m in re.finditer(r'"(/api/[a-z\-]+)\?', html):
+        window = html[m.start():m.start() + 500]
+        # Stop at the end of the statement: a `;` outside a literal ends the URL.
+        keys = set(re.findall(r"[?&]([A-Za-z_]+)=", window))
+        out.setdefault(m.group(1), set()).update(keys)
+    return out
+
+
+def server_queries(src):
+    """{route: set(keys)} for every GET handler that reads a query.
+
+    Every GET key is optional by construction: each one is read with a default
+    (`q.get("kind", ["unit"])`), so there is no "required" half here -- which is
+    also why the default LISTS must not be mistaken for bracket access.  The
+    first version did exactly that (`["unit"]` inside a `.get` call matched the
+    payload-style `["k"]` pattern) and reported three phantom requirements.
+    """
+    out = {}
+    # Bounded by the end of `do_GET`: everything after it is `do_POST`, whose
+    # routes read a body and would otherwise be reported as "GET routes nothing
+    # calls" -- which is exactly how the first version got five phantom rows.
+    gets = src.split("def do_GET(self):", 1)[1].split("def do_POST", 1)[0]
+    parts = re.split(r'(?=\n\s*if path == ")', gets)
+    for part in parts:
+        m = re.match(r'\n\s*if path == "(/api/[a-z\-]+)"\s*:', part)
+        if not m:
+            continue
+        head = part[m.end():]
+        keys = set(re.findall(r'\.get\(\s*"([A-Za-z_]+)"', head))
+        if keys:
+            out[m.group(1)] = keys
     return out
 
 
@@ -155,6 +215,46 @@ def main():
         missing = sorted(required - keys)
         check("%s needs no key the page omits" % route, not missing,
               "missing: %s" % missing)
+
+    # ---- the same contract on the query string --------------------------
+    # The page builds these URLs by concatenation, so a renamed key is invisible
+    # to `fetch` stubs for the same reason it is invisible in a body: the stub
+    # answers whatever it is asked.  `/api/icon` and `/api/describe` are the two
+    # the screen leans on hardest (every grid cell and every detail panel).
+    ask = page_queries(html)
+    qread = server_queries(src)
+    print("page builds %d query URLs; the server handles %d GET routes that read a query"
+          % (len(ask), len(qread)))
+
+    for route in sorted(ask):
+        check("the page queries %s and the server handles it" % route,
+              route in qread, sorted(qread))
+        if route not in qread:
+            continue
+        stray = sorted(ask[route] - qread[route])
+        check("%s reads every query key the page sends" % route, not stray,
+              "ignored: %s" % stray)
+
+    # The two the grid and the detail panel depend on, named so a regression
+    # cannot be absorbed by the loop above passing on the other routes.
+    check("the grid asks for a picture by kind and id",
+          {"kind", "id"} <= ask.get("/api/icon", set()),
+          sorted(ask.get("/api/icon", ())))
+    check("the detail panel asks for a record by kind and id",
+          {"kind", "id"} <= ask.get("/api/describe", set()),
+          sorted(ask.get("/api/describe", ())))
+
+    # ---- GET routes that read a query but have no caller ----------------
+    # `/api/search` is superseded by the picture grid, and `/api/emblem` has no
+    # screen yet (the civilization emblem is decoded and served, but nothing on
+    # the page asks for it).  Both are real capabilities with no button, which is
+    # exactly the state this whole file exists to keep visible.
+    no_screen_get = {"search": "superseded by /api/browse",
+                     "emblem": "no screen shows a civilization emblem yet"}
+    uncalled = sorted(r for r in qread if r not in ask)
+    unexplained_get = [r for r in uncalled if r.rsplit("/", 1)[-1] not in no_screen_get]
+    check("every GET route the page never queries is a declared decision",
+          not unexplained_get, "unexplained: %s" % unexplained_get)
 
     # ---- the routes with no screen must be named, not forgotten ---------
     # `/api/plan` and `/api/search` are used by `tools/` and by hand, and
