@@ -191,7 +191,8 @@ class App(object):
         intents, clauses = nl.read(text, self.vocab(),
                                    civ_names=self.tk.civ_names,
                                    civ_zh=nl.CIV_ZH, pins=pins,
-                                   effect_count=self.tk.effect_count)
+                                   effect_count=self.tk.effect_count,
+                                   unit_class=self.tk.unit_class)
         out = []
         for cl in clauses:
             row = {"text": cl.text, "kind": cl.kind,
@@ -206,6 +207,10 @@ class App(object):
                                  if not isinstance(cl.entity, dict)
                                  else (cl.entity or {}).get("id")),
                    "why": cl.why, "notes": cl.notes,
+                   # The exact word the player used for a category ("骑兵"), so
+                   # the page can swap a chosen candidate into the sentence
+                   # instead of guessing which substring to replace.
+                   "class_word": getattr(cl, "class_word", None),
                    "candidates": [{"id": c.id if not isinstance(c, dict) else c["id"],
                                    "name": c.display if not isinstance(c, dict) else c.get("name")}
                                   for c in (cl.candidates or [])],

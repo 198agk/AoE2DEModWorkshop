@@ -185,6 +185,33 @@ def main():
         check("a pin is ignored when its name is gone from the sentence",
               not c2r.get("intent") and not c2r.get("entity"), str(c2r)[:200])
 
+        # ---- a class word is a category, not a record -------------------
+        # 骑兵 covers 188 visible units and is not one of them; 攻城武器 lands
+        # on the FACTORY (a building), 征服者 on 征服者威廉, 侦察兵 on 蔷琵侦察兵.
+        # Measured over all 62 class names: 15 of the 33 that resolved named a
+        # different kind of thing.  The server knows each record's class, so it
+        # is the only place that can tell the two apart.
+        st, cw1 = _post(base, "/api/parse", {"text": "骑兵的血量改成1000"})
+        cw = (cw1.get("clauses") or [{}])[0]
+        check("a class word is refused instead of editing a like-named record",
+              not cw.get("intent") and "一类" in (cw.get("why") or ""),
+              str(cw)[:240])
+        check("the refusal offers the units that class covers",
+              len(cw.get("candidates") or []) >= 3
+              and all(c.get("id") for c in cw.get("candidates") or []),
+              str((cw.get("candidates") or [])[:3]))
+        # The page cannot rewrite the sentence without knowing WHICH word was the
+        # category -- 骑兵 is not the name of any candidate, so guessing it from
+        # them is impossible.  This is the only place that fact crosses the wire.
+        check("the refusal names the exact word the player used for the class",
+              cw.get("class_word") == "骑兵", str(cw.get("class_word")))
+        # …but a word that IS a shipped name still works: 长枪兵 is both a class
+        # name and the name of unit 358.
+        st, cw2 = _post(base, "/api/parse", {"text": "长枪兵血量改成1000"})
+        check("a word that is also a real unit name still edits that unit",
+              ((cw2.get("clauses") or [{}])[0].get("intent") or {}).get("unit")
+              == 358, str(cw2)[:240])
+
         # ---- parse a refusal -------------------------------------------
         st, p = _post(base, "/api/parse", {"text": "这是什么"})
         check("a question comes back refused, not crashed", p.get("ok") is True,

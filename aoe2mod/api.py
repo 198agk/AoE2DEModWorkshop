@@ -175,6 +175,7 @@ class Toolkit(object):
                 producers = [t.get("unit_id")
                              for t in (u.get("train_locations") or [])]
                 facts[uid] = {"icon_id": u.get("icon_id"),
+                              "class": u.get("class"),
                               "producers": producers,
                               "builder": IC.BUILDER_UNIT_ID in producers}
         # A unit's TYPE does not vary by civilization (measured: 0 ids differ),
@@ -185,6 +186,18 @@ class Toolkit(object):
                                   if p not in (None, -1))
         self._uifacts = facts
         return facts
+
+    def unit_class(self, unit_id):
+        """The .dat unit class of one unit id, or None.  Cheap; cached pass.
+
+        The sentence reader needs it to tell a CATEGORY from a record: 骑兵 is
+        not a unit, it is 188 units, and "骑兵的血量改成1000" used to resolve to
+        whatever name started with 骑兵 (科技名「骑兵钢甲」, or the unit 蔷琵侦察兵
+        for 侦察兵).  Knowing the class of the record the sentence landed on is
+        what lets the reader say "that is a different kind of thing" instead.
+        """
+        row = self._unit_facts().get(unit_id)
+        return None if row is None else row.get("class")
 
     def browse(self, kind="unit", query="", limit=60, offset=0):
         """Entities a screen can put in a grid, with the icon facts it needs.

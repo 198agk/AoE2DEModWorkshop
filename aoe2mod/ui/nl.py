@@ -139,6 +139,11 @@ class Clause(object):
         self.candidates = []
         self.why = ""
         self.notes = []
+        # The word the sentence used for a CATEGORY ("骑兵") when the refusal is
+        # "that is a class, not a record".  The page needs the exact word to swap
+        # a chosen candidate into the sentence; guessing it from the candidates
+        # would rewrite the wrong part of what the player wrote.
+        self.class_word = None
 
     def __repr__(self):
         if self.intent is not None:
@@ -390,6 +395,65 @@ def class_names():
     return table
 
 
+def _class_word(text, table, sps=None):
+    """(class id, name) when the sentence names a UNIT CLASS rather than a unit.
+
+    A class name is a CATEGORY, not a record: 骑兵 covers 188 visible units and
+    步兵 214, while "骑兵" itself is no unit at all.  Measured on all 62 class
+    names with the sentence "X的血量改成1000": 33 resolved to something, and 15
+    of those resolved to a DIFFERENT thing that merely starts with the word --
+    攻城武器 -> 攻城武器厂 (the factory, a building), 征服者 -> 征服者威廉,
+    侦察兵 -> 蔷琵侦察兵.  A confident wrong answer is the worst shape here, so
+    a class word that does not resolve to a member of that class is refused.
+
+    The one position where a class name is NOT the thing being edited is right
+    after 对 ("步弓手对骑兵攻击加2"), where it names the bonus target; `_class_in`
+    owns that case and this helper steps aside.  A match INSIDE a longer known
+    name is not a class reference either: "重装骑兵" is a unit whose name happens
+    to end in 骑兵, so `sps` (the exact spans) suppresses those.
+    """
+    if not table:
+        return None
+    low = _norm(text)
+    spans = [(s[0], s[1], s[3]) for s in (sps or ())]
+    best = None
+    for cid, names in table.items():
+        for name in names:
+            key = _norm(name)
+            if not key:
+                continue
+            pos = low.find(key)
+            if pos < 0:
+                continue
+            if pos > 0 and low[pos - 1] == "对":
+                continue
+            if any(st <= pos and pos + len(key) <= en and len(txt) > len(key)
+                   for st, en, txt in spans):
+                continue
+            if best is None or len(key) > len(best[1]):
+                best = (cid, key)
+    return best
+
+
+def _class_members(vocab, cid, class_of, limit=8):
+    """Visible units of class `cid`, as (candidates, how many there are).
+
+    Ordered by name length, then id: the shortest name in a class is usually the
+    plainest member (步弓手 over 精锐长弓兵), which is the one a player naming the
+    class most likely meant.
+    """
+    out = []
+    if class_of is None:
+        return out, 0
+    for uid, e in (vocab.tables.get("unit") or {}).items():
+        if not getattr(e, "is_visible", False):
+            continue
+        if class_of(uid) == cid:
+            out.append(e)
+    out.sort(key=lambda e: (len(e.zh or e.display or ""), e.id))
+    return out[:limit], len(out)
+
+
 def _class_in(text, table):
     """(class id, matched name) named immediately after 对, or None.
 
@@ -598,8 +662,16 @@ def _effect_count(tech_id, counter):
 
 
 def read_clause(text, vocab, civ_names=None, civ_zh=None, pins=None,
-                effect_count=None):
-    """Read one sentence into a Clause.  Never raises; never guesses."""
+                effect_count=None, unit_class=None):
+    """Read one sentence into a Clause.  Never raises; never guesses.
+
+    `unit_class(unit_id)` answers "what kind of unit is record N", which is what
+    separates a category from a record: 骑兵 is not a unit, it is 188 of them.
+    Without it the reader cannot tell that the name it resolved merely STARTS
+    with the word the player used, and it edits the wrong thing confidently.
+    Optional because the reader must work with no .dat loaded at all (the NLP
+    tests do); when absent, class words are read as ordinary names.
+    """
     cl = Clause(text)
     raw = (text or "").strip()
     low = _norm(raw)
@@ -648,6 +720,40 @@ def read_clause(text, vocab, civ_names=None, civ_zh=None, pins=None,
                     cl.candidates = [e for e, _k in hits[:8]]
                     cl.notes.append("「%s」不是出厂单位名，按最接近的「%s」读；"
                                     "要别的可以换一个名字" % (left, ent.zh))
+
+    # --- a CLASS name is a category, not a record ------------------------
+    # Checked before anything is edited, and BEFORE the "nothing matched" refusal,
+    # because both wrong shapes come from here.  "骑兵的血量改成1000" has no 骑兵
+    # record at all: the exact-span pass finds nothing, the substring fallback
+    # picks 科技「骑兵钢甲」, and the reader then answers a technology question the
+    # player never asked.  攻城武器 lands on the FACTORY (a building), 征服者 on
+    # 征服者威廉, 侦察兵 on 蔷琵侦察兵 -- 15 of 62 class names did that, measured.
+    # So say what the word actually is and offer the units it covers.  Two exits:
+    # a resolved record whose name IS exactly this word (the game ships units
+    # called 长枪兵 and 骑射手 -- they merely share a name with a class), and a
+    # resolved unit whose own class IS this class (弓箭手 -> 复合弓箭手, class 0).
+    # No `unit_class` means no evidence, and then the gate stays shut: refusing
+    # 弓箭手 (the most natural sentence in Chinese, and not a unit name at all)
+    # because we cannot look up its class would be worse than the old reading.
+    cw = _class_word(raw, class_names(), sps) if unit_class is not None else None
+    if cw is not None:
+        cid, cname = cw
+        exact = any(_norm(t) == cname for _e, t, _k, _g in spans)
+        same_class = (kind == "unit" and ent is not None and unit_class is not None
+                      and unit_class(_eid(ent)) == cid)
+        if not (exact or same_class):
+            more, total = _class_members(vocab, cid, unit_class)
+            cl.kind = "unit"
+            cl.entity = None
+            cl.candidates = more
+            cl.class_word = cname
+            cl.why = "「%s」是一类单位，不是某一个" % cname
+            if total:
+                cl.why += ("（这一类里有 %d 个单位）。说具体名字，"
+                           "或者从下面点一个" % total)
+            else:
+                cl.why += "，这个版本里它一个单位都没有。"
+            return cl
 
     if ent is None:
         cl.candidates = []
@@ -917,7 +1023,8 @@ def _pieces(text, vocab=None):
     return out
 
 
-def read(text, vocab, civ_names=None, civ_zh=None, pins=None, effect_count=None):
+def read(text, vocab, civ_names=None, civ_zh=None, pins=None, effect_count=None,
+         unit_class=None):
     """Split on sentence punctuation and read every part.
 
     Returns (intents, clauses).  Intents are the actionable dicts; clauses carry
@@ -928,11 +1035,14 @@ def read(text, vocab, civ_names=None, civ_zh=None, pins=None, effect_count=None)
     `_pinned` for why a name is not enough.  `effect_count(tech_id)` answers "how
     many effect commands does this technology have", which is what makes "第2条"
     checkable; without it the reader edits the first command and says so.
+    `unit_class(unit_id)` is passed through to `read_clause`; see its docstring
+    for why a category word cannot be edited as if it were a record.
     """
     intents, clauses = [], []
     for part in _pieces(text, vocab):
         cl = read_clause(part, vocab, civ_names=civ_names, civ_zh=civ_zh,
-                         pins=pins, effect_count=effect_count)
+                         pins=pins, effect_count=effect_count,
+                         unit_class=unit_class)
         # "把村民的样子换成步弓手，连干活的样子一起换" splits at the comma into
         # two pieces, and the second one names no entity -- read alone it is a
         # refusal sitting next to an edit that ignored half of what the player

@@ -137,6 +137,28 @@ const FIXTURES = {
         notes: [], candidates: [], intent: null, buildable: false },
     ],
   },
+  // A real /api/parse answer for "骑兵的血量改成1000".  `class_word` is the word
+  // the PLAYER typed; the candidates are members of that class, and none of them
+  // is called 骑兵.  Without the exact word the page has to guess which substring
+  // to replace, and the guess it used to make was "put the picked name where the
+  // number was".
+  classRefusal: {
+    ok: true,
+    clauses: [
+      { text: "骑兵的血量改成1000", kind: "unit", entity: null, entity_id: null,
+        class_word: "骑兵",
+        why: "「骑兵」是一类单位，不是某一个（这一类里有 188 个单位）。说具体名字，或者从下面点一个",
+        notes: [],
+        candidates: [
+          { id: 448, name: "草骑射手" }, { id: 546, name: "草原枪骑兵" },
+          { id: 39, name: "骑射手" },
+        ],
+        // The real answer has NO intent: the gate fires before anything was
+        // read as an edit, which is exactly why the page takes the refusal
+        // branch rather than the "understood but cannot build" one.
+        intent: null, buildable: false },
+    ],
+  },
 };
 
 // Two real /api/describe answers, captured from the live server: one unit (this
@@ -305,6 +327,36 @@ try {
   page.renderClauses(FIXTURES.notUnderstood.clauses);
   check("a sentence that was not understood keeps its own reason",
         text(ids.preview).indexOf("这是在提问") >= 0, text(ids.preview));
+
+  // ---- a CLASS name: offer its members, and swap in the picked one --------
+  // "骑兵" is a category, not a record.  The server refuses it WITH candidates,
+  // and the page must (a) show them, (b) put the picked name where the player
+  // wrote the category -- not where the number was, which is what the old
+  // candidate renderer did -- and (c) remember the pick as a pin, because names
+  // are not unique (城门 is 29 records).
+  page.renderClauses(FIXTURES.classRefusal.clauses);
+  const clsText = text(ids.preview);
+  check("a class refusal reaches the screen with its count",
+        clsText.indexOf("一类单位") >= 0 && clsText.indexOf("188") >= 0, clsText);
+  const candButtons = walk(ids.preview, []).filter(
+    (n) => n.tagName === "BUTTON" && n.className === "chip" &&
+           (n.textContent || "").indexOf("(#") >= 0);
+  check("the class members are offered as clickable choices",
+        candButtons.length === 3, String(candButtons.length));
+  if (candButtons.length) {
+    ids.say.value = "骑兵的血量改成1000";
+    candButtons[0].onclick();
+    check("picking one rewrites the CATEGORY word, keeping the rest",
+          ids.say.value === "草骑射手的血量改成1000", ids.say.value);
+    const pins = page.PINS();
+    check("the pick is remembered by id, not just by name",
+          pins.length === 1 && pins[0].id === 448 && pins[0].kind === "unit",
+          JSON.stringify(pins));
+    // PINS is module state shared by every render, so a check below that expects
+    // "one pin after one grid click" would see MINE.  Hand the list back empty.
+    pins.length = 0;
+  }
+  page.setLast(FIXTURES.mixed);
 
   page.setLast(FIXTURES.mixed);
   // Render it again: the two checks above rendered the OTHER payloads, and the

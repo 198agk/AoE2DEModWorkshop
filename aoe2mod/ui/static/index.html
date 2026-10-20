@@ -689,15 +689,24 @@ function renderClauses(clauses) {
           const b = el("button", "chip", cand.name + " (#" + cand.id + ")");
           b.onclick = () => {
             // Rewrite just this sentence with the picked name, keeping the
-            // number and the verb the user already wrote.
+            // number and the verb the user already wrote.  When the refusal was
+            // "that is a class, not a record", the server hands over the EXACT
+            // word the player typed, so the replacement is that word and not a
+            // guess about which substring was the entity.
             const num = c.text.match(/[-+]?\d+(?:\.\d+)?/);
-            const rebuilt = cand.name + (num ? " " + num[0] : "");
+            const rebuilt = c.class_word
+              ? c.text.split(c.class_word).join(cand.name)
+              : cand.name + (num ? " " + num[0] : "");
             const ta = $("#say");
             const lines = ta.value.split("\n");
             const at = lines.indexOf(c.text);
             if (at >= 0) lines[at] = rebuilt;
             else ta.value = ta.value.replace(c.text, rebuilt);
             ta.value = lines.join("\n");
+            // Remember the pick the same way a grid click does: 靶场 is 10
+            // records and 城门 is 29, so a name alone is not enough.
+            PINS.unshift({kind: cand.kind || c.kind || "unit", id: cand.id, name: cand.name});
+            if (PINS.length > 12) PINS.length = 12;
             doParse();
           };
           cands.appendChild(b);

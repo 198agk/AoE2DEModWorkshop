@@ -337,6 +337,49 @@ def main():
           not intents and clauses and "科技" in (clauses[0].why or ""),
           intents or (clauses and [c.why for c in clauses]))
 
+    # ---- a class name is a category, not a record -----------------------
+    # 骑兵 covers 188 visible units and is not one of them.  Measured over all 62
+    # class names with "X的血量改成1000": 33 resolved, and 15 of those resolved to
+    # a DIFFERENT thing that merely starts with the word -- 攻城武器 -> 攻城武器厂
+    # (a building), 征服者 -> 征服者威廉, 侦察兵 -> 蔷琵侦察兵.  Only the .dat knows
+    # each record's class, so the reader takes a callback.
+    CLASS_OF = {1800: 0, 4: 0, 1968: 0, 358: 6, 39: 36, 125: 18, 370: 27}
+
+    def read_class(text, pins=None):
+        return nl.read(text, vocab, civ_names=None, civ_zh=nl.CIV_ZH,
+                       pins=pins, effect_count=_effect_count,
+                       unit_class=lambda uid: CLASS_OF.get(uid))
+
+    intents, clauses = read_class("骑兵的血量改成1000")
+    check("a class word is refused instead of editing a like-named record",
+          not intents and clauses and "一类" in (clauses[0].why or ""),
+          intents or (clauses and [c.why for c in clauses]))
+
+    intents, clauses = read_class("步兵的血量改成1000")
+    check("the refusal offers the units the class covers (as far as it knows)",
+          not intents and [c.id for c in (clauses[0].candidates or [])] == [358],
+          clauses[0].candidates)
+
+    # …but a word that is ALSO a shipped unit name still edits that unit: the
+    # game really ships units called 长枪兵 and 骑射手.
+    intents, _ = read_class("长枪兵血量改成1000")
+    check("a word that is also a real unit name is not treated as a category",
+          intents and intents[0].get("unit") == 358, intents)
+
+    # …and a word that resolves to a member of that very class is fine:
+    # 弓箭手 -> 复合弓箭手, both class 0.
+    intents, _ = read_class("弓箭手攻击力加 2")
+    check("a class word that resolves into its own class still edits",
+          intents and intents[0].get("unit") == 1800
+          and intents[0].get("delta") == 2, intents)
+
+    # The gate needs data to say anything.  With no callback the reader must not
+    # claim to know that a word is a category.
+    intents, clauses = read("骑兵的血量改成1000")
+    check("without class data the reader does not guess about categories",
+          not any("一类" in (c.why or "") for c in clauses),
+          [c.why for c in clauses])
+
     # ---- honesty: every clause carries either an intent or a reason ------
     _, clauses = read("随便写点什么")
     for cl in clauses:
