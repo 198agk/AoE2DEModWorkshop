@@ -52,16 +52,27 @@ C. The set of widget classes is CLOSED and compiled in.
       those are data.  A NEW kind of widget cannot exist, because the class it
       would instantiate is not in the image.
 
+D. A PUBLISHED MOD ALREADY SHIPS INTO THAT ROOT.
+   - the player's subscribed theme mod `550412_透明主题整合自用` carries 50 files
+     under resources/_common/wpfg/resources/, 49 of which have the exact same
+     relative path as a file in the game tree -- i.e. they sit on the same
+     lookup, not in a private corner -- and 29 of those 49 DIFFER from the
+     game's copy.  So a loose file landing in wpfg is not a hypothesis.
+   - This leg is machine state, so a missing theme mod is a SKIP with a printed
+     reason, never a silent pass.  It also must pick the account folder the way
+     the product does: taking the first alphabetical one found `0` (a leftover
+     local mod) and skipped while the mod was right there.
+
 HONESTY BOUNDARY -- read this before quoting the result
 ------------------------------------------------------
 None of the above is an in-game observation.  B proves the PRECONDITION for a
 loose-file layout mod (a mod-visible root, markup read from disk, lookup by
-path); it does not prove that replacing a .xaml changes what the player sees.
-That would need the same kind of one-file mod test the panel experiment used,
-and this probe deliberately does not claim it.  What IS proven and relevant:
-no amount of reversing makes the game run our code, because there is no code
-loader in it -- which is the part of the player's question that has a hard
-answer.
+path) and D shows a shipped mod already puts real files there; neither proves
+that replacing a .xaml changes what the player sees.  That would need the same
+kind of one-file mod test the panel experiment used, and this probe
+deliberately does not claim it.  What IS proven and relevant: no amount of
+reversing makes the game run our code, because there is no code loader in it --
+which is the part of the player's question that has a hard answer.
 """
 import os
 import re
@@ -206,6 +217,44 @@ def main():
           len(groups) >= 3, repr(sorted(groups)))
 
     print()
+    print("== D. a published mod already ships into the wpfg root ==")
+    # Suite B argues from the exe's root table that a loose file CAN land in
+    # wpfg.  This is the weaker but real-world leg: somebody already did it.
+    # The files below are the game's own texture names, so overriding them is
+    # overriding the same lookup the base game uses -- not a private copy.
+    #
+    # These live in the player's profile, which is machine state: a missing
+    # theme mod is not a defect of this project.  So it is a SKIP with a printed
+    # reason, never a silent pass -- the same rule that keeps install tests from
+    # hardcoding a mod list.
+    precedent = _theme_mod()
+    if precedent is None:
+        print("  SKIP  no subscribed mod on this machine ships into wpfg")
+        print("        (suite B still stands on the exe's own root table; this")
+        print("         leg is a real-world corroboration, not the proof)")
+    else:
+        name, shipped, theirs, diff, new, same, markup = precedent
+        check("a published mod really ships files into resources/_common/wpfg",
+              shipped >= 20, "%s :: %d files" % (name, shipped))
+        check("those files use the game's own paths, so they override that lookup",
+              theirs > 0, "%d of %d exist verbatim in the game tree" % (theirs, shipped))
+        # 29 of the 49 differ.  The point is "real overrides, not copies", so the
+        # threshold stays loose enough to survive on another machine.
+        check("and they are actually different from the game's copies",
+              diff >= 10, "%d differ, %d identical, %d new" % (diff, same, new))
+        # What is NOT precedented, measured rather than assumed: no installed mod
+        # on this machine ships a single .xaml.  This is a NOTE, not a check --
+        # "no xaml mod happens to be installed today" is machine state, and a
+        # suite that turns red because someone subscribed a layout mod would be
+        # crying wolf about something that is not a defect.  It is printed so a
+        # later reader can see which half of wpfg has precedent and which half
+        # rests on suite B's structural argument alone.
+        print("  note  %d .xaml across every installed mod -- the texture half of"
+              % markup)
+        print("        wpfg has precedent, the MARKUP half has none; that is why")
+        print("        the honesty note below still sends .xaml to its own test")
+
+    print()
     bad = [c for c in CHECKS if not c[1]]
     if bad:
         print("UI LAYER: %d OF %d CHECKS FAILED -- %s"
@@ -215,9 +264,99 @@ def main():
           "markup on disk, closed class set" % len(CHECKS))
     print("NOT PROVEN HERE: that replacing a .xaml changes what the player sees.")
     print("  B proves the precondition (a root a loose file can land in + markup")
-    print("  read from disk + lookup by path).  The in-game override is a separate")
-    print("  experiment, of the same shape as the build-panel one.")
+    print("  read from disk + lookup by path).  D shows a published mod already")
+    print("  ships into that root with the game's own texture paths.  The .xaml")
+    print("  override itself is a separate in-game experiment, of the same shape")
+    print("  as the build-panel one.")
     return 0
+
+
+def _theme_mod():
+    """Find a subscribed mod that ships into the wpfg root and measure it.
+
+    Returns (mod_name, shipped, present_in_game, differ, only_in_mod, same,
+    markup_across_all_mods) or None when this machine has no such mod.
+
+    The shipped count includes files under wpfg that are NOT under
+    wpfg/resources/, so a mod that only ships markup is measured too; the
+    present/differ/same tallies stay scoped to the game's own paths, since that
+    is the only place a comparison is meaningful.
+    """
+    import hashlib
+
+    profile = os.environ.get("AOE2DE_PROFILE") or os.path.join(
+        os.path.expanduser("~"), "Games", "Age of Empires 2 DE")
+    if not os.path.isdir(profile):
+        return None
+    sub_root = _account(profile)
+    if sub_root is None:
+        return None
+    sub = os.path.join(profile, sub_root, "mods", "subscribed")
+    if not os.path.isdir(sub):
+        return None
+    root_rel = os.path.join("resources", "_common", "wpfg")
+    art_rel = os.path.join(root_rel, "resources")
+
+    def sha(p):
+        h = hashlib.sha256()
+        with open(p, "rb") as fh:
+            for chunk in iter(lambda: fh.read(1 << 20), b""):
+                h.update(chunk)
+        return h.hexdigest()
+
+    best = None
+    for mod in sorted(os.listdir(sub)):
+        base = os.path.join(sub, mod, root_rel)
+        if not os.path.isdir(base):
+            continue
+        shipped = present_in_game = differ = new = same = 0
+        for dirpath, _d, files in os.walk(base):
+            for fn in files:
+                p = os.path.join(dirpath, fn)
+                shipped += 1
+                rel = os.path.relpath(p, base)
+                if rel.split(os.sep)[0] != "resources":
+                    continue          # markup/other: no base-game twin to compare
+                g = os.path.join(os.path.join(GAME, root_rel), rel)
+                if not os.path.exists(g):
+                    new += 1
+                    continue
+                present_in_game += 1
+                if sha(p) == sha(g):
+                    same += 1
+                else:
+                    differ += 1
+        if best is None or shipped > best[1]:
+            best = (mod, shipped, present_in_game, differ, new, same,
+                    _mods_shipping_markup(sub))
+    return best
+
+
+def _mods_shipping_markup(mods_root):
+    """How many .xaml files the installed mods ship, anywhere in their tree."""
+    n = 0
+    for dirpath, _d, files in os.walk(mods_root):
+        for fn in files:
+            if fn.lower().endswith(".xaml"):
+                n += 1
+    return n
+
+
+def _account(profile_root):
+    """Pick the account folder the product would install into.
+
+    Do NOT take the first alphabetical one: this machine has both ``0`` (a
+    leftover local mod, no status file) and the SteamID64 (the live profile
+    that owns every subscribed mod).  Taking ``0`` made suite D skip while the
+    theme mod was sitting right there -- a silent pass caused by picking the
+    wrong folder, which is the same trap `pick_account` exists to avoid.
+    """
+    from aoe2mod.game import locations as L
+
+    try:
+        return os.path.basename(L.pick_account(profile_root))
+    except Exception:
+        return None
 
 
 if __name__ == "__main__":
