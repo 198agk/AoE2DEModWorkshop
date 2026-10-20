@@ -27,10 +27,18 @@ Four surfaces, because the screen prints four different things:
                           `server._safe_plan` / `_guard` put on screen verbatim
 Surface 4 was missing until 2026-10-20: this file read only the first three while
 105 English `raise` literals sat behind them.
+
+A fifth surface is not a new SHAPE of sentence but a second ROUTE to the same
+one: `build` calls the same rule as `plan` from its own line of code.  Both were
+readable while disagreeing about how to spell a civilization ("INCAS" from the
+build, "印加" from the preview), which no character-range check can notice --
+it takes running both and comparing.  See `BUILD_CASES`.
 """
 import os
 import re
+import shutil
 import sys
+import tempfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
@@ -175,6 +183,25 @@ WARNING_CASES = [
       "action": "grant"}),
 ]
 
+#: Sentences that must be refused by BOTH entry points with the SAME words.
+#: These are refusals, so `build` raises before it writes anything -- the temp
+#: folder stays empty and cheap.  The civilization is given as a `.dat` name on
+#: purpose: that is the input a caller (and the HTTP route) really passes, and
+#: it is exactly the shape that used to print "INCAS" on the build path.
+BUILD_CASES = [
+    ("revoking a unit the civ never had",
+     {"intent": "unit.availability", "unit": 2550, "civ": "British",
+      "action": "revoke"}),
+    ("granting a tech the civ already has",
+     {"intent": "tech.availability", "tech": 3, "civ": "British",
+      "action": "grant"}),
+]
+
+#: The Chinese spelling each case must contain.  Written out rather than derived,
+#: so a rename in `civnames.py` fails here instead of silently agreeing with
+#: itself.
+BUILD_ZH = ("不列颠",)
+
 
 def main():
     tk = A.open_toolkit(game_root=GAME)
@@ -277,13 +304,65 @@ def main():
                   not re.search(r"(?<![A-Za-z])%s(?![A-Za-z])" % res_en, prose),
                   text[:140])
 
+    # ---- the fifth surface: the SAME rule reached through `build` ----------
+    # `plan`, `build` and `build_bundle` each call `AV.plan` from their own line
+    # of code, and the refusal they raise is the same sentence.  Until 2026-10-20
+    # only the preview call site passed `civ_zh`, so the build read
+    # "BRITONS本来就不能建造..." while the preview read "不列颠本来就不能...".  Two
+    # spellings of one answer is a defect even when both are readable, and a
+    # character-range check cannot see it -- it takes comparing the entry points.
+    #
+    # Both non-preview routes are here because they are separate call sites: a
+    # fix applied to one says nothing about the other, which is exactly how this
+    # survived (the preview was right for weeks while two build routes were not).
+    #
+    # Measured cost: 0.00 s per refusal once the `.dat` is warm -- the rule reads
+    # the trees, not the records, and a refusal writes no file (verified: 0 files
+    # left behind), so this belongs in the fast suite.
+    agreed = 0
+    for label, raw in BUILD_CASES:
+        try:
+            plan = tk.plan(raw)
+            preview_text = str(plan.get("reason") or "")
+        except Exception as exc:                       # noqa: BLE001
+            preview_text = str(exc)
+        for route in ("build", "bundle"):
+            out = tempfile.mkdtemp(prefix="prosebuild_")
+            try:
+                if route == "build":
+                    tk.build(raw, title="prose", author="dsh", out_dir=out)
+                else:
+                    # `build_bundle` takes the LIST form -- the same shape the
+                    # HTTP route posts, so this is the route a player reaches by
+                    # pressing 构建 on several clauses at once.
+                    tk.build_bundle([raw], title="prose", author="dsh",
+                                    out_dir=out)
+                build_text = "(no refusal)"
+            except Exception as exc:                   # noqa: BLE001
+                build_text = str(exc)
+            finally:
+                leftover = sum(len(fs) for _r, _d, fs in os.walk(out))
+                shutil.rmtree(out, ignore_errors=True)
+            check("%s via %s: refuses instead of writing" % (label, route),
+                  build_text != "(no refusal)", build_text[:140])
+            check("%s via %s: leaves no half-written mod" % (label, route),
+                  leftover == 0, "%d files" % leftover)
+            check("%s via %s: says what the preview says" % (label, route),
+                  build_text == preview_text,
+                  "got=%r preview=%r" % (build_text[:60], preview_text[:60]))
+            check("%s via %s: no raw civ stem" % (label, route),
+                  not re.search(r"\b[A-Z]{4,}\b", build_text), build_text[:140])
+            check("%s via %s: names the civ in Chinese" % (label, route),
+                  any(zh in build_text for zh in BUILD_ZH), build_text[:140])
+            agreed += 1
+
     print()
     if FAIL:
         print("PLAYER-FACING TEXT FAILED (%d): %s" % (len(FAIL), FAIL))
         return 1
     print("EVERY PLAYER-FACING SENTENCE IS CHINESE AND NAMES REAL THINGS"
-          " (%d strings, %d warnings, %d refusals)"
-          % (len(seen), warned, raised))
+          " (%d strings, %d warnings, %d refusals, %d build refusals)"
+          % (len(seen), warned, raised, agreed))
     return 0
 
 
