@@ -148,6 +148,15 @@ SUITES = [
     # and is wrong, and "the menus are untouchable" is wrong in the other
     # direction.
     r"_probe\test_ui_layer_wiring.py",
+    # A second icon source that LOOKS like a drop-in replacement.  95 PNGs under
+    # wpfg/resources/uniticons at 256 px, named NNN_50730, in a root the suite
+    # above proves mod-overridable.  Wiring it per icon id would be a guess: it
+    # covers 95 of the 1,000 Units icon ids, and the one place the install says
+    # what they are for names two of them after a civilization (`armenians_...`
+    # -> 041, `georgians_...` -> 035), which is exactly the kind of near-miss
+    # that ships a wrong picture.  This pins the naming rule and the coverage
+    # gap so nobody "improves" the grid into using it without measuring.
+    r"_probe\test_uniticons_hires.py",
     # The update guard.  Every mod this tool builds ships a whole 12 MB .dat, so
     # a game patch is silently overwritten by the installed copy -- and nothing
     # says so.  The guard's five statuses each have to be reachable, and two of
@@ -155,6 +164,16 @@ SUITES = [
     # keep it from crying wolf: a false alarm costs the user a pointless rebuild,
     # and after the second one they stop reading it.
     r"_probe\test_update_guard.py",
+    # Why the game refuses to open after the .dat is copied into the install
+    # directory.  The player hit that dialog and asked; the answer is a compiled
+    # set of file checksums, and it has a product consequence that is easy to get
+    # backwards: the .dat in the install directory IS checked, the availability
+    # panel JSON is NOT -- so a loose panel file is legitimate where a replaced
+    # .dat is not, which is what every working experiment here already relies on.
+    # It also names the reason three earlier searches failed: the dialog's line
+    # is IDS_WARN_USER_FILE_CRC_BREAK, a NAMED key, and every loader in this repo
+    # reads only the numeric half of that table.
+    r"_probe\test_file_crc_table.py",
     # The registry itself.  Ten probes rotted unrun before anyone noticed, and
     # the reason nobody noticed is that "is every test reachable?" was a question
     # only a human could answer.  This asks it mechanically, including the four
