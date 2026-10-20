@@ -174,6 +174,15 @@ SUITES = [
     # is IDS_WARN_USER_FILE_CRC_BREAK, a NAMED key, and every loader in this repo
     # reads only the numeric half of that table.
     r"_probe\test_file_crc_table.py",
+    # The other half of the install story.  The user chose (2026-10-20) to warn
+    # and still install while the game is open, because the engine rewrites
+    # mod-status.json at exit and can undo the entry while leaving the files.
+    # The load-bearing assertion is the third answer: an unreadable process table
+    # must NOT read as "it is closed", or the guard becomes a false all-clear.
+    # The suite also spends a real install on a throwaway account, because the
+    # answer has to reach the manifest the screen reads, not just live in a
+    # function nobody calls.
+    r"_probe\test_install_running.py",
     # The registry itself.  Ten probes rotted unrun before anyone noticed, and
     # the reason nobody noticed is that "is every test reachable?" was a question
     # only a human could answer.  This asks it mechanically, including the four

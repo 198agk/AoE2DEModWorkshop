@@ -119,6 +119,10 @@
   .toast.ok { border-color: var(--ok); }
   .empty { color: var(--dim); text-align: center; padding: 26px 0; }
   .err { color: var(--bad); font-size: 12px; white-space: pre-wrap; }
+  /* A warning is not an error: it says something may not stick, not that what
+     you asked for was wrong.  Same reason it is not red. */
+  .warn { color: var(--warn); font-size: 12px; white-space: pre-wrap;
+          margin-top: 8px; }
 
   /* Only shown when the game's data moved under an installed mod.  The mod
      carries a whole .dat, so it would overwrite the patch; rebuilding is the
@@ -757,6 +761,12 @@ async function doBuild() {
       "装好了。数据模组要开局前在游戏里的模组界面选中它，进入对局才真正加载。");
     $("#buildnote").innerHTML = "";
     $("#buildnote").appendChild(note);
+    // The game rewrites mod-status.json when it exits, so an entry written while
+    // it runs can be replaced by the list it still remembers.  Warn, do not
+    // refuse: dropping a data mod into the folder mid-session is something the
+    // user does on purpose (they said so on 2026-10-16).
+    const warn = inst.installed && inst.installed.running_warning;
+    if (warn) $("#buildnote").appendChild(el("div", "warn", warn));
   } catch (e) {
     toast("没做成：" + e.message, "bad");
     $("#buildnote").innerHTML = "";

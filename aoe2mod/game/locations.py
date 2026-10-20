@@ -557,6 +557,85 @@ def remove_mod_entry(doc, name, kind="local"):
     return removed
 
 
+GAME_PROCESS = "AoE2DE_s.exe"
+
+
+def game_running(process=GAME_PROCESS):
+    """Is the game running right now?  ``True`` / ``False`` / ``None``.
+
+    Three-valued on purpose: a false "no" is an alarm that teaches the user to
+    ignore alarms, so a process table we could not read must answer ``None``,
+    not ``False``.
+
+    A Toolhelp snapshot rather than ``tasklist``: measured 4 ms for 267
+    processes and it spawns nothing.  The probe scripts used
+    ``subprocess.run(["tasklist", ...])``, which is a process spawn whose
+    failure mode (no permission, no PATH) is indistinguishable from "not
+    running" -- exactly the wrong way for this question to fail.
+
+    Why ask at all: the engine holds the mod list in memory and rewrites
+    ``mod-status.json`` when it exits.  An entry written while the game is
+    running can therefore be replaced by the older list at exit -- the files
+    stay, the entry disappears.  The user chose (2026-10-20) to WARN and still
+    install, not to refuse: dropping a data mod folder in while playing is a
+    real thing people do.
+    """
+    if os.name != "nt":
+        return None
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        class _PE32(ctypes.Structure):
+            _fields_ = [
+                ("dwSize", wintypes.DWORD), ("cntUsage", wintypes.DWORD),
+                ("th32ProcessID", wintypes.DWORD),
+                ("th32DefaultHeapID", ctypes.POINTER(ctypes.c_ulong)),
+                ("th32ModuleID", wintypes.DWORD), ("cntThreads", wintypes.DWORD),
+                ("th32ParentProcessID", wintypes.DWORD),
+                ("pcPriClassBase", ctypes.c_long), ("dwFlags", wintypes.DWORD),
+                ("szExeFile", ctypes.c_wchar * 260),
+            ]
+
+        k32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        k32.CreateToolhelp32Snapshot.restype = wintypes.HANDLE
+        k32.CreateToolhelp32Snapshot.argtypes = [wintypes.DWORD, wintypes.DWORD]
+        snap = k32.CreateToolhelp32Snapshot(0x2, 0)   # TH32CS_SNAPPROCESS
+        if not snap or snap == wintypes.HANDLE(-1).value:
+            return None
+        try:
+            e = _PE32()
+            e.dwSize = ctypes.sizeof(_PE32)
+            if not k32.Process32FirstW(snap, ctypes.byref(e)):
+                return None
+            want = process.lower()
+            while True:
+                if e.szExeFile.lower() == want:
+                    return True
+                if not k32.Process32NextW(snap, ctypes.byref(e)):
+                    return False
+        finally:
+            k32.CloseHandle(snap)
+    except Exception:                                  # noqa: BLE001
+        return None
+
+
+def running_note(process=GAME_PROCESS):
+    """The two manifest fields that carry the "is the game open" answer.
+
+    Merged into every result that writes ``mod-status.json`` -- install,
+    uninstall and enable/disable all have the same hazard, so they all say the
+    same thing instead of one of them looking safe by silence.
+    """
+    running = game_running(process)
+    note = None
+    if running:
+        note = ("游戏正开着。它退出时会用自己记得的模组列表覆盖 "
+                "mod-status.json，所以这次写进去的改动可能被盖掉（文件还在，"
+                "列表里没有）。装完回游戏里看一眼，或者关掉游戏再写一次。")
+    return {"game_running": running, "running_warning": note}
+
+
 def install_mod(mod_dir, profile_root, name=None, title=None, kind="local",
                 enabled=True, position=0, account=None, overwrite=False,
                 backup=True):
@@ -667,6 +746,11 @@ def install_mod(mod_dir, profile_root, name=None, title=None, kind="local",
     if man["dat"]:
         man["dat_sha256"] = sha256_file(man["dat"])
         man["dat_file_bytes"] = os.path.getsize(man["dat"])
+    # "Do I need to close the game" is a different question from "do I need to
+    # relaunch it", and this manifest used to answer only the second one.  Both
+    # are now answered, because a user who is told "no restart needed" will
+    # reasonably leave the game open -- and that is when the entry gets lost.
+    man.update(running_note())
     return man
 
 
@@ -730,6 +814,7 @@ def uninstall_mod(profile_root, name, kind="local", remove_files=True,
         acc = pick_account(profile_root)
 
     folder, how = resolve_mod_name(profile_root, name, kind=kind, account=acc)
+    _running = running_note()
 
     doc, acc, _ = read_status_doc(profile_root, account=acc)
     removed = remove_mod_entry(doc, folder, kind=kind)
@@ -744,7 +829,9 @@ def uninstall_mod(profile_root, name, kind="local", remove_files=True,
     return {"account": acc, "name": folder, "requested": name,
             "resolved_by": how, "kind": kind,
             "entries_removed": removed, "folder_removed": files_gone,
-            "mod_dir": target, "status_entries": len(doc.get("Mods", []))}
+            "mod_dir": target, "status_entries": len(doc.get("Mods", [])),
+            "game_running": _running["game_running"],
+            "running_warning": _running["running_warning"]}
 
 
 def set_mod_enabled(profile_root, name, enabled, kind="local", account=None,
@@ -764,12 +851,15 @@ def set_mod_enabled(profile_root, name, enabled, kind="local", account=None,
     else:
         acc = pick_account(profile_root)
     folder, _how = resolve_mod_name(profile_root, name, kind=kind, account=acc)
+    _running = running_note()
     doc, acc, _ = read_status_doc(profile_root, account=acc)
     entry = upsert_mod_entry(doc, folder, kind=kind, enabled=enabled)
     write_status_doc(acc, doc, backup=backup)
     return {"account": acc, "name": name, "kind": kind,
             "enabled": bool(entry["Enabled"]), "priority": entry["Priority"],
-            "path_field": entry["Path"]}
+            "path_field": entry["Path"],
+            "game_running": _running["game_running"],
+            "running_warning": _running["running_warning"]}
 
 
 def sha256_file(path):

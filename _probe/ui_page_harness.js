@@ -237,6 +237,16 @@ const UPDATE = {
 };
 let UPDATE_ANSWER = UPDATE.stale;
 const rebuilt = [];
+// The game-running warning, as a switchable state: the same install route must
+// say something when the game is open and NOTHING when it is closed (a warning
+// shown always is a warning nobody reads).
+let RUNNING = true;
+const RUNNING_TEXT = "游戏正开着。它退出时会用自己记得的模组列表覆盖 mod-status.json，"
+  + "所以这次写进去的改动可能被盖掉（文件还在，列表里没有）。装完回游戏里看一眼，"
+  + "或者关掉游戏再写一次。";
+// The build route's answer: {manifest} with a mod_dir, then the install POST.
+const BUILD_ANSWER = { ok: true, manifest: { mod_dir: "/tmp/x",
+  info: { Title: "x" } } };
 
 // ---- run the real script -------------------------------------------------
 const posted = [];
@@ -260,6 +270,9 @@ const sandbox = {
     if (url.indexOf("/api/parse") === 0) {
       return { json: async () => FIXTURES.mixed };
     }
+    if (url.indexOf("/api/build") === 0) {
+      return { json: async () => BUILD_ANSWER };
+    }
     if (url.indexOf("/api/update-check") === 0) {
       // The route wraps its answer the way the server does ({ok, update}); a stub
       // that returned the bare rows would let a page bug (reading the wrong
@@ -270,6 +283,17 @@ const sandbox = {
       const body = opt && opt.body ? JSON.parse(opt.body) : {};
       rebuilt.push(body.title);
       return { json: async () => ({ ok: true, manifest: {}, installed: {} }) };
+    }
+    // The install route answers with the game-running answer inside
+    // `installed`, because that is the shape `install_mod` returns.  A stub that
+    // omitted it would make "the screen warns while the game is open" untestable
+    // -- the page would silently read `undefined` and look fine.
+    if (url.indexOf("/api/install") === 0) {
+      return { json: async () => ({ ok: true, installed: {
+        name: "x", title: "x", installed: true,
+        game_running: RUNNING,
+        running_warning: RUNNING ? RUNNING_TEXT : null,
+      } }) };
     }
     return { json: async () => ({ ok: true, version: 54, civs: new Array(63),
       intents: [], mods: [], manifest: { mod_dir: "/tmp/x", info: {} } }) };
@@ -437,6 +461,19 @@ function buildChecks() {
     check("the refusal never reaches /api/build",
           !sent.some((i) => i.intent === "tech.research_time"),
           JSON.stringify(sent));
+    // The game rewrites mod-status.json on exit, so an install while it runs can
+    // be undone at exit.  The screen must SAY so -- and must say nothing when
+    // the game is closed, or the line becomes furniture.
+    check("installing while the game runs warns on screen",
+          text(ids.buildnote).indexOf("游戏正开着") >= 0, text(ids.buildnote));
+    check("the warning is not styled as an error",
+          !walk(ids.buildnote, []).some((n) => n.className === "err"),
+          JSON.stringify(walk(ids.buildnote, []).map((n) => n.className)));
+    RUNNING = false;
+    return page.doBuild();
+  }).then(() => {
+    check("no warning when the game is closed",
+          text(ids.buildnote).indexOf("游戏正开着") < 0, text(ids.buildnote));
     return pickChecks();
   }).catch((e) => { fails.push("doBuild threw: " + e.message);
                     console.log("FAIL doBuild threw :: " + e.stack); finish(); });
