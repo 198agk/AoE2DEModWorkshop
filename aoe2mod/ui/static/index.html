@@ -146,7 +146,7 @@
   .cell .nm { font-size: 10px; color: var(--dim); line-height: 1.25; text-align: center;
               max-width: 100%; overflow: hidden; text-overflow: ellipsis;
               white-space: nowrap; }
-  /* 1,349 of the game's 2,693 units ship no picture.  Saying so beats a hole. */
+  /* Some of the game's units ship no picture.  Saying so beats a hole. */
   .cell.noicon .blank { width: 44px; height: 44px; display: flex; align-items: center;
                         justify-content: center; color: var(--line); font-size: 18px;
                         border: 1px dashed var(--line); border-radius: 4px; }
@@ -215,8 +215,7 @@
             <span class="hint" id="pickcount" style="margin:0"></span>
           </div>
           <div class="hint">点一个图标，就把它填进上面的框里；也可以直接把它拖进上面的框。
-            有些东西游戏本身没有图（1,349 个单位没有），
-            那些格子画成虚线框，仍然可以点。</div>
+            有些东西游戏本身没有图，那些格子画成虚线框，仍然可以点。</div>
           <div class="pickscroll"><div class="grid" id="pickgrid"></div></div>
           <div class="row end" style="margin-top:8px">
             <button id="pickmore" class="chip">再多看一些</button>
@@ -393,8 +392,7 @@ function renderMods(mods) {
 // Typing a name only works if you already know the name, and the game's Chinese
 // names are not the ones players use: 弓箭手 is not any unit's name, and 城堡 is
 // both a building and part of a technology's name.  This panel lets a player
-// point at a picture instead, which is also the only way to find the 1,349 units
-// whose name in this build is an internal code name.
+// point at a picture instead of recalling a name.
 const PICK = {kind: "unit", query: "", offset: 0, total: 0, busy: false};
 const PICK_STEP = 60;
 // Picks are sent back with the sentence so a clicked picture keeps its id.
@@ -642,8 +640,8 @@ function renderClauses(clauses) {
     const wrap = el("div", "clause " + (can ? "ok" : "bad"));
     // The picture comes from the game's own files, through /api/icon, so the
     // screen shows what the player would see in the build menu.  A missing
-    // picture is a fact about the game (1,349 units have none), so it is simply
-    // not rendered rather than shown as a broken-image box.
+    // picture is a fact about the game, so it is simply not rendered rather
+    // than shown as a broken-image box.
     if (c.entity_id != null && c.kind) {
       const img = document.createElement("img");
       img.className = "ico";

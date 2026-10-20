@@ -204,12 +204,24 @@ class Toolkit(object):
 
         Why this is not `search`: a browser needs a STABLE list in a stable order
         (so the grid does not reshuffle between visits), needs to know up front
-        which cells will show a picture -- the game ships no picture for 1,349 of
-        its 2,693 units, and 1,057 of them have no name at all -- and needs to
-        page it, because decoding 1,219 sprites costs 18 seconds.
+        which cells will show a picture, and needs to page it, because decoding
+        1,219 sprites costs 18 seconds.
+
+        The grid lists NAMED entities only, so every count meant for the grid has
+        to be counted over this same list.  Measured 2026-10-20 on this install:
+        of 2,693 unit records 1,042 have no name in any language and are not
+        listed at all; of the 1,651 listed, 432 declare no icon id (0 or -1).
+        Quoting a number taken over all 2,693 records next to this grid is how the
+        screen came to promise "1,349 have no picture" over a grid that shows 432
+        dashed cells.
 
         Rows carry `has_icon`, not bytes: the page asks `/api/icon` only for the
-        cells it actually draws, and the browser caches those.
+        cells it actually draws, and the browser caches those.  `has_icon` means
+        "declares an icon id", not "a texture exists" -- a name can point at a
+        material this install lacks (one technology does), and the picture route
+        is then the authority.  The page already treats a failed `<img>` as the
+        dashed cell, so the two agree on screen; do not "fix" `has_icon` by
+        resolving a texture per row, which costs a 0.17 s pass per request.
         """
         ix = semantic.index()
         table = ix.units if kind == "unit" else ix.techs

@@ -185,8 +185,8 @@ const DESCRIBE = {
 };
 
 // A real /api/browse answer, captured from the live server: a page of units
-// where the third row has no picture at all.  1,349 of the game's 2,693 units
-// ship no icon, so "no picture" is the ordinary case, not an error -- the grid
+// where the third row has no picture at all.  Many of the game's units ship no
+// icon, so "no picture" is the ordinary case, not an error -- the grid
 // must still offer the cell, labelled, because the name is the only handle the
 // player has on it.
 const BROWSE = {
@@ -459,7 +459,7 @@ function pickChecks() {
           cells[0].children.some((c) => c.tagName === "IMG"
             && c.src.indexOf("/api/icon?kind=unit&id=83") === 0),
           JSON.stringify(cells[0].children.map((c) => c.tagName)));
-    // 1,349 units ship no icon; the cell must still exist and still be usable.
+    // Many units ship no icon; the cell must still exist and still be usable.
     const blank = cells.filter((c) => c.className.indexOf("noicon") >= 0);
     check("a row with NO picture is still a cell, drawn as a blank",
           blank.length === 1, String(blank.length));

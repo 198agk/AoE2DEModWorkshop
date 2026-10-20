@@ -122,9 +122,14 @@ class App(object):
         name at all; "城堡" is a building AND part of a technology's name).  This
         route exists so a player can point at a picture instead.
 
-        The rows say whether a picture exists at all: 1,349 of the game's 2,693
-        units ship no icon, so a grid that silently renders holes would look
+        The rows say whether a picture exists at all: many of the game's units
+        ship no icon id, so a grid that silently rendered holes would look
         broken.  `has_icon` lets the page draw a labelled cell instead.
+
+        These numbers must be counted over the rows this route RETURNS (named
+        entities only), never over every record in the .dat: the grid is what the
+        player counts, and an earlier version quoted a count over all 2,693 unit
+        records beside a grid that lists 1,651 of them.
         """
         return {"ok": True,
                 "browse": self.tk.browse(kind=kind, query=query,

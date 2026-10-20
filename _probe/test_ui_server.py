@@ -16,6 +16,7 @@ had to be rewritten twice.
 """
 import json
 import os
+import re
 import shutil
 import sys
 import tempfile
@@ -262,6 +263,26 @@ def main():
               not bad_gate, bad_gate)
         check("the build posts only the gated clauses",
               "filter(buildable)" in page, "<- doBuild() does not use the gate")
+        # A count written into the page is a claim about the whole install, and
+        # the page cannot check it: the hint above the pick grid said "1,349
+        # units have no picture" while the grid listed only named units and drew
+        # 432 dashed cells (1,042 of 2,693 records have no name at all and are
+        # never listed).  Neither number was wrong -- they counted different
+        # universes -- and no test noticed for a day.
+        # The rule: player-visible prose may not quote a count of records; the
+        # page shows counts it COMPUTES (PICK.offset + " / " + b.total) instead.
+        # Both word orders occur in Chinese, and the counter varies (个/条/项), so
+        # one pattern per order; neither fires on a VALUE ("血量改成 1000").
+        visible = re.sub(r"(?is)<script\b.*?</script>", " ", page)
+        visible = re.sub(r"(?s)<!--.*?-->", " ", visible)
+        visible = re.sub(r"(?s)/\*.*?\*/", " ", visible)
+        num_then_word = re.compile(r"\d[\d,]*\s*[个条项]?\s*(单位|科技|记录)")
+        word_then_num = re.compile(
+            r"(单位|科技|记录)[^，。；\n]{0,4}?\d[\d,]*\s*[个条项]?")
+        stale_counts = [ln.strip() for ln in visible.splitlines()
+                        if num_then_word.search(ln) or word_then_num.search(ln)]
+        check("no line hardcodes a record COUNT where the player reads it",
+              not stale_counts, stale_counts)
 
         # ---- plan ------------------------------------------------------
         st, pl = _post(base, "/api/plan",
@@ -364,7 +385,11 @@ def main():
         # the game's Chinese names are not the ones players use.  What the page
         # needs from this route: a stable order (the grid must not reshuffle),
         # pageable rows, and an honest answer about which cells have no picture
-        # at all (1,349 of 2,693 units have none).
+        # at all.  Counts meant for the grid must be counted over the rows the
+        # grid shows (named entities only) -- the screen once promised "1,349
+        # have no picture" over a grid that draws 432 dashed cells, because that
+        # number was taken over all 2,693 records, 1,042 of which have no name
+        # and are not listed at all.
         st, _c, body = _get(base, "/api/browse?kind=unit&limit=10")
         b1 = json.loads(body.decode("utf-8")).get("browse") or {}
         check("browse returns a page of units", st == 200 and body and
@@ -404,8 +429,9 @@ def main():
                   ctype_i.startswith("image/png") and
                   body_i.startswith(b"\x89PNG"), "%s %s" %
                   (ctype_i, body_i[:8]))
-        # Units with no icon are the ORDINARY case (1,349 of them), so the route
-        # must be able to report one rather than the grid only ever seeing hits.
+        # Units with no icon id are the ORDINARY case (432 of the 1,651 named
+        # units), so the route must be able to report one rather than the grid
+        # only ever seeing hits.
         st, _c, body = _get(base, "/api/browse?kind=unit&q=%E6%94%BB%E5%9F%8E%E9%94%A4")
         bq = json.loads(body.decode("utf-8")).get("browse") or {}
         check("browse can be narrowed to a word the player typed",
@@ -458,8 +484,8 @@ def main():
               building_12 != forced_units_12, "both %d bytes" % len(building_12))
 
         # A unit whose icon cannot be resolved must fail with a REASON, not a
-        # zero-byte image: a blank square looks like a missing asset, and this
-        # build has 1,349 units that legitimately have no picture.
+        # zero-byte image: a blank square looks like a missing asset, and many
+        # units in this build legitimately have no picture.
         st, ctype, body_bad = _get(base, "/api/icon?kind=unit&id=99999")
         if ctype.startswith("application/json"):
             err = json.loads(body_bad.decode("utf-8"))
