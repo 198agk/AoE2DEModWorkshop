@@ -160,7 +160,14 @@
           padding-top: 12px; }
   #pick.open { display: block; }
   .pickscroll { max-height: 320px; overflow-y: auto; padding-right: 4px; }
-  .cell { cursor: pointer; }
+  /* Dragging is the second half of "point instead of type": the cell has to
+     advertise that it can be picked up. */
+  .cell { cursor: grab; }
+  .cell:active { cursor: grabbing; }
+  /* The cell being carried dims, so the screen shows which one is in flight. */
+  .cell.dragging { opacity: 0.45; }
+  /* A drop target has to LOOK like one, or the drag is a guess. */
+  #say.dragover { border-color: var(--gold); background: #202731; }
 </style>
 </head>
 <body>
@@ -207,7 +214,8 @@
             <input type="text" id="pickq" placeholder="在这个列表里找…" style="flex:1">
             <span class="hint" id="pickcount" style="margin:0"></span>
           </div>
-          <div class="hint">点一个图标，就把它填进上面的框里。有些东西游戏本身没有图（1,349 个单位没有），
+          <div class="hint">点一个图标，就把它填进上面的框里；也可以直接把它拖进上面的框。
+            有些东西游戏本身没有图（1,349 个单位没有），
             那些格子画成虚线框，仍然可以点。</div>
           <div class="pickscroll"><div class="grid" id="pickgrid"></div></div>
           <div class="row end" style="margin-top:8px">
@@ -436,7 +444,11 @@ function pickCell(row) {
     cell.appendChild(el("div", "blank", "?"));
   }
   cell.appendChild(el("div", "nm", pickName(row)));
-  cell.onclick = () => {
+  // One function for both ways of picking.  Clicking and dropping must agree,
+  // because the thing that makes a pick safe is the PIN, not the click: if the
+  // drop path forgot the id, dragging a picture of 城门 (29 records) would edit
+  // the smallest one while the screen showed the one that was dragged.
+  const use = () => {
     const ta = $("#say");
     const name = pickName(row);
     // Append rather than replace: a sentence often needs a number typed after
@@ -452,7 +464,42 @@ function pickCell(row) {
     ta.selectionStart = ta.selectionEnd = ta.value.length;
     toast("已填进上面的框，接着写要改什么", "ok");
   };
+  cell.onclick = use;
+  // Dragging needs both halves: the cell has to carry something, and the box
+  // has to accept it.  `text/plain` rather than a custom type, so dragging into
+  // any text field (including someone else's) still does the obvious thing.
+  cell.draggable = true;
+  cell.ondragstart = (e) => {
+    if (e && e.dataTransfer) {
+      e.dataTransfer.setData("text/plain", pickName(row));
+      e.dataTransfer.effectAllowed = "copy";
+    }
+    DRAGGING = {kind: row.kind, id: row.id, name: pickName(row), use};
+    cell.className += " dragging";
+  };
+  cell.ondragend = () => {
+    DRAGGING = null;
+    cell.className = cell.className.replace(/\s*dragging/g, "");
+  };
   return cell;
+}
+
+// What the pointer is currently carrying, if it started on a cell.  A browser
+// only exposes dataTransfer CONTENTS on drop, not the row it came from, so the
+// id has to be remembered here for the duration of the drag.
+let DRAGGING = null;
+
+// The textarea accepts a dropped cell.  Dropping plain text from elsewhere just
+// gets the browser's own insertion -- this handler only claims the case it can
+// do better, because swallowing a paste would be worse than not supporting drag.
+function dropOnSay(e) {
+  const ta = $("#say");
+  const ours = DRAGGING;
+  ta.className = ta.className.replace(/\s*dragover/g, "");
+  if (!ours) return;                       // let the browser handle foreign text
+  e.preventDefault();
+  ours.use();
+  DRAGGING = null;
 }
 
 function setPickKind(kind) {
@@ -714,6 +761,22 @@ async function doBuild() {
 
 $("#btn-parse").onclick = doParse;
 $("#btn-build").onclick = doBuild;
+// Dropping a picture onto the sentence box.  Assigned as properties rather than
+// through addEventListener because that is also what the page harness can call
+// -- a listener registered on a stub that ignores listeners would make the drag
+// path the one thing on this screen no test can reach.
+$("#say").ondragover = (e) => {
+  if (!DRAGGING) return;                 // foreign drags keep the browser default
+  if (e && e.preventDefault) e.preventDefault();
+  if (e && e.dataTransfer) e.dataTransfer.dropEffect = "copy";
+  const ta = $("#say");
+  if (ta.className.indexOf("dragover") < 0) ta.className += " dragover";
+};
+$("#say").ondragleave = () => {
+  const ta = $("#say");
+  ta.className = ta.className.replace(/\s*dragover/g, "");
+};
+$("#say").ondrop = dropOnSay;
 $("#say").addEventListener("keydown", (e) => {
   if ((e.ctrlKey || e.metaKey) && e.key === "Enter") doParse();
 });

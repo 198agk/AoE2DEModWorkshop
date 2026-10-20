@@ -262,6 +262,7 @@ const fn = new Function(
   "doBuild: doBuild, doParse: doParse, renderDetail: renderDetail, " +
   "loadPick: loadPick, pickCell: pickCell, pickName: pickName, " +
   "setPickKind: setPickKind, PICK: () => PICK, PINS: () => PINS, " +
+  "dropOnSay: dropOnSay, DRAGGING: () => DRAGGING, " +
   "checkUpdates: checkUpdates, rebuildAll: rebuildAll, " +
   "setLast: (v) => { LAST = v; }};");
 const page = fn(sandbox.document, sandbox.fetch, sandbox.setTimeout,
@@ -444,6 +445,8 @@ function pickChecks() {
           JSON.stringify(call && call.body));
     return Promise.resolve();
   }).then(() => {
+    return dragChecks();
+  }).then(() => {
     page.setPickKind("tech");
     return page.loadPick(false);
   }).then(() => {
@@ -457,6 +460,69 @@ function pickChecks() {
     return updateChecks();
   }).catch((e) => { fails.push("the picker threw: " + e.message);
                     console.log("FAIL the picker threw :: " + e.stack); finish(); });
+}
+
+// ---- drag a picture onto the sentence box ---------------------------------
+// Clicking and dragging must be the SAME pick.  The pin is what keeps a name
+// that matches 29 records from editing the wrong one, so a drag path that forgot
+// the pin would silently edit the smallest id while showing the dragged picture.
+function dragChecks() {
+  return page.loadPick(false).then(() => {
+    const cells = (ids.pickgrid.children || []).filter((n) => n.className
+      && n.className.indexOf("cell") >= 0);
+    const cell = cells[0];
+    check("a cell can be picked up (draggable)", cell && cell.draggable === true,
+          JSON.stringify(cell && cell.draggable));
+    // A real browser only hands out dataTransfer contents on drop, so the page
+    // has to remember the row for the length of the drag.
+    let stored = null;
+    const ev = { dataTransfer: { setData: (k, v) => { stored = [k, v]; },
+                                 effectAllowed: "" } };
+    cell.ondragstart(ev);
+    check("dragging a cell carries its name as plain text",
+          stored && stored[0] === "text/plain" && stored[1].indexOf("村民") >= 0,
+          JSON.stringify(stored));
+    const dragging = page.DRAGGING();
+    check("dragging remembers WHICH record, not just the name",
+          dragging && dragging.id === 83 && dragging.kind === "unit",
+          JSON.stringify(dragging));
+
+    // The box must show it can take the drop, or the gesture is a guess.
+    ids.say.className = "";
+    const over = { preventDefault() { this.seen = true; }, dataTransfer: {} };
+    ids.say.ondragover(over);
+    check("the sentence box highlights itself as a drop target",
+          ids.say.className.indexOf("dragover") >= 0, ids.say.className);
+    check("...and the drag is allowed only for our own cells",
+          over.seen === true, String(over.seen));
+
+    // Drop it.
+    ids.say.value = "";
+    let prevented = false;
+    page.dropOnSay({ preventDefault: () => { prevented = true; } });
+    check("dropping a cell writes it into the sentence box",
+          ids.say.value.indexOf("村民 (男性)") >= 0, ids.say.value);
+    check("...and the drop is consumed, not left to the browser",
+          prevented === true, String(prevented));
+    check("...the highlight clears after the drop",
+          ids.say.className.indexOf("dragover") < 0, ids.say.className);
+    check("...and the drag is finished, so a second drop does nothing",
+          page.DRAGGING() === null, JSON.stringify(page.DRAGGING()));
+    const pins = page.PINS();
+    check("a dropped cell pins its id exactly like a clicked one",
+          pins.length >= 1 && pins[0].id === 83 && pins[0].kind === "unit",
+          JSON.stringify(pins));
+
+    // Text dragged in from somewhere else must still paste normally: swallowing
+    // a foreign drop would be worse than not supporting drag at all.
+    let foreignPrevented = false;
+    ids.say.ondrop = page.dropOnSay;
+    page.dropOnSay({ preventDefault: () => { foreignPrevented = true; } });
+    check("a drop that did not start on a cell keeps the browser default",
+          foreignPrevented === false, String(foreignPrevented));
+    return Promise.resolve();
+  }).catch((e) => { fails.push("the drag threw: " + e.message);
+                    console.log("FAIL the drag threw :: " + e.stack); });
 }
 
 // ---- the update banner ---------------------------------------------------
@@ -502,6 +568,6 @@ function finish() {
                 JSON.stringify(fails));
     process.exit(1);
   }
-  console.log("PAGE SCRIPT: THE SCREEN RENDERS EVERY SHAPE, LETS YOU PICK A " +
-              "PICTURE, AND POSTS ONLY WHAT IT CAN BUILD");
+  console.log("PAGE SCRIPT: THE SCREEN RENDERS EVERY SHAPE, LETS YOU CLICK OR " +
+              "DRAG A PICTURE INTO A SENTENCE, AND POSTS ONLY WHAT IT CAN BUILD");
 }
