@@ -116,6 +116,7 @@
            pointer-events: none; z-index: 20; }
   .toast.show { opacity: 1; }
   .toast.bad { border-color: var(--bad); }
+  .toast.warn { border-color: var(--warn); }
   .toast.ok { border-color: var(--ok); }
   .empty { color: var(--dim); text-align: center; padding: 26px 0; }
   .err { color: var(--bad); font-size: 12px; white-space: pre-wrap; }
@@ -339,10 +340,15 @@ async function rebuildAll(rows) {
   btn.disabled = true;
   const done = [];
   const failed = [];
+  let warned = null;
   for (const r of rows) {
     btn.textContent = "重建中… (" + (done.length + failed.length + 1) + "/" + rows.length + ")";
     try {
-      await api("/api/rebuild", {title: r.name});
+      const got = await api("/api/rebuild", {title: r.name});
+      // A rebuild reinstalls, so it has the same hazard as install: the game
+      // rewrites mod-status.json at exit.  Reading the warning only on the
+      // install path would make "rebuild" the one button that looks safe.
+      if (got.installed && got.installed.running_warning) warned = got.installed.running_warning;
       done.push(r.name);
     } catch (e) {
       // One failure must not hide the others: a mod whose record lost its
@@ -353,6 +359,7 @@ async function rebuildAll(rows) {
   btn.disabled = false;
   btn.textContent = "重建并重装";
   if (done.length) toast("已重建 " + done.length + " 个，重开游戏才会生效", "ok");
+  if (warned) toast(warned, "warn");
   if (failed.length) toast(failed.join("；"), "bad");
   await checkUpdates();
   try { renderMods((await api("/api/mods")).mods); } catch (e) {}

@@ -331,6 +331,43 @@ def main():
                 status = os.path.join(fake, "mods", "mod-status.json")
                 check("install wrote the status file the game reads",
                       os.path.isfile(status), status)
+                # The game rewrites mod-status.json at exit, so the answer about
+                # whether it is running has to travel with the install result --
+                # the screen reads it off `installed`, not off a second call.
+                inst = res.get("installed") or {}
+                check("the install answer says whether the game is running",
+                      inst.get("game_running") in (True, False, None),
+                      str(inst.get("game_running")))
+                check("and carries the warning field even when null",
+                      "running_warning" in inst, str(inst.keys())[:200])
+                # The two routes that rewrite the SAME file had no assertion at
+                # all, because they had no way to accept a throwaway profile.
+                off = app.set_mod("dsh ui smoke", False, profile_root=fake)
+                check("turning a mod off answers with the list and the warning",
+                      bool(off.get("ok")) and isinstance(off.get("mods"), list)
+                      and "running_warning" in off, str(off)[:300])
+                # The `mods` list in the answer comes from the REAL profile (the
+                # route only writes the one it was pointed at), so asserting on
+                # it would be vacuously true here.  Assert on the file that was
+                # actually written instead.
+                import json as _json
+                with open(status, encoding="utf-8") as fh:
+                    doc = _json.load(fh)
+                mine = [e for e in doc.get("Mods") or []
+                        if "dsh ui smoke" in str(e.get("Path") or "")]
+                check("the mod really went off in the file the game reads",
+                      bool(mine) and all(not e.get("Enabled") for e in mine),
+                      str(mine)[:300])
+                gone = app.uninstall("dsh ui smoke", profile_root=fake)
+                check("uninstall answers with the list and the warning",
+                      bool(gone.get("ok")) and "running_warning" in gone,
+                      str(gone)[:300])
+                with open(status, encoding="utf-8") as fh:
+                    doc = _json.load(fh)
+                check("uninstall took the entry out of that file",
+                      not [e for e in doc.get("Mods") or []
+                           if "dsh ui smoke" in str(e.get("Path") or "")],
+                      str(doc.get("Mods"))[:300])
             finally:
                 shutil.rmtree(fake, ignore_errors=True)
         finally:

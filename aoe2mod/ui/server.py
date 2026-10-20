@@ -273,11 +273,24 @@ class App(object):
     def mods(self):
         return {"ok": True, "mods": _mods_brief(self.tk)}
 
-    def set_mod(self, name, enabled):
-        return {"ok": True, "mods": self.tk.set_mod_enabled(name, enabled)}
+    def set_mod(self, name, enabled, profile_root=None):
+        """Turn an installed mod on or off.
 
-    def uninstall(self, name):
-        return {"ok": True, "mods": self.tk.uninstall(name)}
+        ``profile_root`` is for tests, exactly as in ``install()``: this route
+        writes the player's mod list, so a test that cannot point it elsewhere
+        cannot test it at all -- which is why it was the one route with no
+        assertion behind it.
+        """
+        r = self.tk.set_mod_enabled(name, enabled, profile_root=profile_root)
+        return {"ok": True, "mods": _mods_brief(self.tk),
+                "running_warning": r.get("running_warning"),
+                "game_running": r.get("game_running")}
+
+    def uninstall(self, name, profile_root=None):
+        r = self.tk.uninstall(name, profile_root=profile_root)
+        return {"ok": True, "mods": _mods_brief(self.tk),
+                "running_warning": r.get("running_warning"),
+                "game_running": r.get("game_running")}
 
     def update_check(self):
         """Has the game's data moved since the installed mods were built?

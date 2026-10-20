@@ -282,7 +282,13 @@ const sandbox = {
     if (url.indexOf("/api/rebuild") === 0) {
       const body = opt && opt.body ? JSON.parse(opt.body) : {};
       rebuilt.push(body.title);
-      return { json: async () => ({ ok: true, manifest: {}, installed: {} }) };
+      // A rebuild reinstalls, so it carries the same game-running answer.  The
+      // stub has to have it or "rebuild is the one button that looks safe"
+      // would pass here and be wrong on screen.
+      return { json: async () => ({ ok: true, manifest: {}, installed: {
+        installed: true, game_running: RUNNING,
+        running_warning: RUNNING ? RUNNING_TEXT : null,
+      } }) };
     }
     // The install route answers with the game-running answer inside
     // `installed`, because that is the shape `install_mod` returns.  A stub that
@@ -632,11 +638,20 @@ function updateChecks() {
           text(ids["banner-note"]));
     check("the banner offers one button, not one per mod",
           typeof ids["btn-rebuild"].onclick === "function");
+    // Rebuilding REINSTALLS.  If only the install button carries the
+    // game-running warning, "重建并重装" becomes the one path that looks safe
+    // while doing the same rewrite of mod-status.json.
+    RUNNING = true;
     return ids["btn-rebuild"].onclick();
   }).then(() => {
     check("the button rebuilds the stale mod by name",
           rebuilt.length === 1 && rebuilt[0] === "村民血量测试",
           JSON.stringify(rebuilt));
+    check("a rebuild says the game is open too",
+          text(ids.toast).indexOf("游戏正开着") >= 0, text(ids.toast));
+    check("and says it as a warning, not a failure",
+          ids.toast.className.indexOf("warn") >= 0, ids.toast.className);
+    RUNNING = false;
     // After the rebuild the guard answers "nothing to do"; the banner has to go
     // away on its own, or the user is told to fix something already fixed.
     UPDATE_ANSWER = UPDATE.quiet;
