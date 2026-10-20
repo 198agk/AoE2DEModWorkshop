@@ -183,6 +183,15 @@ SUITES = [
     # answer has to reach the manifest the screen reads, not just live in a
     # function nobody calls.
     r"_probe\test_install_running.py",
+    # A toggle must not INVENT the mod it is asked to toggle.  Found by accident
+    # (2026-10-20) when a probe POSTed /api/mod with a name that cannot exist and
+    # set_mod_enabled answered ok after inserting a phantom entry at Priority 1
+    # of the player's real list.  resolve_mod_name returns "bare" for a name that
+    # matches nothing, and its docstring promised a caller error that this caller
+    # did not have.  The check that matters is the one the fix must NOT break: a
+    # folder dropped into mods/local by hand is registered by the game itself, so
+    # it is absent from mod-status.json and must still toggle.
+    r"_probe\test_mod_toggle_unknown.py",
     # The one hole neither the page harness nor the server suite can see.  The
     # harness stubs `fetch`, so it proves the page SENDS a body; the server suite
     # calls the App methods, so it proves the method works.  A renamed key -- the

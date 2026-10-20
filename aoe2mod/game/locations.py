@@ -843,6 +843,15 @@ def set_mod_enabled(profile_root, name, enabled, kind="local", account=None,
     restores exactly the conflict order the user had.
 
     ``name`` may be the folder name or the Title (see :func:`resolve_mod_name`).
+
+    A name that matches NOTHING is refused instead of created.  ``upsert``
+    creates an entry when it finds none, which is what ``install_mod`` wants and
+    the opposite of what this function means: measured 2026-10-20, toggling a
+    name that did not exist inserted ``__no_such_mod__`` at Priority 1 of the
+    player's real list -- a phantom entry pointing at a folder that is not
+    there, reported to the caller as ``ok``.  A folder the player dropped into
+    ``mods/local`` by hand still works: the game itself registers those, so the
+    folder on disk is the second half of "does this mod exist".
     """
     if account:
         acc = account
@@ -851,8 +860,13 @@ def set_mod_enabled(profile_root, name, enabled, kind="local", account=None,
     else:
         acc = pick_account(profile_root)
     folder, _how = resolve_mod_name(profile_root, name, kind=kind, account=acc)
-    _running = running_note()
     doc, acc, _ = read_status_doc(profile_root, account=acc)
+    if _how == "bare" and not os.path.isdir(
+            os.path.join(account_mods_dir(acc, kind), folder)):
+        raise FileNotFoundError(
+            "没找到叫「%s」的模组：模组列表里没有它，模组文件夹里也没有这个文件夹。"
+            "它可能已经被删掉或者改名了，刷新一下列表再试。" % (name,))
+    _running = running_note()
     entry = upsert_mod_entry(doc, folder, kind=kind, enabled=enabled)
     write_status_doc(acc, doc, backup=backup)
     return {"account": acc, "name": name, "kind": kind,
