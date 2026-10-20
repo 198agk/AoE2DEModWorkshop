@@ -40,6 +40,31 @@ from aoe2mod.ui import nl
 
 STATIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
 
+#: Exception class names that must NOT be printed in front of a player's
+#: sentence.  `_safe_plan` and `_guard` used to send "%s: %s" % (type(exc), exc),
+#: so the screen literally read "IntentError: 「生命值」会变成 99999…" -- an English
+#: class name glued to the front of a Chinese refusal.  The class name is for us;
+#: the message is for the player.
+_QUIET_ERRORS = ("IntentError", "ModError", "ValueError", "RuntimeError",
+                 "TypeError", "KeyError", "OSError", "FileNotFoundError",
+                 "NotADirectoryError", "PermissionError", "UnsupportedVersionError",
+                 "struct.error", "zlib.error")
+
+
+def _sentence(exc):
+    """The text a player should read for this exception.
+
+    A message the product wrote for a player is passed through unchanged.  A
+    message Python or a library wrote is prefixed with the class name, because
+    that half is diagnostic and the player can quote it to a bug report -- but
+    the product's own refusals must not carry one.
+    """
+    text = str(exc) or "没有说明"
+    name = type(exc).__name__
+    if name in _QUIET_ERRORS:
+        return text
+    return "%s: %s" % (name, text)
+
 
 class App(object):
     """Everything the routes touch, with the Toolkit built once."""
@@ -328,7 +353,7 @@ class App(object):
         try:
             return {"ok": True, "plan": self._decorate(self.tk.plan(intent))}
         except Exception as exc:                       # noqa: BLE001
-            return {"ok": False, "error": "%s: %s" % (type(exc).__name__, exc)}
+            return {"ok": False, "error": _sentence(exc)}
 
 
 def _load_schema():
@@ -521,8 +546,7 @@ def make_handler(app):
                 return _json(self, fn())
             except Exception as exc:                   # noqa: BLE001
                 tb = traceback.format_exc(limit=4)
-                return _json(self, {"ok": False,
-                                    "error": "%s: %s" % (type(exc).__name__, exc),
+                return _json(self, {"ok": False, "error": _sentence(exc),
                                     "where": tb})
 
         def _guard_icon(self, fn):

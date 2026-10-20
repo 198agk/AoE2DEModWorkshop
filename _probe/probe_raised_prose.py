@@ -13,6 +13,13 @@ surface.
 This measures before anyone edits: it parses every module, finds the string
 literals handed to the exception constructors, and classifies them.  It is a
 census, not a test -- run it, read the counts, then decide.
+
+A COUNT IS NOT REACHABILITY.  Most of what this prints is a programming-contract
+message ("an intent must be a dict", "unhandled width %d") that no sentence a
+player types can reach.  Reachability is measured by
+`_probe/probe_player_refusals.py`, and the reachable ones are pinned by the
+fourth surface of `_probe/test_prose_language.py`.  Treat a fall in this file's
+`english` count as no evidence at all that the screen got better.
 """
 import ast
 import io

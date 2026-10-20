@@ -141,7 +141,9 @@ except C.IntentError as exc:
     msg = str(exc)
     print("  refusal: %s" % msg)
     check("a bundle with an impossible sentence is refused", True)
-    check("the refusal names WHICH sentence failed", "sentence 2" in msg, msg)
+    # The sentence number is the fact being pinned; "sentence 2: …" was the
+    # English wording it happened to use before 2026-10-20.
+    check("the refusal names WHICH sentence failed", "第 2 句" in msg, msg)
 
 print()
 print("=== 5. a bundle whose sentences are all individually bad names all of them ===")
@@ -160,7 +162,7 @@ except C.IntentError as exc:
     print("  refusal: %s" % msg)
     check("a bundle of only-bad sentences is refused", True)
     check("it reports every bad sentence, not just the first",
-          "sentence 1" in msg and "sentence 2" in msg, msg)
+          "第 1 句" in msg and "第 2 句" in msg, msg)
 
 print()
 print("=== 6. an empty bundle is refused, not silently a no-op ===")

@@ -315,8 +315,11 @@ def main():
                              "delta": 0}],
                 "title": "dsh ui both", "author": "dsh",
                 "description": "one possible + one refused", "out_dir": out2})
+            # The number is the contract (which sentence failed); the words
+            # around it are the product's Chinese, which `test_prose_language`
+            # pins separately.
             check("a refused intent refuses the bundle instead of silently dropping it",
-                  b3.get("ok") is False and "sentence 2" in (b3.get("error") or ""),
+                  b3.get("ok") is False and "第 2 句" in (b3.get("error") or ""),
                   str(b3)[:300])
         finally:
             shutil.rmtree(out2, ignore_errors=True)

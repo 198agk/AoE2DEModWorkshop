@@ -174,13 +174,15 @@ if rep3:
 
 # ---------------------------------------------------------------------------
 print("\n=== E. refusals stay user-facing prose ===")
+# The sentence is Chinese now (it is printed on screen verbatim), so the marker
+# is the CLAIM -- 「负数」 -- not the English word it used to contain.
 _, err = run("negative cost", {"intent": "tech.cost", "tech": "Loom",
                                "resource": "gold", "value": -10}, expect_ok=False)
-check("negative is refused", err is not None and "negative" in str(err), err)
+check("negative is refused", err is not None and "负数" in str(err), err)
 
 _, err = run("discount below zero", {"intent": "tech.cost", "tech": "Loom",
                                      "resource": "gold", "delta": -100}, expect_ok=False)
-check("over-discount refused", err is not None and "negative" in str(err), err)
+check("over-discount refused", err is not None and "负数" in str(err), err)
 
 _, err = run("resource the tech does not cost", {"intent": "tech.cost", "tech": "Loom",
                                                  "resource": "stone", "delta": 10},
@@ -197,7 +199,7 @@ check("unknown tech refused", err is not None, err)
 
 _, err = run("overflow", {"intent": "tech.cost", "tech": "Loom",
                           "resource": "gold", "value": 40000}, expect_ok=False)
-check("overflow refused", err is not None and "16-bit" in str(err), err)
+check("overflow refused", err is not None and "16 位" in str(err), err)
 
 # ---------------------------------------------------------------------------
 print("\n=== F. the unit.cost sign defect is closed ===")
@@ -207,7 +209,7 @@ try:
                                 "resource": "wood", "delta": -100})
 except C.IntentError as exc:
     err = exc
-check("unit.cost no longer writes -75", err is not None and "negative" in str(err), err)
+check("unit.cost no longer writes -75", err is not None and "负数" in str(err), err)
 print("  reads: %s" % (err,))
 # and a legitimate discount still works
 try:

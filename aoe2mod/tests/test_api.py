@@ -176,9 +176,10 @@ for bad in ({"intent": "unit.stat", "unit": "弓手", "stat": "displayed_attack"
         # it was "Cost and time cannot be negative" until range/reload were
         # routed through the same guard, at which point it named costs while
         # refusing a negative 射程.  A field list in user-facing prose goes
-        # stale the moment a field is added.
-        if "negative" in str(exc):
-            assert "Cost and time" not in str(exc), \
+        # stale the moment a field is added.  (The prose is Chinese now, so the
+        # marker is 「负数」 -- what is pinned is the CLAIM, not the language.)
+        if "负数" in str(exc):
+            assert "Cost and time" not in str(exc) and "成本和时间" not in str(exc), \
                 "refusal prose enumerates its own cases: %s" % exc
 
 # The same guard, checked by the field it now also covers: refusing a negative
@@ -189,7 +190,7 @@ try:
     raise AssertionError("negative range should have been refused")
 except C.IntentError as _e:
     assert "成本" not in str(_e) and "Cost" not in str(_e), str(_e)
-    assert "negative" in str(_e), str(_e)
+    assert "负数" in str(_e), str(_e)
     print("negative range refusal is field-neutral:", _e)
 
 # A value with no non_negative binding is still allowed to go negative: hit
@@ -397,16 +398,19 @@ try:
              "stat": "garrison_capacity", "value": 256})
     raise AssertionError("a 256-byte garrison should have been refused")
 except C.IntentError as _e:
-    assert "8-bit unsigned" in str(_e), _e
+    # The width and the signedness are what must be in the sentence (the prose is
+    # Chinese now, so the markers are too).  A hard-coded "16 位" would be a
+    # second, contradictory statement of the same field's limits.
+    assert "8 位" in str(_e) and "无符号" in str(_e), _e
     assert "0..255" in str(_e), _e
-    assert "16-bit" not in str(_e), _e
+    assert "16 位" not in str(_e), _e
     print("256 refused by range:", _e)
 try:
     tk.plan({"intent": "unit.stat", "unit": 12,
              "stat": "garrison_capacity", "delta": -100})
     raise AssertionError("a negative garrison should have been refused")
 except C.IntentError as _e:
-    assert "negative" in str(_e), _e
+    assert "负数" in str(_e), _e
     print("negative refused:", _e)
 
 # The byte-width field is reported/reachable under the same biconditional as
@@ -666,7 +670,9 @@ try:
     raise AssertionError("a bundle with an impossible sentence planned anyway")
 except _C.IntentError as _exc:
     _msg = str(_exc)
-    assert "sentence 2" in _msg, _msg
+    # Which sentence failed is the fact; the surrounding words are the product's
+    # Chinese now (was "sentence 2: ...").  `test_prose_language` owns the wording.
+    assert "第 2 句" in _msg, _msg
     print("  one impossible sentence refuses the whole bundle, naming it: %s" % _msg)
 
 # Sentences that fail while RESOLVING are all collected, so the user fixes every
@@ -684,7 +690,7 @@ try:
     raise AssertionError("a bundle of only-bad sentences planned anyway")
 except _C.IntentError as _exc:
     _msg = str(_exc)
-    assert "sentence 1" in _msg and "sentence 2" in _msg, _msg
+    assert "第 1 句" in _msg and "第 2 句" in _msg, _msg
     print("  every unresolvable sentence is reported together: %s" % _msg)
 
 # The preview and the write must say the SAME thing about the same bad bundle --

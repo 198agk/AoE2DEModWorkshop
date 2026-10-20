@@ -532,14 +532,13 @@ def plan_effect_edit(effects, tech, index, op, amount, ix=None, fanout=None):
         # itself is a float32.
         if isinstance(amount, float) and amount != int(amount):
             raise IntentError(
-                "attribute %s packs its value into a byte, so it must be a "
-                "whole number (got %r)" % (row["attribute_label"], amount))
+                "「%s」会被压进一个字节里，所以只能是整数（收到的是 %r）"
+                % (row["attribute_label"], amount))
         after = (before + amount) if op == "delta" else amount
         if not (0 <= after <= 255):
             raise IntentError(
-                "%s would become %s, which does not fit in the 8-bit unsigned "
-                "field (allowed 0..255). Reduce the change."
-                % (row["attribute_label"], after))
+                "「%s」会变成 %s，装不进这个 1 字节无符号字段（只能是 0..255），"
+                "改小一点。" % (row["attribute_label"], after))
     else:
         after = (before + amount) if op == "delta" else float(amount)
     row["before"] = before
@@ -978,13 +977,15 @@ def resolve(intent, schema, semantic_index=None, bindings=None):
     if "picture" in fields:
         pic = intent.get("picture")
         if pic in (None, ""):
-            raise IntentError("intent %r needs a 'picture' (a file path to the "
-                              "image to paint with)" % it)
+            raise IntentError("这句话要说清用哪张图片（一个图片文件路径）")
         if not isinstance(pic, str):
-            raise IntentError("'picture' must be a file path, not %s"
-                              % type(pic).__name__)
+            raise IntentError("「图片」得是一个文件路径，不是 %s"
+                              % _TYPE_ZH.get(type(pic).__name__,
+                                             type(pic).__name__))
         if not os.path.isfile(pic):
-            raise IntentError("no such picture: %s" % pic)
+            # A player reaches this by typing a path that is not there, and the
+            # path itself is the useful half: it says WHICH file was not found.
+            raise IntentError("找不到这张图片：%s" % pic)
         intent = dict(intent)
         intent["picture"] = os.path.abspath(pic)
     # The wording a user reads comes from the external schema, so adding a
@@ -1028,8 +1029,11 @@ def resolve_bundle(intents, schema, bindings=None):
         except IntentError as exc:
             failures.append((i, str(exc)))
     if failures:
-        raise IntentError("; ".join("sentence %d: %s" % (i + 1, msg)
-                                    for i, msg in failures))
+        # "第 2 句：…" not "sentence 2: …" -- the bundle refusal is printed on
+        # screen verbatim, and the number is what lets a player find which of
+        # their sentences failed.
+        raise IntentError("；".join("第 %d 句：%s" % (i + 1, msg)
+                                   for i, msg in failures))
     return resolved_list
 
 
@@ -1114,7 +1118,20 @@ def _binding_for(bindings, resolved, intent_name):
         if which not in table:
             raise IntentError("unknown class kind %r; known: %s"
                               % (which, ", ".join(sorted(table))))
-        return table[which]
+        b = table[which]
+        # An explicit `class_id` overrides the schema's candidate order, and it
+        # has to override it HERE, not only in compile_edits.  It used to be
+        # applied only on the write path, so `plan()` judged the edit against
+        # the FIRST class the unit happened to carry while the build looked at
+        # the class the sentence named: measured with
+        # `_probe/probe_attack_class_classes.py`, 「步弓手 对骑兵 攻击加2」
+        # previewed "126 edits, editable" and then raised「没有「基础攻击」这项
+        # 可以改」.  One binding decision for both paths is the only way the
+        # two cannot describe one edit differently.
+        if resolved.class_id is not None:
+            b = dict(b)
+            b["class_id"] = resolved.class_id
+        return b
     if intent_name == "unit.cost":
         b = dict(bindings.get("cost_entry", {}))
         if not b:
@@ -1564,7 +1581,12 @@ def checked_value(before, kind, resolved, b, safety, width=2, signed=True):
     plan, not from an exception after they press the button.
     """
     new = _apply(resolved.op, resolved.amount, kind, before)
-    what = b.get("label") or resolved.stat
+    # `b["label"]` for a cost binding is "成本 food" -- Chinese scaffold plus the
+    # raw enum name -- so the range/non-negative sentences printed "「成本 food」
+    # 会变成 -50".  `_label_zh` is the same helper `no_field_message` uses; a
+    # message is only readable if the thing it names is.
+    what = _label_zh(b.get("label") or resolved.stat,
+                     getattr(resolved, "resource", None))
     # A range check is not a legality check: -75 fits in an i16 and was
     # silently written as a "discount".  Costs are physical quantities
     # the engine reads as requirements, so a negative one is not a
@@ -1583,9 +1605,13 @@ def checked_value(before, kind, resolved, b, safety, width=2, signed=True):
         # lie the first time a negative 射程 was refused through this branch.
         # A message that enumerates its cases drifts out of date when a field
         # is added; the schema's `non_negative` flag is the real definition.
+        #
+        # Chinese, like `zero_delta_message`: the screen prints this verbatim,
+        # and this branch is one a player can reach from a plain sentence
+        # ("村民木材成本减100" when the slot is already 100).
         raise IntentError(
-            "%s would become %s. That value cannot be negative -- "
-            "reduce it by at most the current value." % (what, new))
+            "「%s」会变成 %s，这个值不能是负数 —— 最多只能减掉它现在的值。"
+            % (what, new))
     if kind == "float":
         return new
     if safety.get("reject_on_overflow", True):
@@ -1596,10 +1622,14 @@ def checked_value(before, kind, resolved, b, safety, width=2, signed=True):
         # have silently truncated (or raised OverflowError deeper down).
         lo, hi = _int_bounds(width, signed)
         if not (lo <= new <= hi):
+            # Reached from a real sentence: 「村民血量改成99999」 and
+            # 「村民木材成本减100000」 both land here.  Chinese, because
+            # `probe_player_refusals.py` measured that these strings reach the
+            # screen through `_safe_plan`/`_guard` verbatim.
             raise IntentError(
-                "%s would become %s, which does not fit in the %d-bit %s "
-                "field (allowed %d..%d). Reduce the change."
-                % (what, new, 8 * width, "signed" if signed else "unsigned",
+                "「%s」会变成 %s，装不进这个 %d 位%s字段（只能是 %d..%d），"
+                "改小一点。"
+                % (what, new, 8 * width, "有符号" if signed else "无符号",
                    lo, hi))
     return new
 
@@ -1981,6 +2011,16 @@ _RESOURCE_ZH = {
     "trade_goods": "贸易品", "relics": "圣物",
 }
 
+#: Python type names that would otherwise land in a Chinese sentence.  These are
+#: reached only by a caller that handed the intent a wrong-shaped value, which is
+#: a JSON producer's mistake -- but the sentence still goes on screen through
+#: `_safe_plan`, and "`picture` must be a file path, not str" helps nobody.
+_TYPE_ZH = {
+    "str": "一段文字", "int": "一个整数", "float": "一个小数",
+    "bool": "真假值", "list": "一列值", "dict": "一组键值",
+    "NoneType": "空值",
+}
+
 
 def _label_zh(label, resource=None):
     """Turn a binding label into something a Chinese player reads cleanly.
@@ -2189,7 +2229,7 @@ def compile_bundle(data, civs, resolved_list, bindings, schema, tail=None, gv=No
             # compiling (a building whose unit type stores no such field), and
             # "Barracks has no 基础攻击 field" is useless in a bundle of five
             # without saying which of the user's five sentences it came from.
-            raise IntentError("sentence %d: %s" % (i + 1, exc))
+            raise IntentError("第 %d 句：%s" % (i + 1, exc))
         if len(nxt) != len(cur):
             # A step that resized the stream would invalidate `tail` (the tech
             # section offset) for every later step.  Nothing in this tool's

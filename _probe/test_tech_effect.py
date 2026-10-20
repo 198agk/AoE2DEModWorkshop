@@ -146,9 +146,11 @@ def main():
     refused("index out of range",
             {"intent": "tech.effect", "tech": "Loom", "command": 99,
              "delta": 1}, "out of range")
+    # This sentence is Chinese on screen (the packed-byte refusal is reachable
+    # from an ordinary sentence), so the marker is the claim, not the wording.
     refused("packed value not whole",
             {"intent": "tech.effect", "tech": "Loom", "command": 1,
-             "value": 1.5}, "whole number")
+             "value": 1.5}, "整数")
     refused("packed value above 255",
             {"intent": "tech.effect", "tech": "Loom", "command": 1,
              "value": 300}, "0..255")
