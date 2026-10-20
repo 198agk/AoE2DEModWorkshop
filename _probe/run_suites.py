@@ -138,6 +138,16 @@ SUITES = [
     # with an invention later.
     r"_probe\test_icons.py",
     r"_probe\test_prose_supply.py",
+    # The menu layer.  The player asked whether reversing the game could turn it
+    # into an editor; the hard part of the answer is a measurement, not an
+    # opinion: the exe is native with no CLR header and no managed-runtime
+    # strings, so nothing can make it run our code -- while resources/_common/
+    # wpfg/ IS a mod-visible root whose 3.3 MB of markup lives on disk.  Suite
+    # C pins the third leg: the widget classes are a closed, compiled-in
+    # inventory.  Without this, "we could add any screen you want" sounds cheap
+    # and is wrong, and "the menus are untouchable" is wrong in the other
+    # direction.
+    r"_probe\test_ui_layer_wiring.py",
     # The update guard.  Every mod this tool builds ships a whole 12 MB .dat, so
     # a game patch is silently overwritten by the installed copy -- and nothing
     # says so.  The guard's five statuses each have to be reachable, and two of
