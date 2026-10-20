@@ -140,10 +140,23 @@ class Toolkit(object):
             got["witness"] = "technologies are always drawn from the Techs table"
             return got
         if kind != "unit":
-            return {"ok": False, "why": "icons exist for units and technologies"}
+            # NOT "only units and technologies have icons" -- that would be
+            # false.  A castle is unit 82 in this game's data and resolves to a
+            # build-menu button, and the Buildings table is real.  What is
+            # narrow is this function's accept-list, so say that instead.
+            #
+            # No English here either: this text goes through the same
+            # player-facing check as every other refusal.  The caller-facing
+            # name of the kind ("building") is deliberately not printed -- a
+            # screen never sends it, and a person reading the sentence needs to
+            # know what to do, not which enum to pass.
+            return {"ok": False,
+                    "why": "这里只认「单位」和「科技」两种。建筑在游戏数据里"
+                           "本来就是单位记录，按单位查它就有图。"}
         facts = self._unit_facts().get(entity_id)
         if facts is None:
-            return {"ok": False, "why": "no unit with id %s" % (entity_id,)}
+            return {"ok": False,
+                    "why": "找不到编号 %s 的单位" % (entity_id,)}
         e = semantic.index().get("unit", entity_id)
         section, witness = self.icons.unit_section(
             facts.get("icon_id"), made_by_builder=facts.get("builder", False),
@@ -263,7 +276,10 @@ class Toolkit(object):
         ix = semantic.index()
         e = ix.get(kind, entity_id)
         if e is None:
-            raise C.IntentError("no %s with id %s" % (kind, entity_id))
+            # Reached by every "游戏里怎么说的？" click on a stale row, so this
+            # sentence goes on screen.  The kind is named in Chinese and the id
+            # is printed as-is: the player is quoting a number back to us.
+            raise C.IntentError("找不到编号 %s 的%s" % (entity_id, C.kind_label(kind)))
         out = {"id": e.id, "kind": e.kind, "name": e.display,
                "en": e.en, "zh": e.zh, "resolved": e.resolved,
                "civ_variants": e.civ_variants}

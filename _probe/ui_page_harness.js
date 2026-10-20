@@ -247,6 +247,15 @@ const RUNNING_TEXT = "游戏正开着。它退出时会用自己记得的模组�
 // The build route's answer: {manifest} with a mod_dir, then the install POST.
 const BUILD_ANSWER = { ok: true, manifest: { mod_dir: "/tmp/x",
   info: { Title: "x" } } };
+// What the stub echoes back as the used Title, and a switch that makes it come
+// back SHORTER than it went in -- which is what the engine's 100-byte cap does
+// to an auto title made of Chinese sentences.
+let BUILT_TITLE = "x";
+let TRIM = false;
+// Did the page mark the title it sent as one IT wrote (`title_auto`)?  Only such
+// a title may be trimmed to the engine's 100-byte limit; one the player typed is
+// refused with a sentence instead.
+let AUTO_SENT = null;
 
 // ---- run the real script -------------------------------------------------
 const posted = [];
@@ -271,7 +280,16 @@ const sandbox = {
       return { json: async () => FIXTURES.mixed };
     }
     if (url.indexOf("/api/build") === 0) {
-      return { json: async () => BUILD_ANSWER };
+      const body = opt && opt.body ? JSON.parse(opt.body) : {};
+      AUTO_SENT = body.title_auto;
+      // Echo the title back the way the server does.  `TRIM` makes the stub
+      // return a SHORTER title than it was given, which is what the engine's
+      // 100-byte cap does to an auto title built from Chinese sentences -- the
+      // page has to notice and tell the player, not silently show a stale box.
+      BUILT_TITLE = body.title || "dsh 未命名";
+      if (TRIM) BUILT_TITLE = BUILT_TITLE.slice(0, 8);
+      return { json: async () => ({ ok: true, manifest: { mod_dir: "/tmp/x",
+        info: { Title: BUILT_TITLE } } }) };
     }
     if (url.indexOf("/api/update-check") === 0) {
       // The route wraps its answer the way the server does ({ok, update}); a stub
@@ -480,6 +498,36 @@ function buildChecks() {
   }).then(() => {
     check("no warning when the game is closed",
           text(ids.buildnote).indexOf("游戏正开着") < 0, text(ids.buildnote));
+    // The page's own title is marked as such, so the server may trim it.  Three
+    // Chinese characters cost nine bytes, so a few sentences pass the engine's
+    // 100-byte cap with nobody typing a long title -- and the build used to fail
+    // on a byte count the player never wrote.
+    check("the page marks its own title so the server may trim it",
+          AUTO_SENT === true, String(AUTO_SENT));
+    // ...and a title the player typed is NOT marked, because shortening text
+    // someone wrote by hand is a different act (they get a refusal instead).
+    ids.title.value = "我自己起的名字";
+    return page.doBuild();
+  }).then(() => {
+    check("a title the player typed is not marked for trimming",
+          AUTO_SENT === false, String(AUTO_SENT));
+    // A trimmed title must be visible on both surfaces: the box (or it looks
+    // like the mod list disagrees) and a line of prose (or the player's name
+    // silently changed).
+    TRIM = true;
+    ids.title.value = "";
+    page.renderClauses(FIXTURES.mixed.clauses);   // refill with an AUTO title
+    return page.doBuild();
+  }).then(() => {
+    check("a trimmed title is shown in the box, not the long one",
+          ids.title.value === BUILT_TITLE, ids.title.value);
+    check("and the screen says the title was shortened",
+          text(ids.buildnote).indexOf("标题有点长") >= 0, text(ids.buildnote));
+    check("being shortened is not reported as a failure",
+          text(ids.buildnote).indexOf("没做成") < 0
+          && !walk(ids.buildnote, []).some((n) => n.className === "err"),
+          text(ids.buildnote));
+    TRIM = false;
     return pickChecks();
   }).catch((e) => { fails.push("doBuild threw: " + e.message);
                     console.log("FAIL doBuild threw :: " + e.stack); finish(); });

@@ -406,6 +406,39 @@ def main():
             check("a refused intent refuses the bundle instead of silently dropping it",
                   b3.get("ok") is False and "第 2 句" in (b3.get("error") or ""),
                   str(b3)[:300])
+
+            # ---- the auto title, over the wire ------------------------
+            # The page writes the title by joining the sentences, and three
+            # Chinese characters cost nine bytes, so a handful of sentences
+            # passes the engine's 100-byte cap without anyone typing a long
+            # title.  `title_auto` is the page saying "I wrote this", and only
+            # then may the server shorten it.  Both halves are asserted here
+            # because only one of them may succeed: a title the PLAYER typed is
+            # refused with a sentence, never silently edited.
+            long_zh = "把不列颠的村民血量改成一千点并且让弓箭手的攻击力加二" * 2
+            st, b4 = _post(base, "/api/build", {
+                "intents": [{"intent": "unit.stat", "unit": 83,
+                             "stat": "hit_points", "value": 1000}],
+                "title": long_zh, "title_auto": True, "author": "dsh",
+                "description": "auto title", "out_dir": out2})
+            used = ((b4.get("manifest") or {}).get("info") or {}).get("Title")
+            check("an auto title too long to be a folder is trimmed, not refused",
+                  b4.get("ok") is True and bool(used), str(b4)[:300])
+            check("the trimmed title fits the engine's 100 bytes",
+                  used is not None and len(used.encode("utf-8")) <= 100,
+                  repr(used))
+            check("and it is shorter than what the page sent", used != long_zh,
+                  repr(used))
+            st, b5 = _post(base, "/api/build", {
+                "intents": [{"intent": "unit.stat", "unit": 83,
+                             "stat": "hit_points", "value": 1000}],
+                "title": long_zh, "author": "dsh",
+                "description": "typed title", "out_dir": out2})
+            # Not ok, and the reason names the limit: an edit made behind the
+            # player's back would be worse than the refusal.
+            check("the same title typed by hand is refused, not trimmed",
+                  b5.get("ok") is False and "标题太长" in (b5.get("error") or ""),
+                  str(b5)[:300])
         finally:
             shutil.rmtree(out2, ignore_errors=True)
 

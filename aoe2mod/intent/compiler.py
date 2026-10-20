@@ -2021,6 +2021,13 @@ _TYPE_ZH = {
     "NoneType": "空值",
 }
 
+#: Entity kinds, as a player reads them.  `describe` and `icon_for` are reached
+#: straight from the screen ("游戏里怎么说的？" and every grid cell), so their
+#: refusals are player-facing text: a missing id must not read
+#: "no unit with id 999999".  An unknown kind falls through unchanged rather than
+#: becoming an empty string, the same rule as `_FIELD_ZH`.
+_KIND_ZH = {"unit": "单位", "tech": "科技", "building": "建筑"}
+
 
 def _label_zh(label, resource=None):
     """Turn a binding label into something a Chinese player reads cleanly.
@@ -2045,6 +2052,15 @@ def _why_zh(why):
     if re.search(r"[\u4e00-\u9fff]", why or ""):
         return why
     return _WHY_ZH.get(why, why)
+
+
+def kind_label(kind):
+    """A kind name a player reads, or the raw name when it is not one we know.
+
+    Falls through unchanged on purpose: an unknown kind is a caller's mistake,
+    and printing it is more useful to whoever reads the bug than printing "".
+    """
+    return _KIND_ZH.get(kind, kind)
 
 
 def unit_targets(civs, unit_id, allowed, stats, game_root=None):

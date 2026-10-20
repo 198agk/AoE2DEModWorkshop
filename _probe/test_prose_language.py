@@ -304,7 +304,43 @@ def main():
                   not re.search(r"(?<![A-Za-z])%s(?![A-Za-z])" % res_en, prose),
                   text[:140])
 
-    # ---- the fifth surface: the SAME rule reached through `build` ----------
+    # ---- a fifth route by which a sentence reaches the screen --------------
+    # `describe` and `icon_for` are not intents: they are called straight from
+    # the screen (every "游戏里怎么说的？" click and every grid cell), and their
+    # refusals are player-facing text for the same reason a plan's is.  They were
+    # the last English left: `no unit with id 999999` was reachable by clicking a
+    # stale row, and nothing in this file looked at them, because everything here
+    # goes through `tk.plan`.
+    for kind, want in (("unit", "单位"), ("tech", "科技"),
+                       ("building", "建筑")):
+        try:
+            tk.describe(999999, kind=kind)
+        except Exception as exc:                       # noqa: BLE001
+            text = str(exc)
+        else:
+            check("describe(%s) refuses an id that is not there" % kind,
+                  False, "returned an entity")
+            continue
+        check("describe(%s): the refusal names the kind in Chinese" % kind,
+              want in text, text[:140])
+        check("describe(%s): the refusal has no English words" % kind,
+              not LATIN_WORD.search(_drop_paths(text)), text[:140])
+        check("describe(%s): the refusal carries no exception class name" % kind,
+              not any(n in text for n in CLASS_NAMES), text[:140])
+
+    # `icon_for` answers with a dict instead of raising, so the same rule has to
+    # be checked on the value rather than on an exception.
+    gone = tk.icon_for("unit", 999999)
+    check("icon_for refuses an id that is not there", gone.get("ok") is False,
+          gone)
+    check("icon_for: the refusal has no English words",
+          not LATIN_WORD.search(_drop_paths(gone.get("why") or "")), gone)
+    odd = tk.icon_for("building", 82)
+    check("icon_for refuses a kind it does not take", odd.get("ok") is False, odd)
+    check("icon_for: that refusal has no English words",
+          not LATIN_WORD.search(_drop_paths(odd.get("why") or "")), odd)
+
+    # ---- the same rule reached through `build` -----------------------------
     # `plan`, `build` and `build_bundle` each call `AV.plan` from their own line
     # of code, and the refusal they raise is the same sentence.  Until 2026-10-20
     # only the preview call site passed `civ_zh`, so the build read

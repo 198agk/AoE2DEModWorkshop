@@ -408,6 +408,10 @@ const PICK = {kind: "unit", query: "", offset: 0, total: 0, busy: false};
 const PICK_STEP = 60;
 // Picks are sent back with the sentence so a clicked picture keeps its id.
 const PINS = [];
+// The last title this page wrote into the box.  Kept so the build can tell "the
+// player typed this" from "we wrote this and nobody touched it" -- only the
+// second may be trimmed to the engine's 100-byte limit.
+let AUTO_TITLE = "";
 
 function pickName(row) { return row.zh || row.name || ("#" + row.id); }
 
@@ -738,7 +742,15 @@ function renderClauses(clauses) {
   if (good) {
     const names = clauses.filter(buildable).map(c =>
       (c.entity ? c.entity + " " : "") + (c.text.length > 26 ? c.text.slice(0, 26) : c.text));
-    $("#title").value = ("dsh " + names.join(" + ")).slice(0, 60);
+    // Two limits live on this line.  `.slice(0, 60)` is the engine's 100-byte cap
+    // written as characters, which is wrong for Chinese: 60 characters can be 180
+    // bytes, and the title then gets cut by the engine into a folder name that
+    // does not exist -- a mod that says it is enabled and does nothing.  A path
+    // in a sentence would also put `/` or `:` into a folder name.  So the page
+    // trims to 60 characters for looks, and the server trims to 100 BYTES because
+    // this title is `title_auto`.
+    AUTO_TITLE = ("dsh " + names.join(" + ")).slice(0, 60);
+    $("#title").value = AUTO_TITLE;
   }
 }
 
@@ -752,11 +764,23 @@ async function doBuild() {
   if (!intents.length) return;
   $("#btn-build").disabled = true;
   try {
+    const typed = $("#title").value.trim();
     const b = await api("/api/build", {
-      intents, title: $("#title").value.trim() || null, author: "dsh",
+      intents, title: typed || null, author: "dsh",
+      // Says the title above was written by this page, not by the player, so the
+      // server may trim it to the engine's 100-byte limit.  Three Chinese
+      // characters cost nine bytes, so a few sentences pass that limit without
+      // anyone typing a long title -- and the build then failed with a refusal
+      // about byte counts.  A title the player typed is never trimmed.
+      title_auto: !typed || typed === AUTO_TITLE,
     });
     const man = b.manifest;
     const dir = man.mod_dir;
+    // Show what was actually used: an auto title may have been trimmed, and the
+    // input box still holding the long one would make the mod list look wrong.
+    const shortened = !!(man.info && man.info.Title && typed
+                          && man.info.Title !== typed);
+    if (man.info && man.info.Title) $("#title").value = man.info.Title;
     const inst = await api("/api/install", {
       mod_dir: dir, name: man.info && man.info.Title ? man.info.Title : $("#title").value.trim(),
       enabled: true, position: 0,
@@ -768,6 +792,13 @@ async function doBuild() {
       "装好了。数据模组要开局前在游戏里的模组界面选中它，进入对局才真正加载。");
     $("#buildnote").innerHTML = "";
     $("#buildnote").appendChild(note);
+    // A trimmed title is not an error -- but the player should be told, because
+    // the mod list will show a shorter name than the box held a second ago.
+    if (shortened) {
+      $("#buildnote").appendChild(el("div", "hint",
+        "标题有点长，游戏只认前 100 个字节，所以做成了「" + man.info.Title
+        + "」。想用别的名字，改上面那个框再做一次。"));
+    }
     // The game rewrites mod-status.json when it exits, so an entry written while
     // it runs can be replaced by the list it still remembers.  Warn, do not
     // refuse: dropping a data mod into the folder mid-session is something the

@@ -36,6 +36,7 @@ import traceback
 
 from aoe2mod import api as A
 from aoe2mod.game import civnames as CN
+from aoe2mod.mod import emitter as E
 from aoe2mod.ui import nl
 
 STATIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
@@ -238,15 +239,26 @@ class App(object):
     def plan(self, intent):
         return {"ok": True, "plan": self._decorate(self.tk.plan(intent))}
 
-    def build(self, intents, title=None, author="", description="", out_dir=None):
+    def build(self, intents, title=None, author="", description="", out_dir=None,
+              title_auto=False):
         """One mod from one or more intents.
 
         A bundle is the right shape for "these three related edits land together",
         not a convenience loop: two separate mods touching the same .dat is how
         the profile ends up with one silently overriding the other.
+
+        `title_auto` says the page wrote this title from the sentences, rather
+        than the player typing it.  Only then is it trimmed to the engine's
+        100-byte limit: three Chinese characters cost nine bytes, so a handful
+        of sentences passes the limit without anyone writing a long title, and
+        the build used to fail with a refusal about bytes.  A title the player
+        typed is untouched -- shortening text someone wrote by hand is a
+        different act, and it is refused with a sentence that says why.
         """
         if not intents:
             return {"ok": False, "error": "没有可构建的改动"}
+        if title_auto and title:
+            title = E.fit_auto_title(title)
         out_dir = out_dir or _out_root()
         if len(intents) == 1:
             r = self.tk.build(intents[0], out_dir, title=title, author=author,
@@ -547,6 +559,7 @@ def make_handler(app):
                 return self._guard(lambda: app.build(
                     payload.get("intents") or [],
                     title=payload.get("title"),
+                    title_auto=bool(payload.get("title_auto")),
                     author=payload.get("author") or "",
                     description=payload.get("description") or ""))
             if path == "/api/install":

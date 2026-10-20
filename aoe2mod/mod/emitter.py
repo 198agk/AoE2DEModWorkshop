@@ -76,6 +76,38 @@ def _fit_title(title, limit=TITLE_MAX_BYTES):
 INFO_OPTIONAL = ("Unpublished", "thumbnail", "previewIcon", "mainmenu_bg.dds")
 
 
+#: Characters the publisher forbids in a Title, because the Title becomes a
+#: folder name.  A sentence can carry a path ("给村民换张图 D:\pics\a.png"),
+#: and the page joins sentences into the title, so an auto title can contain
+#: `:` and `\` without the player ever typing a title.
+BANNED_TITLE_CHARS = '<>:"/\\|?*'
+
+
+def fit_auto_title(title, limit=TITLE_MAX_BYTES):
+    """Make the page's auto-written title legal: drop forbidden characters, fit.
+
+    Only for a title the PAGE wrote.  A title the player typed goes through
+    `validate_info` instead and is refused with a sentence -- silently
+    shortening text someone wrote by hand is a different act, and a wrapper
+    that quietly did it to both would blur the two.
+
+    Two rules apply here and they are not the same rule: banned characters
+    (the Title becomes a folder name) and the byte cap (`_fit_title`).
+
+    A path is dropped whole rather than picked clean: "给村民换张图
+    D:\\pics\\a.png" would otherwise become "给村民换张图 Dpicsa.png", which is
+    not a title anyone can read.
+    """
+    words = []
+    for tok in (title or "").split():
+        if any(ch in BANNED_TITLE_CHARS for ch in tok) or "\\" in tok or "/" in tok:
+            continue                      # a path, not a word the player typed
+        words.append(tok)
+    t = " ".join(words)
+    t = "".join(ch for ch in t if ch not in BANNED_TITLE_CHARS)
+    return _fit_title(t.strip(), limit)
+
+
 def _rel_is_under_dat_storage(rel):
     """Is this mod-relative path inside the DAT storage point?"""
     n = rel.replace("\\", "/").lower()
@@ -139,6 +171,19 @@ class ModError(Exception):
     """The mod cannot be emitted.  The message is user-facing."""
 
 
+#: How `validate_info` says an info.json field to a player.  The raw key is an
+#: internal name: the screen renders these sentences next to 做成 mod, so
+#: "Title must be a non-empty string" would be an internal note shown to a
+#: player.  Every other refusal in this project already speaks Chinese; this
+#: table is what keeps the info.json ones from being the exception.
+_INFO_KEY_ZH = {
+    "Title": "标题",
+    "Author": "作者",
+    "CacheStatus": "缓存标记",
+    "Description": "说明文字",
+}
+
+
 def read_info_json(path):
     """Read a shipped info.json the way the game does."""
     with open(path, "rb") as fh:
@@ -155,32 +200,47 @@ def validate_info(info):
     """Return a list of human-readable problems; empty means publishable."""
     problems = []
     if not isinstance(info, dict):
-        return ["info.json must contain a JSON object"]
+        return ["info.json 里应该是一个 JSON 对象。"]
     for key in INFO_REQUIRED:
         if key not in info:
-            problems.append("info.json is missing the required key %r" % key)
+            problems.append("info.json 少了必须的「%s」。"
+                            % _INFO_KEY_ZH.get(key, key))
     for key in ("Title", "Author"):
         v = info.get(key)
         if key in info and (not isinstance(v, str) or not v.strip()):
-            problems.append("%s must be a non-empty string" % key)
+            # `_INFO_KEY_ZH` rather than the raw key: this sentence is rendered
+            # on the screen next to the build button.
+            problems.append("%s不能是空的。" % _INFO_KEY_ZH.get(key, key))
     title = info.get("Title")
     if isinstance(title, str):
         banned = set('<>:"/\\|?*')
         bad = sorted(banned & set(title))
         if bad:
-            problems.append("Title contains characters the publisher forbids: %s"
-                            % " ".join(bad))
+            # Reaches the player on the screen: a sentence that carries a file
+            # path ("给村民换张图 D:\pics\a.png") lands in the auto-title as a
+            # colon and a backslash.  Say which characters, in Chinese, and say
+            # that the title is the one thing that cannot hold them.
+            problems.append(
+                "标题里有引擎不允许的字符：%s。标题会被当作文件夹名，所以这些字符"
+                "不能出现；说明文字可以随便写。把标题里的这些字符去掉就行。"
+                % " ".join(bad))
         # ★★★ The engine cuts the Title at 100 UTF-8 bytes and then looks for a
         # folder of that cut name -- so an over-long title produces a mod that is
         # "enabled" in the log and silently does nothing.  Refuse rather than ship
         # a mod that cannot load; `_fit_title` is the fix.
+        #
+        # This sentence reaches the player: the screen builds the title by
+        # joining the sentences they typed, so a run of Chinese can push it past
+        # 100 bytes (3 bytes per character), and the refusal is rendered next to
+        # the button they just pressed.  So it says what to do, in Chinese, and
+        # names the number the engine uses.  The page's own titles are fitted
+        # before they get here (`/api/build` -> `fit_auto_title`), which is why
+        # this one only fires on a title the player typed.
         if title_bytes(title) > TITLE_MAX_BYTES:
             problems.append(
-                "Title is %d UTF-8 bytes but the engine truncates it at %d "
-                "(= %d Chinese characters) and then looks for a folder of the "
-                "TRUNCATED name, so this mod would be enabled and silently do "
-                "nothing; shorten the Title with _fit_title() -- the Description "
-                "may be as long as you like"
+                "标题太长：现在是 %d 字节，而引擎在 %d 字节处截断标题、再拿截断后"
+                "的名字去找文件夹，所以这样的模组会显示为已启用却什么都不改。"
+                "把这个标题改短一点（大约 %d 个汉字以内；说明文字可以任意长）。"
                 % (title_bytes(title), TITLE_MAX_BYTES, TITLE_MAX_BYTES // 3))
     return problems
 
@@ -249,7 +309,10 @@ def emit_data_mod(mod_dir, dat_bytes, info, thumbnail=None, base_dir=None,
     """
     problems = validate_info(info)
     if problems:
-        raise ModError("info.json is not publishable: " + "; ".join(problems))
+        # Player-facing: `/api/build` puts this message on the screen.  Prefix
+        # says what to do; the problems themselves already speak Chinese.
+        raise ModError("这个 mod 的信息填得不对，游戏不会认："
+                       + " ".join(problems))
     if dat_bytes is None and not json_files:
         raise ModError("nothing to emit: neither a .dat nor any JSON override "
                        "was given, so the mod would change nothing")
