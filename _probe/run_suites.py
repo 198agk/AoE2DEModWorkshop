@@ -183,6 +183,14 @@ SUITES = [
     # answer has to reach the manifest the screen reads, not just live in a
     # function nobody calls.
     r"_probe\test_install_running.py",
+    # The one hole neither the page harness nor the server suite can see.  The
+    # harness stubs `fetch`, so it proves the page SENDS a body; the server suite
+    # calls the App methods, so it proves the method works.  A renamed key -- the
+    # page posting `mod_dir`, the route reading `folder` -- is green in both and a
+    # KeyError on the first click.  `/api/install`, `/api/mod` and `/api/uninstall`
+    # cannot be exercised over HTTP without writing the player's real mod list,
+    # which is exactly why the contract has to be read out of the sources instead.
+    r"_probe\test_page_route_contract.py",
     # The registry itself.  Ten probes rotted unrun before anyone noticed, and
     # the reason nobody noticed is that "is every test reachable?" was a question
     # only a human could answer.  This asks it mechanically, including the four
