@@ -391,6 +391,65 @@ def main():
           not any("一类" in (c.why or "") for c in clauses),
           [c.why for c in clauses])
 
+    # ---- unit.create: a sentence that makes something the game does not have --
+    # The reader is the only way to ask for this, so a sentence the player would
+    # actually type has to produce it.  All three facts (donor, name, civ) are
+    # required and each one has its own refusal, because a creation with a
+    # guessed donor or a guessed civilization is a confident wrong answer.
+    CREATE = [
+        ("给不列颠新建一个和村民一样的单位，叫铁匠学徒", 1810, "British", "铁匠学徒"),
+        ("照村民给不列颠做一个新单位，叫「铁匠学徒」", 1810, "British", "铁匠学徒"),
+        ("不列颠新建一个单位，照着村民，名字叫做铁匠学徒", 1810, "British", "铁匠学徒"),
+        ("做一个和村民一样的新单位，叫铁匠学徒，加进不列颠", 1810, "British", "铁匠学徒"),
+    ]
+    for text, donor, civ, name in CREATE:
+        intents, clauses = read(text)
+        check("a creating sentence is read as a creation :: %s" % text,
+              len(intents) == 1 and intents[0].get("intent") == "unit.create",
+              [c.intent for c in clauses])
+        if len(intents) == 1 and intents[0].get("intent") == "unit.create":
+            got = intents[0]
+            check("…with the donor the sentence named :: %s" % text,
+                  got.get("donor") == donor, got)
+            check("…the civilization it named :: %s" % text,
+                  got.get("civ") == civ, got)
+            check("…and the name it named :: %s" % text,
+                  got.get("name") == name, got)
+
+    # A property after the name belongs to the new unit, not to a second edit.
+    intents, _clauses = read("给不列颠新建一个和村民一样的单位，叫铁匠学徒，血量 500")
+    check("a property after the name qualifies the new unit",
+          len(intents) == 1 and intents[0].get("hp") == 500, intents)
+
+    # Missing facts are refused, and each refusal names the fact that is missing:
+    # a refusal that says "did not understand" here would leave the player with a
+    # correct sentence and no idea what to add.
+    intents, clauses = read("给不列颠新建一个单位，叫铁匠学徒")
+    check("a creation with no donor is refused, naming the donor",
+          not intents and "照着哪个单位" in (clauses[0].why or ""),
+          [c.why for c in clauses])
+    intents, clauses = read("照着村民新建一个单位")
+    check("a creation with no name is refused, naming the name",
+          not intents and "叫什么" in (clauses[0].why or ""),
+          [c.why for c in clauses])
+    intents, clauses = read("照着村民新建一个单位，叫铁匠学徒")
+    check("a creation with no civilization is refused, naming the civilization",
+          not intents and ("文明" in (clauses[0].why or "")
+                           and "说清" in (clauses[0].why or "")),
+          [c.why for c in clauses])
+    # …and an ordinary edit must not be read as a creation.  "造" appears in
+    # 能造; 照 appears in 照片 and 按照.
+    for text, want in (("村民能造了", None),
+                       ("按照村民的血量改成1000", "unit.stat"),
+                       ("给印加解锁蔷琵侦察兵", "unit.availability")):
+        intents, _clauses = read(text)
+        got = intents[0].get("intent") if intents else None
+        if want is None:
+            check("「%s」is not read as a creation" % text, got != "unit.create", got)
+        else:
+            check("「%s」is read as %s, not a creation" % (text, want),
+                  got == want, got)
+
     # ---- honesty: every clause carries either an intent or a reason ------
     _, clauses = read("随便写点什么")
     for cl in clauses:

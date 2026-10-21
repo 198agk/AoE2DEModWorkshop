@@ -672,6 +672,24 @@ def write_building(w):
 
 def write_unit(w, u):
     w.cur = "unit type=%d id=%d" % (u["type"], u["id"])
+    if u.get("_img"):
+        # A record the model could not rebuild field by field: emit the bytes it
+        # was made from.  `serialize_dat` only ever writes a synthesised record
+        # through `new_record()`, so the raw cursor is frozen and the verbatim
+        # replay of the pre-existing stream resumes at the same offset.
+        #
+        # Why a byte image at all: a unit record's tail is type-dependent
+        # (Type50 / Projectile / Creatable / Building, each with its own version
+        # guards), so rebuilding it from zeros would be one guess per field.  A
+        # clone of an existing record is exactly right by construction.
+        # `new_record()` is not optional: without it `_emit` advances the raw
+        # cursor by the record's length, so every later `op()` replays the wrong
+        # bytes and the file stops re-parsing (measured: `bad char in struct
+        # format` inside read_bird).  Inside the context the cursor is frozen and
+        # the verbatim replay resumes where the previous record ended.
+        with w.new_record():
+            w._emit(bytes(u["_img"]), "new unit record")
+        return
     w.u8(u["type"])
     w.i16(u["id"])
     w.op(4); w.op(4)                   # LanguageDLLName, LanguageDLLCreation
@@ -743,8 +761,21 @@ def write_civ(w, c):
     for v in c["resources"]:
         w.f32(v)
     w.u8(c["icon_set"])
-    w.i16(c["unit_pointers_total"])
-    w.op(4 * c["unit_pointers_total"])  # unit pointer array (all-zero/value lost)
+    ptrs = c.get("_ptrs")
+    if ptrs is None:
+        w.i16(c["unit_pointers_total"])
+        w.op(4 * c["unit_pointers_total"])  # unit pointer array (all-zero/value lost)
+    else:
+        # Rebuilt from the set of ids this civ actually has.  The array is a
+        # PER-ID EXISTENCE FLAG, not a list of offsets: measured on the shipped
+        # file, all 2,750 slots exist and every non-zero value is 1 (civ 0 holds
+        # 2,693 records, slots 0..2749).  Writing it field by field is what makes
+        # adding a record possible at all -- `w.op(4*n)` replays the old bytes,
+        # so one extra record shifted the whole tail by 3,009,349 bytes and the
+        # result would not re-parse.
+        w.i16(len(ptrs))
+        for v in ptrs:
+            w.i32(v)
     for u in c["units"]:
         write_unit(w, u)
 

@@ -5,6 +5,7 @@ Six sections: the headline case, a per-civ target, a refused case, the
 "already share art" refusal, a warning case, and the write path.
 """
 import os
+import re
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -242,7 +243,15 @@ def main():
           % clash["sprite_refusals"])
     if clash["sprite_refusals"]:
         why = clash["sprite_refusals"][0]["reason"]
-        check("one file cannot" in why, "and the refusal explains why: %s" % why)
+        # Chinese, because the bundle summary prints this string verbatim when
+        # nothing at all can be emitted, and the page prints it as "有一句没做成".
+        # Assert the SHAPE (a file name and two sentences, no sentence template),
+        # not a phrase: pinning the template makes the next rewording silently
+        # turn this check into a no-op.
+        check("一个文件装不下两张" in why, "and the refusal explains why: %s" % why)
+        check(not re.search(r"[A-Za-z]{2,}", re.sub(r"[\w.\-]+\.(sld|png|dds)", " ",
+                                                    why)),
+              "and no English template leaked into it: %s" % why)
         # Both sentences, in the user's own words.  An English unit name here
         # would be the locator's key leaking onto the screen.
         check("长弓兵" in why and "弩手" in why,

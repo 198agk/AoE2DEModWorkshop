@@ -815,6 +815,18 @@ async function doBuild() {
     // user does on purpose (they said so on 2026-10-16).
     const warn = inst.installed && inst.installed.running_warning;
     if (warn) $("#buildnote").appendChild(el("div", "warn", warn));
+    // A bundle can succeed and still drop one of the sentences: two reskin
+    // sentences that want the same file to hold two pictures -- "make the archer
+    // look like the longbowman" and "make it look like the crossbowman" -- cannot
+    // both be honoured, and the manifest names the one it dropped.  Saying only
+    // "已生成并安装" would let the player believe both took effect, so print each
+    // refusal here.  Measured 2026-10-21: typed as two sentences, the build
+    // shipped 21 files and the page said nothing.
+    const dropped = man.sprite_refusals || [];
+    for (const ref of dropped) {
+      $("#buildnote").appendChild(el("div", "warn",
+        "有一句没做成：" + (ref.reason || ref.description || "")));
+    }
   } catch (e) {
     toast("没做成：" + e.message, "bad");
     $("#buildnote").innerHTML = "";

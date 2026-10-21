@@ -87,6 +87,34 @@ TECH_HINTS = ("科技", "研究", "研发", "技术")
 # plain value.
 SPRITE_HINTS = ("样子", "造型", "外观", "模样", "长相", "皮肤", "换皮", "外壳")
 
+# "给不列颠新建一个和村民一样的单位，叫铁匠学徒" -- nothing on disk is the
+# subject, so the sentence has to say it is MAKING something.  Checked before the
+# availability branch, because 造 appears in both ("造一个" vs "能造") and the
+# create reading is the more specific one.
+CREATE_HINTS = ("新建", "创建", "做一个新", "造一个新", "加一个新", "添一个新",
+                "新单位", "新兵种", "做一个和", "造一个和", "做一个像", "造一个像",
+                "照着", "仿照", "照做", "照")
+
+# 照 is the one ambiguous word in that list: 按照 and 照片 are not creations, and
+# a sentence about a photo of a villager would otherwise be read as one.
+_CREATE_NOT = ("按照", "照片", "照样", "照明", "拍照")
+
+# How a sentence hands over a NAME.  Ordered longest-first so 名字叫做 loses to
+# 名字叫 only by accident, never by ambiguity: the span is taken from the first
+# match and runs to the end of the sentence or the next punctuation.
+_NAME_PATTERNS = (
+    r"名字叫(?:做)?\s*",
+    r"名字是\s*",
+    r"命名为\s*",
+    r"名叫\s*",
+    r"叫做\s*",
+    r"叫作\s*",
+    r"叫\s*",
+    r"名字[是为]\s*",
+)
+_NAME_QUOTED_RE = re.compile(r"[「“\"']([^」”\"']{1,40})[」”\"']")
+_NAME_TAIL_RE = re.compile(r"[，,。.；;、\s]+$")
+
 # "给村民换一张图 C:\...\pic.png" -- the object is a file on disk.
 ART_HINTS = ("换图", "换一张图", "图片", "立绘", "贴图", "图案", "画像", "海报")
 _PICTURE_RE = re.compile(
@@ -528,22 +556,49 @@ def _operation(text):
 
 
 def _civ_in(text, low, civ_names, civ_zh):
-    """The civilization the sentence names, or None.
+    """The civilization the sentence names, or 'None'.
 
     Chinese first (that is what people type), then the .dat's own spellings.
     Longest match wins so "阿契美尼德" does not lose to "契丹"-style prefixes.
     """
-    best = None
+    found = _civs_in(text, civ_names, civ_zh)
+    return found[0] if found else None
+
+
+# How Chinese joins two names into one scope.  A comma is NOT here on purpose:
+# it already splits sentences (`_pieces`), so "不列颠，法兰克" is two sentences.
+_AND_WORDS = ("和", "与", "、")
+
+
+def _civs_in(text, civ_names, civ_zh):
+    """Every civilization the sentence names, in the order it names them.
+
+    Returns a list of the .dat's own spellings (`British`, not `Britons`).
+
+    More than one is real: "不列颠和法兰克的村民血量改成1000" means BOTH.  This
+    used to return the longest single match, so the sentence silently edited one
+    civilization and dropped the other -- measured 2026-10-21, `civs=['British']`.
+    Reading them all is the fix; refusing would be the other honest option, but
+    the sentence is not ambiguous, it is just plural.
+    """
+    low = _norm(text)
+    hits = []
     if civ_zh:
         for zh, en in civ_zh.items():
             if zh in low and (civ_names is None or en in civ_names):
-                if best is None or len(zh) > len(best[1]):
-                    best = (en, zh)
+                hits.append((low.index(zh), -len(zh), en))
     for name in (civ_names or ()):
-        if name and _norm(name) in low and len(name) > 2:
-            if best is None or len(name) > len(best[1]):
-                best = (name, name)
-    return best[0] if best else None
+        if name and len(name) > 2 and _norm(name) in low:
+            hits.append((low.index(_norm(name)), -len(name), name))
+    hits.sort()
+    out = []
+    for _at, _neg, name in hits:
+        # A name nested inside a longer one was already taken by the longer:
+        # 不列颠 and 不列颠人 must not both count.
+        if any(name and name in seen for seen in out):
+            continue
+        out.append(name)
+    return out
 
 
 def _residual(raw, vocab, civ_names=None, civ_zh=None):
@@ -661,6 +716,80 @@ def _effect_count(tech_id, counter):
         return None
 
 
+def _is_create(raw, low):
+    """Does this sentence ask for a new thing?
+
+    ``照`` is in CREATE_HINTS and is also the first character of 按照 (according
+    to), 照片 (photo), 照样 (as usual) and 照明.  Measured 2026-10-21: without the
+    exclusion list "按照村民的血量改成1000" was read as a creation, which turned a
+    perfectly ordinary stat edit into a refusal about a missing name.
+    """
+    for bad in _CREATE_NOT:
+        low = low.replace(_norm(bad), " ")
+        raw = raw.replace(bad, " ")
+    return any(w in low for w in CREATE_HINTS)
+
+
+def _created_name(raw):
+    """The name a creating sentence gives the new thing.
+
+    Two shapes ship here because both are what people actually type: a quoted
+    name ("叫「铁匠学徒」") and a bare one after the naming verb
+    ("叫铁匠学徒").  The bare shape stops at the first punctuation, because the
+    rest of the sentence is about something else and swallowing it would name the
+    unit after a sentence fragment.
+
+    Returns ``None`` when the sentence names nothing -- the caller refuses, since
+    a unit with no name is one the game cannot show.
+    """
+    m = _NAME_QUOTED_RE.search(raw)
+    if m:
+        nm = m.group(1).strip()
+        return nm or None
+    for pat in _NAME_PATTERNS:
+        m = re.search(pat, raw)
+        if not m:
+            continue
+        tail = raw[m.end():]
+        tail = re.split(r"[，,。.；;、]", tail, 1)[0]
+        tail = _NAME_TAIL_RE.sub("", tail).strip()
+        # The name may not carry the verb that follows it ("叫铁匠学徒的" no, but
+        # "叫铁匠学徒新建" would be a mis-split); cut at the first space and at
+        # any word from the vocabulary of the sentence grammar.
+        tail = tail.split(" ")[0].strip()
+        return tail or None
+    return None
+
+
+def _creator_entity(raw, low, vocab, sps, prefer):
+    """The entity a creating sentence models the new thing on.
+
+    A create sentence names a DONOR ("做一个和村民一样的"), not a subject, so the
+    ordinary "first span wins" rule can pick a tech or a building that merely
+    shares a character.  Worse, it can pick something the player never named:
+    measured 2026-10-21, "给不列颠新建一个单位，叫铁匠学徒" resolved the donor to
+    a fire ship, because an unrelated span happened to be the longest one.
+
+    So a donor has to be introduced by a word that asks for one (和/像/照着/以).
+    No marker means no donor, and the caller refuses and says so -- which is what
+    the player needs, because they did not say either.
+
+    ``sps`` entries are the 6-tuple ``spans_at`` returns --
+    ``(start, end, entity, matched_text, kind, group)`` -- so the kind is [4] and
+    the matched text [3].
+    """
+    if not sps:
+        return None, None
+    for marker in ("和", "像", "照", "以"):
+        m = re.search(re.escape(marker), raw)
+        if not m:
+            continue
+        for s in sps:
+            if s[0] >= m.end() and s[4] == prefer:
+                return s[2], s[2]
+    return None, None
+
+
 def read_clause(text, vocab, civ_names=None, civ_zh=None, pins=None,
                 effect_count=None, unit_class=None):
     """Read one sentence into a Clause.  Never raises; never guesses.
@@ -687,6 +816,38 @@ def read_clause(text, vocab, civ_names=None, civ_zh=None, pins=None,
     spans = [(e, t, k, g) for _s, _e, e, t, k, g in sps]
     tech_hint = any(w in low for w in TECH_HINTS)
     prefer = "tech" if tech_hint else "unit"
+
+    # --- unit.create: the sentence MAKES something ----------------------
+    # Checked first, because a creating sentence has no existing subject to
+    # resolve: "照村民做一个新单位叫铁匠学徒" would otherwise be read as an edit
+    # of 村民, which is a confident wrong answer about a record nobody asked to
+    # change.  The two facts a creation needs are the donor and the name, and the
+    # name is taken from the sentence itself rather than guessed.
+    is_create = _is_create(raw, low)
+    if is_create:
+        new_name = _created_name(raw)
+        donor, _same = _creator_entity(raw, low, vocab, sps, "unit")
+        civ0 = _civ_in(raw, low, civ_names, civ_zh)
+        if donor is None:
+            cl.why = "这句话没说要照着哪个单位做，说一个出厂单位的名字"
+            return cl
+        if not new_name:
+            cl.why = "这个新单位叫什么？在句子里写上名字（例如：叫铁匠学徒）"
+            return cl
+        if not civ0:
+            cl.why = ("新单位是要加进某一个文明的，说清是哪一个"
+                      "（一个文明的单位表是它自己的一份，加进全部文明是另一件事）")
+            return cl
+        cl.kind = "unit"
+        cl.entity = donor
+        cl.intent = {"intent": "unit.create", "donor": donor.id,
+                     "civ": civ0, "name": new_name}
+        hp_v, _is_float = _number(_strip_names(raw, donor))
+        if hp_v is not None:
+            cl.intent["hp"] = int(hp_v)
+        cl.notes.append("照「%s」做，名字是「%s」" % (donor.display, new_name))
+        return cl
+
     ent = None
     kind = None
     # What the player CLICKED beats what the sentence alone can say.  A name is
@@ -1031,6 +1192,105 @@ def _pieces(text, vocab=None):
     return out
 
 
+def _says_property(text):
+    """Does the sentence name a stat or a resource at all?
+
+    STAT_WORDS and RESOURCE_WORDS are {field: (words...)} tables, so iterating
+    them yields the FIELD keys -- ``"hit_points" in "血量 500"`` is False and the
+    test silently answers no for every sentence in Chinese.  The words have to be
+    asked for through ``_first_word``.
+    """
+    low = _norm(text)
+    return bool(_first_word(low, STAT_WORDS) or _first_word(low, RESOURCE_WORDS))
+
+
+def _separate_edit(part, vocab=None):
+    """Is this piece a request of its own, rather than a fragment of a sentence?
+
+    Only the creating-sentence join below asks this, and the line it draws is:
+    a piece that names an entity AND carries a number, or a grant/revoke verb, or
+    a picture, or a look — is somebody asking for something ("村民血量改成1000").
+    Everything else is a fragment: "叫铁匠学徒" (the name), "照着村民" (the donor),
+    "加进不列颠" (the civilization), "血量 500" (one property of the new thing).
+
+    Entity-naming alone must NOT count, because inside a creating sentence the
+    named entity IS the donor: "做一个和村民一样的新单位" names 村民 and is not a
+    second request.
+    """
+    low = _norm(part)
+    if _picture_in(part):
+        return True
+    if any(w in low for w in GRANT_WORDS) or any(w in low for w in REVOKE_WORDS):
+        return True
+    if _sprite_hint_at(low) is not None:
+        return True
+    if _number(part)[0] is None:
+        return False
+    if _says_property(part):
+        # A number plus a property name.  Without an entity it is a qualifier on
+        # the sentence just read ("...，血量 500"); with one it is its own edit.
+        return bool(vocab is not None and vocab.spans_at(part))
+    return False
+
+
+def _create_gaps(text, civ_names=None, civ_zh=None):
+    """Which of the three facts a creating sentence needs are still missing.
+
+    A donor has to be introduced by 和/像/照/以 (see `_creator_entity`); a name has
+    to follow a naming verb (see `_created_name`); the civilization has to be one
+    the product knows.  Anything else is a fragment waiting to be joined.
+    """
+    low = _norm(text)
+    gaps = []
+    if not any(m in low for m in ("和", "像", "照", "以")):
+        gaps.append("donor")
+    if not _created_name(text):
+        gaps.append("name")
+    if not _civ_in(text, low, civ_names, civ_zh):
+        gaps.append("civ")
+    return gaps
+
+
+def _merge_create_name(pieces, civ_names=None, civ_zh=None, vocab=None):
+    """Re-join a creating sentence that the comma split into fragments.
+
+    "给不列颠新建一个和村民一样的单位，叫铁匠学徒" is ONE request whose second
+    half is the name.  Split at the comma, the first half has the donor and no
+    name and the second has a name and nothing else -- so both halves refuse, and
+    the player who wrote a perfectly clear sentence is told the name is missing
+    and then that "叫铁匠学徒" is not something this tool edits.
+
+    A piece joins the previous one while the previous is a creating sentence that
+    is still missing a fact, or while the piece is a bare property qualifier
+    ("...，血量 500").  A piece that asks for something of its own stays separate:
+    "...，村民血量改成1000" is a second request.  Note that naming an entity alone
+    is NOT enough to be separate -- inside a creating sentence the named entity IS
+    the donor.
+    """
+    out = []
+    for part in pieces:
+        if out and _is_create(out[-1], _norm(out[-1])):
+            # Greedy, left to right: facts about ONE new unit can arrive in any
+            # order and any number of pieces ("不列颠新建一个单位，照着村民，
+            # 名字叫做铁匠学徒" is three).  Growth continues while the sentence is
+            # still missing something OR the next piece is a qualifier, and stops
+            # the moment a piece asks for something of its own.
+            prev = out[-1]
+            gap = bool(_create_gaps(prev, civ_names, civ_zh))
+            qual = _number(part)[0] is not None and _says_property(part)
+            if (gap or qual) and not _separate_edit(part, vocab):
+                out[-1] = prev + "，" + part
+                continue
+        out.append(part)
+    return out
+
+
+# Words that make a piece a real edit rather than a name being handed over.
+# "叫铁匠学徒" is a name; "叫铁匠学徒血量500" is not, and must not be swallowed.
+_NAME_OPPOSED = ("血量", "生命", "攻击", "护甲", "成本", "时间", "改成", "改为",
+                 "设为", "加", "减", "能造", "不能造", "解锁", "样子", "造型")
+
+
 def read(text, vocab, civ_names=None, civ_zh=None, pins=None, effect_count=None,
          unit_class=None):
     """Split on sentence punctuation and read every part.
@@ -1047,7 +1307,7 @@ def read(text, vocab, civ_names=None, civ_zh=None, pins=None, effect_count=None,
     for why a category word cannot be edited as if it were a record.
     """
     intents, clauses = [], []
-    for part in _pieces(text, vocab):
+    for part in _merge_create_name(_pieces(text, vocab), civ_names, civ_zh, vocab):
         cl = read_clause(part, vocab, civ_names=civ_names, civ_zh=civ_zh,
                          pins=pins, effect_count=effect_count,
                          unit_class=unit_class)

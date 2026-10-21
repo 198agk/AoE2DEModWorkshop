@@ -150,9 +150,45 @@ check(not gone,
       "and the facade still refuses all six, so this file is not vacuous",
       gone)
 
+# ---- the refusals that arrive WITH a successful build -----------------------
+# A bundle can succeed and still drop a sentence: two reskin sentences that want
+# one file to hold two pictures cannot both be honoured, and the manifest names
+# the one it dropped.  Those reasons are screen text twice over -- the page prints
+# them as "有一句没做成：<reason>", and when nothing at all can be emitted the
+# bundle summary joins them into one sentence.  Measured 2026-10-21: typed as two
+# ordinary sentences, this came out as "two sentences need ... , and one file
+# cannot do that" -- full English, on a successful build.
+import tempfile                                                     # noqa: E402
+
+CLASH = "把步弓手的样子换成长弓兵，把步弓手的样子换成弩手"
+_got = app.parse(CLASH)
+_tk = app.tk
+_out = tempfile.mkdtemp(prefix="screen_reach_")
+try:
+    _man = _tk.build_bundle(_got["intents"], os.path.join(_out, "clash"),
+                            author="dsh", title="clash")
+except Exception as exc:                                            # noqa: BLE001
+    _man = {"sprite_refusals": [{"reason": str(exc)}]}
+
+_dropped = _man.get("sprite_refusals") or []
+check(bool(_dropped),
+      "two contradicting reskin sentences leave one refusal on the manifest",
+      _man.get("sprite_refusals"))
+_leaks = []
+for _r in _dropped:
+    _why = _r.get("reason") or ""
+    # A .sld name is DATA -- the player needs it to see which file the two
+    # sentences met on.  Strip file names and quoted spans, then judge the prose.
+    _bare = re.sub(r"[\w.\-]+\.(sld|png|dds)", " ", re.sub(r"「[^」]*」", "", _why))
+    if LATIN.search(_bare):
+        _leaks.append(_why)
+check(not _leaks,
+      "and the refusal it leaves is Chinese, not a sentence template",
+      _leaks[:2])
+
 print()
 if FAILED:
     print("SCREEN REACH: %d CHECK(S) FAILED" % len(FAILED))
     sys.exit(1)
-print("SCREEN REACH: THE SIX ENGLISH REFUSALS ARE API-ONLY; A SENTENCE CANNOT "
-      "SPELL THEM")
+print("SCREEN REACH: SIX ENGLISH REFUSALS ARE API-ONLY, AND THE ONE A SENTENCE "
+      "CAN REACH IS CHINESE")

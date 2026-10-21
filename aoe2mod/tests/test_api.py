@@ -1327,7 +1327,14 @@ try:
     ])
     assert len(_sb_clash["sprite_refusals"]) == 1, _sb_clash["sprite_refusals"]
     _sb_why = _sb_clash["sprite_refusals"][0]["reason"]
-    assert "one file cannot" in _sb_why, _sb_why
+    # Assert what the sentence MEANS, not the template that says it: this string
+    # is printed on screen ("有一句没做成：<reason>") and will be reworded, and a
+    # check pinned to the old wording turns silently into a no-op the day it is.
+    assert "装不下两张" in _sb_why, _sb_why
+    # No English template left in it.  A file name is DATA -- the player needs it
+    # to see which file the two sentences met on -- so strip those before judging.
+    assert not re.search(r"[A-Za-z]{2,}",
+                         re.sub(r"[\w.\-]+\.(sld|png|dds)", " ", _sb_why)), _sb_why
     # Both sentences, in the user's own words.  An English unit name or a raw
     # filename would be the locator's key leaking onto the screen.
     assert "长弓兵" in _sb_why and "弩手" in _sb_why, _sb_why

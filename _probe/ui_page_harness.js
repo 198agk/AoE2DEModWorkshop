@@ -246,8 +246,7 @@ const RUNNING_TEXT = "游戏正开着。它退出时会用自己记得的模组�
   + "或者关掉游戏再写一次。";
 // The build route's answer: {manifest} with a mod_dir, then the install POST.
 const BUILD_ANSWER = { ok: true, manifest: { mod_dir: "/tmp/x",
-  info: { Title: "x" } } };
-// What the stub echoes back as the used Title, and a switch that makes it come
+  info: { Title: "x" } } };// What the stub echoes back as the used Title, and a switch that makes it come
 // back SHORTER than it went in -- which is what the engine's 100-byte cap does
 // to an auto title made of Chinese sentences.
 let BUILT_TITLE = "x";
@@ -256,6 +255,11 @@ let TRIM = false;
 // a title may be trimmed to the engine's 100-byte limit; one the player typed is
 // refused with a sentence instead.
 let AUTO_SENT = null;
+// Refusals the bundle reports in its own manifest: a build can succeed and still
+// drop a sentence (two reskin sentences want one file to hold two pictures).
+// The page must say so -- shipping 21 files while the screen says "已生成并安装"
+// is a silent half-done job.
+let DROPPED = [];
 
 // ---- run the real script -------------------------------------------------
 const posted = [];
@@ -288,8 +292,11 @@ const sandbox = {
       // page has to notice and tell the player, not silently show a stale box.
       BUILT_TITLE = body.title || "dsh 未命名";
       if (TRIM) BUILT_TITLE = BUILT_TITLE.slice(0, 8);
+      // `DROPPED` stands in for what the real manifest calls `sprite_refusals`:
+      // sentences the bundle succeeded without.  The page must print them, or a
+      // half-done job looks finished.
       return { json: async () => ({ ok: true, manifest: { mod_dir: "/tmp/x",
-        info: { Title: BUILT_TITLE } } }) };
+        info: { Title: BUILT_TITLE }, sprite_refusals: DROPPED } }) };
     }
     if (url.indexOf("/api/update-check") === 0) {
       // The route wraps its answer the way the server does ({ok, update}); a stub
@@ -528,6 +535,29 @@ function buildChecks() {
           && !walk(ids.buildnote, []).some((n) => n.className === "err"),
           text(ids.buildnote));
     TRIM = false;
+    // A bundle can succeed and still drop one of the sentences.  Two reskin
+    // sentences that want one file to hold two pictures cannot both be honoured;
+    // the manifest names the one it dropped, and the screen must print it --
+    // otherwise the player reads "已生成并安装" and believes both took effect.
+    DROPPED = [{ reason: "「把步弓手的样子换成长弓兵」和「把步弓手的样子换成弩手」"
+                        + "都要写 u_arc_archer_attackA_x1.sld 这个文件，"
+                        + "可一个文件装不下两张不同的画" }];
+    ids.title.value = "";
+    page.renderClauses(FIXTURES.mixed.clauses);
+    return page.doBuild();
+  }).then(() => {
+    check("a sentence the build dropped is named on screen",
+          text(ids.buildnote).indexOf("有一句没做成") >= 0
+          && text(ids.buildnote).indexOf("装不下两张") >= 0,
+          text(ids.buildnote));
+    check("a dropped sentence is a warning, not a failure",
+          !walk(ids.buildnote, []).some((n) => n.className === "err"),
+          JSON.stringify(walk(ids.buildnote, []).map((n) => n.className)));
+    DROPPED = [];
+    return page.doBuild();
+  }).then(() => {
+    check("a complete build says nothing about dropped sentences",
+          text(ids.buildnote).indexOf("有一句没做成") < 0, text(ids.buildnote));
     return pickChecks();
   }).catch((e) => { fails.push("doBuild threw: " + e.message);
                     console.log("FAIL doBuild threw :: " + e.stack); finish(); });

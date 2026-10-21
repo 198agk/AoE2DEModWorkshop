@@ -219,6 +219,15 @@ SUITES = [
     # third check that the facade still refuses all six (otherwise the first two
     # would stay green by describing something that no longer exists).
     r"_probe\test_screen_reach.py",
+    # A unit the game does not have.  This is the one intent that APPENDS a record
+    # instead of patching a byte, so nothing the byte patcher's suites prove
+    # applies to it: an append moves every byte after it, and the reader walks the
+    # civ's slot array in order.  The suite therefore checks the three things a
+    # green reparse would not catch on its own -- that the emitted .dat re-parses
+    # with every byte consumed, that the new id is IN the civ's record run, and
+    # that the name line landed in the file the game's own 605-byte instructions
+    # name as the way a mod adds a string.
+    r"_probe\test_new_unit.py",
     # The registry itself.  Ten probes rotted unrun before anyone noticed, and
     # the reason nobody noticed is that "is every test reachable?" was a question
     # only a human could answer.  This asks it mechanically, including the four

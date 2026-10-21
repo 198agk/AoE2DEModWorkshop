@@ -82,9 +82,17 @@ def main():
         check("meta is ok", meta.get("ok") is True, str(meta)[:120])
         check("meta carries every civilization", len(meta.get("civs") or []) >= 60,
               len(meta.get("civs") or []))
-        check("meta carries every intent the schema declares",
-              len(meta.get("intents") or []) == 10,
-              [i["id"] for i in (meta.get("intents") or [])])
+        # Compare against the SCHEMA, not against a number.  A literal here is a
+        # test that fails whenever an intent is added and that proves nothing
+        # about whether the route carries the schema -- measured 2026-10-21, when
+        # adding `unit.create` turned this into a red about the number 10.
+        from aoe2mod.intent import compiler as _C
+        _schema, _ = _C.load_schema()
+        declared = sorted((_schema.get("intents") or {}).keys())
+        served = sorted(i["id"] for i in (meta.get("intents") or []))
+        check("meta carries every intent the schema declares", served == declared,
+              [i for i in declared if i not in served]
+              or [i for i in served if i not in declared])
 
         # ---- search ----------------------------------------------------
         st, _c, body = _get(base, "/api/search?q=%E6%9D%91%E6%B0%91&kind=unit")

@@ -815,11 +815,11 @@ class Resolved(object):
 
     __slots__ = ("kind", "entity", "op", "stat", "amount",
                  "civ_scope", "resource", "class_id", "raw", "label",
-                 "civ", "action", "donor")
+                 "civ", "action", "donor", "name")
 
     def __init__(self, kind, entity, stat, op, amount, civ_scope, raw,
                  resource=None, class_id=None, label=None, civ=None,
-                 action=None, donor=None):
+                 action=None, donor=None, name=None):
         self.kind = kind            # 'unit' | 'tech'
         self.entity = entity        # semantic.Entity
         self.stat = stat            # binding key
@@ -842,6 +842,10 @@ class Resolved(object):
         # ambiguous in exactly the same way and gets the same "did you mean"
         # refusal rather than a second, differently-worded one.
         self.donor = donor
+        # The words a CREATED entity will display as.  A new unit has no record
+        # to read a name from, so the sentence is the only source -- and it lands
+        # in a string table rather than being derived from anything on disk.
+        self.name = name
 
     def describe_target(self):
         """Just the "what" half of the sentence ("成本 gold", "hit_points").
@@ -922,6 +926,10 @@ class Resolved(object):
             # name is theirs, not ours.
             return "%s 换成 %s" % (self.entity.display,
                                    os.path.basename(self.raw["picture"]))
+        if self.donor is not None and self.name is not None:
+            # A creation: there is no existing entity to describe, so the
+            # sentence has to name the new thing and say what it is modelled on.
+            return "照 %s 做一个新单位「%s」" % (self.donor.display, self.name)
         if self.donor is not None:
             # A relationship, not a number: the three-part shape below would
             # render "弓箭手 长弓兵" and leave the user to guess which end moves.
@@ -951,6 +959,12 @@ def resolve(intent, schema, semantic_index=None, bindings=None):
     # --- which entity -----------------------------------------------------
     kind = spec.get("applies_to", "unit")
     ref_field = it.split(".")[0]          # 'unit' or 'tech'
+    if ref_field not in intent and "donor" in fields and intent.get("donor"):
+        # An intent that CREATES something has no subject to look up yet: the
+        # sentence names the record to copy, and that donor is the only entity on
+        # the table.  Resolving it through the same field keeps the "did you
+        # mean" refusal identical to every other intent's.
+        ref_field = "donor"
     if ref_field not in intent:
         raise IntentError("intent %r needs a %r field" % (it, ref_field))
     try:
@@ -1007,11 +1021,11 @@ def resolve(intent, schema, semantic_index=None, bindings=None):
     if "civ" in fields:
         civ = intent.get("civ")
         if civ in (None, ""):
-            raise IntentError("intent %r needs a 'civ' (one civilization name)"
-                              % it)
+            raise IntentError("这句话要说是哪一个文明（只认一个文明）")
         if not isinstance(civ, (str, int)):
-            raise IntentError("'civ' must be a civilization name or index, "
-                              "not %s" % type(civ).__name__)
+            raise IntentError("「文明」得是名字或者编号，收到的是%s"
+                              % _TYPE_ZH.get(type(civ).__name__,
+                                             type(civ).__name__))
 
     action = None
     if "action" in fields:
@@ -1028,7 +1042,12 @@ def resolve(intent, schema, semantic_index=None, bindings=None):
     # later as "the donor has no loose art" -- which would describe a data fact
     # about a unit the user never actually named.
     donor = None
-    if "donor" in fields:
+    if ref_field == "donor":
+        # For a creating intent the table entity IS the donor: there is no
+        # separate subject.  Copying it into `donor` keeps one description path
+        # for "A modelled on B" instead of a second one for this intent.
+        donor = entity
+    elif "donor" in fields:
         donor_field = fields["donor"].get("kind") or kind
         if intent.get("donor") in (None, ""):
             raise IntentError("intent %r needs a 'donor' field (the unit to copy "
@@ -1038,6 +1057,28 @@ def resolve(intent, schema, semantic_index=None, bindings=None):
         except LookupError as exc:
             raise IntentError(str(exc))
 
+    # --- the name a CREATED thing gets -------------------------------------
+    # A creating intent has nothing to look up, so the sentence has to carry the
+    # words itself.  Checked here rather than at build time for the same reason
+    # the picture path is: a plan that says fine and a build that refuses is the
+    # defect this file keeps paying for.  The check is about the FILE FORMAT, not
+    # taste -- a quote or a newline would break the string table line it becomes.
+    made_name = None
+    if "name" in fields:
+        made_name = intent.get("name")
+        if not isinstance(made_name, str):
+            raise IntentError("「名字」得是一段文字，不是 %s"
+                              % _TYPE_ZH.get(type(made_name).__name__,
+                                             type(made_name).__name__))
+        made_name = made_name.strip()
+        if not made_name:
+            raise IntentError("这个新东西得有个名字，不然游戏里显示不出来")
+        if '"' in made_name or "\\" in made_name or "\n" in made_name \
+                or "\r" in made_name:
+            raise IntentError("这个名字里有游戏字符串表装不下的字符"
+                              "（引号、反斜杠或换行），换一个写法")
+        intent = dict(intent)
+        intent["name"] = made_name
     civ_scope = intent.get("civs", "all")
     # A picture is a path on the user's disk, not an entity, so it never goes
     # through the semantic index -- but it must be checked HERE rather than at
@@ -1075,7 +1116,8 @@ def resolve(intent, schema, semantic_index=None, bindings=None):
     return Resolved(kind, entity, stat, op, amount, civ_scope, intent,
                     resource=intent.get("resource"),
                     class_id=intent.get("class_id"),
-                    label=label, civ=civ, action=action, donor=donor)
+                    label=label, civ=civ, action=action, donor=donor,
+                    name=made_name)
 
 
 def resolve_bundle(intents, schema, bindings=None):

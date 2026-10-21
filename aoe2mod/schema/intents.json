@@ -350,6 +350,56 @@
         "not_verified_reason": "A repainted .sld has not been loaded by a running game. Loose .sld loading itself IS proven (2026-10-17, `dsh test v10`/`v12`), but those mods copied shipped files; nothing in this project has yet put a hand-encoded block into a file the game then drew."
       },
       "safety": {"field_width_bits": 0, "signed": false}
+    },
+
+    "unit.create": {
+      "title": "照着现成的单位做一个新单位",
+      "title_en": "Create a unit that the game does not have",
+      "applies_to": "unit",
+      "description": "Clone one of a civilization's unit records into an id nothing uses, then name it. The clone keeps the donor's class, animations, sounds, armour classes and train locations, so it is built from the same buttons as the unit it copies.",
+      "fields": {
+        "donor": {
+          "type": "entity_ref",
+          "kind": "unit",
+          "required": true,
+          "label": "照着做",
+          "help": "The unit to copy the record from. A clone is a BYTE IMAGE of this record with the id and the name id patched, so a unit whose record has a type-dependent tail (type 50, projectile, building) clones correctly without this tool deciding what each field means."
+        },
+        "civ": {
+          "type": "civ_ref",
+          "required": true,
+          "label": "文明",
+          "help": "Exactly one civilization. A unit table is per-civilization, so a clone belongs to one civ's table -- adding it to all 63 is 63 records and 63 flag flips, a bigger edit this intent does not pretend to do. Loop over civs to do that."
+        },
+        "name": {
+          "type": "string",
+          "required": true,
+          "label": "名字",
+          "help": "The name the game will show. It ships as a loose key-value-modded-strings file for every locale the install has, plus English as the documented global fallback, which is the game's own supported way for a mod to add a string."
+        },
+        "hp": {
+          "type": "int",
+          "required": false,
+          "label": "生命值",
+          "range": [-32768, 32767],
+          "help": "Optional. The clone's hit points, patched into the record image at its fixed offset. Omit to keep the donor's."
+        }
+      },
+      "compile": {
+        "strategy": "new_unit",
+        "why_not_dat": "This one DOES write the .dat: a unit record is a variable-length structure inside a per-civ record run, so it cannot be expressed as an in-place patch. It appends one record and flips one 4-byte slot.",
+        "why_append_is_safe": "A civ's unit table is a FIXED-SIZE array of per-id existence flags (measured: 2,750 slots for ids 0..2749, every non-zero value is 1) followed by the records in slot order. Appending a record therefore changes no offset in that array -- it only needs the flag flipped. Measured 2026-10-21: donor 83 into civ 1 is +2,387 bytes, the stream is consumed exactly, the result re-parses, the new id reads back with the donor's class, and re-serialising is byte-stable (delta +0).",
+        "record_boundaries": "Record lengths come from `locate.walk_unit`'s own extent, which was verified against the shipped file: for both civ 0 (2,693 records) and civ 1 (2,164), every record's end equals the next record's start. Rebuilding a record from field values is deliberately NOT done, because its tail is type-dependent and each field would be a guess.",
+        "id_choice": "The id must be one NO civilization uses and nothing points at. A hole in one civ is not a hole: British alone has 586, and the lowest is 43 -- but 43 is a real unit in Gaia and most other civs, so a clone there would make one id mean two different things. Of the 57 ids no record uses, 17 are named by shipped effect commands, a tech-tree node or the build panel, leaving 40 truly free; the lowest with a unit-header slot is 382. `_probe/test_new_unit.py` pins the whole selection.",
+        "why_ships_strings": "The record names itself by a STRING ID, so a clone without a string shows as the donor's name or as nothing. The game's own modded-string file is the supported add-a-string route (its shipped 605-byte instructions say so), and zh/en/tw each end at id 30030001, so 30030002 is the first id no locale uses.",
+        "what_it_cannot_do": "A clone has no icon of its own: `widgetui/icons.json`'s Units section is full (0..999 all taken), so it draws the donor's icon unless the player edits that layer. It also has no place in a BUILD MENU beyond the donor's own buttons -- train locations are copied, which is the honest default because a unit nobody can build is not a feature.",
+        "mod_contains_dat": true,
+        "in_bundle": true,
+        "bundle_edit_count_note": "edit_count is RECORDS plus FLAGS: one appended record and one flag slot, so 2 -- not the byte count, which a caller cannot compare against other intents.",
+        "verified_in_game": null,
+        "not_verified_reason": "A record the toolkit created has not been loaded by a running game. What IS measured: the stream re-parses with the unmodified parser, the new id reads back with the donor's fields, the resulting file re-serialises byte-stably, and the name file lands at the path the game's own instructions name."
+      },
+      "safety": {"field_width_bits": 16, "signed": true}
     }
   },
 

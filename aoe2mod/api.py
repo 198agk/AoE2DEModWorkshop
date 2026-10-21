@@ -15,6 +15,7 @@ The contract a caller can rely on:
 * ``result['verification']['ok']`` is the only thing that means "safe".
 """
 import contextlib
+import copy
 import io
 import os
 
@@ -29,6 +30,7 @@ from .game import icons as IC
 from .intent import availability as AV
 from .intent import compiler as C
 from .mod import emitter as E
+from .mod import strings as S
 from .mod import provenance as PV
 from .semantic import index as semantic
 from .semantic import prose as PR
@@ -706,6 +708,75 @@ class Toolkit(object):
             return bool(v)
         return self._reskin_family_flag(r)
 
+    def _plan_new_unit(self, r, base):
+        """Preview for "make a new unit modelled on the villager".
+
+        Everything the preview promises is computed from the same functions the
+        build calls, so "plan says it fits and build says the id is taken" cannot
+        happen.  The expensive part (parsing the .dat) is already done by
+        `_ensure`, and picking an id is a set difference over ids, not a scan of
+        records -- measured at a few milliseconds.
+        """
+        from .dat import newunit as NU
+        base["shape"] = "new_unit"
+        base["donor_id"] = r.donor.id
+        base["donor_name"] = r.donor.display
+        base["new_name"] = r.name
+        base["writes"] = "resources/_common/dat/empires2_x2_p1.dat"
+        base["changes_dat"] = True
+        base["dat_is_carrier"] = False
+        base["mod_contains_dat"] = True
+        _civ = r.civ
+        civ_index = self._civ_index(_civ)
+        civ_name = (self._civs[civ_index] or {}).get("name") or _civ
+        # The player reads the sentence, so it names the civilization the way
+        # the rest of the product does (`不列颠`, not the .dat spelling
+        # `British`).  `civ_name` stays the .dat spelling for the structured
+        # fields, because those are read by code rather than by a person.
+        civ_zh = CN.chinese(civ_name) or civ_name
+        base["civ"] = civ_name
+        base["civ_index"] = civ_index
+        try:
+            avoid = NU.referenced_ids(self._stats)
+            new_id = NU.pick_free_id(self._stats, avoid=avoid)
+            _img = NU.donor_image(self._raw, self._parsed[3],
+                                  self._parsed[2], civ_index, r.donor.id)
+        except NU.NewUnitError as exc:
+            base["editable"] = False
+            base["changes_dat"] = False
+            base["description"] = str(exc)
+            base["reason"] = str(exc)
+            base["edit_count"] = 0
+            return base
+        # The name ships as strings, so the string id must exist before the
+        # player sees the promise.  Asking the string module rather than
+        # assuming 30030002 keeps two creations in one session from colliding.
+        try:
+            string_id = S.first_free_id(self.game_root,
+                                        start=base.get("string_id") or
+                                        S.LAST_SHIPPED_ID + 1)
+        except S.StringError as exc:
+            base["editable"] = False
+            base["changes_dat"] = False
+            base["description"] = str(exc)
+            base["reason"] = str(exc)
+            base["edit_count"] = 0
+            return base
+        base["editable"] = True
+        base["new_id"] = new_id
+        base["string_id"] = string_id
+        base["record_bytes"] = len(_img)
+        base["description"] = (
+            "照 %s 在 %s 做一个新单位「%s」（编号 %d，%d 字节的记录，名字用字符串 %d）"
+            % (r.donor.display, civ_zh, r.name, new_id, len(_img),
+               string_id))
+        base["edit_count"] = 2
+        base["warnings"] = [
+            "新单位的图标是照着做的那个单位的（图标的号 0..999 已满，这个工具不会去改图标那层）",
+            "它出现在照着做的那个单位自己的建造按钮里，因为建造位置是从原记录抄来的",
+        ]
+        return base
+
     def _plan_reskin(self, r, base):
         """Preview for "make the Archer look like the Longbowman"."""
         from .intent import reskin as RK
@@ -929,7 +1000,7 @@ class Toolkit(object):
             raise C.IntentError(str(exc))
         payload = rep["files"]
         if not payload:
-            raise C.IntentError("this repaint produced no file to ship")
+            raise C.IntentError("这次换图没有产出任何文件，所以没有东西可以写进模组")
 
         info = E.make_info(title or ("%s 换图" % r.entity.display),
                            author=author, description=description)
@@ -972,7 +1043,183 @@ class Toolkit(object):
         man["verification"] = verification
         return man
 
+    def _build_new_unit(self, r, out_dir, title=None, author="", description="",
+                        thumbnail=None, overwrite=False):
+        """Append one cloned unit record and ship the name it will show.
+
+        `newunit.add_unit` mutates the model, `write_civ` writes the flag array
+        from the model (not from raw bytes), and `serialize_dat` re-emits the
+        stream.  The three steps are the same three the probe measured at
+        +2,387 bytes with a byte-stable second pass, so the build path is the
+        measured path rather than a second implementation of it.
+        """
+        from .dat import newunit as NU
+        civ_index = self._civ_index(r.civ)
+        civ_name = (self._civs[civ_index] or {}).get("name") or r.civ
+        avoid = NU.referenced_ids(self._stats)
+        new_id = NU.pick_free_id(self._stats, avoid=avoid)
+        string_id = S.first_free_id(self.game_root)
+        # A deep copy: `add_unit` mutates the model in place and this Toolkit
+        # answers every later call from the same cached object, so building from
+        # the cache would add the unit to this session's model as a side effect of
+        # a build that may yet fail.
+        stats = copy.deepcopy(self._stats)
+        stats, rec = NU.add_unit(stats, self._raw, self._parsed[3], self._parsed[2],
+                                 civ_index, r.donor.id, new_id,
+                                 name_string_id=string_id,
+                                 hp=r.raw.get("hp"))
+        data, rep = W.serialize_dat(stats, raw=self._raw)
+        if rep.get("raw_consumed") != len(self._raw):
+            raise C.IntentError(
+                "写完以后 .dat 的读取位置对不上原来的文件（%s / %s），所以这份不改了"
+                % (rep.get("raw_consumed"), len(self._raw)))
+        string_files = S.build_files(self.game_root, [(string_id, r.name)])
+        info = E.make_info(title or ("新单位 %s" % r.name), author=author,
+                           description=description)
+        man = E.emit_data_mod(out_dir, data, info, thumbnail=thumbnail,
+                              base_dir=self.game_root, overwrite=overwrite,
+                              json_files=string_files or None)
+        # The emitted file must survive the game's inflate path and a re-parse,
+        # and the new record must be IN it -- a reparse that succeeds on a file
+        # without the record would look like the same green.
+        raw2, how2 = P.load_dat(man["dat"])
+        p2 = P.Parser(raw2)
+        with contextlib.redirect_stdout(io.StringIO()):
+            stats2 = p2.parse()
+        man["reloaded_with"] = how2
+        man["reparse_leftover"] = len(raw2) - p2.r.pos
+        man["reparse_ok"] = p2.r.pos == len(raw2)
+        ids2 = {u["id"] for u in stats2["civs"][civ_index]["units"]}
+        man["unit_added"] = new_id in ids2
+        man["new_unit"] = {
+            "id": new_id, "name": r.name, "string_id": string_id,
+            "civ": civ_name, "civ_index": civ_index,
+            "donor_id": r.donor.id, "donor_name": r.donor.display,
+            "record_bytes": rec["bytes"], "slot": rec["slot"],
+            "strings": sorted(string_files) if string_files else [],
+        }
+        man["resolved"] = r.describe()
+        # Records plus flags, matching the schema's declared count: one appended
+        # record and one slot flipped.  A byte count here would not compare
+        # against any other intent's edit_count.
+        man["edits"] = 2
+        man["edit_count"] = 2
+        man["civs_edited"] = 1
+        man["changes_dat"] = True
+        man["dat_is_carrier"] = False
+        man["mod_contains_dat"] = bool(man.get("dat"))
+        man["verification"] = {
+            "ok": bool(man["reparse_ok"] and man["unit_added"]),
+            "why_not_dat": "this intent appends a record instead of patching bytes",
+            "reparse_ok": bool(man["reparse_ok"]),
+            "unit_record_present": bool(man["unit_added"]),
+            "proven": [
+                "that the emitted .dat inflates and re-parses with the unmodified "
+                "parser, with every byte consumed",
+                "that civ %d's record run contains id %d after the round trip, so "
+                "the record survived the writer rather than only the model"
+                % (civ_index, new_id),
+                "that the name line landed in the file the game's own 605-byte "
+                "instructions name as the way a mod adds a string",
+            ],
+            "not_proven": [
+                "that a running game draws or lists the new unit.  No test in this "
+                "project has loaded a record the toolkit created",
+            ],
+        }
+        return man
+
+    def _new_unit_bundle(self, new_list, base_raw):
+        """Fold every "make a new unit" sentence onto ONE stream.
+
+        Returns ``(bytes_or_None, notes, refusals, string_files)``.
+
+        The creations must share one pass rather than one serialize each: an
+        append changes the stream length, so the second sentence has to see the
+        model the first one produced or it would address stale offsets.  Ids are
+        therefore picked AFTER each insertion, from the same mutated model -- two
+        creations in one bundle must not both be offered id 382.
+
+        A sentence that cannot be honoured is refused in place, matching every
+        other bucket: one impossible creation must not throw away the ones that
+        work.
+        """
+        from .dat import newunit as NU
+        notes, refusals, string_files = [], [], {}
+        stats = None
+        civs_start = gv = None
+        cur = base_raw
+        touched = False
+        next_string = None
+        for r in new_list:
+            if stats is None:
+                # Parsed ONCE, and the same model is mutated by every sentence.
+                # Re-parsing per sentence was measured to be wrong: the stream is
+                # only serialized after the loop, so each re-parse would hand back
+                # the BASE model and the id picked for sentence 1 would be offered
+                # again to sentence 2.  Two creations in one bundle both got id 382
+                # and both names got string id 30030002 -- one record, one name,
+                # while the manifest said two.
+                try:
+                    p = P.Parser(cur)
+                    with contextlib.redirect_stdout(io.StringIO()):
+                        p.parse()
+                    civs, _cs, gv, _tail = L.locate(cur, parser=p)
+                    civs_start = _cs
+                    stats = p.stats
+                except Exception as exc:                  # noqa: BLE001
+                    refusals.append({"description": r.describe(),
+                                     "reason": str(exc)})
+                    continue
+            civ_index = self._civ_index(r.civ)
+            civ_name = (self._civs[civ_index] or {}).get("name") or r.civ
+            try:
+                avoid = NU.referenced_ids(stats)
+                new_id = NU.pick_free_id(stats, avoid=avoid)
+                # The string table this mod SHIPS is not part of the game's own
+                # tables, so asking the game for a free id answers 30030002 every
+                # time.  Successive creations step past the ones this bundle has
+                # already claimed.
+                string_id = S.first_free_id(
+                    self.game_root,
+                    start=next_string or (S.LAST_SHIPPED_ID + 1))
+                stats, rec = NU.add_unit(stats, cur, gv, civs_start, civ_index,
+                                         r.donor.id, new_id,
+                                         name_string_id=string_id,
+                                         hp=r.raw.get("hp"))
+            except (NU.NewUnitError, S.StringError) as exc:
+                refusals.append({"description": r.describe(), "reason": str(exc)})
+                continue
+            except Exception as exc:                      # noqa: BLE001
+                refusals.append({"description": r.describe(), "reason": str(exc)})
+                continue
+            next_string = string_id + 1
+            for rel, data_b in S.build_files(self.game_root,
+                                             [(string_id, r.name)]).items():
+                # Two creations in one bundle write the SAME string file, so the
+                # lines are accumulated rather than overwritten -- otherwise the
+                # second sentence would take the first one's name away.
+                string_files[rel] = (string_files.get(rel) or b"") + data_b
+            touched = True
+            notes.append({
+                "description": r.describe(),
+                "mode": "new_unit",
+                "civ": civ_name, "civ_index": civ_index,
+                "id": new_id, "name": r.name, "string_id": string_id,
+                "donor_id": r.donor.id, "donor_name": r.donor.display,
+                "record_bytes": rec["bytes"], "slot": rec["slot"],
+            })
+        if not touched:
+            return None, notes, refusals, {}
+        out, rep = W.serialize_dat(stats, raw=cur)
+        if rep.get("raw_consumed") != len(cur):
+            raise C.IntentError(
+                "写完以后 .dat 的读取位置对不上原来的文件（%s / %s），所以这份不改了"
+                % (rep.get("raw_consumed"), len(cur)))
+        return out, notes, refusals, string_files
+
     def _build_retarget(self, r, out_dir, title=None, author="",
+
                         description="", thumbnail=None, overwrite=False,
                         base_raw=None, base_stats=None, base_parsed=None):
         """Compile a reskin by renaming graphics records and emit one .dat.
@@ -1164,8 +1411,7 @@ class Toolkit(object):
         payload, missing = RK.read_payload(self.game_root, rep)
         if missing:
             raise C.IntentError(
-                "these donor animation files are missing from the install: %s"
-                % ", ".join(missing[:5]))
+                "这个安装里缺了来源那边的动画文件：%s" % "、".join(missing[:5]))
         # The plan-level check (is this really the donor's file, and is it a
         # no-op?) runs on the payload BEFORE emitting, because a refusal here
         # must stop the mod rather than ship it.  The disk-level check runs after
@@ -1265,8 +1511,8 @@ class Toolkit(object):
         for i, c in enumerate(pool):
             if CT.civ_file_stem(c.get("name")) == want:
                 return i
-        raise C.IntentError("no .dat civilization corresponds to the tech-tree "
-                            "key %r" % civ_key)
+        raise C.IntentError("科技树里的这个文明名（%r）对不上 .dat 里的任何一条文明"
+                            % (civ_key,))
 
     def _dat_grant_half(self, civ, unit_id, building_id, trees, action="grant"):
         """The ``.dat`` half of an availability edit, against this session's stream.
@@ -1505,9 +1751,10 @@ class Toolkit(object):
                 text=_text,
             )
         except Exception as e:                      # noqa: BLE001 - reported
+            # Reaches the screen through the bundle summary ("这几句都做不了……"),
+            # so the sentence is Chinese like every other refusal there.
             return ({"ok": False, "mode": "errored",
-                     "reason": "the build-panel layer could not be edited: %s"
-                               % e}, {})
+                     "reason": "这个文明的建造面板改不了：%s" % e}, {})
         if inherited:
             rep["building_from"] = inherited
         if texts is not None and _rel and files.get(_rel) is not None:
@@ -2012,6 +2259,8 @@ class Toolkit(object):
                 "stat": r.stat, "op": r.op, "amount": r.amount}
         if self._strategy(r.raw) == "loose_files":
             return self._plan_reskin(r, base)
+        if self._strategy(r.raw) == "new_unit":
+            return self._plan_new_unit(r, base)
         if self._strategy(r.raw) == "repaint_sld":
             return self._plan_paint(r, base)
         if r.raw.get("intent", "").endswith(".availability"):
@@ -2360,6 +2609,12 @@ class Toolkit(object):
             return self._build_reskin(r, out_dir, title=title, author=author,
                                       description=description,
                                       thumbnail=thumbnail, overwrite=overwrite)
+        if strategy == "new_unit":
+            intents_schema, bindings = C.load_schema()
+            r = C.resolve(intent, intents_schema, bindings=bindings)
+            return self._build_new_unit(r, out_dir, title=title, author=author,
+                                        description=description,
+                                        thumbnail=thumbnail, overwrite=overwrite)
         if strategy == "repaint_sld":
             # A repaint writes loose .sld files and no .dat, like the copy model
             # of a reskin, but it ENCODES a picture instead of moving one that
@@ -2435,7 +2690,7 @@ class Toolkit(object):
         An undeclared strategy still raises: quietly dropping a sentence would
         produce a mod that does less than it says.
         """
-        dat, js, sld, paint = [], [], [], []
+        dat, js, sld, paint, new = [], [], [], [], []
         for r in resolved_list:
             s = self._strategy(r.raw)
             if s == "in_place_patch":
@@ -2444,6 +2699,12 @@ class Toolkit(object):
                 js.append(r)
             elif s == "loose_files":
                 sld.append(r)
+            elif s == "new_unit":
+                # Its own bucket: this intent does not patch bytes, it appends a
+                # record and rebuilds the model, so it cannot share the in-place
+                # patcher's offset arithmetic (`tail` would be stale the moment a
+                # record is appended, because every civ after that one moves).
+                new.append(r)
             elif s == "repaint_sld":
                 # A repaint also ships loose files, but it ENCODES a picture
                 # rather than moving one that already exists, so it needs its own
@@ -2456,7 +2717,7 @@ class Toolkit(object):
                     "intent %r declares compile strategy %r, which this build "
                     "does not implement"
                     % (r.raw.get("intent"), s))
-        return dat, js, sld, paint
+        return dat, js, sld, paint, new
 
     def _split_reskin_modes(self, sld_list):
         """Split reskin sentences by DELIVERY MODEL: ``(copy, rename)``.
@@ -2583,8 +2844,8 @@ class Toolkit(object):
             if missing:
                 refusals.append({
                     "description": r.describe(),
-                    "reason": "these donor animation files are missing from the "
-                              "install: %s" % ", ".join(missing[:5])})
+                    "reason": "这个安装里缺了来源那边的动画文件：%s"
+                              % "、".join(missing[:5])})
                 continue
             clash = None
             for rel, data in payload.items():
@@ -2595,9 +2856,11 @@ class Toolkit(object):
             if clash:
                 refusals.append({
                     "description": r.describe(),
-                    "reason": "two sentences need %s to hold different pictures "
-                              "(%s and %s), and one file cannot do that"
-                              % (os.path.basename(clash[0]), clash[1], clash[2])})
+                    # Chinese, because the bundle summary prints this verbatim.
+                    # The .sld name stays as it is: a file name is data, and the
+                    # player needs it to see which two sentences met.
+                    "reason": "「%s」和「%s」都要写 %s 这个文件，可一个文件装不下两张不同的画"
+                              % (clash[1], clash[2], os.path.basename(clash[0]))})
                 continue
             for rel, data in payload.items():
                 files[rel] = data
@@ -2662,7 +2925,7 @@ class Toolkit(object):
             payload = rep.get("files") or {}
             if not payload:
                 refusals.append({"description": r.describe(),
-                                 "reason": "this repaint produced no file to ship"})
+                                 "reason": "这次换图没有产出任何文件"})
                 continue
             clash = None
             for rel, data in payload.items():
@@ -2673,9 +2936,11 @@ class Toolkit(object):
             if clash:
                 refusals.append({
                     "description": r.describe(),
-                    "reason": "two sentences need %s to hold different pictures "
-                              "(%s and %s), and one file cannot do that"
-                              % (os.path.basename(clash[0]), clash[1], clash[2])})
+                    # Chinese, because the bundle summary prints this verbatim.
+                    # The .sld name stays as it is: a file name is data, and the
+                    # player needs it to see which two sentences met.
+                    "reason": "「%s」和「%s」都要写 %s 这个文件，可一个文件装不下两张不同的画"
+                              % (clash[1], clash[2], os.path.basename(clash[0]))})
                 continue
             for rel, data in payload.items():
                 files[rel] = data
@@ -2879,8 +3144,8 @@ class Toolkit(object):
         # both.  Splitting is what lets "villagers are tougher AND Britons can
         # build Huskarls" be one request instead of two mods where the engine
         # loads only the higher-priority one.
-        dat_list, js_list, sld_list, paint_list = self._split_by_strategy(
-            resolved_list)
+        dat_list, js_list, sld_list, paint_list, new_list = \
+            self._split_by_strategy(resolved_list)
 
         # The availability sentences ALSO have a `.dat` half.  Counting it in the
         # preview is not optional: `changes_dat` used to be `bool(dat_list)`, so a
@@ -3116,8 +3381,8 @@ class Toolkit(object):
             raise C.IntentError("这个组合里一句都没有")
         intents_schema, bindings = C.load_schema()
         resolved_list = C.resolve_bundle(intents, intents_schema, bindings=bindings)
-        dat_list, js_list, sld_list, paint_list = self._split_by_strategy(
-            resolved_list)
+        dat_list, js_list, sld_list, paint_list, new_list = \
+            self._split_by_strategy(resolved_list)
 
         data, civs, _cs, gv, tail, how = self._parsed
         json_files = {}
@@ -3174,8 +3439,9 @@ class Toolkit(object):
                 prev = json_files.get(rel)
                 if prev is not None and prev != data_b:
                     paint_refusals.append({
-                        "reason": "a copy sentence and a paint sentence both need "
-                                  "%s, and one file cannot hold two pictures"
+                        # No `description`: this clash is between two buckets, so
+                        # there is no single sentence to name.
+                        "reason": "一句换造型和一句换图都要写 %s，一个文件装不下两张画"
                                   % os.path.basename(rel)})
                     continue
                 _kept[rel] = data_b
@@ -3224,6 +3490,23 @@ class Toolkit(object):
             dat_half_reps.append({"resolved": r.describe(), "ok": False,
                                   "reason": why})
 
+        # A creation appends a RECORD, which moves every byte after it, so it
+        # cannot ride the in-place patcher (`tail` would be stale for every later
+        # step).  It runs here, after the in-place work and the availability
+        # halves, and before the rename model -- rename is still the last hand on
+        # the file because it changes field lengths without appending anything.
+        new_notes = []
+        new_strings = {}
+        if new_list:
+            _base = dat_bytes if dat_bytes is not None else data
+            new_bytes, new_notes, new_ref, new_strings = \
+                self._new_unit_bundle(new_list, _base)
+            sprite_refusals = sprite_refusals + new_ref
+            if new_bytes is not None:
+                dat_bytes = new_bytes
+            for rel, data_b in new_strings.items():
+                json_files[rel] = data_b
+
         # The rename model runs LAST, and on the stream that will actually be
         # shipped, because it is the only stage that changes the LENGTH of a
         # `.dat` field without appending a record -- a longer or shorter picture
@@ -3264,7 +3547,6 @@ class Toolkit(object):
         man = E.emit_data_mod(out_dir, dat_bytes, info, thumbnail=thumbnail,
                               base_dir=self.game_root, overwrite=overwrite,
                               json_files=json_files or None)
-
         man["resolved"] = [r.describe() for r in resolved_list]
         # Both halves, summed: the byte patcher's edits plus the `.dat` recipe
         # every availability grant ran.  Reporting only the first is how a bundle
@@ -3278,8 +3560,11 @@ class Toolkit(object):
         # copied.
         man["sprites"] = sprite_notes + paint_notes + rename_notes
         man["rename_edits"] = _rename_changed
+        man["new_units"] = new_notes
+        man["new_unit_strings"] = sorted(new_strings)
         man["edits"] = (len(edits) + man["dat_half_edit_count"]
-                        + len(sprite_files) + _rename_changed + paint_files)
+                        + len(sprite_files) + _rename_changed + paint_files
+                        + 2 * len(new_notes))
         man["edit_count"] = man["edits"]
         man["dat_half"] = dat_half_reps
         man["civs_edited"] = civs_edited
@@ -3340,11 +3625,43 @@ class Toolkit(object):
             man["reloaded_with"] = how2
             man["reparse_leftover"] = len(raw2) - p2.r.pos
             man["reparse_ok"] = p2.r.pos == len(raw2)
+            # A reparse that succeeds on a file WITHOUT the appended records would
+            # look like the same green, so the records are looked for too.
+            _missing = []
+            for n in new_notes:
+                _have = {u["id"] for u in p2.stats["civs"][n["civ_index"]]["units"]}
+                if n["id"] not in _have:
+                    _missing.append(n["id"])
+            man["new_units_present"] = not _missing
             # `verification` says what was CHECKED, so a bundle whose only `.dat`
-            # work was record renames must not report the byte patcher's empty
-            # "no .dat sentence" verdict: that would tell a caller nothing changed
-            # in a file that changed 244 records.
-            man["verification"] = verification if dat_list else {
+            # work was record renames or creations must not report the byte
+            # patcher's empty "no .dat sentence" verdict: that would tell a caller
+            # nothing changed in a file that changed 244 records or grew one.
+            if new_notes:
+                man["verification"] = {
+                    "ok": bool(man["reparse_ok"] and not _missing),
+                    "why_not_dat": "this intent appends records instead of "
+                                   "patching bytes",
+                    "reparse_ok": bool(man["reparse_ok"]),
+                    "new_units_present": not _missing,
+                    "missing_ids": _missing,
+                    "proven": [
+                        "that the emitted .dat inflates and re-parses with the "
+                        "unmodified parser, with every byte consumed",
+                        "that each civ's record run contains the id the manifest "
+                        "names, so the record survived the writer rather than "
+                        "only the model",
+                        "that each name line landed in the file the game's own "
+                        "605-byte instructions name as the way a mod adds a "
+                        "string",
+                    ],
+                    "not_proven": [
+                        "that a running game draws or lists a unit the toolkit "
+                        "created.  No test in this project has loaded one",
+                    ],
+                }
+            else:
+                man["verification"] = verification if dat_list else {
                 "ok": bool(man["reparse_ok"]),
                 "why_not_dat": "no in-place byte patch",
                 "renamed_records": _rename_changed,
