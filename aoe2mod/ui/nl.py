@@ -556,11 +556,7 @@ def _operation(text):
 
 
 def _civ_in(text, low, civ_names, civ_zh):
-    """The civilization the sentence names, or 'None'.
-
-    Chinese first (that is what people type), then the .dat's own spellings.
-    Longest match wins so "阿契美尼德" does not lose to "契丹"-style prefixes.
-    """
+    """The civilization the sentence names, or 'None'."""
     found = _civs_in(text, civ_names, civ_zh)
     return found[0] if found else None
 
@@ -633,6 +629,69 @@ def _residual(raw, vocab, civ_names=None, civ_zh=None):
     out = _NUM_RE.sub(" ", out)
     out = re.sub(r"[，,、\s%％:：\"'“”‘’()（）【】\[\]<>《》!！]+", " ", out)
     return out.strip()
+
+
+# Words that scope a sentence to something the tool does not have to look up:
+# "我的村民" and "所有村民" are the whole point of a mod tool, and neither names a
+# record.  Anything else in front of 的 has to be a name we can actually resolve.
+_SCOPE_PRONOUNS = ("我", "我们", "你", "你们", "他", "他们", "它", "它们",
+                   "这个", "那个", "这些", "那些", "这种", "那种",
+                   "所有", "全部", "每个", "每一个", "各个", "每个",
+                   "原来", "当前", "现在", "本身", "本来", "该", "各自",
+                   "玩家", "自己", "敌方", "对方", "别的", "其他", "其它",
+                   "普通", "一般", "默认", "原有", "自带", "出厂")
+
+
+def _scope_word(raw, low, vocab, civ_names, civ_zh, spans, is_known=None):
+    """The word before 的 that names nothing this tool can resolve, if any.
+
+    This is the fix for a silent wrong answer.  "MARTIANS的村民血量改成1000" and
+    "火星人的村民血量改成1000" both resolved 村民 perfectly and dropped the
+    qualifier on the floor, so the sentence that meant "one civilization" edited
+    all 63 -- measured 2026-10-21, `civs=None`, 1,701 edits, identical to the
+    sentence with no civilization at all.
+
+    A qualifier that DOES resolve (a civilization, the entity itself, a pronoun
+    like 我的/所有) is not a problem and returns None.  `is_known(word)` is the
+    caller's extra vocabulary -- the class names, which are a category and have
+    their own refusal further down.
+    """
+    for m in re.finditer("的", raw):
+        head = raw[:m.start()]
+        # The run of letters directly before 的; the scan stops at punctuation,
+        # a space or any character that cannot be part of a name.
+        i = len(head) - 1
+        while i >= 0 and (_cjk(head[i]) or head[i].isalnum()):
+            i -= 1
+        run = head[i + 1:].strip()
+        if not run:
+            continue
+        # Leading fillers ("把不列颠的...") are not part of the name.
+        changed = True
+        while changed and run:
+            changed = False
+            for w in sorted(PARTICLES, key=len, reverse=True):
+                if w and run.startswith(w):
+                    run = run[len(w):]
+                    changed = True
+                    break
+        if not run:
+            continue
+        low_run = _norm(run)
+        if any(low_run == p or low_run.startswith(p) for p in _SCOPE_PRONOUNS):
+            continue
+        if _civs_in(run, civ_names, civ_zh):
+            continue
+        # A name we did resolve (村民 of 村民的, 复合弓箭手 of ...) is not unknown.
+        if any(_norm(t) and (_norm(t) in low_run or low_run in _norm(t))
+               for _e, t, _k, _g in spans):
+            continue
+        if is_known is not None and is_known(run):
+            continue
+        if run.isdigit():
+            continue
+        return run
+    return None
 
 
 def _pinned(low, vocab, pins):
@@ -926,11 +985,57 @@ def read_clause(text, vocab, civ_names=None, civ_zh=None, pins=None,
     eid = _eid(ent)
 
     civ = _civ_in(raw, low, civ_names, civ_zh)
+    # Every civilization the sentence names, in the order it named them.  A
+    # sentence can scope to more than one ("不列颠和法兰克的村民血量改成1000"):
+    # reading only the first one edited one civilization and silently dropped
+    # the other, measured 2026-10-21.
+    civs_named = _civs_in(raw, civ_names, civ_zh)
+
+    # A qualifier in front of 的 that names nothing we know turns the sentence
+    # into one about all 63 civilizations without saying so.  Refuse and name the
+    # word, because "which civilization did you mean" is a question only the
+    # player can answer.  Class words are exempt: they have their own sentence.
+    stray = _scope_word(raw, low, vocab, civ_names, civ_zh, spans,
+                        is_known=lambda w: _class_word(w, class_names()) is not None)
+    if stray is not None:
+        cl.candidates = []
+        cl.why = ("「%s」这个说法我不认识——它不是文明名，也不是单位或科技的"
+                  "名字。要么换成一个我能认的名字，要么去掉它（去掉就是全部文明）"
+                  % stray)
+        return cl
+
+    def _name_zh(en_name):
+        """The Chinese spelling of a civilization, from the table we were given.
+
+        `civ_zh` is zh -> en (that is how sentences are read), so this is a
+        reverse lookup rather than an import: the reader must not need the game
+        install just to say a civilization's name back to the player.
+        """
+        for zh, en in (civ_zh or {}).items():
+            if en == en_name:
+                return zh
+        return en_name
+
+    def _scope(intent):
+        """Put every named civilization on the intent and say so in words."""
+        intent["civs"] = list(civs_named)
+        cl.notes.append("只改「%s」，不是全部文明"
+                        % "、".join(_name_zh(n) for n in civs_named))
 
     # --- availability ---------------------------------------------------
     wants_grant = any(w in low for w in GRANT_WORDS)
     wants_revoke = any(w in low for w in REVOKE_WORDS)
     if (wants_grant or wants_revoke) and civ:
+        if len(civs_named) > 1:
+            # Availability is stored per civilization (each one owns its own
+            # tech-tree file and its own copy of the panel), so one sentence
+            # cannot carry two.  Say that, rather than editing the first and
+            # pretending the second was never written.
+            cl.why = ("一句话只说一个文明的可用性，这里说出了 %d 个（%s）。"
+                      "一个文明一份，分开写就行。"
+                      % (len(civs_named),
+                         "、".join(_name_zh(n) for n in civs_named)))
+            return cl
         cl.intent = {"intent": "%s.availability" % kind,
                      ("unit" if kind == "unit" else "tech"): eid,
                      "civ": civ,
@@ -948,8 +1053,7 @@ def read_clause(text, vocab, civ_names=None, civ_zh=None, pins=None,
             return cl
         cl.intent = {"intent": "unit.art", "unit": eid, "picture": pic}
         if civ:
-            cl.intent["civs"] = [civ]
-            cl.notes.append("只改「%s」，不是全部文明" % civ)
+            _scope(cl.intent)
         return cl
 
     # --- unit.sprite: "把A的样子换成B" -----------------------------------
@@ -1000,8 +1104,7 @@ def read_clause(text, vocab, civ_names=None, civ_zh=None, pins=None,
             cl.intent["whole_family"] = True
             cl.notes.append("连它干活时的样子一起换，文件会多很多")
         if civ:
-            cl.intent["civs"] = [civ]
-            cl.notes.append("只改「%s」，不是全部文明" % civ)
+            _scope(cl.intent)
         return cl
 
     # --- number ---------------------------------------------------------
@@ -1048,8 +1151,7 @@ def read_clause(text, vocab, civ_names=None, civ_zh=None, pins=None,
             else:
                 cl.intent["delta"] = value
             if civ:
-                cl.intent["civs"] = [civ]
-                cl.notes.append("只改「%s」，不是全部文明" % civ)
+                _scope(cl.intent)
             return cl
 
     if kind == "tech":
@@ -1137,8 +1239,7 @@ def read_clause(text, vocab, civ_names=None, civ_zh=None, pins=None,
     # "把不列颠的村民血量改成1000" must not silently change all 63 copies.
     # `civs` takes the .dat's own spelling (`British`, not `Britons`).
     if civ:
-        cl.intent["civs"] = [civ]
-        cl.notes.append("只改「%s」，不是全部文明" % civ)
+        _scope(cl.intent)
     return cl
 
 

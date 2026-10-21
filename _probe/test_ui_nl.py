@@ -450,6 +450,53 @@ def main():
             check("「%s」is read as %s, not a creation" % (text, want),
                   got == want, got)
 
+    # ---- a qualifier the reader does not know is refused, not dropped ----
+    # "火星人的村民血量改成1000" used to resolve 村民 perfectly and throw the
+    # qualifier away, so a sentence scoped to one civilization edited all 63 --
+    # 1,701 edits, identical to the sentence with no civilization at all.
+    for text, word in (("火星人的村民血量改成1000", "火星人"),
+                       ("MARTIANS的村民血量改成1000", "MARTIANS")):
+        intents, clauses = read(text)
+        why = (clauses[0].why or "") if clauses else ""
+        check("「%s」is refused instead of editing every civilization" % word,
+              not intents and word in why, (intents, why))
+
+    # …and the words that legitimately scope a sentence must still work.
+    for text in ("我的村民血量改成1000", "所有村民血量改成1000",
+                 "复合弓箭手的血量改成1000", "村民血量改成1000",
+                 "骑兵的血量改成1000"):
+        intents, clauses = read(text)
+        why = (clauses[0].why or "") if clauses else ""
+        check("「%s」is not mistaken for an unknown qualifier" % text,
+              "说法我不认识" not in why, why)
+
+    # ---- two civilizations in one sentence mean both ---------------------
+    intents, _clauses = read("不列颠和法兰克的村民血量改成1000")
+    check("a sentence naming two civilizations scopes to both",
+          bool(intents) and intents[0].get("civs") == ["British", "French"],
+          intents[0].get("civs") if intents else None)
+
+    intents, _clauses = read("不列颠的村民血量改成1000")
+    check("a sentence naming one civilization scopes to that one",
+          bool(intents) and intents[0].get("civs") == ["British"], intents)
+
+    # Availability cannot be plural: each civilization owns its own tech-tree
+    # file and its own copy of the panel, so two civilizations in one sentence is
+    # a fact the player has to fix, not a thing to do halfway.
+    intents, clauses = read("给不列颠和法兰克解锁蔷琵侦察兵")
+    why = (clauses[0].why or "") if clauses else ""
+    check("availability refuses two civilizations instead of doing one",
+          not intents and "一个文明一份" in why, (intents, why))
+
+    # ---- the example on the screen has to be readable --------------------
+    # It said 伐木场成本减少 10, which the reader refuses ("没听出要改哪个属性"):
+    # an example a player copies and immediately gets refused teaches the wrong
+    # thing about what this tool understands.
+    intents, _clauses = read("波兰的伐木场木材成本减少 10")
+    check("the example sentence on the screen parses",
+          bool(intents) and intents[0].get("intent") == "unit.cost"
+          and intents[0].get("civs") == ["Poles"], intents)
+
     # ---- honesty: every clause carries either an intent or a reason ------
     _, clauses = read("随便写点什么")
     for cl in clauses:
