@@ -190,6 +190,22 @@ WARNING_CASES = [
     ("availability grant with an unreachable building",
      {"intent": "unit.availability", "unit": 775, "civ": "Armenians",
       "action": "grant"}),
+    # The other reskin sentences are only reachable on particular pairs, and the
+    # two below are the ones that name ANIMATIONS.  The animation keys are engine
+    # words ("carry", "walkA", "litter"); the sentence has to say "while carrying
+    # something" instead.  Measured 2026-10-21: of the six warning shapes reachable
+    # from shipped art, these two are the ones that spell a moment, so they are
+    # the ones that can leak ASCII.
+    #
+    # A villager reskinned alone: it owns 27 records / 18 stems, and a
+    # single-record swap covers only some of them -- that is the one that says
+    # which stem stays behind and which moments it is used for.
+    ("one-record villager swap, most of its art left behind",
+     {"intent": "unit.sprite", "unit": 1810, "donor": 594}),
+    # ... and the other direction supplies the "this moment is stood in for"
+    # sentence, where the animation is borrowed from a neighbouring one.
+    ("villager art borrowed from a neighbour for a missing moment",
+     {"intent": "unit.sprite", "unit": 124, "donor": 594}),
 ]
 
 #: Sentences that must be refused by BOTH entry points with the SAME words.

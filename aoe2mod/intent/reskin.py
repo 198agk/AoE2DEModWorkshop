@@ -150,6 +150,19 @@ def _moment_names(tokens):
 UNKNOWN_MOMENT = "一个这个工具不认识的动作"
 
 
+def _moment_word(token):
+    """One token as the ONE word that fits inside a 「」 quote.
+
+    Used where the sentence needs a noun rather than a clause ("the 「walk」
+    frames do not match").  An unknown token still has to be sayable, and the
+    only honest thing to say is that this tool does not recognise it -- printing
+    the engine's label (``oak``, ``shadow``) would put ASCII on a Chinese screen
+    and would name something that is not an animation at all.
+    """
+    key = str(token or "").strip().lower().replace(" ", "")
+    return MOMENT_WORD.get(key) or UNKNOWN_MOMENT
+
+
 def _moment_clause(tokens):
     """`_moment_names` as one clause, with unknown keys counted, never printed."""
     words = [w for w in _moment_names(tokens) if w != UNKNOWN_MOMENT]
@@ -435,12 +448,12 @@ def plan(game_root, graphics, civs, target_id, donor_id, scope="all",
         warnings.append(
             "换来的图里没有「%s」这几个动作，所以这个单位在这些时候还是用自己"
             "原来的图，画面上会从中途变样"
-            % "/".join(_moment_names(lost_tokens)))
+            % "/".join(_moment_clause([t]) for t in lost_tokens))
     other_tokens = sorted(set(t.get("label") or t["token"] for t in unmapped_all)
                           - set(lost_tokens))
     if other_tokens:
         warnings.append("这个单位有、换来的图里没有的动作会保持原样：%s"
-                        % "、".join(_moment_names(other_tokens)))
+                        % _moment_clause(other_tokens))
 
     # A copy whose frame grids agree renders exactly like the donor.  When they
     # do not, the engine pairs the art with the record's frame_count and plays
@@ -465,7 +478,7 @@ def plan(game_root, graphics, civs, target_id, donor_id, scope="all",
         # the variant most civilizations actually see
         v = max(first["variants"], key=lambda g: len(g["civs"]))
         rest = ("，另外还有 %d 个动作也一样（%s）"
-                % (len(order) - 1, "、".join(_moment_names(order[1:4])))
+                % (len(order) - 1, _moment_clause(order[1:4]))
                 if len(order) > 1 else "")
         spread = ("" if len(first["variants"]) == 1 else
                   "，而且哪些文明对不上还不一样（%s）"
@@ -477,7 +490,7 @@ def plan(game_root, graphics, civs, target_id, donor_id, scope="all",
         warnings.append(
             "换来的「%s」动画帧格子和原来的不一样（%s 对 %s），游戏可能照着"
             "错的行列去播，而不是报错%s%s"
-            % (_moment_names([order[0]])[0], _fmt(v["donor"]), _fmt(v["target"]),
+            % (_moment_word(order[0]), _fmt(v["donor"]), _fmt(v["target"]),
                spread, rest))
 
     # Two files in ONE unit's art can carry the same engine label (the hero
@@ -585,12 +598,15 @@ def plan(game_root, graphics, civs, target_id, donor_id, scope="all",
         }
         if uncovered and not family_scope:
             shown = uncovered[0]
+            # `shown["stem"]` is the engine's file stem ("fishermanmale"), which is
+            # an internal name and used to be pasted here.  What the player needs
+            # is HOW MANY groups of art stayed behind and WHICH MOMENTS they serve,
+            # and the second half is already sayable in Chinese.
             warnings.append(
                 "这个单位有 %d 张图、分别用在 %d 种活上，这次只换掉其中 %d 张："
-                "%s 还是原来的图，所以它%s的时候看上去没变"
+                "另外 %d 组图还是原来的，所以它%s的时候看上去没变"
                 % (members_with_art, len(stems), len(touched & stems),
-                   _moment_names([shown["stem"]])[0],
-                   "、".join(_moment_names(shown["labels"][:4]))))
+                   len(uncovered), _moment_clause(shown["labels"][:4])))
         if filled_all:
             # Name what stood in for what, in the player's terms.  "carry <- walk"
             # is the mechanism; "while carrying something it walks" is the thing
@@ -599,7 +615,7 @@ def plan(game_root, graphics, civs, target_id, donor_id, scope="all",
             warnings.append(
                 "换来的图里没有「%s」，所以这些时候借用同一个单位附近动作的图，"
                 "而不是留原来的样子"
-                % "、".join(_moment_names(_filled_keys)))
+                % _moment_clause(_filled_keys))
         if still_old:
             # The animation keys are internal; the player sees moments.  "carry,
             # idlec, seed, task, work" tells a reader nothing about when their
@@ -608,8 +624,7 @@ def plan(game_root, graphics, civs, target_id, donor_id, scope="all",
             warnings.append(
                 "没有任何一个单位能提供「%s」的图，所以不管范围选多大，这个单位"
                 "在%s的时候都还是自己的样子"
-                % ("、".join(_moment_names(still_old)),
-                   "、".join(_moment_names(still_old))))
+                % (_moment_clause(still_old), _moment_clause(still_old)))
 
     return {"ok": True, "files": wanted, "conflicts": [],
             "agreed_with_the_same_donor": agreed,
