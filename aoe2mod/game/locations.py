@@ -325,11 +325,16 @@ def list_mods(profile_root, check_exists=True):
     """
     status = read_mod_status(profile_root)
     mods = []
+    import glob
     for rel, entry in status.items():
         kind, _, name = (rel or "").partition("//")
-        folder = os.path.join(profile_root, "*", "mods", kind, name)
-        import glob
-        hits = glob.glob(folder)
+        # The name is a FOLDER NAME, not a pattern.  Three of the 18 mods on this
+        # machine carry glob metacharacters in their name ([UI], [Map]), and
+        # passing the name straight to glob.glob made those entries report
+        # exists=False and leave a literal '*' inside `path` -- a path that
+        # cannot be opened by anything downstream.  glob.escape is the fix.
+        pattern = os.path.join(profile_root, "*", "mods", kind, glob.escape(name))
+        hits = sorted(glob.glob(pattern))
         path = hits[0] if hits else os.path.join(profile_root, "*", "mods", kind, name)
         mods.append({
             "name": name,

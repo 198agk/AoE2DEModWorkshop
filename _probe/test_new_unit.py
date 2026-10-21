@@ -243,6 +243,62 @@ def main():
           "the first free string id sits above the highest shipped id",
           S.first_free_id(GAME))
 
+    print("--- I. the offer edge: what makes it appear in a build menu")
+    # This format has NO building->units list.  Each UNIT record carries
+    # `train_locations` = [(building id, button id)], i.e. "where can I be
+    # trained".  Reading that field off the BUILDING reports zero for the
+    # villager itself (measured: id 83 and id 109 both have one row whose
+    # unit_id is -1), so a probe that inverts it that way measures nothing --
+    # the first version of this check did exactly that and concluded "nothing
+    # offers it".
+    #
+    # What a correct check can therefore say: the clone's OWN rows, copied from
+    # the donor, name a building that exists in the target civ, and every slot
+    # they name is a slot the shipped data already shares with several units.
+    # Whether the engine DRAWS it is not answerable from here.
+    #
+    # NOTE which model this reads.  `tk._stats["civs"]` is the SHALLOW parse
+    # (id/name/class/type/hp only) -- it has no `train_locations` at all, so
+    # asking it for that field returns empty lists and every check below turns
+    # green or red for the wrong reason.  The rich walk with the field is
+    # `tk._civs` (from `locate.locate`).  Using the shallow one here is exactly
+    # how the probe that preceded this section "measured" that nothing trains
+    # the villager.
+    own = tk._civs[1]["units"]
+    by_id = {u["id"]: u for u in own}
+    donor = [u for u in own if u["id"] == 1810]
+    check(bool(donor), "the villager record the name resolves to is id 1810", 1810)
+    rows = [(t.get("unit_id"), t.get("button_id"))
+            for t in (donor[0].get("train_locations") or [])]
+    check(bool(rows) and all(b is not None and b >= 0 for b, _n in rows),
+          "the donor's own record names the building it is trained at", rows)
+    check(all(b in by_id for b, _n in rows),
+          "and that building exists in the target civ", rows)
+    # The classic villager (83) trains at the town centre; 1810 trains at a
+    # church, so "the villager" is not one record and the slot the clone lands
+    # in depends on WHICH villager the name resolved to.  Pinning the pair keeps
+    # a future rename of that resolution from silently moving the button.
+    classic = by_id.get(83) or {}
+    classic_rows = [(t.get("unit_id"), t.get("button_id"))
+                    for t in (classic.get("train_locations") or [])]
+    check(rows != classic_rows,
+          "「村民」 and 「村民 (男性)」 are different records trained in different "
+          "places, which is why the clone's button follows the donor", (rows, classic_rows))
+    # Contention is the normal shape, not a defect: most occupied slots in this
+    # civ already have more than one claimant.
+    claim = {}
+    for u in own:
+        for t in u.get("train_locations") or []:
+            key = (t.get("unit_id"), t.get("button_id"))
+            if key[0] is not None and key[0] >= 0:
+                claim[key] = claim.get(key, 0) + 1
+    check(sum(1 for v in claim.values() if v > 1) > 1,
+          "shipped data already puts several units on one building button",
+          sum(1 for v in claim.values() if v > 1))
+    check(all(claim.get((b, n), 0) >= 1 for b, n in rows),
+          "so the clone sharing its donor's button is the shipped shape",
+          [(b, n, claim.get((b, n))) for b, n in rows])
+
     if FAILS:
         print("\nNEW UNIT: %d CHECK(S) FAILED" % len(FAILS))
         return 1

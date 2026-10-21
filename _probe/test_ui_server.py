@@ -450,6 +450,61 @@ def main():
         finally:
             shutil.rmtree(out2, ignore_errors=True)
 
+        # ---- a sentence that MAKES a unit, over the wire ---------------
+        # `unit.create` was added to the reader and to the toolkit in one round,
+        # and the only test that built one called the toolkit directly.  A route
+        # that dropped a field on the way -- the name, the civilization, the
+        # donor -- would pass every direct-call test and still write a nameless
+        # record.  So this walks the same sentence the page sends, one route at a
+        # time, and reads the answer the product gives.
+        out3 = tempfile.mkdtemp(prefix="dsh_ui_create_")
+        try:
+            make = "给不列颠新建一个和村民一样的单位，叫铁匠学徒"
+            st, pc = _post(base, "/api/parse", {"text": make})
+            cl = (pc.get("clauses") or [{}])[0]
+            whole = cl.get("intent") or {}
+            check("a creating sentence is read as unit.create",
+                  whole.get("intent") == "unit.create", str(whole)[:200])
+            check("and the name it will carry came out of the sentence",
+                  whole.get("name") == "铁匠学徒", whole.get("name"))
+            check("and the civilization it is added to is named, not defaulted",
+                  bool(whole.get("civ")), whole.get("civ"))
+            check("the clause says it can be built", cl.get("buildable") is True,
+                  str(cl.get("preview"))[:200])
+
+            st, mp = _post(base, "/api/plan", {"intent": whole})
+            mplan = mp.get("plan") or {}
+            check("the preview accepts it", mp.get("ok") is True and
+                  mplan.get("editable") is True, str(mp)[:200])
+            check("the preview picks the id the build will use",
+                  isinstance(mplan.get("new_id"), int), str(mplan)[:200])
+            # The screen reads this sentence, so it may not name internal fields.
+            check("the preview sentence is in Chinese",
+                  bool(re.search(u"[\u4e00-\u9fff]", mplan.get("description") or "")),
+                  mplan.get("description"))
+
+            st, mb = _post(base, "/api/build", {
+                "intents": [whole], "title": "dsh ui create", "author": "dsh",
+                "description": "one new unit", "out_dir": out3})
+            check("the creating build returns ok", mb.get("ok") is True,
+                  str(mb)[:300])
+            mman = mb.get("manifest") or {}
+            made = mman.get("new_unit") or {}
+            check("the build wrote the id the preview promised",
+                  made.get("id") == mplan.get("new_id"),
+                  (made.get("id"), mplan.get("new_id")))
+            check("the new record survived the writer",
+                  mman.get("unit_added") is True, mman.get("unit_added"))
+            # The name is the half a route can silently lose: the record is one
+            # appended block, while the name is a separate file per locale.
+            check("and the name landed in a shipped strings table",
+                  (made.get("string_id") and any(
+                      "key-value-modded-strings" in f.get("rel", "")
+                      for f in mman.get("files") or [])),
+                  str(made.get("strings"))[:200])
+        finally:
+            shutil.rmtree(out3, ignore_errors=True)
+
         # ---- path traversal -------------------------------------------
         try:
             st, ctype, _b = _get(base, "/static/../server.py")
