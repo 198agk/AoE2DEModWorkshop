@@ -295,6 +295,17 @@ def main():
           not intents and clauses and "3" in (clauses[0].why or ""),
           intents or (clauses and [c.why for c in clauses]))
 
+    intents, clauses = read("织布机第0条效果加5")
+    # "第0条" is not a position either.  `_ordinal` hands back the number the
+    # sentence said, so 0 arrived at the compiler as index -1, passed the
+    # `idx >= count` guard (only that end was checked) and was refused THERE --
+    # in English, naming the internal record "Loom".  A position that cannot
+    # exist is refused where it is read.
+    check("asking for a command before the first one is refused, not passed down",
+          not intents and clauses
+          and "从第 1 条开始数" in (clauses[0].why or ""),
+          intents or (clauses and [c.why for c in clauses]))
+
     # ---- 研究 is a verb players use for technologies ---------------------
     intents, _ = read("印加不能研究织布机")
     check("'cannot research' reads as a technology revoke",

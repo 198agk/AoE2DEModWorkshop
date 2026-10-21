@@ -74,7 +74,19 @@ _RESOURCE_ANIMS = frozenset(("carry", "work"))
 
 
 class SpriteError(Exception):
-    """Raised when a sprite question cannot be answered from the data."""
+    """Raised when a sprite question cannot be answered from the data.
+
+    ``detail`` carries the machine facts behind the sentence (which animation
+    tokens each side has, which stems were looked for) so a caller that speaks the
+    player's language can compose its own wording.  The message itself is already
+    Chinese, but it can only print the engine's raw tokens -- ``attack, death,
+    decay, idle, idlec, walk`` -- and the layer that owns the Chinese words for
+    those is `intent.reskin`, not here.
+    """
+
+    def __init__(self, message, detail=None):
+        Exception.__init__(self, message)
+        self.detail = detail or {}
 
 
 def graphics_dir(game_root):
@@ -85,7 +97,7 @@ def disk_files(game_root):
     """The .sld basenames actually shipped, without the extension."""
     d = graphics_dir(game_root)
     if not os.path.isdir(d):
-        raise SpriteError("no sprite directory at %s" % d)
+        raise SpriteError("这个游戏目录里没有贴图目录：%s" % d)
     return set(fn[:-4] for fn in os.listdir(d) if fn.endswith(".sld"))
 
 
@@ -361,16 +373,16 @@ class SpriteIndex(object):
         rec = self.record(gid)
         if rec is None:
             return {"kind": "missing", "graphic_id": gid, "files": [],
-                    "reason": "no graphics record carries id %r" % (gid,)}
+                    "reason": "图形记录里没有第 %r 号这一条" % (gid,)}
         f = self.file_of(gid)
         if not f:
             return {"kind": "none", "graphic_id": gid, "files": [],
-                    "reason": "the graphics record has no file string"}
+                    "reason": "这条图形记录没写文件名"}
         stem = self.stem_of(gid)
         files = self.group(stem) if stem else []
         if (f not in self.files) and not files:
             return {"kind": "legacy", "graphic_id": gid, "file": f, "files": [],
-                    "reason": "no shipped .sld is named %r" % (f + ".sld",)}
+                    "reason": "随游戏发布的 .sld 里没有叫 %r 的这个" % (f + ".sld",)}
         # Key each file by the engine's own animation labels.  A file can serve
         # SEVERAL animations (the sheep's idle file carries both "Sheep (Attack)"
         # and "Sheep (Idle)"), so a file may legitimately appear under two keys.
@@ -601,19 +613,18 @@ def plan_swap(target, donor, fill=False):
     """
     if not target or target.get("kind") != "loose":
         raise SpriteError(
-            "the target has no loose art to replace (%s)"
-            % (target.get("reason") if target else "no standing graphic"))
+            "目标这边没有可以换的散图（%s）"
+            % (target.get("reason") if target else "没有站立图像"))
     if not donor or donor.get("kind") != "loose":
         raise SpriteError(
-            "the donor has no loose art to copy (%s)"
-            % (donor.get("reason") if donor else "no standing graphic"))
+            "来源这边没有可以抄的散图（%s）"
+            % (donor.get("reason") if donor else "没有站立图像"))
 
     dt = donor.get("tokens") or {}
     tt = target.get("tokens") or {}
     if not tt:
         raise SpriteError(
-            "the target's art (%r) names no animation this toolkit can match, "
-            "so there is nothing to replace"
+            "目标这套图（%r）里没有一个动作是这个工具认得的，所以没有东西可换"
             % (target.get("file") or target.get("stem"),))
 
     pairs, unmapped, filled = [], [], []
@@ -643,10 +654,11 @@ def plan_swap(target, donor, fill=False):
     # case that silently produced nothing.
     if not pairs:
         raise SpriteError(
-            "these two have no animation in common: the target has %s and the "
-            "donor has %s, so copying would change nothing"
-            % (", ".join(sorted(tt)) or "none",
-               ", ".join(sorted(dt)) or "none"))
+            "这两个单位一个共同的动作都没有：目标有 %s，来源有 %s，抄过去什么都不会变"
+            % (", ".join(sorted(tt)) or "无",
+               ", ".join(sorted(dt)) or "无"),
+            detail={"kind": "no_common_animation",
+                    "target_tokens": sorted(tt), "donor_tokens": sorted(dt)})
     return pairs, unmapped, extra
 
 
@@ -677,8 +689,8 @@ def plan_swap_full(target, donor, fill=False):
                    None)
         filled.append({"animation": tk_, "source": src, "target": tn,
                        "donor": dn,
-                       "reason": "the donor has no %s animation, so its %s "
-                                 "animation stands in" % (tk_, src)})
+                       "reason": "来源没有 %s 这个动作，拿它的 %s 动作顶上"
+                                 % (tk_, src)})
     return pairs2, unmapped2, _e2, filled
 
 

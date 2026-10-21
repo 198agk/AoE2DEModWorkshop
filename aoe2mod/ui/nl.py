@@ -918,6 +918,14 @@ def read_clause(text, vocab, civ_names=None, civ_zh=None, pins=None,
             count = _effect_count(eid, effect_count)
             if ordv is not None:
                 idx = ordv - 1
+                # "第0条" is not a position.  `_ordinal` returns the number the
+                # sentence said, so 0 arrives here as -1 and used to pass the
+                # `idx >= count` guard (only the far end was checked) and reach
+                # the compiler, which refused it in English.  A position that
+                # cannot exist is refused where it is read.
+                if idx < 0:
+                    cl.why = ("效果是从第 1 条开始数的，没有第 %d 条" % ordv)
+                    return cl
                 if count is not None and idx >= count:
                     cl.why = ("「%s」只有 %d 条效果，没有第 %d 条"
                               % (ent.display, count, ordv))

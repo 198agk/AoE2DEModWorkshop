@@ -682,8 +682,9 @@ def install_mod(mod_dir, profile_root, name=None, title=None, kind="local",
     if os.path.exists(target):
         if not overwrite:
             raise FileExistsError(
-                "a %s mod named %r is already installed at %r; pass "
-                "overwrite=True to replace it" % (kind, name, target))
+                "这个位置已经装着一个叫「%s」的模组了：%s。"
+                "要换掉它的话，调用时带上 overwrite=True。"
+                % (name, target))
         shutil.rmtree(target)
     os.makedirs(os.path.dirname(target), exist_ok=True)
     shutil.copytree(src, target)

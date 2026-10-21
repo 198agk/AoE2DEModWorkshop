@@ -121,20 +121,116 @@ def _moment_names(tokens):
     """Player-facing words for animation tokens OR their engine labels.
 
     The tokens arriving here are `t.get("label") or t["token"]`, so they may be
-    "Idle" or "idle"; an unknown label is printed as-is instead of being dropped,
-    because a missing animation in the sentence reads as a missing problem.
+    "Idle" or "idle"; an unknown label is COUNTED rather than printed, because an
+    unknown label is an engine word like ``lush bamboo`` or ``shadow`` and this
+    sentence is read by a player, not by us.  A missing animation in the sentence
+    reads as a missing problem, so the count is said out loud instead of dropped.
+
+    Measured over the shipped art: the keys that actually reach a refusal are
+    ``attack/death/decay/idle/idleA..C/walk/walkB/work/carry/seed/age1..4/
+    destruction/rubble/...`` for units and a scattering of record LABELS for
+    scenery (``oak``, ``shadow``, ``snow``, ``1x1``).  The labels are not
+    animations at all -- they are what the graphics record happens to be called --
+    which is exactly why they must not be pasted into a Chinese sentence.
     """
     out = []
     for t in tokens:
         key = str(t or "").strip().lower().replace(" ", "")
-        word = MOMENT_WORD.get(key) or str(t)
+        word = MOMENT_WORD.get(key) or UNKNOWN_MOMENT
         if word not in out:
             out.append(word)
     return out
 
 
+#: What an unmatchable engine label reads as.  It used to be printed verbatim
+#: (``oak``, ``shadow``, ``snow``), which put ASCII on a Chinese screen; the label
+#: is the GRAPHICS RECORD's name, not an animation, so there is nothing honest to
+#: translate it to.  Saying "one animation this tool does not recognise" is true
+#: and stays readable; `_moment_clause` can say how many there are.
+UNKNOWN_MOMENT = "一个这个工具不认识的动作"
+
+
+def _moment_clause(tokens):
+    """`_moment_names` as one clause, with unknown keys counted, never printed."""
+    words = [w for w in _moment_names(tokens) if w != UNKNOWN_MOMENT]
+    unknown = sum(1 for t in tokens
+                  if str(t or "").strip()
+                  and str(t or "").strip().lower().replace(" ", "")
+                  not in MOMENT_WORD)
+    if not words and not unknown:
+        return "（什么都不做）"
+    text = "、".join(words)
+    if unknown:
+        tail = "另外还有 %d 种动作这个工具不认识" % unknown
+        text = (text + "，" + tail) if text else tail
+    return text
+
+
+def _sprite_reason(exc):
+    """A ``SpriteError`` as a sentence a player can read.
+
+    ``str(exc)`` was already Chinese after 2026-10-20, but it printed the engine's
+    raw animation keys -- "目标有 attack, death, decay, idle, idlec, walk" -- which
+    is English to the only reader there is.  The sprite layer cannot fix that
+    itself: the Chinese words for those keys live here, in `MOMENT_WORD`, because
+    this is the layer that tells the player which moments will be replaced.  So
+    the error carries the tokens as data and the sentence is composed here.
+    """
+    detail = getattr(exc, "detail", None) or {}
+    if detail.get("kind") == "no_common_animation":
+        have_t = detail.get("target_tokens") or []
+        have_d = detail.get("donor_tokens") or []
+        return ("这两个单位一个共同的动作都没有：目标会%s，来源会%s，"
+                "换过去什么都不会变"
+                % (_moment_clause(have_t), _moment_clause(have_d)))
+    return str(exc)
+
+
 def _sha(data):
     return hashlib.sha256(data).hexdigest()
+
+
+#: The engine's animation keys are lowercase ASCII ("attack", "idleC") and they
+#: ARE printed on screen -- a refusal says which animations the two units have.
+#: 16 of them are in MOMENT_WORD; the rest are the engine's own words with no
+#: Chinese name in this project (``idleC`` variants, building states like
+#: ``destruction``/``rubble``).  A sentence that reads "目标有 attack, death,
+#: decay, idle, idlec, walk" is half English to the only reader there is, so the
+#: remaining ones get a Chinese word here.  An unknown key is NOT invented: it is
+#: printed as ``动作「x」`` so the reader still sees the game's spelling without
+#: being told it is a word they should know.
+_MOMENT_EXTRA = {
+    "age": "建成后的样子",
+    "age1": "第一个时代的样子",
+    "age2": "第二个时代的样子",
+    "age3": "第三个时代的样子",
+    "age4": "第四个时代的样子",
+    "destruction": "倒塌中",
+    "rubble": "成为废墟",
+    "idleA": "站着不动",
+    "idleB": "站着不动",
+    "idleC": "闲着的另一个动作",
+    "walkA": "走路",
+    "walkB": "走路",
+    "attackA": "攻击",
+    "attackB": "攻击",
+    "deathA": "倒下",
+    "decayA": "腐烂",
+    "emplacement": "架起来的样子",
+    "emplacements": "架起来的样子",
+    "all emplacements": "架起来的样子",
+    "defensive emplacement": "防守位置上架起来的样子",
+    "offensive emplacement": "进攻位置上架起来的样子",
+    "packed": "收起来的样子",
+    "unpacked": "放下来的样子",
+}
+
+MOMENT_WORD.update({k.lower(): v for k, v in _MOMENT_EXTRA.items()})
+#: `_moment_names` looks a token up with spaces removed ("All Emplacements" ->
+#: "allemplacements"), so the spaced spellings above need that form too.  Doing it
+#: here rather than in the lookup keeps ONE normalisation rule in the file.
+MOMENT_WORD.update({k.replace(" ", ""): v
+                    for k, v in list(MOMENT_WORD.items()) if " " in k})
 
 
 def _units_by_id(civs):
@@ -227,7 +323,8 @@ def plan(game_root, graphics, civs, target_id, donor_id, scope="all",
             try:
                 pairs, unmapped, _extra, filled = S.plan_swap_full(ta, da, fill=fill)
             except S.SpriteError as exc:
-                skipped.append({"civ": civ_name, "target": tid, "reason": str(exc)})
+                skipped.append({"civ": civ_name, "target": tid,
+                                "reason": _sprite_reason(exc)})
                 continue
 
             for f_ in filled:

@@ -314,8 +314,12 @@ def emit_data_mod(mod_dir, dat_bytes, info, thumbnail=None, base_dir=None,
         raise ModError("这个 mod 的信息填得不对，游戏不会认："
                        + " ".join(problems))
     if dat_bytes is None and not json_files:
-        raise ModError("nothing to emit: neither a .dat nor any JSON override "
-                       "was given, so the mod would change nothing")
+        # Reachable from the screen only if the caller could not name WHY nothing
+        # was produced (the bundle path now names the refused sentences before it
+        # gets here).  Kept Chinese anyway: a fallback that speaks English is the
+        # same defect one branch later.
+        raise ModError("没有东西可以做成模组：既没有一个 .dat，也没有任何要覆盖的文件，"
+                       "这样做出来的模组什么都不会改")
 
     # --- the DAT-storage-point carrier rule ------------------------------
     dat_carrier = False
@@ -340,8 +344,11 @@ def emit_data_mod(mod_dir, dat_bytes, info, thumbnail=None, base_dir=None,
         # Refuse rather than merge: silently adding to an existing folder is how
         # a user ends up shipping someone else's files.
         if os.listdir(mod_dir):
-            raise ModError("mod folder %r already exists and is not empty; "
-                           "pass overwrite=True to replace it" % mod_dir)
+            # The page always passes overwrite=True, so this is not the route a
+            # player takes -- but it is one API call away, and a refusal that
+            # speaks English is the same defect however it is reached.
+            raise ModError("这个模组文件夹已经存在，里面还有别的东西：%s。"
+                           "要整个换掉的话，调用时带上 overwrite=True。" % mod_dir)
 
     dat_abs = None
     blob = None

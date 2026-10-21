@@ -200,6 +200,15 @@ SUITES = [
     # cannot be exercised over HTTP without writing the player's real mod list,
     # which is exactly why the contract has to be read out of the sources instead.
     r"_probe\test_page_route_contract.py",
+    # The read half of tech.effect, and the fifth time an internal key leaked into
+    # a sentence: three of a row's four labels used to fall back to English built
+    # by string formatting ("Class 251", "Resource 66", "unit 2154") across 4,308
+    # visible rows.  The fallbacks are now the shipped class word plus the record
+    # number, because 102 units -- all engine projectiles -- have no name string at
+    # all, and the user chose that over translating "Projectile" (2026-10-20).
+    # The check that cannot be written as a count is distinguishability: the same
+    # unnamed unit must always read the same, and two different ones never must.
+    r"_probe\test_effect_labels.py",
     # The registry itself.  Ten probes rotted unrun before anyone noticed, and
     # the reason nobody noticed is that "is every test reachable?" was a question
     # only a human could answer.  This asks it mechanically, including the four

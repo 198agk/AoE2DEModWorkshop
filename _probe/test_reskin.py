@@ -149,7 +149,10 @@ def main():
     rep_d2 = R.plan(root, g, civs, 12, 498)
     print("  ok=%s reason=%s" % (rep_d2.get("ok"), rep_d2.get("reason")))
     check(rep_d2.get("ok") is False, "the two Barracks ages are refused, not a no-op")
-    check("no animation in common" in (rep_d2.get("reason") or ""),
+    # The reason is READ ON SCREEN, so it speaks Chinese (2026-10-20).  It used
+    # to be "these two have no animation in common" -- the last English sentence
+    # a player could reach by typing `把村民的样子换成城堡`.
+    check("共同的动作都没有" in (rep_d2.get("reason") or ""),
           "and the reason names the real cause")
 
     print("== E. verify_files against the install ==")

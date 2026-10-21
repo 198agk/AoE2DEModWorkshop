@@ -453,8 +453,14 @@ assert set(_ops_seen) == {"add", "set", "multiply"}, sorted(_ops_seen)
 for _op, (_t, _row) in _ops_seen.items():
     assert _row["attribute_label"] is None, (_op, _row["attribute_label"])
     assert _row["target_kind"] == "resource", (_op, _row["target_kind"])
-    assert _row["target_label"] and not _row["target_label"].startswith("Resource "), \
-        "the game's own table names every resource the shipped data charges"
+    # NOT "the game names every resource the data charges" -- it does not: six
+    # visible rows still fall back.  The invariant is that the FALLBACK is
+    # Chinese, because it lands inside a sentence a player reads.  Asserting
+    # `not startswith("Resource ")` would pass no matter what the fallback said,
+    # so it would be a test that cannot fail.
+    assert _row["target_label"], (_op, "a resource row with no label at all")
+    assert not re.search(r"[A-Za-z]{2,}", _row["target_label"]), \
+        (_op, _row["target_label"])
 
 # The preview sentence has to describe the OPERATION, because the three
 # operations need three different sentences: a multiply row's number is a
@@ -464,7 +470,11 @@ _t, _row = _ops_seen["add"]
 _p = tk.plan({"intent": "tech.effect", "tech": _t, "command": _row["index"],
               "delta": 500})
 assert _row["target_label"] in _p["description"], _p["description"]
-assert "Resource %d" % _row["target"] not in _p["description"], _p["description"]
+# The fallback for an id the game does not name is now 资源 NN, so this cannot
+# assert "the number never appears".  What it CAN assert is that the English
+# fallback spelling is gone from the sentence -- a regression guard on the one
+# thing that was wrong (this string is printed inside a player-facing sentence).
+assert not re.search(r"Resource \d", _p["description"]), _p["description"]
 _t, _row = _ops_seen["set"]
 _p = tk.plan({"intent": "tech.effect", "tech": _t, "command": _row["index"],
               "value": 4})
@@ -494,10 +504,13 @@ _ref = {"times": 0, "badb": 0}
 for _t in range(len(tk._stats["techs"])):
     for _row in tk.effects(_t)["rows"]:
         if _row["resource"] and not _row["editable"]:
-            _why = _row.get("reason") or ""
-            if "scales by the current value" in _why:
+            # Keyed on reason_code, not on the sentence: the sentence is written
+            # for a player and is Chinese now, so matching English prose here
+            # would turn both counts into zero the moment it was reworded --
+            # which is what happened when the refusals were translated.
+            if _row.get("reason_code") == "times_resource":
                 _ref["times"] += 1
-            elif "does not read as either" in _why:
+            elif _row.get("reason_code") == "slot_b_unreadable":
                 _ref["badb"] += 1
 assert _ref["times"] == 17, _ref
 assert _ref["badb"] == 8, _ref
@@ -517,12 +530,13 @@ _named = 0
 for _t in range(len(tk._stats["techs"])):
     for _row in tk.effects(_t)["rows"]:
         _why = _row.get("reason") or ""
-        if _row["editable"] or "does not carry an attribute" not in _why:
+        if _row["editable"] or _row.get("reason_code") != "no_attribute_slot":
             continue
         _named += 1
         if re.search(r"type\s*\d", _why) or _row["type_label"] == "Type %d" % _row["type"]:
             _bare.append((_t, _row["type"], _why))
 assert not _bare, _bare[:3]
+assert _named, "the no_attribute_slot refusal disappeared; this walks nothing"
 print("  every one of the %d such refusals names its command instead" % _named)
 
 # 8d. tech.effect -- the effect vocabulary and the shared-record warning.
@@ -710,7 +724,10 @@ try:
                     title="empty", author="test")
     raise AssertionError("an empty bundle was accepted")
 except _C.IntentError as _exc:
-    assert "at least one" in str(_exc), str(_exc)
+    # The refusal is printed on screen, so it is Chinese; asserting the English
+    # phrase that used to be here would have passed only until it was translated.
+    assert "这个组合里一句都没有" == str(_exc), str(_exc)
+    assert not re.search(r"[A-Za-z]{2,}", str(_exc)), str(_exc)
     print("  an empty bundle is refused rather than emitting a no-op mod")
 
 # A bundle may MIX strategies.  Their products are different FILES -- the byte

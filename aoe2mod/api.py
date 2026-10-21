@@ -423,7 +423,8 @@ class Toolkit(object):
         idx, rec = self._resolve_tech(tech)
         effects = self._effect_records()
         fan = self._effect_fanout() if fanout else None
-        rows = C.effect_rows(effects, rec, fanout=fan)
+        rows = C.effect_rows(effects, rec, fanout=fan,
+                             unit_class=self.unit_class)
         return {"tech_id": idx, "name": rec.get("name"),
                 "effect_id": rec.get("effect_id"),
                 "effect_name": (effects[rec["effect_id"]]["name"]
@@ -2074,7 +2075,10 @@ class Toolkit(object):
                     # record) but the very function the write calls.
                     effects = self._effect_records()
                     C.plan_effect_edit(effects, tech, r.raw.get("command"),
-                                       r.op, r.amount, fanout=self._effect_fanout())
+                                       r.op, r.amount,
+                                       fanout=self._effect_fanout(),
+                                       tech_label=r.entity.display,
+                                       unit_class=self.unit_class)
                 else:
                     # KEEP the count.  `_describe_tech_targets` reports how many
                     # places the field LIVES (`research_time` is one number per
@@ -2239,7 +2243,8 @@ class Toolkit(object):
             _, bindings = C.load_schema()
             b = C._binding_for(bindings, r, r.raw["intent"])
             effects = self._effect_records()
-            rows = C.effect_rows(effects, tech, fanout=self._effect_fanout())
+            rows = C.effect_rows(effects, tech, fanout=self._effect_fanout(),
+                                 unit_class=self.unit_class)
             index = r.raw.get("command")
             out = {"locations": 1, "edit_count": 1 if rows else 0,
                    "location_ids": [], "civ_count": 0, "civs": [],
@@ -2850,7 +2855,7 @@ class Toolkit(object):
         against the unmodified file would judge 25+7 instead of 30+7).
         """
         if not intents:
-            raise C.IntentError("a bundle needs at least one intent")
+            raise C.IntentError("这个组合里一句都没有")
 
         intents_schema, bindings = C.load_schema()
 
@@ -3104,7 +3109,7 @@ class Toolkit(object):
             # empty bundle reaches the emitter and dies with "nothing to emit",
             # which is a ModError about the filesystem rather than a sentence
             # about the user's request.
-            raise C.IntentError("a bundle needs at least one intent")
+            raise C.IntentError("这个组合里一句都没有")
         intents_schema, bindings = C.load_schema()
         resolved_list = C.resolve_bundle(intents, intents_schema, bindings=bindings)
         dat_list, js_list, sld_list, paint_list = self._split_by_strategy(
@@ -3237,6 +3242,21 @@ class Toolkit(object):
                                  [r.describe() for r in resolved_list] if d)[:80]
                       or "mod"),
             author=author, description=description)
+        # A bundle whose every sentence was REFUSED has nothing to emit, and the
+        # emitter's own complaint ("nothing to emit: neither a .dat nor any JSON
+        # override was given") describes the FILE SYSTEM, not the request -- the
+        # player typed `把村民的样子换成城堡`, and the reason that sentence could
+        # not be honoured was already computed and then thrown away here.  Name
+        # the sentences instead.  Measured: the emitter sentence is what reached
+        # the screen, in English, for a sentence whose real reason was Chinese.
+        if dat_bytes is None and not json_files:
+            _why = [str(x.get("reason") or "").strip() for x in sprite_refusals
+                    if x.get("reason")]
+            _why += [str(x.get("reason") or "").strip() for x in dat_half_reps
+                     if not x.get("ok") and x.get("reason")]
+            if _why:
+                raise C.IntentError("这几句都做不了，所以没有东西可以做成模组："
+                                    + "；".join(_why))
         man = E.emit_data_mod(out_dir, dat_bytes, info, thumbnail=thumbnail,
                               base_dir=self.game_root, overwrite=overwrite,
                               json_files=json_files or None)

@@ -25,6 +25,12 @@ import unicodedata
 _HERE = os.path.dirname(os.path.abspath(__file__))
 _DATA = os.path.join(_HERE, "data")
 
+#: Chinese names for the two kinds this index resolves.  Kept here rather than
+#: imported from `intent.compiler` (which imports THIS module) so the refusal
+#: above cannot become a circular import; an unknown kind falls through as-is,
+#: same rule as `compiler.kind_label`.
+_KIND_ZH = {"unit": "单位", "tech": "科技", "building": "建筑"}
+
 
 def _load(name):
     with open(os.path.join(_DATA, name), encoding="utf-8") as fh:
@@ -164,7 +170,13 @@ class SemanticIndex(object):
         """Resolve to exactly one entity, or raise with a useful message."""
         hits = self.find(kind, text)
         if not hits:
-            raise LookupError("no %s matches %r" % (kind, text))
+            # This message reaches the screen: `Toolkit.describe` and the intent
+            # compiler both funnel a failed lookup through here, and
+            # `_probe/tmp_screen_reach.py` showed "no unit matches 999999" was
+            # what a player saw.  The KIND is translated because the English
+            # words "unit"/"tech" are our vocabulary, not the game's.
+            raise LookupError("这个版本里没有叫「%s」的%s"
+                              % (text, _KIND_ZH.get(kind, kind)))
         if len(hits) > 1:
             exact = [h for h in hits
                      if _norm(text) in {_norm(h.zh), _norm(h.en),

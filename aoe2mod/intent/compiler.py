@@ -411,11 +411,48 @@ def _resource_label(resource_id):
     id space (both index the game's ``15000 + id`` string block), so this reuses
     the table the cost rows already use rather than opening a second one.
 
-    An id the game does not name renders as ``Resource 504`` -- a fallback, not
-    an invented name, exactly like ``Class %d`` in the attribute path.  Refusing
-    the edit instead would drop 9 real commands over a missing label.
+    An id the game does not name renders as ``资源 504`` -- a fallback, not an
+    invented name, exactly like ``第 %d 类`` in the attribute path.  Refusing the
+    edit instead would drop 9 real commands over a missing label.
+
+    The fallback is Chinese on purpose.  This string lands inside a sentence a
+    player reads ("农田 资源 66 ×1.1"), and "Resource 66" in it is the same defect
+    as an English sentence: measured 2026-10-20, six visible rows printed it.
     """
-    return load_resource_labels().get(resource_id) or ("Resource %d" % resource_id)
+    return load_resource_labels().get(resource_id) or ("资源 %d" % resource_id)
+
+
+def _unit_target_label(unit_id, ent, unit_class=None):
+    """What to call the unit an effect command points at.
+
+    A unit with a name is called by its name -- that is what the player read in
+    the sentence and what the game itself shows.
+
+    A unit with NO name string is the case this exists for.  Measured 2026-10-20
+    over the visible technologies: 549 rows point at one of 102 such units, and
+    every one of them is an engine projectile whose only name is the internal
+    spelling "Projectile KEP".  Printing that put English on the screen, so the
+    label becomes the unit's CLASS plus its record number -- the class word comes
+    from the same vocabulary table as everywhere else (class 11 is 杂项), and the
+    number is what keeps three projectile rows in one technology apart.  The user
+    picked this over translating "Projectile" on 2026-10-20: a translation would
+    have been a name this game never uses.
+
+    ``unit_class`` is a callable (``Toolkit.unit_class``) because the class lives
+    in the .dat unit record and this module only holds the semantic index.  No
+    callable, no class: the label then says 单位 and keeps the number, rather than
+    guessing a class from the internal name.
+    """
+    if unit_id is None or unit_id == -1:
+        # Slot A of -1 is a real value in the shipped data (one visible row) and
+        # this tool has never established what the engine does with it, so it
+        # says so instead of printing "单位 -1".
+        return "未指定单位"
+    if ent is not None and ent.resolved:
+        return ent.display
+    cls = unit_class(unit_id) if unit_class is not None else None
+    word = class_label(cls) if cls is not None else "单位"
+    return "%s %s" % (word, unit_id)
 
 
 def _attribute_label(attribute_id, attrs, zh_attrs):
@@ -473,7 +510,8 @@ def effect_fanout(techs):
     return out
 
 
-def plan_effect_edit(effects, tech, index, op, amount, ix=None, fanout=None):
+def plan_effect_edit(effects, tech, index, op, amount, ix=None, fanout=None,
+                     tech_label=None, unit_class=None):
     """Decide whether one effect command can be rewritten, and to what value.
 
     The ONLY place that answers that question, called by ``plan()`` and by the
@@ -485,27 +523,38 @@ def plan_effect_edit(effects, tech, index, op, amount, ix=None, fanout=None):
     Returns the decoded row with ``before``/``after`` filled in.  Raises
     ``IntentError`` when the command is not a named attribute modifier, when the
     index is out of range, or when the new value cannot fit -- never guesses.
+
+    ``tech_label`` is the name the CALLER has for the technology (``r.entity.
+    display``, which is what the sentence said or what the game calls it).  The
+    tech record's own ``name`` field is the internal spelling -- "Loom (Make
+    avail)" or "Champi Scout (Make avail)" -- and this refusal is printed on the
+    screen, so an English internal name there is the same defect as an English
+    sentence.  It is a parameter rather than a lookup so that the preview and the
+    write name the tech the same way the sentence did.
+
+    ``unit_class`` goes through to ``effect_rows`` (see ``_unit_target_label``);
+    it is what lets the refusal sentence name a projectile target by its class
+    instead of printing an internal English spelling at a player.
     """
+    who = tech_label or tech.get("name")
+    rows = effect_rows(effects, tech, fanout=fanout, ix=ix, unit_class=unit_class)
     if index is None:
-        raise IntentError("intent needs a 'command' index (which entry of %s's "
-                          "effect list to change)" % tech.get("name"))
+        raise IntentError("「%s」有 %d 条效果，要说是改第几条（哪个数字才是要改的）"
+                          % (who, len(rows)))
     try:
         index = int(index)
     except (TypeError, ValueError):
-        raise IntentError("'command' must be an index, not %r" % (index,))
-    rows = effect_rows(effects, tech, fanout=fanout, ix=ix)
+        raise IntentError("「第几条效果」得是个位置，收到的是 %r" % (index,))
     if not rows:
         raise IntentError(
-            "%s has no effect commands to change (its record points at no "
-            "effect)" % tech.get("name"))
+            "「%s」没有可以改的效果（这条科技没有指向任何效果记录）" % who)
     if not (0 <= index < len(rows)):
         raise IntentError(
-            "%s has %d effect command%s; index %d is out of range"
-            % (tech.get("name"), len(rows), "" if len(rows) == 1 else "s", index))
+            "「%s」只有 %d 条效果，没有第 %d 条" % (who, len(rows), index + 1))
     row = dict(rows[index])
     if not row["editable"]:
-        raise IntentError("%s: command %d cannot be changed here (%s)"
-                          % (tech.get("name"), index, row["reason"]))
+        raise IntentError("「%s」的第 %d 条效果不能这样改（%s）"
+                          % (who, index + 1, row["reason"]))
 
     before = row["value"]
     cc = row["attribute"]
@@ -551,18 +600,19 @@ def plan_effect_edit(effects, tech, index, op, amount, ix=None, fanout=None):
 
 
 def write_effect_command(data, effects, tech, index, op, amount, ix=None,
-                         fanout=None):
+                         fanout=None, tech_label=None, unit_class=None):
     """Apply one effect-command edit; returns ``(new_bytes, edit, row)``.
 
     Shares ``plan_effect_edit`` with the preview, so the check that runs here is
     literally the same code the user saw before pressing the button.
     """
     row = plan_effect_edit(effects, tech, index, op, amount, ix=ix,
-                           fanout=fanout)
+                           fanout=fanout, tech_label=tech_label,
+                           unit_class=unit_class)
     off = row["offset"]
     if off is None:
-        raise IntentError("the effect walk did not mark a value offset for "
-                          "command %d" % index)
+        raise IntentError("效果记录里没有标出第 %d 条命令要改的那个数字在哪"
+                          % (index + 1))
     buf = bytearray(data)
     before_stored = struct.unpack_from("<f", data, off)[0]
     buf[off:off + 4] = struct.pack("<f", row["stored"])
@@ -574,7 +624,7 @@ def write_effect_command(data, effects, tech, index, op, amount, ix=None,
     return bytes(buf), edit, row
 
 
-def effect_rows(effects, tech, fanout=None, ix=None):
+def effect_rows(effects, tech, fanout=None, ix=None, unit_class=None):
     """Decode one tech's effect commands into rows a UI can render and act on.
 
     This is the READ half of "change what a technology does".  It answers, per
@@ -590,6 +640,10 @@ def effect_rows(effects, tech, fanout=None, ix=None):
     construction, and the UI flow it enables is the one the product wants: show
     the user the list of things this tech does, let them pick one and change the
     number.
+
+    ``unit_class`` is an optional ``unit_id -> class id`` callable, used only to
+    name a target unit that has no name string of its own (``_unit_target_label``
+    explains why the class is the fallback and why the record number rides along).
     """
     eid = tech.get("effect_id")
     if eid is None or eid < 0 or eid >= len(effects or ()):
@@ -645,14 +699,23 @@ def effect_rows(effects, tech, fanout=None, ix=None):
             # real command this tool cannot name, so it says so instead of
             # inventing a label.
             "editable": False, "reason": None,
+            # WHY the row is refused, as a stable code rather than the
+            # sentence.  The sentence is written for the screen and is now
+            # Chinese; anything that has to tell these refusals apart (probes,
+            # the API contract tests) must not key on user-facing prose, or
+            # rewording a sentence silently turns a count into zero.  That
+            # exact accident has already happened once in this project
+            # (`probe_building_warn_count.py`).  None means "editable" or
+            # "refused for a reason the codes below do not cover".
+            "reason_code": None,
             "fan_in": len(sharers),
             "shared_with": [{"index": ti, "name": tn} for ti, tn in sharers],
         }
         if pair:
             if b is None or b == -1:
                 row["target_kind"], row["target"] = "unit", a
-                ent = ix.get("unit", a)
-                row["target_label"] = ent.display if ent else ("unit %s" % a)
+                row["target_label"] = _unit_target_label(
+                    a, ix.get("unit", a), unit_class)
             else:
                 row["target_kind"], row["target"] = "class", b
                 # An id the vendored table does not name must render as a number,
@@ -660,17 +723,18 @@ def effect_rows(effects, tech, fanout=None, ix=None):
                 # incomplete for DE, and 251/252 are real class ids in BASE.
                 row["target_label"] = _vocab(classes.get(str(b)),
                                              zh_classes.get(str(b))) or (
-                                                 "Class %d" % b)
+                                                 "第 %d 类" % b)
             value, packed = decode_effect_value(cc, d)
             row["value"] = value
             row["packed_class"] = packed
             if packed is not None:
                 row["packed_class_label"] = _vocab(classes.get(str(packed)),
                                                    zh_classes.get(str(packed))) or (
-                                                       "Class %d" % packed)
+                                                       "第 %d 类" % packed)
             if not row["attribute_label"]:
-                row["reason"] = ("attribute %s has no name in the effect "
-                                 "attribute table" % cc)
+                row["reason_code"] = "attribute_unnamed"
+                row["reason"] = ("效果属性表里没有第 %s 号属性的名字，"
+                                 "所以说不清这个数字改的是什么" % cc)
             else:
                 # `editable` is ADDRESSABILITY, not "every amount is legal": the
                 # walk marked a value offset and the attribute has a name, so the
@@ -691,16 +755,19 @@ def effect_rows(effects, tech, fanout=None, ix=None):
             row["scope"] = _RESOURCE_SCOPE.get(t) or ""
             row["value"] = d
             if row["operation"] is None:
-                row["reason"] = ("slot B is %r, which this tool does not read "
-                                 "as either 'set' or 'change'" % (b,))
+                row["reason_code"] = "slot_b_unreadable"
+                row["reason"] = ("这条命令的第 2 个参数是 %r，看不出它是要"
+                                 "「设成某个值」还是「在原来的基础上增减」，"
+                                 "所以不敢猜这个数字怎么改。" % (b,))
             elif cc not in (-1, None):
                 # C is a TIMES-RESOURCE: the engine multiplies by that
                 # resource's CURRENT value, so "add 175" is not the edit it
                 # looks like (18 commands over BASE).  Refused rather than
                 # guessed -- the row still renders with its name and number.
-                row["reason"] = ("this command scales by the current value of "
-                                 "%s, so rewriting the number is not the edit "
-                                 "it looks like" % _resource_label(cc))
+                row["reason_code"] = "times_resource"
+                row["reason"] = ("这条命令是拿「%s」的当前值去乘，不是在写一个"
+                                 "固定数字，所以改这里的数并不是它看起来的那个"
+                                 "改动。" % _resource_label(cc))
             else:
                 row["editable"] = True
         else:
@@ -715,8 +782,10 @@ def effect_rows(effects, tech, fanout=None, ix=None):
             # no attribute to rewrite.  `type_label` still falls back to
             # "Type %d" when the vocabulary does not name the type, so an
             # unknown command is never given an invented name.
-            row["reason"] = ("%s does not carry an attribute; its parameters "
-                             "have their own meaning" % row["type_label"])
+            row["reason_code"] = "no_attribute_slot"
+            row["reason"] = ("这条「%s」命令改的不是某项属性，它的几个参数各有"
+                             "各的用处，所以这里没有可以改的数字。"
+                             % row["type_label"])
         rows.append(row)
     return rows
 
@@ -1775,7 +1844,7 @@ def _compile_tech_edits(data, tail, gv, resolved, bindings, safety, it):
     techs = L.locate_techs(data, tail, gv)
     hits = L.find_techs(techs, resolved.entity.id)
     if not hits:
-        raise IntentError("no tech record at index %d (the section holds %d)"
+        raise IntentError("科技表里没有第 %d 号记录（这一类只有 %d 条）"
                           % (resolved.entity.id, len(techs)))
 
     buf = bytearray(data)
@@ -1819,7 +1888,7 @@ def _compile_tech_effect_edits(data, tail, gv, resolved, b, it):
     techs = L.locate_techs(data, tail, gv)
     hits = L.find_techs(techs, resolved.entity.id)
     if not hits:
-        raise IntentError("no tech record at index %d (the section holds %d)"
+        raise IntentError("科技表里没有第 %d 号记录（这一类只有 %d 条）"
                           % (resolved.entity.id, len(techs)))
 
     effects, _start = L.locate_effects(data)
@@ -1830,7 +1899,8 @@ def _compile_tech_effect_edits(data, tail, gv, resolved, b, it):
     edits = []
     for _idx, tech in hits:
         newbuf, edit, _row = write_effect_command(
-            bytes(buf), effects, tech, index, resolved.op, resolved.amount, ix=ix)
+            bytes(buf), effects, tech, index, resolved.op, resolved.amount,
+            ix=ix, tech_label=resolved.entity.display)
         buf = bytearray(newbuf)
         edits.append(edit)
 

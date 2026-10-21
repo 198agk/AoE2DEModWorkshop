@@ -130,6 +130,15 @@ CASES = [
     ("sprite swap, ok", {"intent": "unit.sprite", "unit": 83, "donor": 4}),
     ("sprite swap, rename model", {"intent": "unit.sprite", "unit": 83,
                                    "donor": 4, "mode": "rename"}),
+    # The refusal that made `把村民的样子换成城堡` print English.  Its reason comes
+    # from `sprites.plan_swap`, which can only name the engine's raw animation
+    # tokens ("attack, death, decay, idle, idlec, walk"); the Chinese words for
+    # those live in `intent.reskin.MOMENT_WORD`, so the layer that owns them
+    # composes the sentence and every token without a word is COUNTED instead of
+    # pasted.  A villager and a castle share no animation at all -- that is why
+    # this pair, and not another, is the case.
+    ("a swap with no animation in common", {"intent": "unit.sprite", "unit": 1810,
+                                            "donor": 82}),
 ]
 
 #: Intents that RAISE instead of returning a plan.  This is the fourth producer of
