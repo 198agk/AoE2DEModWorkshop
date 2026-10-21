@@ -458,19 +458,21 @@ class Toolkit(object):
         """
         tail, gv = self._parsed[4], self._parsed[3]
         techs = self._tech_records()
+        # Both refusals below are read by whoever typed the tech: `effects()` and
+        # `plan()` funnel them through `IntentError`, and the sentence is printed.
         if isinstance(tech, int) or (isinstance(tech, str) and tech.isdigit()):
             n = int(tech)
             if not (0 <= n < len(techs)):
-                raise C.IntentError("no tech record at index %d (the section "
-                                    "holds %d)" % (n, len(techs)))
+                raise C.IntentError("科技表里没有第 %d 号记录（这一类只有 %d 条）"
+                                    % (n, len(techs)))
             return n, techs[n]
         try:
             ent = semantic.index().resolve_one("tech", tech)
         except LookupError as exc:
             raise C.IntentError(str(exc))
         if not (0 <= ent.id < len(techs)):
-            raise C.IntentError("no tech record at index %d (the section "
-                                "holds %d)" % (ent.id, len(techs)))
+            raise C.IntentError("科技表里没有第 %d 号记录（这一类只有 %d 条）"
+                                % (ent.id, len(techs)))
         return ent.id, techs[ent.id]
 
     def _strategy(self, intent):

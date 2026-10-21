@@ -183,10 +183,13 @@ class SemanticIndex(object):
                                         _norm(h.tw), _norm(h.internal)}]
             if len(exact) == 1:
                 return exact[0]
+            # Same rule as the miss above: this sentence can be read by a player
+            # (the compiler funnels it through `IntentError`), so it says the
+            # candidates in the game's own words instead of `ambiguous unit ->`.
             raise LookupError(
-                "ambiguous %s %r -> %d candidates: %s"
-                % (kind, text, len(hits),
-                   ", ".join("%d %s" % (h.id, h.display) for h in hits[:6])))
+                "「%s」这个名字对得上 %d 个%s，说不清要哪一个：%s"
+                % (text, len(hits), _KIND_ZH.get(kind, kind),
+                   "、".join("%d %s" % (h.id, h.display) for h in hits[:6])))
         return hits[0]
 
     # ---- statistics the UI needs -----------------------------------------

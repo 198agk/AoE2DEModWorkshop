@@ -5,11 +5,14 @@ much of that refusal is the Resource Modifier family?
 is a `Resource Modifier (Set/+/-)` command (type 1), and that `tech.effect`
 REFUSES all of them: `_EFFECT_OPERATION` (compiler.py:145) lists only the 21
 attribute-modifier command types (0/4/5 and their 10/20/30/40/200/203 scoped
-variants), so a type-1 command falls through to
-"command type 1 does not carry an attribute; its parameters have their own
-meaning" -- the wording as it read BEFORE the sentence was fixed to name the
-command ("资源修改器 (Set/+/-) does not carry an attribute..."); `probe_refusal_
-reasons.py` matches on the unchanged tail, so the classification still holds.
+variants), so a type-1 command falls through to the no-attribute-slot refusal.
+That sentence is Chinese since 2026-10-21 ("这条「升级单位」命令改的不是某项属性…"),
+and it carries `reason_code = "no_attribute_slot"` for anything that needs to
+count these without reading player-facing prose -- `probe_refusal_reasons.py`
+keys on that code now, not on a fragment of the sentence.
+
+This file classifies by COMMAND TYPE (not by the refusal text), so the sentence
+change does not move any of its numbers.
 
 That refusal was CORRECT as written -- a resource modifier really does not carry
 an attribute -- but it meant a whole family the UI can list was unwritable.  Before

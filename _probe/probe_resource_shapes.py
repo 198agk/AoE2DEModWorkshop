@@ -77,11 +77,13 @@ def main():
                 if op not in reps:
                     reps[op] = (tid, row)
             else:
-                reason = row.get("reason") or ""
-                if "scales by the current value" in reason:
+                # Keyed on `reason_code`, not on the sentence: the sentence became
+                # Chinese on 2026-10-21 and a greps-the-old-wording probe would
+                # count 0 while reading as "there are none".
+                if row.get("reason_code") == "times_resource":
                     refused_times += 1
                     examples.setdefault("times", (tid, row))
-                elif "does not read as either" in reason:
+                elif row.get("reason_code") == "slot_b_unreadable":
                     refused_b += 1
                     examples.setdefault("badb", (tid, row))
 

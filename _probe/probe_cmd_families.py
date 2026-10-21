@@ -133,11 +133,16 @@ def main():
     print()
 
     # --- reason split: missing FEATURE vs missing LABEL -------------------
+    # Match on `reason_code`, not on the sentence.  The sentence became Chinese on
+    # 2026-10-21 ("这条「升级单位」命令改的不是某项属性…"), and a probe that greps
+    # the old English wording then counts 0 and reads exactly like "this data has
+    # no such refusals" -- the trap `probe_building_warn_count.py` already fell
+    # into once.
     reasons = collections.Counter()
     for _ti, r in rows:
         if r["editable"]:
             continue
-        if "does not carry an attribute" in (r["reason"] or ""):
+        if r.get("reason_code") == "no_attribute_slot":
             reasons["missing feature"] += 1
         else:
             reasons["missing label"] += 1

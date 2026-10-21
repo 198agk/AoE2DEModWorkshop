@@ -53,10 +53,13 @@ def main():
             if row["editable"]:
                 continue
             reason = row["reason"] or ""
-            if "does not carry an attribute" in reason:
+            # `reason_code` is the machine key; the sentence is for the player and
+            # changed to Chinese on 2026-10-21.  Grepping the old wording would
+            # classify everything into "other" and look like a clean run.
+            if row.get("reason_code") == "no_attribute_slot":
                 by_reason["type not in the operation table"] += 1
                 refused_types[row["type"]] += 1
-            elif "has no name in the effect attribute table" in reason:
+            elif row.get("reason_code") == "attribute_unnamed":
                 by_reason["attribute id has no name"] += 1
                 unnamed_attrs[row["attribute"]] += 1
             else:
