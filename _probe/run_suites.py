@@ -209,6 +209,16 @@ SUITES = [
     # The check that cannot be written as a count is distinguishability: the same
     # unnamed unit must always read the same, and two different ones never must.
     r"_probe\test_effect_labels.py",
+    # The other half of the Chinese-text work, and the reason two rounds of it
+    # were partly wasted: refusals found by calling the facade with a hand-written
+    # intent are not necessarily refusals a player can reach.  What a player can
+    # reach is exactly what `nl.read()` can produce.  Six English refusals in the
+    # compiler are API-only -- a sentence cannot spell an unknown intent, an
+    # unknown stat key, or a civilization that is not in the game -- and this
+    # holds that line with the sentences that WOULD trigger each shape, plus a
+    # third check that the facade still refuses all six (otherwise the first two
+    # would stay green by describing something that no longer exists).
+    r"_probe\test_screen_reach.py",
     # The registry itself.  Ten probes rotted unrun before anyone noticed, and
     # the reason nobody noticed is that "is every test reachable?" was a question
     # only a human could answer.  This asks it mechanically, including the four

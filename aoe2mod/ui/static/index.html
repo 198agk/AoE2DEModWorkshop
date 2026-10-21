@@ -672,6 +672,16 @@ function renderClauses(clauses) {
     body.appendChild(el("div", "sent", c.text));
     if (c.intent) {
       if (can) good++;
+      // `preview.ok` is `_safe_plan`'s wrapper flag, not the plan's, so it is
+      // true for every plan that did not raise -- including `editable: false`
+      // refusals, which carry a `description` that says why.  Keying on it here
+      // is therefore right; keying on `plan.ok` would not be (a plan that is
+      // refused on purpose has `ok: null`).
+      //
+      // Measured 2026-10-21: every accepted plan carries a non-empty
+      // `description`, so there is no fallback text to write here.  An earlier
+      // version of this line fell back to `p.reason` on the belief that
+      // `unit.sprite` refusals arrived without a description; they do not.
       const p = c.preview && c.preview.ok ? c.preview.plan : null;
       body.appendChild(el("div", "main", p && p.description ? p.description : "能读懂"));
       const meta = el("div", "meta");
