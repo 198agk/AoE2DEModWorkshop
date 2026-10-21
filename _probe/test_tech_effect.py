@@ -141,11 +141,15 @@ def main():
             return check("%s is refused" % label, want in str(exc), str(exc))
         return check("%s is refused" % label, False, "no error raised")
 
+    # These three refusals are printed on the screen, so they are Chinese now;
+    # the assertion is the claim ("say which one" / "there is no such one" /
+    # "there is nothing to edit"), not a wording that only used to be English.
     refused("no command index",
-            {"intent": "tech.effect", "tech": "Loom", "delta": 5}, "command")
+            {"intent": "tech.effect", "tech": "Loom", "delta": 5},
+            "要说是改第几条")
     refused("index out of range",
             {"intent": "tech.effect", "tech": "Loom", "command": 99,
-             "delta": 1}, "out of range")
+             "delta": 1}, "没有第 100 条")
     # This sentence is Chinese on screen (the packed-byte refusal is reachable
     # from an ordinary sentence), so the marker is the claim, not the wording.
     refused("packed value not whole",
@@ -156,7 +160,7 @@ def main():
              "value": 300}, "0..255")
     refused("a tech with no effect",
             {"intent": "tech.effect", "tech": 0, "command": 0, "delta": 1},
-            "no effect")
+            "没有可以改的效果")
 
     print("\n=== 6. building: the bytes on disk ===")
     rep = tk.build({"intent": "tech.effect", "tech": "Loom", "command": 0,
