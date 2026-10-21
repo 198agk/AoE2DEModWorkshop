@@ -364,6 +364,15 @@ def main():
     check("icon_for refuses a kind it does not take", odd.get("ok") is False, odd)
     check("icon_for: that refusal has no English words",
           not LATIN_WORD.search(_drop_paths(odd.get("why") or "")), odd)
+    # The technology branch answers through the same dict, and it was the last
+    # one still saying "no tech with id N" -- missed because only the unit branch
+    # had a case here.
+    gone_tech = tk.icon_for("tech", 999999)
+    check("icon_for refuses a tech id that is not there",
+          gone_tech.get("ok") is False, gone_tech)
+    check("icon_for: the tech refusal has no English words",
+          not LATIN_WORD.search(_drop_paths(gone_tech.get("why") or "")),
+          gone_tech)
 
     # ---- the same rule reached through `build` -----------------------------
     # `plan`, `build` and `build_bundle` each call `AV.plan` from their own line

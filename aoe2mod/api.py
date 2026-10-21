@@ -134,7 +134,9 @@ class Toolkit(object):
         if kind == "tech":
             e = semantic.index().get("tech", entity_id)
             if e is None:
-                return {"ok": False, "why": "no tech with id %s" % (entity_id,)}
+                # Same rule as the unit branch below: the grid asks for a picture
+                # per cell, so a stale tech id puts this sentence on the screen.
+                return {"ok": False, "why": "找不到编号 %s 的科技" % (entity_id,)}
             raw = getattr(e, "_extra", None) or {}
             got = self.icons.picture(IC.TECHS, raw.get("icon_id"))
             got["witness"] = "technologies are always drawn from the Techs table"
