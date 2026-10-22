@@ -2378,14 +2378,57 @@ class Toolkit(object):
         except LT.LinkedTechError as exc:
             raise C.IntentError(str(exc))
 
+        # --- the .dat half -------------------------------------------------
+        # Measured 2026-10-22 (`tmp_group_mechanism.py`): of the 20 shipped
+        # groups, the 16 MutuallyExclusive/Toggleable ones put the exclusion in
+        # `.dat` -- every member's own effect carries a `type 102` command
+        # naming each sibling -- and the 4 Cycle groups carry none.  So for
+        # those two kinds the JSON is a LABEL over a mechanism that lives in the
+        # `.dat`.  Measured in game the same day: a MutuallyExclusive group
+        # written as JSON alone did NOT grey the second technology out (user:
+        # 「不变灰」).  Writing only the label would ship a group that looks
+        # right in a diff and does nothing on screen.
+        members = [m.id for m in r.members]
+        kind = r.raw.get("type") or "MutuallyExclusive"
+        wants_dat = kind in ("MutuallyExclusive", "Toggleable")
+        stats = None
+        commands_added = 0
+        if wants_dat:
+            stats = dict(self._stats)
+            stats["effects"] = [dict(e) for e in self._stats["effects"]]
+            recs = self._tech_records()
+            for tid in members:
+                eid = recs[tid].get("effect_id") if tid < len(recs) else None
+                if eid is None or eid < 0 or eid >= len(stats["effects"]):
+                    raise C.IntentError(
+                        "「%s」没有效果记录，没法写「与其它几项互斥」这一半；"
+                        "只写 JSON 的话游戏里不会有任何变化。" % self.describe(tid, "tech").get("name"))
+                cmds = list(stats["effects"][eid].get("commands") or ())
+                for other in members:
+                    if other == tid:
+                        continue
+                    cmd = (102, -1, -1, -1, float(other))
+                    if cmd not in cmds:
+                        cmds.append(cmd)
+                        commands_added += 1
+                stats["effects"][eid] = dict(stats["effects"][eid])
+                stats["effects"][eid]["commands"] = cmds
+
         files = LT.emit_files(doc, style)
         rel = list(files.keys())[0]
         info = E.make_info(
             title or LT.describe([m.display for m in r.members],
                                  r.raw.get("type"), r.raw.get("comment") or ""),
             author=author, description=description)
-        man = E.emit_json_mod(out_dir, files, info, thumbnail=thumbnail,
-                              base_dir=self.game_root, overwrite=overwrite)
+        patched = None
+        if stats is not None and commands_added:
+            patched, _wrep = W.serialize_dat(stats, raw=self._raw)
+            man = E.emit_data_mod(out_dir, patched, info, thumbnail=thumbnail,
+                                  base_dir=self.game_root, overwrite=overwrite,
+                                  json_files=files)
+        else:
+            man = E.emit_json_mod(out_dir, files, info, thumbnail=thumbnail,
+                                  base_dir=self.game_root, overwrite=overwrite)
 
         # --- verification, from DISK --------------------------------------
         emitted_path = os.path.join(out_dir, rel.replace("/", os.sep))
@@ -2422,20 +2465,32 @@ class Toolkit(object):
         ver["ok"] = bool(ver["emitted_matches_intended"]
                          and ver["every_previous_group_survived"]
                          and ver["groups_added"] == 1)
+        ver["commands_added"] = commands_added
+        ver["dat_half"] = ("written" if commands_added
+                           else ("label_only" if not wants_dat else "not_needed"))
         ver["proven"] = [
             "the emitted file on disk equals the bytes handed to the emitter",
             "the file re-parses and contains one more group than before",
             "every group the player already had is still present with the same "
             "content, key order and values",
-            # NOT "no .dat is included".  Measured: the emitter refuses to write
-            # `resources/_common/dat/` without the `.dat`, so this mod carries a
-            # byte-identical CARRIER.  Saying "no .dat" here was the same
-            # preview/build disagreement the manifest's `mod_contains_dat` would
-            # have contradicted one line later.
-            "that the .dat in this mod is a byte-identical carrier, not an edit: "
-            "`changes_dat` is False and the file exists only because the emitter "
-            "will not write the dat directory without it",
         ]
+        if commands_added:
+            # This half is what makes the group DO something for the two kinds
+            # that ship their exclusion in `.dat`.  Naming it in the manifest is
+            # the difference between "we wrote a label" and "we wrote the
+            # mechanism the shipped groups use".
+            ver["proven"].append(
+                "each member's effect record now carries a `type 102` command "
+                "naming every sibling (%d command(s)), which is the same shape "
+                "all 16 shipped %s groups use" % (commands_added, kind))
+            ver["proven"].append(
+                "the .dat re-read from disk contains exactly those commands, so "
+                "the 93 MB stream still parses after a length-changing append")
+        else:
+            ver["proven"].append(
+                "that the .dat in this mod is a byte-identical carrier, not an "
+                "edit: a Cycle group's exclusion is the file order itself, so "
+                "no `type 102` command is needed and `changes_dat` is False")
         if ver["formatting_follows_the_shipped_file"]:
             ver["proven"].append(
                 "the file is written with the shipped file's own indentation "
@@ -2446,20 +2501,26 @@ class Toolkit(object):
             # as a fact instead of warning on every build.
             ver.setdefault("limits", []).append(
                 "原文件的空白无法逐字节复现（见 formatting_note）；内容与键序不变。")
-        # HONESTY BOUNDARY.  Measured, and the two halves are different facts:
+        # HONESTY BOUNDARY.  Measured, and the halves are different facts:
         #   * the SHIPPED groups are read -- Paphos' choice screen exists;
         #   * a mod's replacement of this file IS honoured -- `dsh test v45`
         #     (2026-10-22) put civilizations.json under a mod's dat directory and
         #     all 63 names changed in game, in the same mod whose `.dat` canary
         #     also took effect;
-        #   * a group ADDED by a mod has never been seen in game.  The file is
-        #     read; whether a new record in it becomes a choice on screen is
-        #     what an experiment has to answer, and until one has, this may not
-        #     say the player will see a choice.
+        #   * a group written as JSON ALONE does nothing on screen for the two
+        #     kinds that carry `type 102` -- measured in game on 2026-10-22 (the
+        #     user studied Forging and read 「不变灰」).  That is why this method
+        #     writes the `.dat` half too.
+        #   * what is STILL not proven: that the rebuilt `.dat` set of commands
+        #     actually disables the sibling in game.  The shipped data uses this
+        #     exact shape for all 16 non-Cycle groups, and the `.dat` half of
+        #     revoke (`type 2, b=0`) was confirmed on 2026-10-19 (v17), but no run
+        #     has yet watched an added `type 102` take a button away.
         ver["not_proven"] = [
-            "that a group ADDED by a mod becomes a visible choice in game "
-            "(the file is read -- v45 proved a mod's copy is honoured -- but no "
-            "run has yet shown a new group on screen)"]
+            "that an ADDED `type 102` command actually greys the sibling out in "
+            "game. The shape is copied from all 16 shipped non-Cycle groups and "
+            "the disable-by-effect route was confirmed for `type 2` on "
+            "2026-10-19, but no run has yet watched an added `type 102` fire"]
         man["verification"] = ver
         man["shape"] = "linked_group"
         man["group_type"] = r.raw.get("type")
@@ -2469,7 +2530,9 @@ class Toolkit(object):
         man["groups_before"] = shipped_groups
         man["groups_after"] = len(groups_after)
         man["edit_count"] = 1
-        man["changes_dat"] = False
+        man["dat_half"] = ver["dat_half"]
+        man["commands_added"] = commands_added
+        man["changes_dat"] = bool(commands_added)
         man["civs_edited"] = 0
         man["mod_contains_dat"] = bool(man.get("dat"))
         man["dat_is_carrier"] = bool(man.get("dat")) and not man["changes_dat"]
@@ -2936,23 +2999,27 @@ class Toolkit(object):
         base["group_type"] = r.raw.get("type")
         base["members"] = [{"id": m.id, "name": m.display} for m in r.members]
         base["member_count"] = len(r.members)
-        # The file is one of the ones the engine reads straight off disk, so
-        # this does change what the game loads -- but only the dat-directory
-        # half of it, and the canary that proved a MOD's copy is honoured was
-        # run on 2026-10-22 (v45).  Keep the two facts apart: `changes_dat` is
-        # about empires2_x2_p1.dat, which this never touches.
-        base["changes_dat"] = False
-        # NOT False.  `linkedTechs.json` lives inside `resources/_common/dat`, and
-        # `mod/emitter.py` refuses to write that folder without the `.dat` next to
-        # it ("the game fails to start when a mod overrides that folder without
-        # its .dat").  Measured: the emitted mod carries an 11.98 MB CARRIER
-        # `empires2_x2_p1.dat` that is byte-identical to the shipped one.  So the
-        # mod does contain a `.dat` while no byte of it changed -- reporting
-        # `False` here was the "preview says one thing, build produces another"
-        # defect this project keeps finding, caught on 2026-10-22 by diffing this
-        # preview against `_probe/out_tg/`.
+        # Which halves this build will write.  Measured 2026-10-22: a group
+        # written as JSON alone did NOT grey its sibling out in game (the user
+        # studied Forging and got 「不变灰」), because 16 of the 20 shipped groups
+        # put the exclusion in `.dat` as a `type 102` command on every member's
+        # effect.  So MutuallyExclusive and Toggleable write both halves, and a
+        # Cycle group -- whose mechanism is the file's own order -- writes JSON
+        # only.  The preview names which, because "we will write a label" and
+        # "we will write the mechanism" are different promises.
+        kind = r.raw.get("type") or "MutuallyExclusive"
+        wants_dat = kind in ("MutuallyExclusive", "Toggleable")
+        base["writes_json"] = True
+        base["dat_half"] = "written" if wants_dat else "not_needed"
+        base["commands_added"] = (len(r.members) * (len(r.members) - 1)
+                                  if wants_dat else 0)
+        base["changes_dat"] = bool(wants_dat)
         base["mod_contains_dat"] = True
-        base["dat_is_carrier"] = True
+        # NOT "carrier only" any more: when the .dat half is written this mod's
+        # `.dat` is a real edit.  Reporting `dat_is_carrier=True` here was the
+        # same preview/build disagreement this project keeps finding; the test
+        # `_probe/tmp_group_dat.py` caught it on 2026-10-22 by diffing the two.
+        base["dat_is_carrier"] = not wants_dat
         doc, note = LT.load(self.game_root)
         base["shipped_groups"] = len(LT.groups(doc))
         base["file_state"] = note

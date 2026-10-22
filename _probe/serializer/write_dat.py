@@ -76,6 +76,11 @@ GV_LatestDE2 = _pd.GV_LatestDE2
 
 DEBUG_STRING_MARKER = 0x0A60
 
+# One effect command on disk: u8 type + i16 a + i16 b + i16 c + f32 d = 11 B.
+# Kept as a constant because `write_effect` needs it to walk the raw cursor over
+# a list whose length the model changed (see `Writer.replay_raw`).
+EFFECT_COMMAND_BYTES = 11
+
 
 # ---------------------------------------------------------------------------
 # low level deflate container (same convention as load_dat in parse_dat.py)
@@ -154,6 +159,27 @@ class Writer(object):
     def mark(self, name):
         """Record the current output offset under ``name`` (stage debugging)."""
         self.marks.append((name, self.pos))
+
+    def advance_raw(self, n):
+        """Move the raw cursor by ``n`` bytes without emitting anything.
+
+        Use this when the model writes a list whose ELEMENT COUNT changed: the
+        element writes above already advanced the cursor by the NEW count, so
+        ``n`` is the width the raw stream stored for the whole list.
+
+        Measured reason it exists (2026-10-22): appending two `type 102`
+        commands to a shipped effect emitted 22 extra bytes and left the cursor
+        drifting, so every later field was read from the wrong offset -- the
+        93 MB stream serialised to 96,331,764 B (+3,061,612) and a re-parse died
+        in ``read_bird``.  The first attempt at a fix advanced the cursor a
+        SECOND time by the old width and lost 27 MB, which is what a repair
+        that is not read back looks like.
+        """
+        n = int(n)
+        if not n:
+            return
+        if not self.suppress:
+            self.rpos = max(0, self.rpos + n)
 
     # -- core ---------------------------------------------------------------
     def _emit(self, b, kind, raw_len=None):
@@ -545,9 +571,22 @@ def write_effect(w, e):
                 write_effect_command(w, c)
         return
     w.debug_string(e["name"])
+    old_n = w._peek("<h", 2) if w.raw is not None and w.rpos + 2 <= len(w.raw) else len(e["commands"])
     w.i16(len(e["commands"]))
+    # The command list is a variable-length run: writing it from the model
+    # advances the raw cursor by NEW_COUNT * 11, but the raw stream stored
+    # OLD_COUNT * 11.  Correct the cursor by the DIFFERENCE so the next field is
+    # read where it really starts.
+    #
+    # Measured 2026-10-22: without this, appending two `type 102` commands
+    # produced a 96,331,764 B stream (+3,061,612) whose re-parse died in
+    # `read_bird` -- every field after this record came from the wrong offset.
+    # The first attempt advanced by the whole old width on top of the new one
+    # and lost 27 MB; a repair is only a repair if the round-trip is read back.
     for c in e["commands"]:
         write_effect_command(w, c)
+    if old_n is not None and old_n != len(e["commands"]):
+        w.advance_raw(EFFECT_COMMAND_BYTES * (old_n - len(e["commands"])))
 
 
 def write_task(w, t):
@@ -707,6 +746,24 @@ def write_building(w):
 
 def write_unit(w, u):
     w.cur = "unit type=%d id=%d" % (u["type"], u["id"])
+    if u.get("_img"):
+        # A record the model could not rebuild field by field: emit the bytes it
+        # was made from.  `serialize_dat` only ever writes a synthesised record
+        # through `new_record()`, so the raw cursor is frozen and the verbatim
+        # replay of the pre-existing stream resumes at the same offset.
+        #
+        # Why a byte image at all: a unit record's tail is type-dependent
+        # (Type50 / Projectile / Creatable / Building, each with its own version
+        # guards), so rebuilding it from zeros would be one guess per field.  A
+        # clone of an existing record is exactly right by construction.
+        # `new_record()` is not optional: without it `_emit` advances the raw
+        # cursor by the record's length, so every later `op()` replays the wrong
+        # bytes and the file stops re-parsing (measured: `bad char in struct
+        # format` inside read_bird).  Inside the context the cursor is frozen and
+        # the verbatim replay resumes where the previous record ended.
+        with w.new_record():
+            w._emit(bytes(u["_img"]), "new unit record")
+        return
     w.u8(u["type"])
     w.i16(u["id"])
     w.op(4); w.op(4)                   # LanguageDLLName, LanguageDLLCreation
@@ -778,8 +835,31 @@ def write_civ(w, c):
     for v in c["resources"]:
         w.f32(v)
     w.u8(c["icon_set"])
-    w.i16(c["unit_pointers_total"])
-    w.op(4 * c["unit_pointers_total"])  # unit pointer array (all-zero/value lost)
+    ptrs = c.get("_ptrs")
+    if ptrs is None:
+        w.i16(c["unit_pointers_total"])
+        w.op(4 * c["unit_pointers_total"])  # unit pointer array (all-zero/value lost)
+    else:
+        # Rebuilt from the set of ids this civ actually has.  The array is a
+        # PER-ID EXISTENCE FLAG, not a list of offsets: measured on the shipped
+        # file, all 2,750 slots exist and every non-zero value is 1 (civ 0 holds
+        # 2,693 records, slots 0..2749).  Writing it field by field is what makes
+        # adding a record possible at all -- `w.op(4*n)` replays the old bytes,
+        # so one extra record shifted the whole tail by 3,009,349 bytes and the
+        # result would not re-parse.
+        #
+        # Slots BEYOND the shipped array have no raw counterpart, so they are
+        # emitted without advancing the raw cursor (raw_len=0).  Writing them
+        # with i32 would advance rpos past the raw array and shift every later
+        # op() by 4 bytes per added slot -- measured: one extra slot produced
+        # 3,009,559 extra bytes and a stream that died in read_unit.
+        raw_n = c["unit_pointers_total"]
+        w.i16(len(ptrs))
+        for i, v in enumerate(ptrs):
+            if i < raw_n:
+                w.i32(v)
+            else:
+                w._emit(struct.pack("<i", v), "model", raw_len=0)
     for u in c["units"]:
         write_unit(w, u)
 

@@ -139,6 +139,12 @@ def walk_unit(r, ci):
     # read and dropped.  Help is the string id behind the in-game description
     # panel, so a UI that wants to explain a unit needs it; keeping it costs
     # nothing because these bytes are already being consumed positionally.
+    #
+    # Edits belong in THIS file, not in `aoe2mod/dat/locate.py`:
+    # `tools/sync_engine.py` copies this over the vendored copy, so patching the
+    # vendored one is silently undone (measured 2026-10-22: a hand edit here was
+    # reverted by the next sync and `_probe/test_prose_supply.py` went red with
+    # "most units declare a help string id").
     u["_dll_help"] = r.i32()                  # LanguageDLLHelp
     r.i32()                                   # LanguageDLLHotKeyText
     # Unit.cpp:128 -- pre-C30 carriers hold an extra hotkey int32 that the engine

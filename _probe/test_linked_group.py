@@ -114,16 +114,18 @@ def main():
     check("the sentence names both technologies",
           "织布机" in got.get("description", "") and "铸币术" in got.get("description", ""),
           got.get("description"))
-    # The carrier rule: linkedTechs.json lives in the dat storage point, and the
-    # emitter refuses to write that folder without the .dat.  Measured on
-    # 2026-10-22: the emitted mod carries an 11.98 MB byte-identical carrier, so
-    # the preview must not say "no .dat".
-    check("the preview says a (carrier) .dat will be in the mod",
-          got.get("mod_contains_dat") is True and got.get("dat_is_carrier") is True,
-          "mod_contains_dat=%r dat_is_carrier=%r"
-          % (got.get("mod_contains_dat"), got.get("dat_is_carrier")))
-    check("and that no .dat bytes change", got.get("changes_dat") is False,
-          str(got.get("changes_dat")))
+    # A MutuallyExclusive group is written on BOTH halves.  Measured 2026-10-22:
+    # the JSON alone makes the UI draw a red cross on the sibling and still lets
+    # both be researched; the `type 102` commands on each member's effect are what
+    # actually removes the sibling (user read: 研究了一个后，另一个就消失了).
+    # So the preview must say the .dat changes, and say how many commands.
+    check("the preview says the .dat half is written for an excluding group",
+          got.get("changes_dat") is True and got.get("dat_half") == "written",
+          "changes_dat=%r dat_half=%r"
+          % (got.get("changes_dat"), got.get("dat_half")))
+    check("and counts one disable command per ordered pair",
+          got.get("commands_added") == 2,
+          str(got.get("commands_added")))
 
     # A member the shipped file already groups.  1195 is in the Satrapies group.
     got = tk.plan({"intent": "tech.toggle_group", "techs": [1195, 22]})
@@ -157,8 +159,10 @@ def main():
     check("the shipped file on this machine was not touched",
           json.load(io.open(LT.path_for(tk.game_root), encoding="utf-8-sig"))
           == shipped)
-    check("the manifest says no .dat byte changed",
-          man.get("changes_dat") is False, str(man.get("changes_dat")))
+    check("the manifest says the .dat half was written",
+          man.get("changes_dat") is True, str(man.get("changes_dat")))
+    check("and reports the disable commands it added",
+          man.get("commands_added") == 2, str(man.get("commands_added")))
     check("the manifest does not claim the on-screen result is proven",
           any("not" in s.lower() or "never" in s.lower() or "no run" in s.lower()
               for s in (man.get("verification") or {}).get("not_proven") or []),

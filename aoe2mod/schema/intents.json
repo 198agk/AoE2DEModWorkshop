@@ -573,10 +573,10 @@
       }
     },
     "tech.toggle_group": {
-      "title": "把几项科技做成只能选一个的组",
+      "title": "把几项科技做成只能研究其中一个",
       "title_en": "Make several technologies an exclusive group",
       "applies_to": "tech",
-      "description": "The engine's own way of saying 'these technologies exclude each other' lives in resources/_common/dat/linkedTechs.json, not in a .dat effect. The shipped file carries 20 groups (Paphos: Satrapies / Oligarchy / Democracy / Tyranny), so this is a mechanism the game already runs, not one invented here.",
+      "description": "Makes the engine allow only one of several technologies. Measured 2026-10-22 on a real match: researching one then removes the others from the technology panel (they disappear), and they cannot be researched. The blocking half is a `type 102` disable command written on every member's own effect -- the same shape the 16 shipped MutuallyExclusive/Toggleable groups use. The linkedTechs.json record is written too, because that is what makes the UI show the red cross on a sibling; on its own it does NOT block anything (measured: JSON alone showed the cross and still let both be researched).",
       "fields": {
         "techs": {
           "type": "entity_list",
@@ -596,7 +596,7 @@
             "Toggleable",
             "Cycle"
           ],
-          "help": "MutuallyExclusive = researching one closes the others (the shipped Paphos groups). Toggleable = they switch each other on and off. Cycle = they rotate in order. All three names are the file's own spellings; the engine reads them verbatim."
+          "help": "MutuallyExclusive = researching one closes the others (the shipped Paphos groups). Toggleable = they switch each other on and off. Both are blocked with `type 102` commands. Cycle = they rotate in order; shipped Cycle groups carry no `type 102` at all, so a Cycle group is written as the linkedTechs record only and nothing here claims it blocks a research."
         },
         "comment": {
           "type": "string",
@@ -608,13 +608,19 @@
       "compile": {
         "strategy": "linked_techs_json",
         "why_not_dat": "type 102 does express 'disable a technology', and the shipped Toggleable groups use it (tech 1202 effect 1192 carries one command per sibling). Writing it that way needs an effect id, a required-tech list and a button slot per technology -- three couplings that can each be wrong separately. This layer states the same thing in one record.",
-        "what_it_does_not_prove": "The shipped groups are read by the engine (the Paphos choice screen exists). Whether a group ADDED by a mod is honoured has not been tested yet.",
+        "what_it_does_not_prove": "That a group ADDED by a mod is honoured on the very first turn after install (this run researched after a fresh launch), and that Cycle groups do anything without their own `type 102`.",
         "mod_contains_dat": true
       },
       "safety": {
         "field_width_bits": 0,
         "signed": false
-      }
+      },
+      "notes": [
+        {
+          "label": "为什么没有「变灰」这个选项",
+          "text": "A greyed-out button in this game means 'a prerequisite is missing', and a prerequisite is a POSITIVE gate: `74 requires 67` orders two technologies, it cannot forbid one of them. Measured on the shipped data: 1147 of 1510 technologies have at least one prerequisite, and there is no pair anywhere that requires each other (the only apparent one is tech 0 referencing itself), so the engine never expresses 'either A or B' through prerequisites. Only `type 102` can forbid, and forbidding removes the button rather than greying it."
+        }
+      ]
     }
   },
   "mod": {

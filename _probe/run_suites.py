@@ -242,6 +242,14 @@ SUITES = [
     # for key -- and checks the line endings survived, because a file that flips to
     # LF shows up as a whole-file diff in any mod a player unpacks.
     r"_probe\test_linked_group.py",
+    # The other half of the same feature, and the reason it exists: a `.dat`
+    # effect's command list is variable-length, and the writer used to advance its
+    # raw cursor by the NEW count without correcting for the old one.  Measured
+    # 2026-10-22: appending two commands emitted 22 bytes and produced a
+    # 96,331,764-byte stream (+3,061,612) whose re-parse died inside read_bird.
+    # A pin here matters because the failure is not local -- it corrupts every
+    # field after the edited record, so no other test would name the cause.
+    r"_probe\test_effect_append.py",
     # The registry itself.  Ten probes rotted unrun before anyone noticed, and
     # the reason nobody noticed is that "is every test reachable?" was a question
     # only a human could answer.  This asks it mechanically, including the four
