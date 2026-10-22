@@ -3037,11 +3037,22 @@ class Toolkit(object):
         base["edit_count"] = 1
         # The title is the schema's own sentence for this shape; the ids and the
         # file it lands in are what a player would have to check by hand.
+        #
+        # The `.dat` half gets named too.  Before this line the description only
+        # mentioned `linkedTechs.json`, so a preview for a two-member group
+        # promised one file while the build rewrote the 93 MB stream as well --
+        # the exact "preview and product disagree" shape this project keeps
+        # catching, and this time in the other direction: the preview
+        # UNDER-reported, which reads as "safe" right up until the mod is 12 MB.
+        _where = base["writes"]
+        if base["commands_added"]:
+            _where = "%s 和 .dat（给每一项各加 %d 条禁止命令）" % (
+                _where, base["commands_added"] // max(1, base["member_count"]))
         base["description"] = (
             "%s；写进 %s（这一份原本有 %d 组）"
             % (LT.describe([m.display for m in r.members],
                            r.raw.get("type"), r.raw.get("comment") or ""),
-               base["writes"], base["shipped_groups"]))
+               _where, base["shipped_groups"]))
         return base
 
     def _split_by_strategy(self, resolved_list):

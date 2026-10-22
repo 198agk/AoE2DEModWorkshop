@@ -126,6 +126,26 @@ def main():
     check("and counts one disable command per ordered pair",
           got.get("commands_added") == 2,
           str(got.get("commands_added")))
+    # The preview must name the `.dat` too.  Until 2026-10-22 it said only
+    # `linkedTechs.json`, which UNDER-reported: a two-member group also
+    # rewrites the 93 MB stream.  Under-reporting reads as "safe" until the
+    # mod turns out to be 12 MB, so this is the same preview/product
+    # disagreement as before, only in the quieter direction.
+    check("and the preview says the .dat is rewritten, not just the json",
+          ".dat" in (got.get("description") or ""),
+          str(got.get("description")))
+    # The other direction: a Cycle group's mechanism is the file's own order,
+    # so claiming a `.dat` edit there would be a lie in the dangerous
+    # direction.  Both halves of this pair exist on purpose.
+    cyc = tk.plan({"intent": "tech.toggle_group", "techs": [22, 24],
+                   "type": "Cycle"})
+    check("a Cycle group says only the json is written",
+          cyc.get("changes_dat") is False and cyc.get("dat_half") == "not_needed",
+          "changes_dat=%r dat_half=%r" % (cyc.get("changes_dat"),
+                                          cyc.get("dat_half")))
+    check("and its preview does not promise a .dat edit",
+          ".dat" not in (cyc.get("description") or ""),
+          str(cyc.get("description")))
 
     # A member the shipped file already groups.  1195 is in the Satrapies group.
     got = tk.plan({"intent": "tech.toggle_group", "techs": [1195, 22]})
