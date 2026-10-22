@@ -815,11 +815,11 @@ class Resolved(object):
 
     __slots__ = ("kind", "entity", "op", "stat", "amount",
                  "civ_scope", "resource", "class_id", "raw", "label",
-                 "civ", "action", "donor", "name")
+                 "civ", "action", "donor", "name", "button")
 
     def __init__(self, kind, entity, stat, op, amount, civ_scope, raw,
                  resource=None, class_id=None, label=None, civ=None,
-                 action=None, donor=None, name=None):
+                 action=None, donor=None, name=None, button=None):
         self.kind = kind            # 'unit' | 'tech'
         self.entity = entity        # semantic.Entity
         self.stat = stat            # binding key
@@ -846,6 +846,10 @@ class Resolved(object):
         # to read a name from, so the sentence is the only source -- and it lands
         # in a string table rather than being derived from anything on disk.
         self.name = name
+        # Which numbered box of the builder's command card the new unit should
+        # occupy.  ``None`` means "leave it where the donor was", which is the
+        # honest default: the button is copied from the donor's own record.
+        self.button = button
 
     def describe_target(self):
         """Just the "what" half of the sentence ("成本 gold", "hit_points").
@@ -1079,6 +1083,30 @@ def resolve(intent, schema, semantic_index=None, bindings=None):
                               "（引号、反斜杠或换行），换一个写法")
         intent = dict(intent)
         intent["name"] = made_name
+
+    # --- which numbered box the created thing goes in -----------------------
+    # Bounded HERE, not in the writer: the button byte is one unsigned byte, so
+    # 200 would write fine and land on a box that has no picture -- which reads
+    # on screen as "it moved nowhere".  Measured: shipped data uses 0..24 and 255
+    # (255 only on placeholder entries meaning "no button").
+    made_button = None
+    if "button" in fields:
+        raw_button = intent.get("button")
+        if raw_button in (None, ""):
+            made_button = None
+        else:
+            if isinstance(raw_button, bool) or not isinstance(raw_button, int):
+                try:
+                    raw_button = int(str(raw_button).strip())
+                except (TypeError, ValueError):
+                    raise IntentError("「第几格」得是一个整数，收到的是 %r"
+                                      % (intent.get("button"),))
+            if not (0 <= raw_button < 25):
+                raise IntentError("命令卡只有 0 到 24 格，%d 填不进去"
+                                  % (raw_button,))
+            made_button = raw_button
+        intent = dict(intent)
+        intent["button"] = made_button
     civ_scope = intent.get("civs", "all")
     # A picture is a path on the user's disk, not an entity, so it never goes
     # through the semantic index -- but it must be checked HERE rather than at
@@ -1117,7 +1145,7 @@ def resolve(intent, schema, semantic_index=None, bindings=None):
                     resource=intent.get("resource"),
                     class_id=intent.get("class_id"),
                     label=label, civ=civ, action=action, donor=donor,
-                    name=made_name)
+                    name=made_name, button=made_button)
 
 
 def resolve_bundle(intents, schema, bindings=None):

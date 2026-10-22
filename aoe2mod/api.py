@@ -778,14 +778,60 @@ class Toolkit(object):
             % (r.donor.display, civ_zh, r.name, new_id, len(_img),
                string_id, creation_id))
         base["edit_count"] = 2
+        # Where the button will be, and which numbers are free on that card.
+        # Measured from the located civs (`_civs`), because the parsed stats
+        # model drops `train_locations` -- see `newunit.train_slots`.
+        want_button = getattr(r, "button", None)
+        try:
+            _slots = NU.train_slots(self._raw, self._parsed[3], self._parsed[2],
+                                    civ_index, r.donor.id, civs=self._civs)
+        except NU.NewUnitError:
+            _slots = []
+        _builders = sorted({s["builder"] for s in _slots if s["builder"] not in (-1, None)})
+        base["buttons"] = [s["button"] for s in _slots]
+        base["builder_ids"] = _builders
+        base["builder_names"] = [(self.describe(b, "unit") or {}).get("zh")
+                                 or (self.describe(b, "unit") or {}).get("name")
+                                 or str(b) for b in _builders]
+        free_by_builder = {}
+        for b in _builders:
+            free_by_builder[str(b)] = NU.free_buttons(self._civs, civ_index, b)
+        base["free_buttons"] = free_by_builder
+        if want_button is not None:
+            base["button"] = int(want_button)
+            if _builders:
+                base["description"] += ("，放在 %s 的第 %d 格"
+                                        % (base["builder_names"][0], int(want_button)))
+            else:
+                # The build refuses this case (see `add_unit`), so the preview
+                # must refuse it too: a preview that promises a box and then
+                # fails at build time teaches the player to distrust the sentence
+                # that was right.  Measured: British has 683 units whose only
+                # train entries point at no building, so a donor can be picked
+                # whose card does not exist.
+                base["editable"] = False
+                base["reason"] = (
+                    "「%s」的建造位置没有指向任何建筑（记录里的建筑编号是 -1），"
+                    "所以第 %d 格没有一块命令卡可以放"
+                    % (base.get("donor_name") or r.donor.display, int(want_button)))
         base["warnings"] = [
             "新单位的图标是照着做的那个单位的（图标的号 0..999 已满，这个工具不会去改图标那层）",
-            "它出现在照着做的那个单位自己的建造按钮里，因为建造位置是从原记录抄来的",
+        ]
+        if _builders:
+            _free = free_by_builder.get(str(_builders[0])) or []
+            base["warnings"].append(
+                "它出现在 %s 的建造按钮里（第 %s 格），因为建造位置是从原记录抄来的；"
+                "那一排还空着的是第 %s 格"
+                % (base["builder_names"][0],
+                   "、".join(str(x) for x in base["buttons"]),
+                   "、".join(str(x) for x in _free) if _free else "（一格都不空）"))
+        else:
+            base["warnings"].append(
+                "照着做的那个单位没有任何建筑在训练它，所以新单位暂时不会出现在任何建造菜单里")
             # Measured 2026-10-22: the tooltip's first line is the record's
             # LanguageDLLCreation string.  The build now writes a real
             # "生产<名字>" sentence there instead of the donor's, so this is a
             # note about which two strings ship rather than a defect.
-        ]
         return base
 
     def _plan_reskin(self, r, base):
@@ -1083,11 +1129,18 @@ class Toolkit(object):
         # the cache would add the unit to this session's model as a side effect of
         # a build that may yet fail.
         stats = copy.deepcopy(self._stats)
+        # `civs=self._civs` is required whenever `button` is set: the training
+        # slots live on the LOCATED records and are dropped by the parser on the
+        # way into `stats` (measured: unit 83 has one train location located,
+        # none in stats).  Passing the wrong list makes every donor look like it
+        # trains nothing, which would refuse a perfectly good request.
         stats, rec = NU.add_unit(stats, self._raw, self._parsed[3], self._parsed[2],
                                  civ_index, r.donor.id, new_id,
                                  name_string_id=string_id,
                                  creation_string_id=creation_id,
-                                 hp=r.raw.get("hp"))
+                                 hp=r.raw.get("hp"),
+                                 button=getattr(r, "button", None),
+                                 civs=self._civs)
         data, rep = W.serialize_dat(stats, raw=self._raw)
         if rep.get("raw_consumed") != len(self._raw):
             raise C.IntentError(
@@ -1120,6 +1173,7 @@ class Toolkit(object):
             "civ": civ_name, "civ_index": civ_index,
             "donor_id": r.donor.id, "donor_name": r.donor.display,
             "record_bytes": rec["bytes"], "slot": rec["slot"],
+            "buttons": rec.get("buttons") or [],
             "strings": sorted(string_files) if string_files else [],
         }
         man["resolved"] = r.describe()
@@ -1215,7 +1269,9 @@ class Toolkit(object):
                                          r.donor.id, new_id,
                                          name_string_id=string_id,
                                          creation_string_id=creation_id,
-                                         hp=r.raw.get("hp"))
+                                         hp=r.raw.get("hp"),
+                                         button=getattr(r, "button", None),
+                                         civs=civs)
             except (NU.NewUnitError, S.StringError) as exc:
                 refusals.append({"description": r.describe(), "reason": str(exc)})
                 continue

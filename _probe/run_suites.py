@@ -228,6 +228,13 @@ SUITES = [
     # that the name line landed in the file the game's own 605-byte instructions
     # name as the way a mod adds a string.
     r"_probe\test_new_unit.py",
+    # The command-card box.  The manifest can say "moved to box 5" while the byte
+    # in the shipped record still says 1 -- nothing downstream re-reads it -- so
+    # this pin asserts on the emitted file, not on the return value.  It also
+    # covers the two refusals a player can reach by typing a number: a box the
+    # card cannot hold, and a donor whose train entry points at no building at
+    # all (British has 683 such units, so that donor is reachable by name).
+    r"_probe\test_new_unit_box.py",
     # The registry itself.  Ten probes rotted unrun before anyone noticed, and
     # the reason nobody noticed is that "is every test reachable?" was a question
     # only a human could answer.  This asks it mechanically, including the four

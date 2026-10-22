@@ -127,6 +127,11 @@ _ORDINAL_ZH = {"一": 1, "二": 2, "三": 3, "四": 4, "五": 5,
                "六": 6, "七": 7, "八": 8, "九": 9, "十": 10}
 _ORDINAL_RE = re.compile(r"第\s*([0-9]+|[一二三四五六七八九十]+)\s*(?:条|个|行|项)?")
 
+# "放在第5格" / "放到第 3 格" / "第12格".  Deliberately requires the 格 noun --
+# a bare 第N in a creation sentence is just as often the hit-points phrase, and
+# reading a stat as a box number is a confident wrong answer.
+_SLOT_RE = re.compile(r"第\s*([0-9]+|[一二三四五六七八九十]+)\s*格")
+
 # Sentences that mean "I want to know", not "I want to change".
 QUESTION_WORDS = ("多少", "怎么", "为什么", "是什么", "什么", "吗", "？", "?")
 
@@ -381,6 +386,42 @@ def _ordinal(text):
     # ten because no shipped technology has more than ten commands a player
     # would address by position, and inventing a parser for numbers nobody
     # types is how a wrong answer gets a plausible-looking path in.
+    return _ORDINAL_ZH.get(raw)
+
+
+def _slot_in(text):
+    """The command-card box the sentence names ("放在第5格" -> 5), or None.
+
+    A separate reader from `_ordinal` on purpose.  Both start with 第, but they
+    answer different questions: `_ordinal` counts a technology's effect command
+    ("第2条效果") and is 1-based INTO A LIST, while this is a box NUMBER on a
+    card and is 0-based already -- box 0 is a real box.  Reusing one parser for
+    both would make "第0格" mean "the first box" and "第0条效果" mean a
+    contradiction, and whichever way it resolved would be wrong for the other.
+
+    Requires the 格/格子 noun: "第5" on its own inside a creation sentence is
+    the hit-points phrase as often as it is a box ("...叫铁匠学徒 500"), so
+    matching a bare 第N here would read a stat as a box.
+    """
+    m = _SLOT_RE.search(text or "")
+    if not m:
+        return None
+    raw = m.group(1)
+    if raw.isdigit():
+        return int(raw)
+    # Boxes go past ten (measured: shipped data uses 0..15 and 24), so unlike
+    # `_ordinal` this reader understands 十二 / 二十 / 二十四.  Chinese numbers
+    # here are only ever two characters plus 十, which is why this is four lines
+    # rather than a general numeral parser.
+    if raw == "十":
+        return 10
+    if "十" in raw:
+        head, _, tail = raw.partition("十")
+        tens = _ORDINAL_ZH.get(head) if head else 1
+        ones = _ORDINAL_ZH.get(tail) if tail else 0
+        if tens is None or ones is None or tens >= 10 or ones >= 10:
+            return None
+        return tens * 10 + ones
     return _ORDINAL_ZH.get(raw)
 
 
@@ -901,7 +942,17 @@ def read_clause(text, vocab, civ_names=None, civ_zh=None, pins=None,
         cl.entity = donor
         cl.intent = {"intent": "unit.create", "donor": donor.id,
                      "civ": civ0, "name": new_name}
-        hp_v, _is_float = _number(_strip_names(raw, donor))
+        # The box number is read FIRST and then removed from the sentence before
+        # looking for hit points, because both are plain digits: "放在第5格，
+        # 血量500" has two numbers and the box is the one attached to 格.  Reading
+        # hp first would take the box as the hit-point value.
+        slot = _slot_in(raw)
+        _rest = raw
+        if slot is not None:
+            cl.intent["button"] = int(slot)
+            cl.notes.append("放在命令卡的第 %d 格" % slot)
+            _rest = _SLOT_RE.sub(" ", raw)
+        hp_v, _is_float = _number(_strip_names(_rest, donor))
         if hp_v is not None:
             cl.intent["hp"] = int(hp_v)
         cl.notes.append("照「%s」做，名字是「%s」" % (donor.display, new_name))
@@ -1370,6 +1421,19 @@ def _merge_create_name(pieces, civ_names=None, civ_zh=None, vocab=None):
     """
     out = []
     for part in pieces:
+        # A fact stated in an earlier fragment belongs to the creating sentence
+        # that follows it.  "不列颠造船工，照着村民做，名字叫修船匠，放第 3 格"
+        # splits the CIVILIZATION away from the creation, and read separately the
+        # first piece is a refusal and the rest is a creation with no civ.  So
+        # when a creating piece is still missing a fact that an immediately
+        # preceding fragment supplies, pull that fragment forward instead of
+        # leaving both halves wrong.
+        if (out and _is_create(part, _norm(part)) and not _is_create(out[-1], _norm(out[-1]))
+                and _civ_in(out[-1], _norm(out[-1]), civ_names, civ_zh)
+                and not _civ_in(part, _norm(part), civ_names, civ_zh)
+                and _number(out[-1])[0] is None
+                and not _separate_edit(out[-1], vocab)):
+            part = out.pop() + "，" + part
         if out and _is_create(out[-1], _norm(out[-1])):
             # Greedy, left to right: facts about ONE new unit can arrive in any
             # order and any number of pieces ("不列颠新建一个单位，照着村民，
@@ -1378,7 +1442,12 @@ def _merge_create_name(pieces, civ_names=None, civ_zh=None, vocab=None):
             # the moment a piece asks for something of its own.
             prev = out[-1]
             gap = bool(_create_gaps(prev, civ_names, civ_zh))
-            qual = _number(part)[0] is not None and _says_property(part)
+            # A qualifier carries a fact about the new unit rather than a request
+            # of its own.  A box number counts even without a stat name: "放在第5格"
+            # says where it goes, and it is exactly one of the facts a creating
+            # sentence can hand over in a separate piece.
+            qual = ((_number(part)[0] is not None and _says_property(part))
+                    or _slot_in(part) is not None)
             if (gap or qual) and not _separate_edit(part, vocab):
                 out[-1] = prev + "，" + part
                 continue
