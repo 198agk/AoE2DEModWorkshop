@@ -2849,7 +2849,20 @@ class Toolkit(object):
                 cmds = list(stats["effects"][eid].get("commands") or ())
                 added_here = 0
                 for other in members:
-                    if other == tid:
+                    # A MutuallyExclusive member bans ITSELF as well.  Measured
+                    # 2026-10-23 over the shipped file: 13 of the 14
+                    # MutuallyExclusive groups do that (26 of their 29 members),
+                    # and both Toggleable groups do not.  The difference is the
+                    # difference the two words promise: banning yourself takes
+                    # the chosen technology out of the tree, so you cannot come
+                    # back and pick the other one -- a one-way choice.  With
+                    # only the siblings banned, the losers stay researchable and
+                    # the choice can be re-toggled, which is what `Toggleable`
+                    # means and is why the shipped Toggleable pair (1202/1203/
+                    # 1204) can be flipped repeatedly.
+                    if other == tid and kind == "MutuallyExclusive":
+                        pass
+                    elif other == tid:
                         continue
                     cmd = (102, -1, -1, -1, float(other))
                     if cmd not in cmds:
@@ -3501,8 +3514,11 @@ class Toolkit(object):
         wants_dat = kind in ("MutuallyExclusive", "Toggleable")
         base["writes_json"] = True
         base["dat_half"] = "written" if wants_dat else "not_needed"
-        base["commands_added"] = (len(r.members) * (len(r.members) - 1)
-                                  if wants_dat else 0)
+        # Per member: every sibling, plus itself for a MutuallyExclusive group
+        # (see the long note in `_build_toggle_group` -- the shipped data does
+        # that in 13 of 14 groups, and it is what makes the choice one-way).
+        _per = len(r.members) - 1 + (1 if kind == "MutuallyExclusive" else 0)
+        base["commands_added"] = (len(r.members) * _per if wants_dat else 0)
         base["changes_dat"] = bool(wants_dat)
         base["mod_contains_dat"] = True
         # NOT "carrier only" any more: when the .dat half is written this mod's

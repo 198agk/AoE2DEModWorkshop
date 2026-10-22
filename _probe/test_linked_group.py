@@ -151,8 +151,13 @@ def main():
           got.get("changes_dat") is True and got.get("dat_half") == "written",
           "changes_dat=%r dat_half=%r"
           % (got.get("changes_dat"), got.get("dat_half")))
-    check("and counts one disable command per ordered pair",
-          got.get("commands_added") == 2,
+    # n per member, not n-1: a MutuallyExclusive member bans ITSELF too.
+    # Measured 2026-10-23 over the shipped file: 13 of 14 MutuallyExclusive
+    # groups do that; both Toggleable groups do not.  Banning yourself removes
+    # the chosen technology from the tree, which is what makes the choice
+    # one-way -- and "only one of these, permanently" is what the word promises.
+    check("and counts one disable command per member, itself included",
+          got.get("commands_added") == 4,
           str(got.get("commands_added")))
     # The preview must name the `.dat` too.  Until 2026-10-22 it said only
     # `linkedTechs.json`, which UNDER-reported: a two-member group also
@@ -242,7 +247,7 @@ def main():
     check("the manifest says the .dat half was written",
           man.get("changes_dat") is True, str(man.get("changes_dat")))
     check("and reports the disable commands it added",
-          man.get("commands_added") == 2, str(man.get("commands_added")))
+          man.get("commands_added") == 4, str(man.get("commands_added")))
     check("the manifest does not claim the on-screen result is proven",
           any("not" in s.lower() or "never" in s.lower() or "no run" in s.lower()
               for s in (man.get("verification") or {}).get("not_proven") or []),
@@ -314,14 +319,49 @@ def main():
               for c in effs2[1500]["commands"]]
     fx1501 = [(c["type"], c["a"], c["b"], c["c"], c["d"])
               for c in effs2[1501]["commands"]]
-    check("the copy carries Forging's whole original command list plus the ban",
+    check("the copy carries Forging's whole command list, then bans both members",
           fx1500[:len(fx67_before)] == fx67_before
-          and fx1500[len(fx67_before):] == [(102, -1, -1, -1, 74.0)],
+          and fx1500[len(fx67_before):] == [(102, -1, -1, -1, 67.0),
+                                            (102, -1, -1, -1, 74.0)],
           str(fx1500[len(fx67_before):]))
-    check("the other copy carries Scale Mail's list plus its own ban",
+    check("the other copy carries Scale Mail's list, then bans both members",
           fx1501[:len(fx74_before)] == fx74_before
-          and fx1501[len(fx74_before):] == [(102, -1, -1, -1, 67.0)],
+          and fx1501[len(fx74_before):] == [(102, -1, -1, -1, 67.0),
+                                            (102, -1, -1, -1, 74.0)],
           str(fx1501[len(fx74_before):]))
+
+    print("=== C3. the two kinds ban differently, the way the shipped file does")
+    # The difference the two words promise has to survive into the file, or the
+    # label is the only thing that differs and the player gets the same
+    # behaviour under two names.  Shipped evidence (2026-10-23): 13 of 14
+    # MutuallyExclusive groups have every member ban ITSELF as well; both
+    # Toggleable groups ban only the siblings.
+    _tog_man = tk.build({"intent": "tech.toggle_group", "techs": [67, 74],
+                         "type": "Toggleable"},
+                        os.path.join(out_root, "toggled"),
+                        title="dsh toggled probe", author="dsh", overwrite=True)
+    _tog_dat = os.path.join(_tog_man["mod_dir"], "resources", "_common", "dat",
+                            "empires2_x2_p1.dat")
+    _traw, _ = P.load_dat(_tog_dat)
+    _tcivs, _tcs, _tgv, _ttail = L.locate(_traw)
+    _ttechs = L.locate_techs(_traw, _ttail, _tgv)
+    _tfx, _ = L.locate_effects(_traw)
+    _tbans = {}
+    for _tid in (67, 74):
+        _e = _ttechs[_tid].get("effect_id")
+        _tbans[_tid] = [int(c["d"]) for c in _tfx[_e]["commands"] if c["type"] == 102]
+    check("a Toggleable member bans only its siblings", _tbans[67] == [74] and _tbans[74] == [67],
+          str(_tbans))
+    check("so it does not ban itself, and the choice can be flipped back",
+          67 not in _tbans[67] and 74 not in _tbans[74], str(_tbans))
+    # Reuse what C2 already read out of the MutuallyExclusive product.
+    _mx_bans = {}
+    for _tid, _cmds in ((67, fx1500), (74, fx1501)):
+        _mx_bans[_tid] = [int(c[4]) for c in _cmds if c[0] == 102]
+    check("a MutuallyExclusive member bans itself as well",
+          _mx_bans[67] == [67, 74] and _mx_bans[74] == [67, 74], str(_mx_bans))
+    check("which is the difference: one is one-way, the other is not",
+          (67 not in _tbans[67]) and (67 in _mx_bans[67]), "toggle/mx differed the wrong way")
 
     print("=== D. every impossible group is refused in Chinese")
     bad = [
