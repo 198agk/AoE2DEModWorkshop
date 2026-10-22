@@ -159,6 +159,78 @@ const FIXTURES = {
         intent: null, buildable: false },
     ],
   },
+  // A real /api/parse answer for "不列颠照村民做一个新单位，叫铁匠学徒，放在第5格".
+  // `free_buttons` is trimmed to a few numbers so the assertions can name them;
+  // everything else is the server's own text.  The donor resolves to 1810
+  // (村民), not 83 (村民 (男性)) -- that is the real resolution, and the card it
+  // trains from is 修道院 (104), whose box 14 already holds five units.
+  newUnit: {
+    ok: true,
+    clauses: [
+      { text: "不列颠照村民做一个新单位，叫铁匠学徒，放在第5格",
+        kind: "unit", entity: "村民", entity_id: 1810, why: "",
+        notes: ["放在命令卡的第 5 格", "照「村民」做，名字是「铁匠学徒」"],
+        class_word: null, candidates: [],
+        intent: { intent: "unit.create", donor: 1810, civ: "British",
+          name: "铁匠学徒", button: 5 },
+        buildable: true,
+        preview: { ok: true, plan: {
+          description: "照 村民 在 不列颠 做一个新单位「铁匠学徒」，放在 修道院 的第 5 格",
+          entity_id: 1810, entity_name: "村民", kind: "unit", shape: "new_unit",
+          donor_id: 1810, donor_name: "村民", new_name: "铁匠学徒",
+          changes_dat: true, civ: "British", editable: true, new_id: 382,
+          string_id: 30030002, creation_string_id: 30030003,
+          creation_text: "生产铁匠学徒", record_bytes: 2378, edit_count: 2,
+          buttons: [14], builder_ids: [104], builder_names: ["修道院"],
+          free_buttons: { "104": [0, 2, 3, 7] },
+          warnings: ["新单位的图标是照着做的那个单位的（图标的号 0..999 已满，"
+            + "这个工具不会去改图标那层）"] } } },
+    ],
+  },
+  // The same sentence without a box: the picker must still appear, because the
+  // choice exists whether or not the player has typed it yet.
+  newUnitNoBox: {
+    ok: true,
+    clauses: [
+      { text: "不列颠照村民做一个新单位，叫铁匠学徒",
+        kind: "unit", entity: "村民", entity_id: 1810, why: "",
+        notes: ["照「村民」做，名字是「铁匠学徒」"],
+        class_word: null, candidates: [],
+        intent: { intent: "unit.create", donor: 1810, civ: "British",
+          name: "铁匠学徒" },
+        buildable: true,
+        preview: { ok: true, plan: {
+          description: "照 村民 在 不列颠 做一个新单位「铁匠学徒」",
+          entity_id: 1810, entity_name: "村民", kind: "unit", shape: "new_unit",
+          donor_id: 1810, donor_name: "村民", new_name: "铁匠学徒",
+          changes_dat: true, civ: "British", editable: true, new_id: 382,
+          buttons: [14], builder_ids: [104], builder_names: ["修道院"],
+          free_buttons: { "104": [0, 2, 3, 7] }, warnings: [] } } },
+    ],
+  },
+  // A donor whose training entry points at no building: there is no card, so the
+  // picker must NOT appear -- offering boxes for a card that does not exist is
+  // the page promising something the product already refused.
+  newUnitNoCard: {
+    ok: true,
+    clauses: [
+      { text: "不列颠照斯托尔特贝克做一个新单位，叫测试兵，放在第3格",
+        kind: "unit", entity: "斯托尔特贝克", entity_id: 114, why: "",
+        notes: [], class_word: null, candidates: [],
+        intent: { intent: "unit.create", donor: 114, civ: "British",
+          name: "测试兵", button: 3 },
+        buildable: false,
+        preview: { ok: true, plan: {
+          description: "照 斯托尔特贝克 在 不列颠 做一个新单位「测试兵」",
+          entity_id: 114, entity_name: "斯托尔特贝克", kind: "unit",
+          shape: "new_unit", donor_id: 114, donor_name: "斯托尔特贝克",
+          changes_dat: true, civ: "British", editable: false,
+          reason: "「斯托尔特贝克」的建造位置没有指向任何建筑（记录里的建筑编号是 "
+            + "-1），所以第 3 格没有一块命令卡可以放",
+          buttons: [7], builder_ids: [], builder_names: [],
+          free_buttons: {}, warnings: [] } } },
+    ],
+  },
 };
 
 // Two real /api/describe answers, captured from the live server: one unit (this
@@ -261,6 +333,11 @@ let AUTO_SENT = null;
 // is a silent half-done job.
 let DROPPED = [];
 
+// What the parse route answers.  Most sections want the two-edit answer; the
+// new-unit section swaps in a creating sentence, because whether the box picker
+// appears is decided by the PLAN, and only a real creating sentence has one.
+let PARSE_ANSWER = FIXTURES.mixed;
+
 // ---- run the real script -------------------------------------------------
 const posted = [];
 const sandbox = {
@@ -281,7 +358,7 @@ const sandbox = {
     // A parse answer is also forwarded to renderClauses, so the stub has to
     // hand back a real one rather than the generic meta-shaped object.
     if (url.indexOf("/api/parse") === 0) {
-      return { json: async () => FIXTURES.mixed };
+      return { json: async () => PARSE_ANSWER };
     }
     if (url.indexOf("/api/build") === 0) {
       const body = opt && opt.body ? JSON.parse(opt.body) : {};
@@ -693,9 +770,72 @@ function dragChecks() {
     page.dropOnSay({ preventDefault: () => { foreignPrevented = true; } });
     check("a drop that did not start on a cell keeps the browser default",
           foreignPrevented === false, String(foreignPrevented));
-    return Promise.resolve();
+    return boxChecks();
   }).catch((e) => { fails.push("the drag threw: " + e.message);
                     console.log("FAIL the drag threw :: " + e.stack); });
+}
+
+// ---- choosing which box a new unit goes on -------------------------------
+// The clone inherits the donor's own training entry, and that entry can share a
+// box with four other units, so "which box" is a real question with a finite
+// answer.  The product already computes the free numbers; the page's only job is
+// to offer exactly those -- and to offer NONE when there is no card at all,
+// because a picker over a card that does not exist is the screen promising
+// something the preview already refused.
+function boxChecks() {
+  const chips = () => walk(ids.preview, []).filter(
+    (n) => n.tagName === "BUTTON" && n.className === "chip" &&
+           /^第 \d+ 格$/.test(n.textContent || ""));
+  PARSE_ANSWER = FIXTURES.newUnit;
+  ids.say.value = "不列颠照村民做一个新单位，叫铁匠学徒，放在第5格";
+  return page.doParse().then(() => {
+    const got = chips();
+    check("a new unit offers the boxes its card has free", got.length === 4,
+          JSON.stringify(got.map((n) => n.textContent)));
+    check("...and names the building whose card they are",
+          text(ids.preview).indexOf("修道院") >= 0, text(ids.preview));
+    // 14 is where the donor's own entry sits: five units already share it, so
+    // offering it would be offering the collision the player is trying to leave.
+    check("...and does not offer the box the donor already occupies",
+          !got.some((n) => n.textContent === "第 14 格"),
+          JSON.stringify(got.map((n) => n.textContent)));
+    const seven = got.filter((n) => n.textContent === "第 7 格")[0];
+    check("the box the player asked for is one of them",
+          !!seven, JSON.stringify(got.map((n) => n.textContent)));
+    if (seven) {
+      ids.say.value = "不列颠照村民做一个新单位，叫铁匠学徒，放在第5格";
+      seven.onclick();
+      const said = ids.say.value;
+      check("clicking a box rewrites the sentence, keeping the rest",
+            said.indexOf("不列颠照村民做一个新单位，叫铁匠学徒") >= 0
+            && said.indexOf("放在第7格") >= 0, said);
+      // Two boxes in one sentence is the same class of bug as two numbers: the
+      // reader takes the first match, so leaving the old one behind would make
+      // the picker a no-op that looks like it worked.
+      check("...and does not leave the previous box in the sentence",
+            said.indexOf("第5格") < 0, said);
+    }
+    // No box typed yet: the choice still exists, so the picker must still be
+    // there -- otherwise the only way to reach it is to guess the syntax.
+    PARSE_ANSWER = FIXTURES.newUnitNoBox;
+    ids.say.value = "不列颠照村民做一个新单位，叫铁匠学徒";
+    return page.doParse();
+  }).then(() => {
+    check("a creating sentence without a box still offers the picker",
+          chips().length === 4, JSON.stringify(chips().map((n) => n.textContent)));
+    PARSE_ANSWER = FIXTURES.newUnitNoCard;
+    ids.say.value = "不列颠照斯托尔特贝克做一个新单位，叫测试兵，放在第3格";
+    return page.doParse();
+  }).then(() => {
+    check("a donor with no card gets no picker",
+          chips().length === 0, JSON.stringify(chips().map((n) => n.textContent)));
+    check("...and the screen says why there is no card",
+          text(ids.preview).indexOf("建造位置没有指向任何建筑") >= 0,
+          text(ids.preview));
+    PARSE_ANSWER = FIXTURES.mixed;
+    return Promise.resolve();
+  }).catch((e) => { fails.push("the box picker threw: " + e.message);
+                    console.log("FAIL the box picker threw :: " + e.stack); });
 }
 
 // ---- the update banner ---------------------------------------------------

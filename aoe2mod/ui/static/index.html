@@ -567,6 +567,41 @@ function planLine(plan) {
   return bits.join(" · ");
 }
 
+// Where a brand-new unit will be trained is a choice the player has to make: the
+// clone inherits the donor's own training entry, and that entry can share a box
+// with four other units (村民 1810 lands on 修道院 box 14, which already holds
+// five).  So offer the numbers that are actually free on that building's card.
+//
+// The click rewrites the SENTENCE rather than passing a field down, because the
+// sentence is the source of truth everywhere else on this screen -- the preview
+// is recomputed from it, the build sends the intent parsed from it, and a side
+// channel would be a second place the box could be set and disagree.
+function boxPicker(c, p) {
+  const ids = p.builder_ids || [];
+  if (!ids.length) return null;
+  const free = p.free_buttons && p.free_buttons[String(ids[0])];
+  if (!free || !free.length) return null;
+  const wrap = el("div", "cands");
+  const who = (p.builder_names && p.builder_names[0]) || ("#" + ids[0]);
+  wrap.appendChild(el("span", "meta", "放在 " + who + " 的第几格？"));
+  for (const n of free) {
+    const b = el("button", "chip", "第 " + n + " 格");
+    b.onclick = () => {
+      const ta = $("#say");
+      const bare = c.text.replace(/[，,]?\s*放在第\s*[0-9一二三四五六七八九十]+\s*格/g, "");
+      const rebuilt = bare + "，放在第" + n + "格";
+      const lines = ta.value.split("\n");
+      const at = lines.indexOf(c.text);
+      if (at >= 0) lines[at] = rebuilt;
+      else ta.value = ta.value.replace(c.text, rebuilt);
+      ta.value = lines.join("\n");
+      doParse();
+    };
+    wrap.appendChild(b);
+  }
+  return wrap;
+}
+
 // A clause having an intent only means the SENTENCE was understood.  The plan
 // can still refuse the edit ("already has it", "nothing would change", "no such
 // field").  Counting by `c.intent` alone offered a build button for work that
@@ -684,6 +719,13 @@ function renderClauses(clauses) {
       // `unit.sprite` refusals arrived without a description; they do not.
       const p = c.preview && c.preview.ok ? c.preview.plan : null;
       body.appendChild(el("div", "main", p && p.description ? p.description : "能读懂"));
+      // A plan can be understood AND refused (`editable: false`) -- a donor that
+      // no building trains, a tech with no cost slot.  The refusal reason is the
+      // only sentence that says why, and the "做不了" badge below does not carry
+      // it: without this line the screen shows a grey badge and no explanation.
+      if (p && p.editable === false && p.reason) {
+        body.appendChild(el("div", "why", p.reason));
+      }
       const meta = el("div", "meta");
       if (p) {
         meta.appendChild(el("span", "stat", p.kind === "tech" ? "科技" : "单位"));
@@ -702,6 +744,10 @@ function renderClauses(clauses) {
         body.appendChild(el("div", "why", c.preview.error));
       }
       body.appendChild(meta);
+      if (p && p.shape === "new_unit") {
+        const picker = boxPicker(c, p);
+        if (picker) body.appendChild(picker);
+      }
       if (c.entity_id != null && c.kind) body.appendChild(detailButton(c));
     } else {
       body.appendChild(el("div", "main why", c.why || "没读懂"));
