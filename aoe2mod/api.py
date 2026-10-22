@@ -42,6 +42,77 @@ IntentError = C.IntentError
 _CACHE = {}
 
 
+def _tech_locations_from_intent(r, tk, donor_id, notes_used=None):
+    """Which building researches the new tech, in which box.
+
+    Three optional fields, and the ORDER matters: an explicit `building` wins
+    over everything, then an explicit `research_time`/`button` rewrites the
+    donor's own box, and only when neither is given is the donor's location
+    inherited verbatim.
+
+    The building case looks the id up in the located records rather than in
+    `stats`, because `stats["techs"]` drops `research_locations` -- the same
+    reason `newunit.train_slots` reads `_civs` (see its docstring).  A building
+    the donor never used is REFUSED with what the donor does offer: inventing a
+    box on a card the engine may not draw is how a mod ships a tech no player can
+    ever reach.
+    """
+    from .dat import newtech as NT
+    if notes_used is None:
+        notes_used = []
+    donor = NT.pick_donor(tk._tech_records(), donor_id)
+    locs = [dict(loc) for loc in (donor.get("research_locations") or [])]
+    if not locs:
+        raise NT.NewTechError(
+            "「%s」自己没有研究位置（记录里一个格子都没有），"
+            "所以没有地方能研究新科技；换一个能研究的科技照着做"
+            % _tech_display(tk, donor_id))
+    want_building = getattr(r, "raw", {}).get("building")
+    if want_building is not None:
+        targets = tk._tech_locations_by_building(want_building)
+        if not targets:
+            # A display NAME is not a record.  "城镇中心" resolves to ONE of the five
+            # shipped town-centre records (71), and that copy carries no research
+            # slots -- the research card lives on 109.  Refusing here would tell
+            # the player a true sentence is impossible, so try the other records
+            # that answer to the same name and report which one answered.
+            _asked = _describe_building(tk, want_building)
+            _alt = tk._sibling_building_with_tech(want_building)
+            if _alt is not None:
+                targets = tk._tech_locations_by_building(_alt)
+                _used = _alt
+            else:
+                _used = None
+            if not targets:
+                raise NT.NewTechError(
+                    "「%s」的科技卡上没有空位能放新科技：这个工具只会照着已有的格子写"
+                    % _asked)
+            if _used is not None:
+                notes_used.append(
+                    "「%s」在这份数据里有好几条记录，用的是研究卡在那一条（第 %d 号）"
+                    % (_asked, _used))
+        locs = [dict(loc) for loc in targets]
+    want_time = r.raw.get("research_time")
+    want_button = r.raw.get("button")
+    if want_time is not None:
+        for loc in locs:
+            loc["research_time"] = int(want_time)
+    if want_button is not None:
+        for loc in locs:
+            loc["button_id"] = int(want_button)
+    return locs
+
+
+def _tech_display(tk, tech_id):
+    got = tk.describe(tech_id, "tech") or {}
+    return got.get("zh") or got.get("name") or str(tech_id)
+
+
+def _describe_building(tk, building_id):
+    got = tk.describe(building_id, "unit") or {}
+    return got.get("zh") or got.get("name") or str(building_id)
+
+
 class Toolkit(object):
     """An open game install, ready to answer questions and build mods."""
 
@@ -100,6 +171,75 @@ class Toolkit(object):
         if self._effects is None:
             self._effects, _start = L.locate_effects(self._raw)
         return self._effects
+
+    def _sibling_building_with_tech(self, building_id):
+        """Another record with the SAME display name that has a research card.
+
+        ``"城镇中心"`` is the display name of five shipped unit records
+        (71/109/141/142/444) and only some of them carry research slots; the one
+        the sentence resolves to is whichever the name index lists first, which is
+        not the one the engine draws.  Measured 2026-10-22: asking for a new
+        technology on ``城镇中心`` was refused with "no free slot" while
+        ``研究卡`` plainly exists on 109.
+
+        Returns the sibling's unit id, or None when no record with that name has a
+        research card.  Deliberately NOT a general "pick any building" search: the
+        player named one thing, and swapping in a different one silently would be
+        a wrong answer of the worst kind.
+        """
+        self._ensure()
+        mine = self.describe(building_id, "unit") or {}
+        wanted = (mine.get("zh") or mine.get("name") or "").strip()
+        if not wanted:
+            return None
+        # Every unit record of the FIRST civilization is enough: the five town
+        # centres exist once per civilization with the same ids, and a research
+        # card is a property of the record, not of whose copy it is.
+        seen = []
+        for u in self._civs[1].get("units") or []:
+            if u.get("id") == building_id:
+                continue
+            got = self.describe(u.get("id"), "unit") or {}
+            if (got.get("zh") or got.get("name") or "").strip() != wanted:
+                continue
+            uid = u.get("id")
+            if uid in seen:
+                continue
+            seen.append(uid)
+            if self._tech_locations_by_building(uid):
+                return uid
+        return None
+
+    def _tech_locations_by_building(self, building_id):
+        """ONE research box on one building's card, as a fresh dict.
+
+        Reads the located tech records (which keep `research_locations`) rather
+        than `stats["techs"]` (which drops them).  Returns `[]` when no shipped
+        tech is researched at that building -- the caller turns that into a
+        refusal naming the building, because a box on a card the engine does not
+        draw is a tech no player can reach.
+
+        ONE box, not every box: this list used to be "every shipped research
+        location of that building" (18 dicts for the town centre), and a caller
+        that treated it as "where this new technology goes" wrote all 18 -- one
+        record claiming to sit in eighteen boxes at once.  Measured 2026-10-22
+        on the town centre: the 18 entries collapse to 8 distinct buttons
+        (2,3,4,6,7,8,11,12), each repeated for the technologies that share it.
+
+        The box returned is the FIRST one found, and the order is the record
+        order of the shipped data -- deterministic, so two previews of the same
+        sentence agree.  It is deliberately not "the free one": this tool cannot
+        tell a free box from a taken one (66 shipped (building, button) pairs are
+        already shared by two or more technologies), so claiming a box is free
+        would be a guess dressed as a fact.  The caller reports which box it
+        used instead.
+        """
+        self._ensure()
+        for rec in self._tech_records():
+            for loc in (rec.get("research_locations") or []):
+                if loc.get("location_id") == building_id:
+                    return [dict(loc)]
+        return []
 
     def _effect_fanout(self):
         self._ensure()
@@ -835,6 +975,82 @@ class Toolkit(object):
             # note about which two strings ship rather than a defect.
         return base
 
+    def _plan_new_tech(self, r, base):
+        """Preview for "make a technology the game does not have".
+
+        A technology is addressed by its POSITION in the array, so the id is not
+        picked from a free pool -- it is ``len(techs)``, and the preview can say
+        it without touching a byte.  Everything else here is about the two things
+        a player would notice: the name string, and the button on a card.
+        """
+        from .dat import newtech as NT
+        base["shape"] = "new_tech"
+        base["donor_id"] = r.donor.id
+        base["donor_name"] = r.donor.display
+        base["new_name"] = r.name
+        base["writes"] = "resources/_common/dat/empires2_x2_p1.dat"
+        base["changes_dat"] = True
+        base["dat_is_carrier"] = False
+        base["mod_contains_dat"] = True
+
+        try:
+            new_id = NT.next_tech_id(self._stats)
+            string_id = S.first_free_id(self.game_root)
+            _locs_notes = []
+            rec = NT.clone_tech(
+                NT.pick_donor(self._tech_records(), r.donor.id),
+                NT.internal_name_for(r.name, new_id), string_id,
+                research_locations=_tech_locations_from_intent(
+                    r, self, r.donor.id, _locs_notes),
+                research_time=r.raw.get("research_time"))
+        except NT.NewTechError as exc:
+            base["editable"] = False
+            base["changes_dat"] = False
+            base["description"] = str(exc)
+            base["reason"] = str(exc)
+            base["edit_count"] = 0
+            return base
+
+        base["editable"] = True
+        base["new_id"] = new_id
+        base["string_id"] = string_id
+        base["record_name"] = rec["name"]
+        locs = rec["research_locations"]
+        base["research_locations"] = locs
+        base["building_ids"] = sorted({loc["location_id"] for loc in locs})
+        base["building_names"] = [
+            (self.describe(b, "unit") or {}).get("zh")
+            or (self.describe(b, "unit") or {}).get("name") or str(b)
+            for b in base["building_ids"]]
+        base["description"] = (
+            "照 %s 做一个新科技「%s」（编号 %d；名字用一个新字符串 %d；%s）"
+            % (r.donor.display, r.name, new_id, string_id,
+               ("占 %s 研究卡的第 %d 格" % ("、".join(base["building_names"]),
+                                          int(locs[0].get("button_id")
+                                              if locs[0].get("button_id") is not None
+                                              else -1)))
+               if base["building_names"] else "没有研究位置"))
+        base["edit_count"] = 1
+        base["warnings"] = [
+            "新科技的图标是照着做的那个科技的（图标的号 0..312 已满，这个工具不会去改图标那层）",
+            "它不会出现在科技树里：科技树的 Node ID 与单位共用一套整数，"
+            "编号 %d 在科技树里已经是单位「City Gate NE (Rubble)」，"
+            "所以这项科技只有 .dat 那一半（能被研究，但科技树面板上没有它）" % new_id,
+        ]
+        if base["building_names"]:
+            base["warnings"].append(
+                "它借用 %s 的第 %s 格，因为研究位置是从原记录抄来的"
+                % (base["building_names"][0],
+                   "、".join(str(loc["button_id"]) for loc in locs)))
+        # Notes raised while choosing the research card travel with the plan: the
+        # chosen building may be a DIFFERENT record that answers to the same
+        # display name (five town centres), and the player has to be able to see
+        # which one was used rather than infer it from a name that matches four
+        # other records.
+        for _n in _locs_notes:
+            base["warnings"].append(_n)
+        return base
+
     def _plan_reskin(self, r, base):
         """Preview for "make the Archer look like the Longbowman"."""
         from .intent import reskin as RK
@@ -1210,10 +1426,119 @@ class Toolkit(object):
         }
         return man
 
+    def _build_new_tech(self, r, out_dir, title=None, author="", description="",
+                        thumbnail=None, overwrite=False):
+        """Append one cloned tech record, its effect, and the name it will show.
+
+        Three appends in one pass: `newtech.add_tech` puts the record in the
+        model, an optional `_new` effect gives it something to do, and
+        `serialize_dat` re-emits the stream.  The record lands at index
+        `len(techs)` because technologies are addressed by POSITION -- there is no
+        free-id pool to pick from and no way to leave a hole.
+        """
+        from .dat import newtech as NT
+        new_id = NT.next_tech_id(self._stats)
+        string_id = S.first_free_id(self.game_root)
+        # A deep copy: `add_tech` mutates the model in place and this Toolkit
+        # answers every later call from the same cached object.
+        stats = copy.deepcopy(self._stats)
+        try:
+            rec = NT.add_tech(
+                stats, r.donor.id,
+                NT.internal_name_for(r.name, new_id), string_id,
+                research_locations=_tech_locations_from_intent(r, self, r.donor.id),
+                research_time=r.raw.get("research_time"),
+                effect=r.raw.get("effect"))
+        except NT.NewTechError as exc:
+            raise C.IntentError(str(exc))
+        data, rep = W.serialize_dat(stats, raw=self._raw)
+        if rep.get("raw_consumed") != len(self._raw):
+            raise C.IntentError(
+                "写完以后 .dat 的读取位置对不上原来的文件（%s / %s），所以这份不改了"
+                % (rep.get("raw_consumed"), len(self._raw)))
+        string_files = S.build_files(self.game_root, [(string_id, r.name)])
+        info = E.make_info(title or ("新科技 %s" % r.name), author=author,
+                           description=description)
+        man = E.emit_data_mod(out_dir, data, info, thumbnail=thumbnail,
+                              base_dir=self.game_root, overwrite=overwrite,
+                              json_files=string_files or None)
+        # The emitted file must survive the game's inflate path and a re-parse,
+        # and the new record must be IN it -- a reparse that succeeds on a file
+        # without the record would look like the same green.
+        raw2, how2 = P.load_dat(man["dat"])
+        p2 = P.Parser(raw2)
+        with contextlib.redirect_stdout(io.StringIO()):
+            p2.parse()
+        man["reloaded_with"] = how2
+        man["reparse_leftover"] = len(raw2) - p2.r.pos
+        man["reparse_ok"] = p2.r.pos == len(raw2)
+        # Read the record back through the LOCATOR, not the parser's stats: only
+        # `locate_techs` keeps `research_locations` and the four display string
+        # ids, so it is the only reader that can see whether the record is really
+        # nameable and really on a card.
+        _civs2, _cs2, _gv2, tail2 = L.locate(raw2)
+        recs2 = L.locate_techs(raw2, tail2, _gv2)
+        man["tech_added"] = len(recs2) == new_id + 1
+        back = recs2[new_id] if man["tech_added"] else {}
+        man["tech_readback"] = {
+            "index": new_id, "name": back.get("name"),
+            "lang_name": back.get("lang_name"),
+            "effect_id": back.get("effect_id"),
+            "locations": [{"location_id": loc.get("location_id"),
+                           "research_time": loc.get("research_time"),
+                           "button_id": loc.get("button_id")}
+                          for loc in (back.get("research_locations") or [])],
+        }
+        man["new_tech"] = {
+            "id": new_id, "name": r.name, "string_id": string_id,
+            "internal_name": (rec.get("record") or {}).get("name"),
+            "donor_id": r.donor.id, "donor_name": r.donor.display,
+            "effect_id": rec.get("effect_id"),
+            "effect": r.raw.get("effect"),
+            "locations": rec.get("locations"),
+            "strings": sorted(string_files) if string_files else [],
+        }
+        man["resolved"] = r.describe()
+        man["edits"] = 1
+        man["edit_count"] = 1
+        man["civs_edited"] = 0
+        man["changes_dat"] = True
+        man["dat_is_carrier"] = False
+        man["mod_contains_dat"] = bool(man.get("dat"))
+        man["verification"] = {
+            "ok": bool(man["reparse_ok"] and man["tech_added"]),
+            "why_not_dat": "this intent appends a record instead of patching bytes",
+            "reparse_ok": bool(man["reparse_ok"]),
+            "tech_record_present": bool(man["tech_added"]),
+            "proven": [
+                "that the emitted .dat inflates and re-parses with the unmodified "
+                "parser, with every byte consumed",
+                "that the record at index %d reads back with the display string id "
+                "%d and the research box it was given" % (new_id, string_id),
+                "that the record's byte length matches 62 + len(name) + 9 * boxes",
+                "that the name landed in the file the game's own 605-byte "
+                "instructions name as the way a mod adds a string",
+            ],
+            "not_proven": [
+                "that a running game draws the new icon on that building's card.  "
+                "No test in this project has loaded a technology the toolkit created",
+                "that index %d is reachable by the engine at all: the shipped tree "
+                "already references 517 Node IDs above 1,509, which encourages but "
+                "does not prove that a tech record past the shipped count is read"
+                % new_id,
+            ],
+        }
+        return man
+
     def _new_unit_bundle(self, new_list, base_raw):
         """Fold every "make a new unit" sentence onto ONE stream.
 
-        Returns ``(bytes_or_None, notes, refusals, string_files)``.
+        Returns ``(bytes_or_None, notes, refusals, string_entries)``.
+
+        ``string_entries`` is a LIST of ``(id, text)`` pairs, not files: the
+        caller builds one table from every creation in the request, because a
+        unit and a technology write the same key-value path and emitting per
+        sentence would repeat that file's header.
 
         The creations must share one pass rather than one serialize each: an
         append changes the stream length, so the second sentence has to see the
@@ -1226,7 +1551,10 @@ class Toolkit(object):
         work.
         """
         from .dat import newunit as NU
-        notes, refusals, string_files = [], [], {}
+        notes, refusals = [], []
+        # (id, text) pairs, turned into files ONCE by the caller: emitting per
+        # sentence and concatenating repeats the file's header block.
+        string_entries = []
         stats = None
         civs_start = gv = None
         cur = base_raw
@@ -1283,14 +1611,10 @@ class Toolkit(object):
                 refusals.append({"description": r.describe(), "reason": str(exc)})
                 continue
             next_string = creation_id + 1
-            for rel, data_b in S.build_files(
-                    self.game_root,
-                    [(string_id, r.name),
-                     (creation_id, "生产" + str(r.name))]).items():
-                # Two creations in one bundle write the SAME string file, so the
-                # lines are accumulated rather than overwritten -- otherwise the
-                # second sentence would take the first one's name away.
-                string_files[rel] = (string_files.get(rel) or b"") + data_b
+            # Collected, not emitted: the caller builds ONE table from every
+            # creation in the bundle (units and technologies share the path).
+            string_entries.append((string_id, r.name))
+            string_entries.append((creation_id, "生产" + str(r.name)))
             touched = True
             notes.append({
                 "description": r.describe(),
@@ -1303,13 +1627,87 @@ class Toolkit(object):
                 "record_bytes": rec["bytes"], "slot": rec["slot"],
             })
         if not touched:
+            return None, notes, refusals, []
+        out, rep = W.serialize_dat(stats, raw=cur)
+        if rep.get("raw_consumed") != len(cur):
+            raise C.IntentError(
+                "写完以后 .dat 的读取位置对不上原来的文件（%s / %s），所以这份不改了"
+                % (rep.get("raw_consumed"), len(cur)))
+        return out, notes, refusals, string_entries
+
+    def _new_tech_bundle(self, tech_list, base_raw):
+        """Fold every "make a new technology" sentence onto ONE stream.
+
+        Returns ``(bytes_or_None, notes, refusals, string_entries)``.
+
+        Same reason as `_new_unit_bundle`: a technology's id is ``len(techs)``, so
+        a second creation must see the model the first one produced or both would
+        be offered the same index and the same name string.  Re-parsing per
+        sentence was measured to be wrong for units (two records, one id, one
+        name, while the manifest said two); the arithmetic here is identical.
+        """
+        from .dat import newtech as NT
+        notes, refusals = [], []
+        # Collected as (id, text) pairs and turned into files ONCE at the end.
+        # Accumulating the emitted BYTES per sentence repeats the file header --
+        # measured 2026-10-22: two creations in one bundle produced a table with
+        # two "//INSTRUCTIONS:" blocks and two newlines of padding between them.
+        # The engine tolerates the comments, but the file stops being a list.
+        string_entries = []
+        stats = None
+        cur = base_raw
+        touched = False
+        next_string = None
+        for r in tech_list:
+            if stats is None:
+                # Parsed ONCE; every sentence mutates this same model.
+                try:
+                    p = P.Parser(cur)
+                    with contextlib.redirect_stdout(io.StringIO()):
+                        p.parse()
+                    stats = p.stats
+                except Exception as exc:                  # noqa: BLE001
+                    refusals.append({"description": r.describe(),
+                                     "reason": str(exc)})
+                    continue
+            try:
+                new_id = NT.next_tech_id(stats)
+                string_id = S.first_free_id(
+                    self.game_root,
+                    start=next_string or (S.LAST_SHIPPED_ID + 1))
+                rec = NT.add_tech(
+                    stats, r.donor.id,
+                    NT.internal_name_for(r.name, new_id), string_id,
+                    research_locations=_tech_locations_from_intent(
+                        r, self, r.donor.id),
+                    research_time=r.raw.get("research_time"),
+                    effect=r.raw.get("effect"))
+            except (NT.NewTechError, S.StringError) as exc:
+                refusals.append({"description": r.describe(), "reason": str(exc)})
+                continue
+            except Exception as exc:                      # noqa: BLE001
+                refusals.append({"description": r.describe(), "reason": str(exc)})
+                continue
+            next_string = string_id + 1
+            string_entries.append((string_id, r.name))
+            touched = True
+            notes.append({
+                "description": r.describe(),
+                "mode": "new_tech",
+                "id": new_id, "name": r.name, "string_id": string_id,
+                "internal_name": (rec.get("record") or {}).get("name"),
+                "donor_id": r.donor.id, "donor_name": r.donor.display,
+                "effect_id": rec.get("effect_id"),
+                "locations": rec.get("locations"),
+            })
+        if not touched:
             return None, notes, refusals, {}
         out, rep = W.serialize_dat(stats, raw=cur)
         if rep.get("raw_consumed") != len(cur):
             raise C.IntentError(
                 "写完以后 .dat 的读取位置对不上原来的文件（%s / %s），所以这份不改了"
                 % (rep.get("raw_consumed"), len(cur)))
-        return out, notes, refusals, string_files
+        return out, notes, refusals, string_entries
 
     def _build_retarget(self, r, out_dir, title=None, author="",
 
@@ -2563,6 +2961,8 @@ class Toolkit(object):
             return self._plan_reskin(r, base)
         if self._strategy(r.raw) == "new_unit":
             return self._plan_new_unit(r, base)
+        if self._strategy(r.raw) == "new_tech":
+            return self._plan_new_tech(r, base)
         if self._strategy(r.raw) == "repaint_sld":
             return self._plan_paint(r, base)
         if self._strategy(r.raw) == "linked_techs_json":
@@ -2919,6 +3319,12 @@ class Toolkit(object):
             return self._build_new_unit(r, out_dir, title=title, author=author,
                                         description=description,
                                         thumbnail=thumbnail, overwrite=overwrite)
+        if strategy == "new_tech":
+            intents_schema, bindings = C.load_schema()
+            r = C.resolve(intent, intents_schema, bindings=bindings)
+            return self._build_new_tech(r, out_dir, title=title, author=author,
+                                        description=description,
+                                        thumbnail=thumbnail, overwrite=overwrite)
         if strategy == "repaint_sld":
             # A repaint writes loose .sld files and no .dat, like the copy model
             # of a reskin, but it ENCODES a picture instead of moving one that
@@ -3073,7 +3479,8 @@ class Toolkit(object):
         An undeclared strategy still raises: quietly dropping a sentence would
         produce a mod that does less than it says.
         """
-        dat, js, sld, paint, new, linked = [], [], [], [], [], []
+        dat, js, sld, paint, new, linked, tech = \
+            [], [], [], [], [], [], []
         for r in resolved_list:
             s = self._strategy(r.raw)
             if s == "in_place_patch":
@@ -3088,6 +3495,13 @@ class Toolkit(object):
                 # patcher's offset arithmetic (`tail` would be stale the moment a
                 # record is appended, because every civ after that one moves).
                 new.append(r)
+            elif s == "new_tech":
+                # Its own bucket for the same reason, and it must not share
+                # `in_place_patch` either: a technology's id is its array
+                # POSITION, so appending one shifts nothing for the tech records
+                # themselves but does move the effects section that the byte
+                # patcher addresses by absolute offset.
+                tech.append(r)
             elif s == "linked_techs_json":
                 # Its own bucket for the same reason as `new_unit`: a group is a
                 # record in a JSON file, not a field at an offset.  Keeping it
@@ -3107,7 +3521,7 @@ class Toolkit(object):
                     "intent %r declares compile strategy %r, which this build "
                     "does not implement"
                     % (r.raw.get("intent"), s))
-        return dat, js, sld, paint, new, linked
+        return dat, js, sld, paint, new, linked, tech
 
     def _split_reskin_modes(self, sld_list):
         """Split reskin sentences by DELIVERY MODEL: ``(copy, rename)``.
@@ -3594,8 +4008,8 @@ class Toolkit(object):
         # both.  Splitting is what lets "villagers are tougher AND Britons can
         # build Huskarls" be one request instead of two mods where the engine
         # loads only the higher-priority one.
-        dat_list, js_list, sld_list, paint_list, new_list, linked_list = \
-            self._split_by_strategy(resolved_list)
+        dat_list, js_list, sld_list, paint_list, new_list, linked_list, \
+            tech_list = self._split_by_strategy(resolved_list)
 
         # The group sentences get the same dry run the other buckets get, through
         # the SAME accumulating function the build calls -- so "the preview said
@@ -3744,6 +4158,46 @@ class Toolkit(object):
             sprite_refusals = sprite_refusals + paint_refusals
 
         overlaps = C.edit_overlaps(edits)
+
+        # The creation sentences are previewed the cheap way: the model is
+        # mutated on a copy so the ids are the ones the build will hand out
+        # (`len(techs)` and the next free string, stepping past what earlier
+        # sentences in this bundle already claimed), but nothing is serialized --
+        # emitting a 93 MB stream to answer a preview would cost 25 s per
+        # keystroke.  `_new_tech_bundle` is the write path and runs the same
+        # arithmetic, so a preview that says 1,511 cannot become a build that
+        # ships 1,510.
+        new_tech_notes = []
+        if tech_list:
+            from .dat import newtech as NT
+            _st = dict(self._stats)
+            _st["techs"] = list(_st.get("techs") or ())
+            _st["effects"] = list(_st.get("effects") or ())
+            _next = None
+            for r in tech_list:
+                try:
+                    _nid = NT.next_tech_id(_st)
+                    _sid = S.first_free_id(self.game_root,
+                                           start=_next or (S.LAST_SHIPPED_ID + 1))
+                    _rec = NT.add_tech(
+                        _st, r.donor.id, NT.internal_name_for(r.name, _nid), _sid,
+                        research_locations=_tech_locations_from_intent(
+                            r, self, r.donor.id),
+                        research_time=r.raw.get("research_time"),
+                        effect=r.raw.get("effect"))
+                except (NT.NewTechError, S.StringError) as exc:
+                    sprite_refusals = sprite_refusals + [
+                        {"description": r.describe(), "reason": str(exc)}]
+                    continue
+                _next = _sid + 1
+                new_tech_notes.append({
+                    "description": r.describe(), "mode": "new_tech",
+                    "id": _nid, "name": r.name, "string_id": _sid,
+                    "donor_id": r.donor.id, "donor_name": r.donor.display,
+                    "effect_id": _rec.get("effect_id"),
+                    "locations": _rec.get("locations"),
+                })
+
         return {
             "intents": intents,
             "plans": plans,
@@ -3759,7 +4213,8 @@ class Toolkit(object):
             # is how a preview of the 244-record model reported 466 -- the number of
             # files a model the user did not ask for would have copied.
             "edit_count": (len(edits) + _dat_half_edits + sprite_files
-                           + rename_edits + paint_files + len(linked)),
+                           + rename_edits + paint_files + len(linked)
+                           + len(new_tech_notes)),
             "dat_half_edit_count": _dat_half_edits,
             "sprite_file_count": sprite_files,
             "sprite_rename_count": rename_edits,
@@ -3779,6 +4234,10 @@ class Toolkit(object):
             # to tell "no group sentence" from "the key is missing".
             "linked_groups": linked,
             "linked_refusals": linked_refusals,
+            # One entry per "make a new technology" sentence.  Reported even when
+            # empty, for the same reason as `linked_groups`: a caller must be able
+            # to tell "no creation sentence" from "the key is missing".
+            "new_techs": new_tech_notes,
             # A reskin sentence that declared itself buildable and is not.  Same
             # contract as `dat_half_refusals`: the preview names it, the build
             # names it, and neither drops it in silence.
@@ -3855,8 +4314,8 @@ class Toolkit(object):
             raise C.IntentError("这个组合里一句都没有")
         intents_schema, bindings = C.load_schema()
         resolved_list = C.resolve_bundle(intents, intents_schema, bindings=bindings)
-        dat_list, js_list, sld_list, paint_list, new_list, linked_list = \
-            self._split_by_strategy(resolved_list)
+        dat_list, js_list, sld_list, paint_list, new_list, linked_list, \
+            tech_list = self._split_by_strategy(resolved_list)
 
         data, civs, _cs, gv, tail, how = self._parsed
         json_files = {}
@@ -3991,14 +4450,39 @@ class Toolkit(object):
         # halves, and before the rename model -- rename is still the last hand on
         # the file because it changes field lengths without appending anything.
         new_notes = []
-        new_strings = {}
+        new_entries = []
+        tech_entries = []
         if new_list:
             _base = dat_bytes if dat_bytes is not None else data
-            new_bytes, new_notes, new_ref, new_strings = \
+            new_bytes, new_notes, new_ref, new_entries = \
                 self._new_unit_bundle(new_list, _base)
             sprite_refusals = sprite_refusals + new_ref
             if new_bytes is not None:
                 dat_bytes = new_bytes
+
+        # Creating a TECHNOLOGY belongs to the same family for the same reason:
+        # a tech id is `len(techs)`, so a sentence addressed against the shipped
+        # count has to run against the stream the creations above produced, and
+        # its effects section has moved if a new unit record was appended.
+        tech_notes = []
+        if tech_list:
+            _base = dat_bytes if dat_bytes is not None else data
+            tech_bytes, tech_notes, tech_ref, tech_entries = \
+                self._new_tech_bundle(tech_list, _base)
+            sprite_refusals = sprite_refusals + tech_ref
+            if tech_bytes is not None:
+                dat_bytes = tech_bytes
+
+        # ONE string file, built from BOTH kinds of creation.  Emitting each
+        # bundle's table and concatenating them repeats the file's header block
+        # -- measured 2026-10-22: a bundle with two tech creations shipped a table
+        # with two "//INSTRUCTIONS:" banners.  Unit and tech creations write the
+        # SAME key-value path, so the only correct assembly is one list of
+        # (id, text) pairs turned into files once.
+        new_strings = {}
+        _all_entries = list(new_entries or []) + list(tech_entries or [])
+        if _all_entries:
+            new_strings = S.build_files(self.game_root, _all_entries)
             for rel, data_b in new_strings.items():
                 json_files[rel] = data_b
 
@@ -4057,13 +4541,18 @@ class Toolkit(object):
         man["rename_edits"] = _rename_changed
         man["new_units"] = new_notes
         man["new_unit_strings"] = sorted(new_strings)
+        man["new_techs"] = tech_notes
+        # One table serves both kinds of creation, so the file list is the same
+        # for units and techs -- reported under both keys because a caller that
+        # only created technologies must not read an empty list.
+        man["new_tech_strings"] = sorted(new_strings)
         man["linked_groups"] = linked_notes
         man["linked_refusals"] = [{"description": n["resolved"],
                                    "reason": n["reason"]}
                                   for n in linked_notes if not n.get("ok")]
         man["edits"] = (len(edits) + man["dat_half_edit_count"]
                         + len(sprite_files) + _rename_changed + paint_files
-                        + 2 * len(new_notes))
+                        + 2 * len(new_notes) + len(tech_notes))
         man["edit_count"] = man["edits"]
         man["dat_half"] = dat_half_reps
         man["civs_edited"] = civs_edited

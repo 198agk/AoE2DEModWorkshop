@@ -382,12 +382,22 @@ def walk_tech(r):
     # Research.cpp:70 -- folded into ResearchLocations for gv >= GV_C31
     if r.gv < P.GV_C31:
         r.i16()                               # ResearchLocation
-    # Research.cpp:73-87 -- i32 pair for DE (gv >= GV_C18), else u16 pair
+    # Research.cpp:73-87 -- i32 pair for DE (gv >= GV_C18), else u16 pair.
+    #
+    # ★★ These two are the technology's NAME and DESCRIPTION string ids, and
+    # they were being read and thrown away.  That is why a synthesised tech
+    # could exist and never say what it was: the writer's `_new` branch filled
+    # both with 0, string id 0 is defined in 0 of the 17 locale tables, and
+    # nothing in the model could notice because the reader kept no copy to
+    # compare against.  Keeping them makes "the id on disk is the id we meant"
+    # a checkable statement instead of a hope.
     if r.gv >= P.GV_MATT:
         if P.GV_C18 <= r.gv <= P.GV_LatestDE2:
-            r.i32(); r.i32()                  # LanguageDLLName, Description
+            t["lang_name"] = r.i32()          # LanguageDLLName
+            t["lang_description"] = r.i32()   # LanguageDLLDescription
         else:
-            r.i16(); r.i16()
+            t["lang_name"] = r.i16()
+            t["lang_description"] = r.i16()
     # Research time has TWO storage shapes and the binding must tolerate both:
     #   * gv <  GV_C31 -- one scalar in the record (the legacy shape)
     #   * gv >= GV_C31 -- an explicit ResearchLocations array; every entry
@@ -403,8 +413,11 @@ def walk_tech(r):
     t["icon_id"] = r.i16()
     if r.gv < P.GV_C31:
         r.u8()                                # ButtonID
-    r.i32()                                   # LanguageDLLHelp
-    r.i32()                                   # LanguageDLLTechTree
+    # Same lesson twice in one record: Help and TechTree are also display
+    # strings, also read-and-dropped, and also part of what makes a synthesised
+    # technology describable.  Recorded rather than skipped.
+    t["lang_help"] = r.i32()                   # LanguageDLLHelp
+    t["lang_tech_tree"] = r.i32()              # LanguageDLLTechTree
     if r.gv < P.GV_C31:
         r.i32()                               # HotKey (deprecated by the array)
     t["name"] = r.debug_string()[1]

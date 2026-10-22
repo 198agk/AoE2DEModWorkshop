@@ -7,13 +7,13 @@
     },
     "writer": {
       "path": "_probe/serializer/write_dat.py",
-      "sha256": "de4cb32421e6db6d8778207fb44047eef06c1a98f9dece51ddb6631038400884",
-      "bytes": 46062
+      "sha256": "08dae09b1d4e55c9a17a908f5a8d51559434adf4af9e601baa7fb060f3a05b4b",
+      "bytes": 47141
     },
     "locator": {
       "path": "_probe/datparse/intent_patch.py",
-      "sha256": "37da327adec6a1679a11fc9284cec310939c20527b205f994a2ad1226beb7d62",
-      "bytes": 30114
+      "sha256": "6917039819460a648795ced8a4420466d34cb40b3701926a71010e0a443591ba",
+      "bytes": 30961
     },
     "sldlib": {
       "path": "_probe/sldlib.py",
@@ -33,13 +33,13 @@
   },
   "vendored_writer": {
     "path": "aoe2mod/dat/writer.py",
-    "sha256": "e06652d121da39ee5dcca98e9f80baab09b18c9810d79534c554c25e60c2b1e6",
-    "bytes": 43943
+    "sha256": "3f4364f87f7dc7e61d3714bc79358bfc53febfa23e495e21947a6b238dc81b22",
+    "bytes": 45022
   },
   "vendored_locator": {
     "path": "aoe2mod/dat/locate.py",
-    "sha256": "1ae644ab75eaa172f5e6867746893728c6acc5c832932c66ab01119f8548fcc9",
-    "bytes": 23053
+    "sha256": "b106c04ff31253fda5bd9d5ae7e8707960072a4e52c678b8d706affcc3692ec5",
+    "bytes": 23900
   },
   "vendored_sldlib": {
     "path": "aoe2mod/game/sld.py",

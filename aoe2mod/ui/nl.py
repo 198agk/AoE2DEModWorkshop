@@ -92,8 +92,19 @@ SPRITE_HINTS = ("样子", "造型", "外观", "模样", "长相", "皮肤", "换
 # availability branch, because 造 appears in both ("造一个" vs "能造") and the
 # create reading is the more specific one.
 CREATE_HINTS = ("新建", "创建", "做一个新", "造一个新", "加一个新", "添一个新",
+                 # 量词 may be 项 for a technology: "加一项新科技" is the same request as
+                 # "加一个新单位".  Caught 2026-10-22: it was split off as a
+                 # refusal about a missing number and the rest became a unit create.
+                 "做一项新", "造一项新", "加一项新", "添一项新", "新科技",
                 "新单位", "新兵种", "做一个和", "造一个和", "做一个像", "造一个像",
                 "照着", "仿照", "照做", "照")
+
+# How a sentence introduces the record it copies.  One tuple because three
+# functions have to agree: the donor lookup, the "is a fact still missing" test
+# that drives the comma re-join, and the docstring above.  Measured 2026-10-22:
+# `新建一项科技，参考织布机，叫快速采集` was refused as "no donor named" because 参考
+# was not in the list that only knew 和/像/照/以.
+_DONOR_MARKERS = ("参考", "依照", "根据", "仿照", "和", "像", "照", "以")
 
 # 照 is the one ambiguous word in that list: 按照 and 照片 are not creations, and
 # a sentence about a photo of a villager would otherwise be read as one.
@@ -387,6 +398,27 @@ def _ordinal(text):
     # would address by position, and inventing a parser for numbers nobody
     # types is how a wrong answer gets a plausible-looking path in.
     return _ORDINAL_ZH.get(raw)
+
+
+_RESEARCH_TIME_RE = re.compile(
+    r"(?:研究时间|研发时间|研究|所需时间)\s*"
+    r"(?:改成|改为|改到|设为|设成|是|=|\uff1a)?\s*(\d+)\s*(?:秒)?")
+
+
+def _research_time_in(text):
+    """How long the new technology takes to research, if the sentence says.
+
+    Requires the 研究时间 noun: a bare number in a creating sentence already means
+    hit points for a unit ("恒血500"), so a number alone must never become a
+    research time.  Returns an int or None.
+    """
+    m = _RESEARCH_TIME_RE.search(text or "")
+    if not m:
+        return None
+    try:
+        return int(m.group(1))
+    except (TypeError, ValueError):
+        return None
 
 
 def _slot_in(text):
@@ -932,12 +964,20 @@ def _creator_entity(raw, low, vocab, sps, prefer):
     """
     if not sps:
         return None, None
-    for marker in ("和", "像", "照", "以"):
+    for marker in ("参考", "依照", "根据", "仿照", "和", "像", "照", "以"):
         m = re.search(re.escape(marker), raw)
         if not m:
             continue
         for s in sps:
             if s[0] >= m.end() and s[4] == prefer:
+                return s[2], s[2]
+        # The donor's kind may simply be the other one: "照织布机做一个新科技"
+        # resolved 织布机 as a technology while the caller asked for "unit", and the
+        # refusal then claimed no donor had been named -- in a sentence whose only
+        # entity IS the donor.  One retry, still after the marker, so the "did you
+        # name one at all" rule is unchanged.
+        for s in sps:
+            if s[0] >= m.end():
                 return s[2], s[2]
     return None, None
 
@@ -978,13 +1018,54 @@ def read_clause(text, vocab, civ_names=None, civ_zh=None, pins=None,
     is_create = _is_create(raw, low)
     if is_create:
         new_name = _created_name(raw)
-        donor, _same = _creator_entity(raw, low, vocab, sps, "unit")
+        # WHICH layer the new thing goes into.  A sentence that says 科技 makes a
+        # technology; one that says 单位/兵种 makes a unit; with neither word the
+        # unit reading wins, because that is what the reader supported first and a
+        # silent switch of layer would be a confident wrong answer.
+        _made_kind = "tech" if (tech_hint and "单位" not in low
+                                 and "兵种" not in low) else "unit"
+        donor, _same = _creator_entity(raw, low, vocab, sps, _made_kind)
         civ0 = _civ_in(raw, low, civ_names, civ_zh)
         if donor is None:
-            cl.why = "这句话没说要照着哪个单位做，说一个出厂单位的名字"
+            if _made_kind == "tech":
+                cl.why = "这句话没说要照着哪项科技做，说一项出厂科技的名字"
+            else:
+                cl.why = "这句话没说要照着哪个单位做，说一个出厂单位的名字"
             return cl
         if not new_name:
-            cl.why = "这个新单位叫什么？在句子里写上名字（例如：叫铁匠学徒）"
+            cl.why = ("这个新科技叫什么？在句子里写上名字（例如：叫快速采集）"
+                      if _made_kind == "tech" else
+                      "这个新单位叫什么？在句子里写上名字（例如：叫铁匠学徒）")
+            return cl
+        if _made_kind == "tech":
+            # A technology is NOT per-civilization the way a unit record is: the
+            # shipped file carries civ=-1 on all 1,510 of them, so demanding a
+            # civilization would refuse a sentence over a fact the format does
+            # not hold.
+            cl.kind = "tech"
+            cl.entity = donor
+            cl.intent = {"intent": "tech.create", "donor": donor.id, "name": new_name}
+            slot = _slot_in(raw)
+            if slot is not None:
+                cl.intent["button"] = int(slot)
+                cl.notes.append("放在研究卡的第 %d 格" % slot)
+            mins = _research_time_in(raw)
+            if mins is not None:
+                cl.intent["research_time"] = mins
+                cl.notes.append("研究时间 %d 秒" % mins)
+            # Which building's research card: the one unit-kind entity that is
+            # NOT the donor.  "给城镇中心加一项新科技，照着织布机" names 城镇中心
+            # and means it; without this the copy inherits the donor's card even
+            # when the player said otherwise.
+            bld = None
+            for _s, _e2, _e, _t, _k, _g in sps:
+                if _k == "unit" and getattr(_e, "id", None) != donor.id:
+                    bld = _e
+                    break
+            if bld is not None:
+                cl.intent["building"] = bld.id
+                cl.notes.append("放在「%s」的研究卡上" % bld.display)
+            cl.notes.append("照「%s」做，名字是「%s」" % (donor.display, new_name))
             return cl
         if not civ0:
             cl.why = ("新单位是要加进某一个文明的，说清是哪一个"
@@ -1442,6 +1523,8 @@ def _says_property(text):
     asked for through ``_first_word``.
     """
     low = _norm(text)
+    if _research_time_in(text) is not None:
+        return True
     return bool(_first_word(low, STAT_WORDS) or _first_word(low, RESOURCE_WORDS))
 
 
@@ -1474,20 +1557,39 @@ def _separate_edit(part, vocab=None):
     return False
 
 
-def _create_gaps(text, civ_names=None, civ_zh=None):
-    """Which of the three facts a creating sentence needs are still missing.
+def _created_kind(text):
+    """Which layer a creating sentence asks for: "tech" or "unit".
+
+    Kept next to `_create_gaps` rather than inline in `read_clause` because the
+    merge step has to ask the SAME question: a technology needs no civilization,
+    and a fragment carrying one must not be pulled into a technology sentence on
+    the strength of a fact that sentence never needed.
+    """
+    low = _norm(text)
+    if not any(w in low for w in TECH_HINTS):
+        return "unit"
+    if "单位" in low or "兵种" in low:
+        return "unit"
+    return "tech"
+
+
+def _create_gaps(text, civ_names=None, civ_zh=None, kind="unit"):
+    """Which facts a creating sentence needs are still missing.
 
     A donor has to be introduced by 和/像/照/以 (see `_creator_entity`); a name has
-    to follow a naming verb (see `_created_name`); the civilization has to be one
-    the product knows.  Anything else is a fragment waiting to be joined.
+    to follow a naming verb (see `_created_name`); a UNIT also names the
+    civilization it joins.  A TECHNOLOGY does not: the shipped file carries
+    `civ = -1` on every technology (a technology is not copied per civilization
+    the way a unit record is), so demanding one would refuse a sentence over a
+    fact the format does not hold.  Anything else is a fragment to be joined.
     """
     low = _norm(text)
     gaps = []
-    if not any(m in low for m in ("和", "像", "照", "以")):
+    if not any(m in low for m in _DONOR_MARKERS):
         gaps.append("donor")
     if not _created_name(text):
         gaps.append("name")
-    if not _civ_in(text, low, civ_names, civ_zh):
+    if kind == "unit" and not _civ_in(text, low, civ_names, civ_zh):
         gaps.append("civ")
     return gaps
 
@@ -1530,7 +1632,8 @@ def _merge_create_name(pieces, civ_names=None, civ_zh=None, vocab=None):
             # still missing something OR the next piece is a qualifier, and stops
             # the moment a piece asks for something of its own.
             prev = out[-1]
-            gap = bool(_create_gaps(prev, civ_names, civ_zh))
+            gap = bool(_create_gaps(prev, civ_names, civ_zh,
+                                    kind=_created_kind(prev)))
             # A qualifier carries a fact about the new unit rather than a request
             # of its own.  A box number counts even without a stat name: "放在第5格"
             # says where it goes, and it is exactly one of the facts a creating

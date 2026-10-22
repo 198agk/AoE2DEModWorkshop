@@ -621,6 +621,73 @@
           "text": "A greyed-out button in this game means 'a prerequisite is missing', and a prerequisite is a POSITIVE gate: `74 requires 67` orders two technologies, it cannot forbid one of them. Measured on the shipped data: 1147 of 1510 technologies have at least one prerequisite, and there is no pair anywhere that requires each other (the only apparent one is tech 0 referencing itself), so the engine never expresses 'either A or B' through prerequisites. Only `type 102` can forbid, and forbidding removes the button rather than greying it."
         }
       ]
+    },
+    "tech.create": {
+      "title": "做一项游戏里没有的科技",
+      "title_en": "Create a technology that the game does not have",
+      "applies_to": "tech",
+      "description": "Append one technology record modelled on an existing one, give it its own name string, its own effect and a research location so a building can research it. The record is addressed by its POSITION in the array, so the new id is the shipped count.",
+      "fields": {
+        "donor": {
+          "type": "entity_ref",
+          "kind": "tech",
+          "required": true,
+          "label": "照着做",
+          "help": "The technology to copy the record shape from. Costs, required techs and the internal scaffolding are taken from it; the name, the effect and the research location are yours."
+        },
+        "name": {
+          "type": "string",
+          "required": true,
+          "label": "名字",
+          "help": "The name the game shows. It ships as a loose key-value-modded-strings file for every locale the install has, plus English as the documented global fallback."
+        },
+        "building": {
+          "type": "entity_ref",
+          "kind": "building",
+          "required": false,
+          "label": "在哪座建筑里研究",
+          "help": "Optional. Omit it and the new technology keeps the donor's research location, which is the only evidence the sentence gave about where it should appear."
+        },
+        "research_time": {
+          "type": "int",
+          "required": false,
+          "label": "研究时间",
+          "range": [
+            0,
+            32767
+          ],
+          "help": "Seconds. Omit it and the donor's time is kept."
+        },
+        "button": {
+          "type": "int",
+          "required": false,
+          "label": "第几格",
+          "range": [
+            0,
+            24
+          ],
+          "help": "Which box on that building's card. Omit it and the donor's box is used, which is why the new technology shows up where the donor already was."
+        },
+        "effect": {
+          "type": "string",
+          "required": false,
+          "label": "效果",
+          "help": "Optional shorthand for the effect's single command, as '<type>,<a>,<b>,<c>,<d>' -- for example '4,0,3,-1,1' is '+1 building armour'. Omit it and the new technology has no effect of its own, which is a legal state the shipped data also uses (330 technologies point at no effect)."
+        }
+      },
+      "compile": {
+        "strategy": "new_tech",
+        "mod_contains_dat": true,
+        "why_not_dat": "The record HAS to be in the .dat: a technology is an array position, so there is no file in the dat directory that can add one. What the other layers can do is name it (the modded string table) and place it on a card (the record's own research_locations), and both are shipped with it.",
+        "what_it_does_not_prove": "That the engine will SHOW the new technology's button. The record, its name and its research location are written and read back, but no run has yet put this technology on a card in game."
+      },
+      "safety": {
+        "field_width_bits": 16,
+        "notes": [
+          "A technology is addressed by its array position, so the new id is the shipped count (1,510 today). 1,510 is also the id of the unit 'CityGate NE (Rubble)' -- units and technologies share one integer space in CivTechTrees, and the first id neither uses is 2,113. The record itself does not care, but a CivTechTrees node for this technology would collide, so this intent writes the .dat side only.",
+          "The tech-tree research counter is a u8 with 14 rows of headroom. This intent does not add a tree row, so it does not spend any of it."
+        ]
+      }
     }
   },
   "mod": {

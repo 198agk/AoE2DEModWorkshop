@@ -865,6 +865,16 @@ def write_civ(w, c):
 
 
 def write_research_location(w, loc):
+    # A location is (location_id, research_time, button_id, hotkey_id) on disk.
+    # The model carries it as a dict (that is what `locate_techs` returns and
+    # what the reader hands back), while hand-written callers pass a tuple.
+    # Both used to be "the same thing" until 2026-10-22, when the first real
+    # `_new` tech with a modelled donor location died on `KeyError: 0` -- the
+    # shipped branch replays these with `w.op()` and never came through here.
+    if isinstance(loc, dict):
+        w.i16(loc["location_id"]); w.i16(loc["research_time"])
+        w.u8(loc["button_id"]); w.i32(loc["hotkey_id"])
+        return
     w.i16(loc[0]); w.i16(loc[1]); w.u8(loc[2]); w.i32(loc[3])
 
 
@@ -873,8 +883,14 @@ def write_tech(w, t):
         # synthesised record: no counterpart in `raw` -- freeze the raw cursor so
         # the verbatim replay of the tail (stage 10) still starts at the right
         # raw offset.
+        #
+        # The four display-string ids are NOT zeros any more.  They used to be,
+        # and that quietly made every synthesised tech unnameable: string id 0
+        # is defined in 0 of the 17 locale tables (measured 2026-10-22, max
+        # shipped id 30030001), so the record could exist and never say what it
+        # is.  A caller now has to supply `lang_name`; the rest default to 0
+        # because "no description" is a real state the shipped file also uses.
         with w.new_record():
-            # synthesise the unmodeled scaffolding with zero defaults
             for _ in range(6):
                 w.i16(0)                   # RequiredTechs[6]
             for _ in range(3):
@@ -884,7 +900,8 @@ def write_tech(w, t):
             w.i16(0)                       # FullTechMode
             if w.gv < GV_C31:
                 w.i16(0)                   # ResearchLocation (Research.cpp:70)
-            w.i32(0); w.i32(0)             # LanguageDLLName, LanguageDLLDescription
+            w.i32(int(t.get("lang_name") or 0))
+            w.i32(int(t.get("lang_description") or 0))
             if w.gv < GV_C31:
                 w.i16(0)                   # ResearchTime (Research.cpp:89)
             w.i16(t["effect_id"])
@@ -892,7 +909,8 @@ def write_tech(w, t):
             w.i16(t["icon_id"])
             if w.gv < GV_C31:
                 w.u8(0)                    # ButtonID (Research.cpp:96)
-            w.i32(0); w.i32(0)             # LanguageDLLHelp, LanguageDLLTechTree
+            w.i32(int(t.get("lang_help") or 0))
+            w.i32(int(t.get("lang_tech_tree") or 0))
             if w.gv < GV_C31:
                 w.i32(0)                   # HotKey (Research.cpp:105)
             w.debug_string(t["name"])

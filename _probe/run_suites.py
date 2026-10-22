@@ -250,6 +250,13 @@ SUITES = [
     # A pin here matters because the failure is not local -- it corrupts every
     # field after the edited record, so no other test would name the cause.
     r"_probe\test_effect_append.py",
+    # A technology the game does not have, from a sentence.  The module-level
+    # clone is pinned in `test_new_tech.py`; what is pinned HERE is the path a
+    # player walks -- the reader used to refuse every such sentence with a
+    # complaint about a missing UNIT, and the preview used to promise files the
+    # build did not write.
+    r"_probe\test_new_tech.py",
+    r"_probe\test_tech_create.py",
     # The registry itself.  Ten probes rotted unrun before anyone noticed, and
     # the reason nobody noticed is that "is every test reachable?" was a question
     # only a human could answer.  This asks it mechanically, including the four

@@ -939,7 +939,14 @@ class Resolved(object):
         if self.donor is not None and self.name is not None:
             # A creation: there is no existing entity to describe, so the
             # sentence has to name the new thing and say what it is modelled on.
-            return "照 %s 做一个新单位「%s」" % (self.donor.display, self.name)
+            #
+            # The noun is not always 单位: `tech.create` clones a technology,
+            # and saying 「做一个新单位」 about a technology is the kind of
+            # sentence that makes a player distrust every other sentence on the
+            # screen -- measured 2026-10-22, this read 「照 织布机 做一个新单位
+            # 『新织布机』」.
+            noun = "单位" if (self.kind or "unit") == "unit" else "科技"
+            return "照 %s 做一个新%s「%s」" % (self.donor.display, noun, self.name)
         if self.donor is not None:
             # A relationship, not a number: the three-part shape below would
             # render "弓箭手 长弓兵" and leave the user to guess which end moves.
@@ -1016,6 +1023,14 @@ def resolve(intent, schema, semantic_index=None, bindings=None):
         # the table.  Resolving it through the same field keeps the "did you
         # mean" refusal identical to every other intent's.
         ref_field = "donor"
+    if ref_field not in intent and "donor" in fields:
+        # The donor is the ONLY entity a creating intent names, so "needs a
+        # 'tech' field" describes a key the user never heard of and cannot
+        # supply.  Say which thing is missing instead -- measured 2026-10-22,
+        # `{"intent":"tech.create","name":"x"}` read "intent 'tech.create' needs
+        # a 'tech' field".
+        raise IntentError("照着哪一项做？这句话里没说是哪一项%s。"
+                          % (_KIND_ZH.get(kind) or kind))
     if ref_field not in intent and members:
         # A list-shaped intent's subject is its FIRST member: there is no
         # `tech` key, and demanding one would make the sentence unwritable.
