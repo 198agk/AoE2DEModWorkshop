@@ -150,7 +150,7 @@ def unknown_strategy(tk):
     }
     saved = dict(C._SCHEMA_CACHE)
     C._SCHEMA_CACHE.clear()
-    C._SCHEMA_CACHE[C._SCHEMA] = (fake, bindings)
+    C._SCHEMA_CACHE[C.schema_key()] = (fake, bindings)
     probe = {"intent": "unit.probe_unknown_strategy", "unit": 83,
              "stat": "hit_points", "value": 40}
     try:

@@ -7,7 +7,7 @@ or wrongly typed without anyone noticing -- exactly how max_range/reload_time
 sat unbound for months.  This sweeps the ENTIRE declared option space, so a
 newly added stat is covered the moment it enters the schema.
 """
-import os, sys, itertools, re
+import os, sys, itertools, re, json
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
@@ -252,6 +252,21 @@ exercised = set(shape)
 # unexercised here for a whole round; enumerating the schema instead of hand-adding
 # keys means a seventh intent cannot be added without this sweep failing first.
 DECLARED_INTENTS = sorted(intents_schema["intents"])
+# `load_schema()` merges any `plugins/<name>/schema` folders on top of the
+# shipped schema (2026-10-23).  This sweep measures the SHIPPED product -- it
+# enumerates the shipped option shapes and the shipped byte patcher -- so a
+# plugin intent must not be counted as "declared but unswept": the sweep would
+# be asking itself to cover code it has never seen, and the honest answer
+# ("a folder added this, and this file does not measure folders") would be
+# printed as a red.  Instead every plugin intent is listed by name and by
+# folder, so a plugin can never be silently invisible either.
+try:
+    with open(os.path.join(C._SCHEMA, "intents.json"), encoding="utf-8") as _fh:
+        _shipped_intents = sorted(json.load(_fh)["intents"])
+except (OSError, ValueError, KeyError):
+    _shipped_intents = DECLARED_INTENTS
+_PLUGIN_INTENTS = [i for i in DECLARED_INTENTS if i not in _shipped_intents]
+DECLARED_INTENTS = [i for i in DECLARED_INTENTS if i in _shipped_intents]
 # Prefix match, not `split(".")[0:2]`: an intent whose name has more than two
 # segments would be silently mis-derived and then reported as unswept forever.
 _covered_intents = {i for i in DECLARED_INTENTS
@@ -308,6 +323,10 @@ for _i, (_f, _why) in sorted(_VERIFIED_ELSEWHERE.items()):
 print()
 print("declared intents            : %d %s" % (len(DECLARED_INTENTS),
                                               DECLARED_INTENTS))
+if _PLUGIN_INTENTS:
+    print("added by a plugin folder    : %d %s (this file measures the shipped "
+          "product and does not sweep plugins)" % (len(_PLUGIN_INTENTS),
+                                                   _PLUGIN_INTENTS))
 print("intents with a built case   : %d" % len(_covered_intents))
 print("DECLARED BUT UNSWEPT        : %s" % (_missing_intents or "none"))
 for u in _missing_intents:

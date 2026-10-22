@@ -136,6 +136,50 @@ from . import availability as AV
 _HERE = os.path.dirname(os.path.abspath(__file__))
 _SCHEMA = os.path.join(os.path.dirname(_HERE), "schema")
 
+#: Where a plugin may keep its schema.  A plugin is a FOLDER, not an install: it
+#: ships JSON and nothing else (this module never imports it), so a plugin can
+#: add an intent or a field binding but can never add code to the process.
+#:
+#: ``AOE2MOD_PLUGINS`` exists for tests and for a build that has been packaged
+#: with the schemas somewhere else; the repo ``plugins/`` directory is the
+#: normal place.
+_PLUGINS_ENV = "AOE2MOD_PLUGINS"
+
+
+def _plugin_roots():
+    """Directories that may each contain a ``*/schema`` plugin folder.
+
+    ``AOE2MOD_PLUGINS`` REPLACES the default rather than adding to it.  That is
+    what makes a test able to say "the plugin root is empty" and get a schema
+    that is exactly the shipped one -- if the repo directory were always
+    appended, a test would silently inherit whatever happened to be checked in.
+    """
+    env = os.environ.get(_PLUGINS_ENV)
+    if env:
+        return [p for p in env.split(os.pathsep) if p and os.path.isdir(p)]
+    default = os.path.join(os.path.dirname(os.path.dirname(_HERE)), "plugins")
+    return [default] if os.path.isdir(default) else []
+
+
+def plugin_schema_dirs():
+    """Every schema directory, base first, then plugins in stable order.
+
+    Stable order matters twice: the cache key is derived from this list, and a
+    later directory must not be able to silently win a name collision -- a
+    duplicate is REFUSED at load time instead (see ``load_schema``).
+    """
+    out = [_SCHEMA]
+    for root in _plugin_roots():
+        try:
+            names = sorted(os.listdir(root))
+        except OSError:
+            continue
+        for name in names:
+            cand = os.path.join(root, name, "schema")
+            if os.path.isfile(os.path.join(cand, "intents.json")):
+                out.append(cand)
+    return out
+
 
 class IntentError(Exception):
     """The user's request cannot be compiled.  The message is user-facing."""
@@ -790,19 +834,94 @@ def effect_rows(effects, tech, fanout=None, ix=None, unit_class=None):
     return rows
 
 
+def schema_key():
+    """The cache key for the CURRENT set of schema directories.
+
+    The old key was the directory string, which would have returned the base
+    schema unchanged the moment a plugin directory existed -- the plugin would
+    look loaded and contribute nothing.  The key is now the whole set.
+    """
+    dirs = plugin_schema_dirs()
+    return dirs[0] if len(dirs) == 1 else tuple(dirs)
+
+
+def _merge_intents(base, extra, where):
+    """Union two ``intents.json`` documents, refusing a duplicate id.
+
+    Last-writer-wins would make a plugin able to silently redefine a shipped
+    intent -- the schema decides which bytes get written, so a silent override
+    is a silent change of what the tool does.  The refusal names the file.
+    """
+    out = dict(base)
+    out_intents = dict(base.get("intents") or {})
+    for name, spec in (extra.get("intents") or {}).items():
+        if name in out_intents:
+            raise IntentError(
+                "插件目录 %s 里的意图「%s」和已经存在的那一条重名了；"
+                "两份 schema 不能各自定义同一个意图。" % (where, name))
+        out_intents[name] = spec
+    out["intents"] = out_intents
+    return out
+
+
+def _merge_bindings(base, extra, where):
+    """Union two ``dat_bindings.json`` documents, refusing a duplicate field.
+
+    Only the maps an intent can actually name are merged.  ``$comment`` and the
+    version keys stay the base document's: a plugin may add fields, not restate
+    which game versions this build targets.
+    """
+    out = dict(base)
+    for section in ("unit_fields", "tech_fields", "resource_types",
+                    "attack_classes", "armour_classes"):
+        add = extra.get(section)
+        if not isinstance(add, dict):
+            continue
+        have = dict(out.get(section) or {})
+        for name, spec in add.items():
+            if name.startswith("$"):
+                continue
+            if name in have:
+                raise IntentError(
+                    "插件目录 %s 里的字段绑定「%s」（%s）和已经存在的那一份重名了。"
+                    % (where, name, section))
+            have[name] = spec
+        out[section] = have
+    return out
+
+
 def load_schema():
     """The external intent + binding descriptions, read once per process.
 
     These files are DATA, not code: a new intent or a new version's byte layout
     is described there and never in this module.  Cached because resolve() may
     consult the bindings while compiling hundreds of records.
+
+    Plugins extend this: every ``plugins/<name>/schema`` directory that has an
+    ``intents.json`` is merged on top of the shipped one, in sorted order.  A
+    plugin can therefore add an intent or a field binding without a line of
+    Python -- which is the whole point of the schema being data -- but it
+    cannot collide with a shipped name, and it cannot add a compile strategy
+    (the chains refuse a name they do not implement).
     """
-    key = _SCHEMA
+    key = schema_key()
     if key not in _SCHEMA_CACHE:
-        with open(os.path.join(_SCHEMA, "intents.json"), encoding="utf-8") as fh:
+        dirs = plugin_schema_dirs()
+        with open(os.path.join(dirs[0], "intents.json"), encoding="utf-8") as fh:
             intents = json.load(fh)
-        with open(os.path.join(_SCHEMA, "dat_bindings.json"), encoding="utf-8") as fh:
+        with open(os.path.join(dirs[0], "dat_bindings.json"), encoding="utf-8") as fh:
             bindings = json.load(fh)
+        for extra_dir in dirs[1:]:
+            # ``utf-8-sig`` for plugin files only: these get hand-edited in
+            # whatever editor the author has, and several of them write a BOM.
+            # The shipped files stay strict utf-8 -- they are ours and measured.
+            with open(os.path.join(extra_dir, "intents.json"),
+                      encoding="utf-8-sig") as fh:
+                intents = _merge_intents(intents, json.load(fh), extra_dir)
+            extra_bindings = os.path.join(extra_dir, "dat_bindings.json")
+            if os.path.isfile(extra_bindings):
+                with open(extra_bindings, encoding="utf-8-sig") as fh:
+                    bindings = _merge_bindings(bindings, json.load(fh), extra_dir)
         _SCHEMA_CACHE[key] = (intents, bindings)
     return _SCHEMA_CACHE[key]
 

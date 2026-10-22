@@ -81,6 +81,11 @@ SUITES = [
     r"_probe\test_type3_scope.py",
     r"_probe\test_tech_side_families.py",
     r"_probe\test_schema_vocabulary.py",
+    # Sits next to the vocabulary audit on purpose: both answer "is the schema
+    # telling the truth?", one about the shipped tables and one about the
+    # plugin folders layered on top.  A plugin that silently failed to merge
+    # would look exactly like a plugin that did nothing wrong.
+    r"_probe\test_schema_plugins.py",
     r"_probe\probe_build_panel_gate.py",
     r"_probe\test_dat_layer_override.py",
     r"_probe\test_enabling_research.py",
