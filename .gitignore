@@ -32,6 +32,8 @@ _shots/
 
 # --- scratch --------------------------------------------------------------
 _probe/tmp_*.py
+_probe/tmp_*.ps1
+_probe/tmp_*.txt
 _probe/_newlog.md
 # Written every run by _probe/schema/test_branch_extract.py: a human-readable
 # PREVIEW of what the branch extractor saw.  The artifacts that matter are the
@@ -65,3 +67,31 @@ _mods_out/
 # probe_material_index.py).  Regenerable from the installed game in
 # seconds; committing them would put the game's own artwork in the repo.
 _probe/asset_index/png/
+
+# --- looking at the game's own screen -------------------------------------
+# The screen channel: every frame grabs a 1900x1000 client area (about 4 MB as
+# PNG) and one hover sweep leaves 40-120 of them behind.  They are evidence for
+# one measurement, not sources: the scripts that take them are committed, the
+# pixels are re-takeable in seconds, and a handful of sweeps would otherwise be
+# larger than every line of code in this repo.
+_probe/shots/
+_probe/*.png
+# The player's own screenshots, kept here by hand so the agent can OCR them.
+截图/
+# Probes that write a small JSON answer beside themselves.  The answer is the
+# conclusion and belongs in the docs; the file is one run's output.
+_probe/play_last.json
+_probe/bisect_results.json
+_probe/btn_hits.json
+_probe/v23_facts.json
+# Screen tools that were measured and did NOT work, kept out of the tree so a
+# later session does not reach for them again:
+#   hovergrid.ps1  hovers with SetCursorPos, which emits no movement event, so
+#                  the game never learns the cursor moved (0 changed pixels
+#                  measured against 3491 for SendInput).  sendgrid.ps1 replaces it.
+#   ocr_screen.ps1 WinRT OCR: reads 4-5 lines out of the in-match HUD where
+#                  tmp_rapidocr.py reads 17-68.  Kept as a note, not a tool.
+#   click_at.ps1   first click attempt, no hover first; gamescreen.ps1 supersedes it.
+_probe/hovergrid.ps1
+_probe/ocr_screen.ps1
+_probe/click_at.ps1

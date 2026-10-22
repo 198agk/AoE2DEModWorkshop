@@ -755,6 +755,7 @@ class Toolkit(object):
             string_id = S.first_free_id(self.game_root,
                                         start=base.get("string_id") or
                                         S.LAST_SHIPPED_ID + 1)
+            creation_id = S.first_free_id(self.game_root, start=string_id + 1)
         except S.StringError as exc:
             base["editable"] = False
             base["changes_dat"] = False
@@ -765,15 +766,25 @@ class Toolkit(object):
         base["editable"] = True
         base["new_id"] = new_id
         base["string_id"] = string_id
+        # Two strings ship, because the record has two: the name labels the unit,
+        # the creation string is the command-card tooltip's first line.  A single
+        # id in both slots emptied the whole tooltip on four measured builds.
+        base["creation_string_id"] = creation_id
+        base["creation_text"] = "生产" + str(r.name)
         base["record_bytes"] = len(_img)
         base["description"] = (
-            "照 %s 在 %s 做一个新单位「%s」（编号 %d，%d 字节的记录，名字用字符串 %d）"
+            "照 %s 在 %s 做一个新单位「%s」（编号 %d，%d 字节的记录；"
+            "名字和建造文本各用一个字符串，%d 和 %d）"
             % (r.donor.display, civ_zh, r.name, new_id, len(_img),
-               string_id))
+               string_id, creation_id))
         base["edit_count"] = 2
         base["warnings"] = [
             "新单位的图标是照着做的那个单位的（图标的号 0..999 已满，这个工具不会去改图标那层）",
             "它出现在照着做的那个单位自己的建造按钮里，因为建造位置是从原记录抄来的",
+            # Measured 2026-10-22: the tooltip's first line is the record's
+            # LanguageDLLCreation string.  The build now writes a real
+            # "生产<名字>" sentence there instead of the donor's, so this is a
+            # note about which two strings ship rather than a defect.
         ]
         return base
 
@@ -1059,6 +1070,14 @@ class Toolkit(object):
         avoid = NU.referenced_ids(self._stats)
         new_id = NU.pick_free_id(self._stats, avoid=avoid)
         string_id = S.first_free_id(self.game_root)
+        # Two strings, not one.  The record carries both a name and a creation
+        # string, and they are read by different parts of the interface: the
+        # name labels the unit, the creation string is the FIRST LINE OF THE
+        # COMMAND-CARD TOOLTIP ("生产<名字>（价格：N）").  Measured 2026-10-22
+        # on four builds: pointing the creation string at the new name (or
+        # omitting it) emptied the entire tooltip body -- no title, no price, no
+        # description.  A second free id is the whole fix.
+        creation_id = S.first_free_id(self.game_root, start=string_id + 1)
         # A deep copy: `add_unit` mutates the model in place and this Toolkit
         # answers every later call from the same cached object, so building from
         # the cache would add the unit to this session's model as a side effect of
@@ -1067,13 +1086,16 @@ class Toolkit(object):
         stats, rec = NU.add_unit(stats, self._raw, self._parsed[3], self._parsed[2],
                                  civ_index, r.donor.id, new_id,
                                  name_string_id=string_id,
+                                 creation_string_id=creation_id,
                                  hp=r.raw.get("hp"))
         data, rep = W.serialize_dat(stats, raw=self._raw)
         if rep.get("raw_consumed") != len(self._raw):
             raise C.IntentError(
                 "写完以后 .dat 的读取位置对不上原来的文件（%s / %s），所以这份不改了"
                 % (rep.get("raw_consumed"), len(self._raw)))
-        string_files = S.build_files(self.game_root, [(string_id, r.name)])
+        string_files = S.build_files(self.game_root,
+                                     [(string_id, r.name),
+                                      (creation_id, "生产" + str(r.name))])
         info = E.make_info(title or ("新单位 %s" % r.name), author=author,
                            description=description)
         man = E.emit_data_mod(out_dir, data, info, thumbnail=thumbnail,
@@ -1093,6 +1115,8 @@ class Toolkit(object):
         man["unit_added"] = new_id in ids2
         man["new_unit"] = {
             "id": new_id, "name": r.name, "string_id": string_id,
+            "creation_string_id": creation_id,
+            "creation_text": "生产" + str(r.name),
             "civ": civ_name, "civ_index": civ_index,
             "donor_id": r.donor.id, "donor_name": r.donor.display,
             "record_bytes": rec["bytes"], "slot": rec["slot"],
@@ -1180,12 +1204,17 @@ class Toolkit(object):
                 # tables, so asking the game for a free id answers 30030002 every
                 # time.  Successive creations step past the ones this bundle has
                 # already claimed.
+                # Two strings per unit: the name, and the creation string the
+                # command card prints as its first line.  Step the bundle's
+                # counter by two so the next creation starts cleanly above both.
                 string_id = S.first_free_id(
                     self.game_root,
                     start=next_string or (S.LAST_SHIPPED_ID + 1))
+                creation_id = S.first_free_id(self.game_root, start=string_id + 1)
                 stats, rec = NU.add_unit(stats, cur, gv, civs_start, civ_index,
                                          r.donor.id, new_id,
                                          name_string_id=string_id,
+                                         creation_string_id=creation_id,
                                          hp=r.raw.get("hp"))
             except (NU.NewUnitError, S.StringError) as exc:
                 refusals.append({"description": r.describe(), "reason": str(exc)})
@@ -1193,9 +1222,11 @@ class Toolkit(object):
             except Exception as exc:                      # noqa: BLE001
                 refusals.append({"description": r.describe(), "reason": str(exc)})
                 continue
-            next_string = string_id + 1
-            for rel, data_b in S.build_files(self.game_root,
-                                             [(string_id, r.name)]).items():
+            next_string = creation_id + 1
+            for rel, data_b in S.build_files(
+                    self.game_root,
+                    [(string_id, r.name),
+                     (creation_id, "生产" + str(r.name))]).items():
                 # Two creations in one bundle write the SAME string file, so the
                 # lines are accumulated rather than overwritten -- otherwise the
                 # second sentence would take the first one's name away.
@@ -1206,6 +1237,8 @@ class Toolkit(object):
                 "mode": "new_unit",
                 "civ": civ_name, "civ_index": civ_index,
                 "id": new_id, "name": r.name, "string_id": string_id,
+                "creation_string_id": creation_id,
+                "creation_text": "生产" + str(r.name),
                 "donor_id": r.donor.id, "donor_name": r.donor.display,
                 "record_bytes": rec["bytes"], "slot": rec["slot"],
             })

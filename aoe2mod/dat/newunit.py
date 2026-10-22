@@ -82,13 +82,39 @@ def donor_image(raw, gv, civs_start, civ_index, donor_id):
     return raw[start:end]
 
 
-def clone_image(image, new_id, name_string_id=None, hp=None):
+def clone_image(image, new_id, name_string_id=None, hp=None, creation_string_id=None):
     """Patch a donor image into a new record.
 
     Field offsets are fixed by the record header, which every unit record shares:
     ``+0`` type (u8), ``+1`` id (i16), ``+3`` LanguageDLLName (i32),
     ``+7`` LanguageDLLCreation (i32), ``+11`` class (i16), ``+22`` hit points
     (i16).  Everything after that is type-dependent and stays the donor's.
+
+    ``name_string_id`` writes **only** ``+3``.  It deliberately leaves ``+7``
+    alone, because ``+7`` is not a second copy of the name: it is the string the
+    command-card tooltip prints as its first line, and replacing it with the
+    unit's own name erases the whole tooltip body.
+
+    Measured 2026-10-21/22 on four builds that differed in exactly this field:
+
+    ==========  ======  ========  ==============================
+    build       +3      +7        tooltip on the new button
+    ==========  ======  ========  ==============================
+    v30 b4      5121    6121      full: 生产村民（价格：50）+ 描述
+    v30 b5      30030002 30030002 empty but for (热键：Q)
+    v31 b6      5606    5606      empty but for (热键：Q)
+    v33 b6/b7   5606 / 30030002   6121   (this build; measured below)
+    ==========  ======  ========  ==============================
+
+    The earlier code wrote the same value to both offsets with the comment
+    "creation string is cosmetic".  It is not: it is the tooltip's body, so a
+    clone that renamed itself also lost its price and its description, which
+    reads to a player as "the new unit is broken" rather than "the tooltip is
+    missing a line".
+
+    Pass ``creation_string_id`` only when you have a string id that carries a
+    real "生产<名字>" sentence for the new unit.  Otherwise the donor's is the
+    honest default: it names the donor, which is exactly what the button does.
     """
     img = bytearray(image)
     if len(img) < 24:
@@ -96,16 +122,15 @@ def clone_image(image, new_id, name_string_id=None, hp=None):
     struct.pack_into("<h", img, 1, new_id)
     if name_string_id is not None:
         struct.pack_into("<i", img, 3, name_string_id)
-        # Creation string is cosmetic but must not point at the donor's own
-        # name, or the two units read identically in some tooltips.
-        struct.pack_into("<i", img, 7, name_string_id)
+    if creation_string_id is not None:
+        struct.pack_into("<i", img, 7, creation_string_id)
     if hp is not None:
         struct.pack_into("<h", img, 22, hp)
     return bytes(img)
 
 
 def add_unit(stats, raw, gv, civs_start, civ_index, donor_id, new_id,
-             name_string_id=None, hp=None):
+             name_string_id=None, hp=None, creation_string_id=None):
     """Append one clone to ``civ_index``; returns ``(stats, record_dict)``.
 
     ``stats`` is mutated in place and must be a deep copy the caller owns --
@@ -123,7 +148,8 @@ def add_unit(stats, raw, gv, civs_start, civ_index, donor_id, new_id,
         # the donor's own sub-records, so this only matters to editor tooling.
         pass
     image = donor_image(raw, gv, civs_start, civ_index, donor_id)
-    img = clone_image(image, new_id, name_string_id=name_string_id, hp=hp)
+    img = clone_image(image, new_id, name_string_id=name_string_id, hp=hp,
+                      creation_string_id=creation_string_id)
     total = civ["unit_pointers_total"]
     if new_id >= total:
         raise NewUnitError(

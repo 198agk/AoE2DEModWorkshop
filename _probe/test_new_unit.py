@@ -34,6 +34,7 @@ import io
 import os
 import re
 import shutil
+import struct
 import sys
 import tempfile
 
@@ -197,6 +198,38 @@ def main():
                   "and neither creation leaked into the session's model")
         finally:
             shutil.rmtree(out2, ignore_errors=True)
+
+        print("--- F2. renaming a clone must not touch the tooltip's creation string")
+        # Measured 2026-10-21/22 on four builds.  The clone's +7 field is not a
+        # second copy of the name: it is the string the command card prints as
+        # its first line ("生产村民（价格：50）").  Writing the new name into it
+        # emptied the entire tooltip body -- no title, no price, no description
+        # -- on every clone that did it, which a player reads as a broken unit.
+        donor_bytes = NU.donor_image(tk._raw, tk._parsed[3], tk._parsed[2], 1, 83)
+        donor_name = struct.unpack_from("<i", donor_bytes, 3)[0]
+        donor_creation = struct.unpack_from("<i", donor_bytes, 7)[0]
+        plain = NU.clone_image(donor_bytes, 382, name_string_id=777001)
+        check(struct.unpack_from("<i", plain, 3)[0] == 777001,
+              "naming a clone writes the name field",
+              str(struct.unpack_from("<i", plain, 3)[0]))
+        check(struct.unpack_from("<i", plain, 7)[0] == donor_creation,
+              "and leaves the creation string the donor's",
+              "%d vs donor %d" % (struct.unpack_from("<i", plain, 7)[0], donor_creation))
+        check(donor_creation != donor_name,
+              "the two fields really are different strings in shipped data",
+              "name %d creation %d" % (donor_name, donor_creation))
+        asked = NU.clone_image(donor_bytes, 382, name_string_id=777001,
+                               creation_string_id=888001)
+        check(struct.unpack_from("<i", asked, 7)[0] == 888001,
+              "an explicit creation string is still honoured",
+              str(struct.unpack_from("<i", asked, 7)[0]))
+        man_i = tk.plan(dict(intent))
+        check(man_i.get("string_id") != man_i.get("creation_string_id"),
+              "the product gives the name and the creation text DIFFERENT ids",
+              "%r vs %r" % (man_i.get("string_id"), man_i.get("creation_string_id")))
+        check(man_i.get("creation_text") == "生产" + intent["name"],
+              "the creation text reads exactly like a build-button line",
+              repr(man_i.get("creation_text")))
 
         print("--- G. refusals a player can type")
         bad_name = dict(intent, name='带"引号的名字')
