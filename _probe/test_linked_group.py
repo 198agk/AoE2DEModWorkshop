@@ -363,6 +363,54 @@ def main():
     check("which is the difference: one is one-way, the other is not",
           (67 not in _tbans[67]) and (67 in _mx_bans[67]), "toggle/mx differed the wrong way")
 
+    print("=== C4. a bundle writes the same .dat half a single sentence does")
+    # Found 2026-10-23 by building v52 (a canary plus a group in one mod): the
+    # BUNDLE path wrote linkedTechs.json and not one `type 102` command, while
+    # the one-sentence path wrote them correctly.  Two sentences silently doing
+    # less than one is the worst shape this defect could take -- the mod looks
+    # right, the manifest looks right, and only the game would notice.  The
+    # single-sentence builds above cannot see this, because they do not go
+    # through `_build_bundle_one`.
+    _b_man = tk.build_bundle(
+        [{"intent": "unit.stat", "unit": 109, "stat": "hit_points",
+          "value": 4000, "civs": ["British"]},
+         {"intent": "tech.toggle_group", "techs": [67, 74],
+          "comment": "bundle probe"}],
+        os.path.join(out_root, "in_a_bundle"),
+        title="dsh bundle group probe", author="dsh", overwrite=True)
+    check("a bundle group reports how many bans it wrote",
+          _b_man.get("commands_added") == 4, str(_b_man.get("commands_added")))
+    check("and says the .dat half is written, not label_only",
+          [x.get("dat_half") for x in (_b_man.get("group_dat_half") or [])]
+          == ["written"], str(_b_man.get("group_dat_half")))
+    check("and the bundle says its .dat is an EDIT, not a carrier",
+          _b_man.get("changes_dat") is True
+          and _b_man.get("dat_is_carrier") is False,
+          "%s / %s" % (_b_man.get("changes_dat"),
+                       _b_man.get("dat_is_carrier")))
+    _b_dat = os.path.join(_b_man["mod_dir"], "resources", "_common", "dat",
+                          "empires2_x2_p1.dat")
+    _braw, _ = P.load_dat(_b_dat)
+    _bcivs, _bcs, _bgv, _btail = L.locate(_braw)
+    _btechs = L.locate_techs(_braw, _btail, _bgv)
+    _bfx, _ = L.locate_effects(_braw)
+    _bbans = {}
+    for _tid in (67, 74):
+        _e = _btechs[_tid].get("effect_id")
+        _bbans[_tid] = sorted(int(c["d"]) for c in _bfx[_e]["commands"]
+                              if c["type"] == 102)
+    check("the bundled .dat really carries both bans", 
+          _bbans.get(67) == [67, 74] and _bbans.get(74) == [67, 74], str(_bbans))
+    check("and the shipped effect records are still untouched", 
+          not any(int(c["d"]) in (67, 74) and c["type"] == 102
+                  for _i, _r in enumerate(_bfx)
+                  if _i in (67, 74)
+                  for c in _r["commands"]),
+          "a shipped effect grew a ban")
+    check("the bundle's shared effects were cloned, not written into",
+          len(_b_man.get("shared_effects_cloned") or []) == 2,
+          str(_b_man.get("shared_effects_cloned")))
+
     print("=== D. every impossible group is refused in Chinese")
     bad = [
         ("one technology", {"intent": "tech.toggle_group", "techs": [22]}),

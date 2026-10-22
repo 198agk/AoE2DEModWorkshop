@@ -2750,6 +2750,126 @@ class Toolkit(object):
                 w for w in _emitter_warnings if w not in _rep_warnings]
         return man
 
+    def _group_dat_half(self, members, kind, base_raw=None, base_stats=None):
+        """Append one `type 102` ban per member pair onto ONE `.dat` stream.
+
+        Returns ``(stats_or_None, commands_added, shared_effects_cloned)``.
+
+        This is the half that makes an exclusive group DO something.  Measured
+        2026-10-22 in game: a group written as `linkedTechs.json` alone draws the
+        red cross but does not stop the second technology from being researched
+        (user: 「不变灰」 then 「研究后依旧能接着研究第二个」); adding these commands
+        makes the loser disappear from the panel.  All 16 shipped
+        MutuallyExclusive/Toggleable groups carry them, and the 4 Cycle groups do
+        not -- a Cycle's exclusion is the file order itself, so `kind` decides
+        whether there is anything to do at all.
+
+        It lives in one function because the BUNDLE path had no copy of it: on
+        2026-10-23 `build_bundle([villager hp, group])` shipped `linkedTechs.json`
+        with no `type 102` anywhere and reported `commands_added: None`, while the
+        one-sentence path wrote the bans correctly.  Two sentences silently doing
+        less than one is the worst shape a defect can take here, so both callers
+        now call this.
+
+        ``base_raw``/``base_stats`` exist for the bundle: its `.dat` half has to
+        land on the stream every earlier stage produced, not on the one on disk.
+        Appending an effect grows the stream, and the writer replays the raw
+        bytes it did not touch, so every byte after the effects section shifts
+        correctly.
+        """
+        wants_dat = kind in ("MutuallyExclusive", "Toggleable")
+        if not wants_dat:
+            return None, 0, []
+
+        if base_stats is None:
+            raw = self._raw if base_raw is None else base_raw
+            p = P.Parser(raw)
+            with contextlib.redirect_stdout(io.StringIO()):
+                p.parse()
+            base_stats = p.stats
+        else:
+            raw = self._raw if base_raw is None else base_raw
+
+        stats = dict(base_stats)
+        stats["effects"] = [dict(e) for e in (base_stats.get("effects") or ())]
+        # `techs` too: re-pointing a member at a cloned effect must not reach into
+        # the session model, and a later bundle step would then see the copy as if
+        # it were the file.
+        stats["techs"] = [dict(t) for t in (base_stats.get("techs") or ())]
+
+        recs = stats["techs"]
+        # An effect record can be SHARED by several technologies.  1,510 shipped
+        # techs sit on only 1,014 effects: 37 effects are shared, and 115 techs
+        # share one -- typically a civilization bonus riding on the generic
+        # technology (effect 67 belongs to both `Forging` and Khitans'
+        # `C-Bonus, Double Forging`; effect 74 to `Scale Mail Armor` and Romans'
+        # `C-Bonus, Double Scale Mail`).  Appending a `type 102` to a shared effect
+        # therefore greys a technology out for players who never asked for the
+        # group -- measured 2026-10-22 on v47 itself, where the British test
+        # looked perfect and Khitans lost a bonus.  So a shared effect is CLONED
+        # and the member re-pointed at the copy.
+        co_tenants = {}
+        for _tid, _rec in enumerate(recs):
+            _e = _rec.get("effect_id")
+            if isinstance(_e, int) and _e >= 0:
+                co_tenants.setdefault(_e, []).append(_tid)
+
+        commands_added = 0
+        cloned = []
+        for tid in members:
+            eid = recs[tid].get("effect_id") if tid < len(recs) else None
+            if eid is None or eid < 0 or eid >= len(stats["effects"]):
+                raise C.IntentError(
+                    "「%s」没有效果记录，没法写「与其它几项互斥」这一半；"
+                    "只写 JSON 的话游戏里不会有任何变化。"
+                    % self.describe(tid, "tech").get("name"))
+            cmds = list(stats["effects"][eid].get("commands") or ())
+            added_here = 0
+            for other in members:
+                # A MutuallyExclusive member bans ITSELF as well.  Measured
+                # 2026-10-23 over the shipped file: 13 of the 14
+                # MutuallyExclusive groups do that (26 of their 29 members), and
+                # both Toggleable groups do not.  The difference is the difference
+                # the two words promise: banning yourself takes the chosen
+                # technology out of the tree, so you cannot come back and pick the
+                # other one -- a one-way choice.  With only the siblings banned,
+                # the losers stay researchable and the choice can be re-toggled,
+                # which is what `Toggleable` means.
+                if other == tid and kind == "MutuallyExclusive":
+                    pass
+                elif other == tid:
+                    continue
+                cmd = (102, -1, -1, -1, float(other))
+                if cmd not in cmds:
+                    cmds.append(cmd)
+                    added_here += 1
+            if not added_here:
+                continue
+            others = [o for o in co_tenants.get(eid, []) if o != tid]
+            if others:
+                # Snapshot the OLD owner before re-pointing.  `recs` aliases
+                # `stats["techs"]`, so reading it afterwards returns the number
+                # just written -- measured 2026-10-23: a bundle reported
+                # `from: 1500, to: 1500` for a cloned effect, i.e. "moved from
+                # where it already is", which is exactly the kind of number a
+                # player would read as "nothing happened".
+                _from_eid = eid
+                stats["effects"].append({"name": "NewEffect%d" % tid,
+                                         "commands": cmds, "_new": True})
+                new_eid = len(stats["effects"]) - 1
+                stats["techs"][tid] = dict(stats["techs"][tid])
+                stats["techs"][tid]["effect_id"] = new_eid
+                cloned.append({"tech": tid, "from": _from_eid,
+                               "to": new_eid, "would_have_hit": others})
+            else:
+                stats["effects"][eid] = dict(stats["effects"][eid])
+                stats["effects"][eid]["commands"] = cmds
+            commands_added += added_here
+
+        if not commands_added:
+            return None, 0, []
+        return stats, commands_added, cloned
+
     def _build_toggle_group(self, r, out_dir, title=None, author="",
                             description="", thumbnail=None, overwrite=False):
         """Write ``linkedTechs.json`` with one more group in it.
@@ -2811,79 +2931,23 @@ class Toolkit(object):
         # written as JSON alone did NOT grey the second technology out (user:
         # 「不变灰」).  Writing only the label would ship a group that looks
         # right in a diff and does nothing on screen.
+        #
+        # The recipe itself lives in `_group_dat_half` because the BUNDLE path
+        # needed the same thing and did not have it: on 2026-10-23 a bundle of
+        # [villager hp, group] shipped `linkedTechs.json` with no `type 102`
+        # anywhere and reported `commands_added: None`.  Two sentences in one
+        # request produced a silent no-op that one sentence did not.  One
+        # recipe, called from both places, is the only shape where that cannot
+        # happen again.
         members = [m.id for m in r.members]
         kind = r.raw.get("type") or "MutuallyExclusive"
         wants_dat = kind in ("MutuallyExclusive", "Toggleable")
-        stats = None
-        commands_added = 0
-        shared_effects_cloned = []
-        if wants_dat:
-            stats = dict(self._stats)
-            stats["effects"] = [dict(e) for e in self._stats["effects"]]
-            # `techs` too: re-pointing a member at a cloned effect must not
-            # reach into the session model, and a later bundle step would then
-            # see the copy as if it were the file.
-            stats["techs"] = [dict(t) for t in (self._stats.get("techs") or ())]
-            recs = self._tech_records()
-            # An effect record can be SHARED by several technologies.  1,510
-            # shipped techs sit on only 1,014 effects: 37 effects are shared, and
-            # 115 techs share one -- typically a civilization bonus riding on the
-            # generic technology (effect 67 belongs to both `Forging` and
-            # Khitans' `C-Bonus, Double Forging`; effect 74 to `Scale Mail Armor`
-            # and Romans' `C-Bonus, Double Scale Mail`).  Appending a `type 102`
-            # to a shared effect therefore greys a technology out for players who
-            # never asked for the group -- measured 2026-10-22 on v47 itself,
-            # where the British test looked perfect and Khitans lost a bonus.
-            # So a shared effect is CLONED and the member re-pointed at the copy.
-            co_tenants = {}
-            for _tid, _rec in enumerate(recs):
-                _e = _rec.get("effect_id")
-                if isinstance(_e, int) and _e >= 0:
-                    co_tenants.setdefault(_e, []).append(_tid)
-            for tid in members:
-                eid = recs[tid].get("effect_id") if tid < len(recs) else None
-                if eid is None or eid < 0 or eid >= len(stats["effects"]):
-                    raise C.IntentError(
-                        "「%s」没有效果记录，没法写「与其它几项互斥」这一半；"
-                        "只写 JSON 的话游戏里不会有任何变化。" % self.describe(tid, "tech").get("name"))
-                cmds = list(stats["effects"][eid].get("commands") or ())
-                added_here = 0
-                for other in members:
-                    # A MutuallyExclusive member bans ITSELF as well.  Measured
-                    # 2026-10-23 over the shipped file: 13 of the 14
-                    # MutuallyExclusive groups do that (26 of their 29 members),
-                    # and both Toggleable groups do not.  The difference is the
-                    # difference the two words promise: banning yourself takes
-                    # the chosen technology out of the tree, so you cannot come
-                    # back and pick the other one -- a one-way choice.  With
-                    # only the siblings banned, the losers stay researchable and
-                    # the choice can be re-toggled, which is what `Toggleable`
-                    # means and is why the shipped Toggleable pair (1202/1203/
-                    # 1204) can be flipped repeatedly.
-                    if other == tid and kind == "MutuallyExclusive":
-                        pass
-                    elif other == tid:
-                        continue
-                    cmd = (102, -1, -1, -1, float(other))
-                    if cmd not in cmds:
-                        cmds.append(cmd)
-                        added_here += 1
-                if not added_here:
-                    continue
-                others = [o for o in co_tenants.get(eid, []) if o != tid]
-                if others:
-                    stats["effects"].append({"name": "NewEffect%d" % tid,
-                                             "commands": cmds, "_new": True})
-                    eid = len(stats["effects"]) - 1
-                    stats["techs"][tid] = dict(stats["techs"][tid])
-                    stats["techs"][tid]["effect_id"] = eid
-                    shared_effects_cloned.append(
-                        {"tech": tid, "from": recs[tid].get("effect_id"),
-                         "to": eid, "would_have_hit": others})
-                else:
-                    stats["effects"][eid] = dict(stats["effects"][eid])
-                    stats["effects"][eid]["commands"] = cmds
-                commands_added += added_here
+        # `base_stats` by KEYWORD: the third positional is `base_raw`, and
+        # passing the model there made the helper re-parse a dict as if it were
+        # the 93 MB stream (KeyError: slice(0, 8, None)).  Measured on the first
+        # run after the extraction.
+        stats, commands_added, shared_effects_cloned = self._group_dat_half(
+            members, kind, base_stats=self._stats)
 
         files = LT.emit_files(doc, style)
         rel = list(files.keys())[0]
@@ -4141,6 +4205,14 @@ class Toolkit(object):
                     linked_refusals.append({"description": n["resolved"],
                                             "reason": n["reason"]})
 
+        # Which group sentences will ALSO write `.dat` bytes.  Asked here rather
+        # than at build time because the preview's `changes_dat` is one of the
+        # numbers a player reads: saying False and then shipping a 93 MB edit is
+        # the "preview lies, build does more" defect this project keeps finding.
+        _group_dat_groups = [n for n in linked
+                             if (n.get("type") or "MutuallyExclusive")
+                             in ("MutuallyExclusive", "Toggleable")]
+
         # The availability sentences ALSO have a `.dat` half.  Counting it in the
         # preview is not optional: `changes_dat` used to be `bool(dat_list)`, so a
         # bundle whose only `.dat` sentence was an unrelated villager edit reported
@@ -4372,10 +4444,17 @@ class Toolkit(object):
             # is true for it too; the carrier flag is its negation only when NOTHING
             # wrote `.dat` bytes.  A preview that omitted any of this would be the
             # recurring defect class: "preview says one thing, build produces another".
-            "changes_dat": bool(dat_list) or bool(_halves) or bool(rename_edits),
+            # A group sentence is NOT label-only for the two kinds that ship their
+            # exclusion in `.dat`: it appends a `type 102` per member, so the
+            # bundle rewrites the 93 MB stream and the `.dat` in the mod is an
+            # EDIT, not a carrier.  A Cycle group really is label-only, which is
+            # why this is a per-group question and not `bool(linked_list)`.
+            "changes_dat": (bool(dat_list) or bool(_halves) or bool(rename_edits)
+                            or bool(_group_dat_groups)),
             "dat_is_carrier": ((bool(js_list) or bool(linked_list))
                                and not dat_list and not _halves
-                               and not rename_edits),
+                               and not rename_edits
+                               and not _group_dat_groups),
             # NOT `... or sld_list`: the COPY model ships loose `.sld` files and no
             # `.dat` at all, so listing it here would promise the emitter a file
             # that is not in the request.  The RENAME model is the opposite -- it
@@ -4616,6 +4695,50 @@ class Toolkit(object):
                 _rename_changed = sum(int(n.get("renamed") or 0)
                                       for n in rename_notes)
 
+        # The group sentences' `.dat` half, folded LAST for the same reason the
+        # rename model is: appending an effect record moves every byte after the
+        # effects section, so it has to happen on the stream that will actually be
+        # shipped rather than on one an earlier stage has already outgrown.
+        #
+        # This step had no bundle equivalent until 2026-10-23.  `build_bundle`
+        # with [villager hp, group] shipped `linkedTechs.json` and NOT ONE
+        # `type 102` command -- the second sentence of a two-sentence request did
+        # less than the same sentence alone, and nothing in the manifest said so
+        # (`commands_added` was `None`).  Measured in game on 2026-10-22: a group
+        # with only the JSON label draws the red cross and still lets the player
+        # study the sibling, so that silent no-op looked exactly like success.
+        group_dat_reps = []
+        for n in linked_notes:
+            if not n.get("ok"):
+                continue
+            _kind = n.get("type") or "MutuallyExclusive"
+            _members = [m["id"] for m in (n.get("members") or ())]
+            _base = dat_bytes if dat_bytes is not None else data
+            # `base_stats=None` re-parses `_base`, which is deliberate: the
+            # rename stage above may have moved bytes, and a model derived from
+            # the pre-rename stream would address the wrong records.
+            _stats, _added, _cloned = self._group_dat_half(_members, _kind,
+                                                           base_raw=_base)
+            n["commands_added"] = _added
+            n["shared_effects_cloned"] = _cloned
+            n["dat_half"] = ("written" if _added else
+                             ("not_needed" if _kind == "Cycle" else "label_only"))
+            group_dat_reps.append({"description": n.get("resolved"),
+                                   "ok": bool(_added),
+                                   "dat_half": n["dat_half"],
+                                   "commands_added": _added,
+                                   "shared_effects_cloned": _cloned})
+            if _stats is not None and _added:
+                _bytes, _wrep = W.serialize_dat(_stats, raw=_base)
+                if _wrep.get("raw_consumed") != len(_base):
+                    # The writer walked the raw stream to a different place than
+                    # it started, so the file it produced is not this stream plus
+                    # one command -- refuse rather than ship it.
+                    raise C.IntentError(
+                        "写完以后 .dat 的读取位置对不上原来的文件（%s / %s），"
+                        "所以这份不改了" % (_wrep.get("raw_consumed"), len(_base)))
+                dat_bytes = _bytes
+
         info = E.make_info(
             title or (" + ".join(str(d) for d in
                                  [r.describe() for r in resolved_list] if d)[:80]
@@ -4663,9 +4786,21 @@ class Toolkit(object):
         man["linked_refusals"] = [{"description": n["resolved"],
                                    "reason": n["reason"]}
                                   for n in linked_notes if not n.get("ok")]
+        # The groups' own `.dat` half, reported the way the single-sentence path
+        # reports it.  Before 2026-10-23 a bundle group shipped a label with no
+        # bans and said nothing: `commands_added` was absent, and `dat_half` held
+        # only the availability halves, so a caller reading either would see a
+        # clean build.  The numbers a player can check belong here.
+        man["group_dat_half"] = group_dat_reps
+        man["commands_added"] = sum(int(x.get("commands_added") or 0)
+                                    for x in group_dat_reps)
+        man["shared_effects_cloned"] = [c for x in group_dat_reps
+                                        for c in (x.get("shared_effects_cloned")
+                                                  or ())]
         man["edits"] = (len(edits) + man["dat_half_edit_count"]
                         + len(sprite_files) + _rename_changed + paint_files
-                        + 2 * len(new_notes) + len(tech_notes))
+                        + 2 * len(new_notes) + len(tech_notes)
+                        + man["commands_added"])
         man["edit_count"] = man["edits"]
         man["dat_half"] = dat_half_reps
         man["civs_edited"] = civs_edited
