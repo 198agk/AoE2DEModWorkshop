@@ -396,13 +396,53 @@ def _load_schema():
     return C.load_schema()
 
 
+def _ships_dat(tk, m):
+    """Does this installed mod carry a whole `empires2_x2_p1.dat`?
+
+    A match loads exactly ONE data mod (measured 2026-10-18: `rename` is a data
+    mod, one per match), so a player looking at a list of twenty needs to see
+    which of them are competing for that single place.  Without this the screen
+    says "installed" and the game quietly uses somebody else's data.
+
+    The file itself is the only honest test: `info.json` carries no flag for it,
+    and a mod can be a data mod by carrying a `.dat` without ever touching a
+    unit.  One `os.path.isfile` per mod is cheap next to parsing 93 MB.
+    """
+    path = m.get("path")
+    if not path or not m.get("exists"):
+        return False
+    rel = os.path.join("resources", "_common", "dat", "empires2_x2_p1.dat")
+    try:
+        return os.path.isfile(os.path.join(path, rel))
+    except OSError:
+        return False
+
+
 def _mods_brief(tk):
-    """Mods, with the fields a screen shows and nothing that leaks a path."""
+    """Mods, with the fields a screen shows and nothing that leaks a path.
+
+    `ships_dat` and `dat_rank` exist because the one thing a player cannot see
+    anywhere else is WHICH mod the next match will actually load.  The game
+    hides that in a dropdown on the create-game screen, and the page used to
+    point at the mods screen, which has no such dropdown.
+    """
+    rows = tk.mods()
     out = []
-    for m in tk.mods():
+    for m in rows:
         out.append({"name": m.get("name"), "title": m.get("title") or m.get("name"),
                     "enabled": bool(m.get("enabled")), "kind": m.get("kind"),
-                    "priority": m.get("priority")})
+                    "priority": m.get("priority"),
+                    "ships_dat": _ships_dat(tk, m)})
+    # Among the ENABLED data mods, which one wins is decided by the game, not by
+    # us: the highest priority.  Saying "13 compete" without saying which one is
+    # in front would tell the player there is a problem and hide the answer.
+    live = [r for r in out if r["ships_dat"] and r["enabled"]]
+    live.sort(key=lambda r: -(r.get("priority") or 0))
+    for i, r in enumerate(live):
+        r["dat_rank"] = i + 1
+    for r in out:
+        r.setdefault("dat_rank", None)
+        r["dat_competing"] = len(live)
     return out
 
 

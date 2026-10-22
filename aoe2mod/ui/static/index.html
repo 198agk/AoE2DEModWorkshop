@@ -386,6 +386,26 @@ function renderMods(mods) {
     const nm = el("div", "nm" + (String(m.name || "").startsWith("dsh ") ? " own" : ""),
                   m.title || m.name);
     nm.title = m.name + (m.priority != null ? "  · 顺序 " + m.priority : "");
+    // A match loads exactly ONE data mod, and nothing else on this screen says
+    // which one will win.  The game decides by priority, so print the rank
+    // among the enabled data mods -- "13 compete" without "yours is #4" tells
+    // the player there is a problem and hides the answer.
+    if (m.ships_dat) {
+      const badge = el("span", "stat");
+      if (m.dat_rank) {
+        badge.textContent = m.dat_rank === 1
+          ? "数据模组 · 排第 1（下一局就是它）"
+          : "数据模组 · 排第 " + m.dat_rank + "（前面还有 " + (m.dat_rank - 1) + " 个）";
+      } else {
+        badge.textContent = "数据模组 · 没启用";
+      }
+      badge.title = "一局只能加载一个数据模组，本机已启用 " +
+                    (m.dat_competing || 0) + " 个。" +
+                    "开局前在「创建游戏」界面的「数据模组：」下拉框里选它。";
+      const line = el("div", "hint");
+      line.appendChild(badge);
+      nm.appendChild(line);
+    }
     const sw = el("button", "switch" + (m.enabled ? " on" : ""));
     sw.title = m.enabled ? "已启用（点击停用）" : "未启用（点击启用）";
     sw.onclick = async () => {
@@ -393,6 +413,11 @@ function renderMods(mods) {
         const r = await api("/api/mod", {name: m.name, enabled: !m.enabled});
         renderMods(r.mods);
         toast((m.enabled ? "已停用 " : "已启用 ") + (m.title || m.name), "ok");
+        // Toggling while the game runs is the one case where the list on screen
+        // and the list the game will use can differ: the game rewrites
+        // mod-status.json when it exits, from the list it still remembers.  The
+        // server already computed this and the page used to throw it away.
+        if (r.running_warning) toast(r.running_warning, "bad");
       } catch (e) { toast("改不动：" + e.message, "bad"); }
     };
     row.appendChild(nm);
@@ -721,6 +746,13 @@ function renderClauses(clauses) {
       // `unit.sprite` refusals arrived without a description; they do not.
       const p = c.preview && c.preview.ok ? c.preview.plan : null;
       body.appendChild(el("div", "main", p && p.description ? p.description : "能读懂"));
+      // The reader says what it had to assume: "「弓箭手」不是出厂单位名，按最接近的
+      // 「复合弓箭手」读".  Those sentences used to be dropped on the floor, so the
+      // preview said 复合弓箭手 with no hint that the player had asked for
+      // something else -- a confident answer to a question nobody asked.
+      for (const nt of (c.notes || [])) {
+        body.appendChild(el("div", "hint", nt));
+      }
       // A plan can be understood AND refused (`editable: false`) -- a donor that
       // no building trains, a tech with no cost slot.  The refusal reason is the
       // only sentence that says why, and the "做不了" badge below does not carry
@@ -847,9 +879,20 @@ async function doBuild() {
     const r = await api("/api/mods");
     renderMods(r.mods);
     const note = el("div", "hint",
-      "装好了。数据模组要开局前在游戏里的模组界面选中它，进入对局才真正加载。");
+      "装好了。开局前在「创建游戏」界面的「数据模组：」下拉框里选它 —— "
+      + "注意不是「模组」界面，那个界面没有这个下拉框。进入对局才真正加载。");
     $("#buildnote").innerHTML = "";
     $("#buildnote").appendChild(note);
+    // A build can finish and still fail its own verification (`verification.ok`
+    // is the only safe signal in the manifest).  The page used to say "已生成并
+    // 安装" no matter what, which is the worst shape: the player is told a
+    // build landed while the bytes were not what the preview promised.
+    const ver = man.verification || {};
+    if (ver.ok === false) {
+      $("#buildnote").appendChild(el("div", "err",
+        "装上了，但这次构建自己没通过校验 —— 先别指望它对："
+        + (ver.why_not_dat || ver.formatting_note || "manifest 里 verification.ok 是 false")));
+    }
     // A trimmed title is not an error -- but the player should be told, because
     // the mod list will show a shorter name than the box held a second ago.
     if (shortened) {

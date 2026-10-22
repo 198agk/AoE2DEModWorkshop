@@ -995,7 +995,13 @@ class Resolved(object):
             # Both cost intents address their target by RESOURCE, so the
             # sentence must name it: "织布机 成本 +1" does not tell the user
             # whether they just changed food or gold.
-            what = "成本 %s" % self.resource
+            #
+            # The raw enum name must not reach the screen: this line read
+            # "伐木场 成本 wood -10" because the escape hatch that translates a
+            # resource was only wired into the amount, not into this half.
+            # `_label_zh` puts the Chinese resource in front, which is how the
+            # language orders it ("木材成本", not "成本木材").
+            what = _label_zh("成本 " + str(self.resource), self.resource)
         elif it in ("unit.availability", "tech.availability"):
             # Its "what" is the entity -- the civilization is already the subject
             # of the sentence, so this half has to be the object.  Without this
@@ -2354,6 +2360,7 @@ _FIELD_ZH = {
 #: label, by contrast, is "成本 wood" -- Chinese scaffold plus a raw enum name.
 _RESOURCE_ZH = {
     "food": "食物", "wood": "木材", "gold": "黄金", "stone": "石头",
+    "population": "人口", "pop": "人口",
     "build_time": "建造时间", "research_time": "研究时间",
     "trade_goods": "贸易品", "relics": "圣物",
 }

@@ -262,6 +262,14 @@ SUITES = [
     # build did not write.
     r"_probe\test_new_tech.py",
     r"_probe\test_tech_create.py",
+    # What a newcomer reads.  Six defects shared one shape: the bytes were right
+    # and the SENTENCE was wrong (a raw "wood" in a Chinese preview, a reader's
+    # assumption dropped on the floor, no way to tell which of twenty mods the
+    # next match loads, "已生成并安装" printed without reading verification.ok,
+    # an instruction pointing at a screen that has no data-mod dropdown, and two
+    # English refusals on the way in).  None of them could turn any other nail
+    # red, which is exactly why they shipped.
+    r"_probe\test_newcomer_wall.py",
     # The registry itself.  Ten probes rotted unrun before anyone noticed, and
     # the reason nobody noticed is that "is every test reachable?" was a question
     # only a human could answer.  This asks it mechanically, including the four

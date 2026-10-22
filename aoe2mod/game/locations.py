@@ -150,7 +150,9 @@ def find_game_root(explicit=None, search=()):
             if looks_like_game_root(cand):
                 return cand
     raise FileNotFoundError(
-        "no AoE2 DE install found; looked in: " + "; ".join(tried))
+        "找不到《帝国时代 2 决定版》的安装目录。找过这些地方：\n  "
+        + "\n  ".join(tried)
+        + "\n如果装在别的地方，启动时加 --game-root <路径> 指给它。")
 
 
 def steam_root():
@@ -288,7 +290,12 @@ def find_profile_root(explicit=None):
     cand = os.path.join(home, "Games", "Age of Empires 2 DE")
     if os.path.isdir(cand):
         return cand
-    raise FileNotFoundError("no AoE2 DE profile folder at %r" % cand)
+    # Reached on a machine where the game is installed but has never been
+    # started.  This sentence is the FIRST thing such a player reads on the
+    # screen, so it says what to do next rather than naming a path in English.
+    raise FileNotFoundError(
+        "还没有游戏存档目录（%r）。先启动一次《帝国时代 2 决定版》，"
+        "让它建好存档，再回来。" % cand)
 
 
 def mods_root(profile_root, kind="subscribed"):
@@ -407,8 +414,11 @@ def pick_account(profile_root, explicit=None):
         return explicit
     candidates = find_accounts(profile_root)
     if not candidates:
+        # Reached when the game has been started but the mod manager never
+        # opened: the account folder exists, the `mods` folder under it does not.
         raise FileNotFoundError(
-            "no <profile>/<account>/mods folder under %r" % profile_root)
+            "在 %r 下面找不到任何带 mods 目录的账号。先在游戏里打开一次"
+            "「模组」界面（订阅或安装任意一个模组都行），它会把目录建好。" % profile_root)
 
     def score(acc):
         has_status = os.path.exists(status_path(acc))

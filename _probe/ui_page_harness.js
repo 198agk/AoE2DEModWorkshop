@@ -333,6 +333,18 @@ let AUTO_SENT = null;
 // is a silent half-done job.
 let DROPPED = [];
 
+// What /api/mods answers.  Two mods, one of which carries a whole .dat and the
+// other of which does not, because the badge the page draws is "this one competes
+// for the single data-mod slot" -- and a stub where every mod looked the same
+// would let the page print that badge on the wrong row.
+let MODS = [
+  { name: "dsh mine", title: "dsh 我的数据模组", enabled: true, kind: "local",
+    priority: 3, ships_dat: true, dat_rank: 1, dat_competing: 1 },
+  { name: "someone else", title: "别人做的 UI 模组", enabled: true,
+    kind: "subscribed", priority: 9, ships_dat: false, dat_rank: null,
+    dat_competing: 1 },
+];
+
 // What the parse route answers.  Most sections want the two-edit answer; the
 // new-unit section swaps in a creating sentence, because whether the box picker
 // appears is decided by the PLAN, and only a real creating sentence has one.
@@ -403,6 +415,15 @@ const sandbox = {
         running_warning: RUNNING ? RUNNING_TEXT : null,
       } }) };
     }
+    // The mods route: the switch POSTs here, and the answer carries the
+    // game-running warning the page must not throw away.  A stub without
+    // `running_warning` would make "toggling while the game runs says so"
+    // untestable -- the page would read `undefined` and look fine.
+    if (url.indexOf("/api/mod") === 0) {
+      return { json: async () => ({ ok: true, mods: MODS,
+        game_running: RUNNING,
+        running_warning: RUNNING ? RUNNING_TEXT : null }) };
+    }
     return { json: async () => ({ ok: true, version: 54, civs: new Array(63),
       intents: [], mods: [], manifest: { mod_dir: "/tmp/x", info: {} } }) };
   },
@@ -418,6 +439,7 @@ const fn = new Function(
   "setPickKind: setPickKind, PICK: () => PICK, PINS: () => PINS, " +
   "dropOnSay: dropOnSay, DRAGGING: () => DRAGGING, " +
   "checkUpdates: checkUpdates, rebuildAll: rebuildAll, " +
+  "renderMods: renderMods, " +
   "setLast: (v) => { LAST = v; }};");
 const page = fn(sandbox.document, sandbox.fetch, sandbox.setTimeout,
                 sandbox.clearTimeout, sandbox.console, sandbox.JSON);
@@ -707,9 +729,66 @@ function pickChecks() {
       && n.className.indexOf("cell") >= 0);
     check("...and nothing of the previous list survives the switch",
           cells.length === 1, String(cells.length));
-    return updateChecks();
+    return modsChecks();
   }).catch((e) => { fails.push("the picker threw: " + e.message);
                     console.log("FAIL the picker threw :: " + e.stack); finish(); });
+}
+
+// ---- the mod list says which mod the next match will load ------------------
+// The single hardest thing for a newcomer: a match loads exactly ONE data mod,
+// the game picks it by priority, and none of that is visible anywhere except a
+// dropdown on the create-game screen.  A list that says "installed" for twenty
+// mods tells the player nothing about whether their edit is in the next game.
+function modsChecks() {
+  page.renderMods(MODS);
+  const rows = (ids.mods.children || []).filter((n) => n.className === "mod");
+  check("one row per installed mod", rows.length === 2, String(rows.length));
+  const all = walk(ids.mods, []);
+  const labels = all.map((n) => n.textContent || "").join(" | ");
+  check("the data mod says it wins the slot, and by what rank",
+        labels.indexOf("数据模组 · 排第 1") >= 0, labels);
+  check("and says the next match is the one that uses it",
+        labels.indexOf("下一局就是它") >= 0, labels);
+  check("a mod that is not a data mod gets no such badge",
+        labels.indexOf("别人做的 UI 模组") >= 0
+        && labels.indexOf("数据模组 · 别的") < 0);
+  // A DISABLED data mod matters: it is in the folder, it looks installed, and the
+  // game will not use it.  Saying "排第 0" would be worse than saying nothing.
+  const off = [{ name: "dsh mine", title: "dsh 我的数据模组", enabled: false,
+                 kind: "local", priority: 3, ships_dat: true, dat_rank: null,
+                 dat_competing: 0 }];
+  page.renderMods(off);
+  check("a disabled data mod says it is not enabled, not a rank",
+        text(ids.mods).indexOf("数据模组 · 没启用") >= 0, text(ids.mods));
+
+  page.renderMods(MODS);
+  // Toggling while the game runs is the case where the list on screen and the
+  // list the game will use can differ.  The server computes the warning; the page
+  // used to throw it away and only say "已停用".
+  RUNNING = true;
+  const sw = (ids.mods.children || [])
+    .filter((n) => n.className === "mod")
+    .map((n) => (n.children || []).filter((c) => c.className
+      && c.className.indexOf("switch") === 0)[0])
+    .filter(Boolean)[0];
+  return Promise.resolve(sw && sw.onclick ? sw.onclick() : null).then(() => {
+    check("toggling a mod while the game runs repeats the warning",
+          text(ids.toast).indexOf("游戏正开着") >= 0, text(ids.toast));
+    // The other half: with the game closed the same route must be SILENT.  A
+    // warning that always shows is a warning nobody reads -- and the first version
+    // of this check asserted `true`, which tests nothing at all.
+    RUNNING = false;
+    const rows2 = (ids.mods.children || []).filter((n) => n.className === "mod");
+    const sw2 = rows2.length > 1
+      ? (rows2[1].children || []).filter((c) => c.className
+          && c.className.indexOf("switch") === 0)[0]
+      : null;
+    return Promise.resolve(sw2 && sw2.onclick ? sw2.onclick() : null);
+  }).then(() => {
+    check("and says nothing extra when the game is closed",
+          text(ids.toast).indexOf("游戏正开着") < 0, text(ids.toast));
+    return updateChecks();
+  });
 }
 
 // ---- drag a picture onto the sentence box ---------------------------------
