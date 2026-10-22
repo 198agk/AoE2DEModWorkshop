@@ -27,6 +27,8 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(HERE))
 
 from aoe2mod import api as A
+from aoe2mod.dat import locate as L
+from aoe2mod.dat import parser as P
 from aoe2mod.game import linkedtechs as LT
 from aoe2mod.semantic import index as SI
 from aoe2mod.ui import nl
@@ -214,6 +216,75 @@ def main():
     check("the file keeps the shipped file's line endings",
           not raw.count(b"\n") or raw.count(b"\r\n") == raw.count(b"\n"),
           "CRLF %d of %d" % (raw.count(b"\r\n"), raw.count(b"\n")))
+
+    # An effect record can be SHARED by several technologies: 1,510 shipped
+    # techs sit on 1,014 effects, 37 effects are shared, 115 techs share one --
+    # typically a civilization bonus riding on a generic technology (effect 67
+    # belongs to both `Forging` and Khitans' `C-Bonus, Double Forging`; effect
+    # 74 to `Scale Mail Armor` and Romans' `C-Bonus, Double Scale Mail`).
+    # Writing `type 102` into that record greys a technology out for players who
+    # never asked for a group.  Measured 2026-10-22 on v47 itself: the British
+    # test looked perfect while Khitans silently lost a bonus.  So a shared
+    # effect must be CLONED and the member re-pointed.
+    #
+    # The shipped effects are read from the session model BEFORE the build, and
+    # compared against the emitted file AFTER it: asserting the copy looks right
+    # says nothing about whether the original was left alone, and leaving the
+    # original alone is the whole point.
+    print("=== C2. a shared effect is cloned, never written into")
+    shipped_fx = tk._effect_records()   # list(1500) of {index,name,commands}
+    fx67_before = [(c["type"], c["a"], c["b"], c["c"], c["d"])
+                   for c in shipped_fx[67]["commands"]]
+    fx74_before = [(c["type"], c["a"], c["b"], c["c"], c["d"])
+                   for c in shipped_fx[74]["commands"]]
+    check("the shipped Forging effect has no type 102 to begin with",
+          all(c[0] != 102 for c in fx67_before), str(fx67_before))
+
+    shared_man = tk.build({"intent": "tech.toggle_group", "techs": [67, 74]},
+                          os.path.join(out_root, "shared"),
+                          title="dsh shared effect", author="dsh", overwrite=True)
+    cloned = shared_man.get("shared_effects_cloned") or []
+    check("both members were reported as cloned, with their co-tenants",
+          sorted((c["tech"], c["from"], c["to"], tuple(c["would_have_hit"]))
+                 for c in cloned)
+          == [(67, 67, 1500, (998,)), (74, 74, 1501, (889,))],
+          str(cloned))
+    shared_dat = os.path.join(os.path.join(out_root, "shared"),
+                              "resources", "_common", "dat", "empires2_x2_p1.dat")
+    check("the shared build wrote a .dat", os.path.isfile(shared_dat), shared_dat)
+    raw2, _how = P.load_dat(shared_dat)
+    _civs2, _cs2, gv2, tail2 = L.locate(raw2)
+    techs2 = L.locate_techs(raw2, tail2, gv2)
+    effs2, _st2 = L.locate_effects(raw2)
+    check("Forging was re-pointed at its own copy",
+          techs2[67]["effect_id"] == 1500, str(techs2[67]["effect_id"]))
+    check("Scale Mail Armor was re-pointed at its own copy",
+          techs2[74]["effect_id"] == 1501, str(techs2[74]["effect_id"]))
+    fx67_after = [(c["type"], c["a"], c["b"], c["c"], c["d"])
+                  for c in effs2[67]["commands"]]
+    fx74_after = [(c["type"], c["a"], c["b"], c["c"], c["d"])
+                  for c in effs2[74]["commands"]]
+    check("the shipped Forging effect came out unchanged, command for command",
+          fx67_after == fx67_before,
+          "%d vs %d commands" % (len(fx67_after), len(fx67_before)))
+    check("the shipped Scale Mail effect came out unchanged",
+          fx74_after == fx74_before,
+          "%d vs %d commands" % (len(fx74_after), len(fx74_before)))
+    check("so the Khitans bonus that shares effect 67 still gets all of it",
+          all(c[0] != 102 for c in fx67_after),
+          str([c for c in fx67_after if c[0] == 102]))
+    fx1500 = [(c["type"], c["a"], c["b"], c["c"], c["d"])
+              for c in effs2[1500]["commands"]]
+    fx1501 = [(c["type"], c["a"], c["b"], c["c"], c["d"])
+              for c in effs2[1501]["commands"]]
+    check("the copy carries Forging's whole original command list plus the ban",
+          fx1500[:len(fx67_before)] == fx67_before
+          and fx1500[len(fx67_before):] == [(102, -1, -1, -1, 74.0)],
+          str(fx1500[len(fx67_before):]))
+    check("the other copy carries Scale Mail's list plus its own ban",
+          fx1501[:len(fx74_before)] == fx74_before
+          and fx1501[len(fx74_before):] == [(102, -1, -1, -1, 67.0)],
+          str(fx1501[len(fx74_before):]))
 
     print("=== D. every impossible group is refused in Chinese")
     bad = [

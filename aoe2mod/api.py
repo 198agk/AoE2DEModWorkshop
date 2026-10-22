@@ -2811,10 +2811,30 @@ class Toolkit(object):
         wants_dat = kind in ("MutuallyExclusive", "Toggleable")
         stats = None
         commands_added = 0
+        shared_effects_cloned = []
         if wants_dat:
             stats = dict(self._stats)
             stats["effects"] = [dict(e) for e in self._stats["effects"]]
+            # `techs` too: re-pointing a member at a cloned effect must not
+            # reach into the session model, and a later bundle step would then
+            # see the copy as if it were the file.
+            stats["techs"] = [dict(t) for t in (self._stats.get("techs") or ())]
             recs = self._tech_records()
+            # An effect record can be SHARED by several technologies.  1,510
+            # shipped techs sit on only 1,014 effects: 37 effects are shared, and
+            # 115 techs share one -- typically a civilization bonus riding on the
+            # generic technology (effect 67 belongs to both `Forging` and
+            # Khitans' `C-Bonus, Double Forging`; effect 74 to `Scale Mail Armor`
+            # and Romans' `C-Bonus, Double Scale Mail`).  Appending a `type 102`
+            # to a shared effect therefore greys a technology out for players who
+            # never asked for the group -- measured 2026-10-22 on v47 itself,
+            # where the British test looked perfect and Khitans lost a bonus.
+            # So a shared effect is CLONED and the member re-pointed at the copy.
+            co_tenants = {}
+            for _tid, _rec in enumerate(recs):
+                _e = _rec.get("effect_id")
+                if isinstance(_e, int) and _e >= 0:
+                    co_tenants.setdefault(_e, []).append(_tid)
             for tid in members:
                 eid = recs[tid].get("effect_id") if tid < len(recs) else None
                 if eid is None or eid < 0 or eid >= len(stats["effects"]):
@@ -2822,15 +2842,30 @@ class Toolkit(object):
                         "「%s」没有效果记录，没法写「与其它几项互斥」这一半；"
                         "只写 JSON 的话游戏里不会有任何变化。" % self.describe(tid, "tech").get("name"))
                 cmds = list(stats["effects"][eid].get("commands") or ())
+                added_here = 0
                 for other in members:
                     if other == tid:
                         continue
                     cmd = (102, -1, -1, -1, float(other))
                     if cmd not in cmds:
                         cmds.append(cmd)
-                        commands_added += 1
-                stats["effects"][eid] = dict(stats["effects"][eid])
-                stats["effects"][eid]["commands"] = cmds
+                        added_here += 1
+                if not added_here:
+                    continue
+                others = [o for o in co_tenants.get(eid, []) if o != tid]
+                if others:
+                    stats["effects"].append({"name": "NewEffect%d" % tid,
+                                             "commands": cmds, "_new": True})
+                    eid = len(stats["effects"]) - 1
+                    stats["techs"][tid] = dict(stats["techs"][tid])
+                    stats["techs"][tid]["effect_id"] = eid
+                    shared_effects_cloned.append(
+                        {"tech": tid, "from": recs[tid].get("effect_id"),
+                         "to": eid, "would_have_hit": others})
+                else:
+                    stats["effects"][eid] = dict(stats["effects"][eid])
+                    stats["effects"][eid]["commands"] = cmds
+                commands_added += added_here
 
         files = LT.emit_files(doc, style)
         rel = list(files.keys())[0]
@@ -2868,6 +2903,7 @@ class Toolkit(object):
             "groups_after": len(groups_after),
             "every_previous_group_survived": not missing,
             "groups_added": len(added),
+            "shared_effects_cloned": shared_effects_cloned,
             "serializer_reproduces_the_shipped_file": (
                 on_disk is None or shipped_bytes == on_disk),
             "formatting_follows_the_shipped_file": bool(style.get("indent")),
@@ -2909,6 +2945,15 @@ class Toolkit(object):
                 "that the .dat in this mod is a byte-identical carrier, not an "
                 "edit: a Cycle group's exclusion is the file order itself, so "
                 "no `type 102` command is needed and `changes_dat` is False")
+        if shared_effects_cloned:
+            ver["proven"].append(
+                "%d member(s) sat on an effect record other technologies also "
+                "use, so the group was written to a CLONE and the member "
+                "re-pointed: %s"
+                % (len(shared_effects_cloned),
+                   "; ".join("tech %d effect %s -> %s (would have hit %s)"
+                             % (c["tech"], c["from"], c["to"], c["would_have_hit"])
+                             for c in shared_effects_cloned)))
         if ver["formatting_follows_the_shipped_file"]:
             ver["proven"].append(
                 "the file is written with the shipped file's own indentation "
@@ -2950,6 +2995,7 @@ class Toolkit(object):
         man["edit_count"] = 1
         man["dat_half"] = ver["dat_half"]
         man["commands_added"] = commands_added
+        man["shared_effects_cloned"] = shared_effects_cloned
         man["changes_dat"] = bool(commands_added)
         man["civs_edited"] = 0
         man["mod_contains_dat"] = bool(man.get("dat"))
