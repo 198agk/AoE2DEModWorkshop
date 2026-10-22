@@ -773,9 +773,19 @@ def write_civ(w, c):
         # adding a record possible at all -- `w.op(4*n)` replays the old bytes,
         # so one extra record shifted the whole tail by 3,009,349 bytes and the
         # result would not re-parse.
+        #
+        # Slots BEYOND the shipped array have no raw counterpart, so they are
+        # emitted without advancing the raw cursor (raw_len=0).  Writing them
+        # with i32 would advance rpos past the raw array and shift every later
+        # op() by 4 bytes per added slot -- measured: one extra slot produced
+        # 3,009,559 extra bytes and a stream that died in read_unit.
+        raw_n = c["unit_pointers_total"]
         w.i16(len(ptrs))
-        for v in ptrs:
-            w.i32(v)
+        for i, v in enumerate(ptrs):
+            if i < raw_n:
+                w.i32(v)
+            else:
+                w._emit(struct.pack("<i", v), "model", raw_len=0)
     for u in c["units"]:
         write_unit(w, u)
 

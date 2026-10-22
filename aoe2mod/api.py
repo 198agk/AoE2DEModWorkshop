@@ -27,6 +27,7 @@ from .game import civtechtrees as CT
 from .game import civnames as CN
 from .game import buildpanel as BP
 from .game import icons as IC
+from .game import linkedtechs as LT
 from .intent import availability as AV
 from .intent import compiler as C
 from .mod import emitter as E
@@ -1140,7 +1141,9 @@ class Toolkit(object):
                                  creation_string_id=creation_id,
                                  hp=r.raw.get("hp"),
                                  button=getattr(r, "button", None),
-                                 civs=self._civs)
+                                 civs=self._civs,
+                                 civ_zh=CN.chinese(self._civs[civ_index].get("name")
+                                                   or r.civ))
         data, rep = W.serialize_dat(stats, raw=self._raw)
         if rep.get("raw_consumed") != len(self._raw):
             raise C.IntentError(
@@ -1271,7 +1274,8 @@ class Toolkit(object):
                                          creation_string_id=creation_id,
                                          hp=r.raw.get("hp"),
                                          button=getattr(r, "button", None),
-                                         civs=civs)
+                                         civs=civs,
+                                         civ_zh=CN.chinese(civ_name))
             except (NU.NewUnitError, S.StringError) as exc:
                 refusals.append({"description": r.describe(), "reason": str(exc)})
                 continue
@@ -2328,6 +2332,152 @@ class Toolkit(object):
                 w for w in _emitter_warnings if w not in _rep_warnings]
         return man
 
+    def _build_toggle_group(self, r, out_dir, title=None, author="",
+                            description="", thumbnail=None, overwrite=False):
+        """Write ``linkedTechs.json`` with one more group in it.
+
+        Deliberately shaped like :meth:`_build_availability`, because the two
+        have the same hazard: both re-serialise a file the engine reads off
+        disk, and both must be able to prove the shipped file survives the
+        round trip.  So `shipped` is serialised from the UNEDITED document and
+        compared with the file on disk first -- a serializer that cannot
+        reproduce the input byte for byte means every later claim about "only
+        the new group changed" is unfounded.
+
+        No `.dat` is written, so no carrier is needed: `emit_json_mod` would
+        refuse to put a file under the dat directory without one, EXCEPT that
+        `linkedTechs.json` is not in the CRC table (measured: 6 of the dat JSON
+        files are, this one is not), so the mod may override it on its own.  The
+        v45 canary on 2026-10-22 proved a mod's copy of a dat-directory JSON is
+        honoured, which is the result this method's honesty boundary cites.
+        """
+        from .game import linkedtechs as LT
+        doc, note = LT.load(self.game_root)
+        shipped_groups = len(LT.groups(doc))
+        # The shipped file's OWN formatting is carried into the output.  Writing
+        # the same content in compact form would still replace the player's file
+        # on disk, so every line they or another mod ever added would show up as
+        # changed -- and this project's verification would warn on every build
+        # about a difference that is whitespace only.
+        on_disk = LT.shipped_bytes(self.game_root)
+        style = LT.detect_style(on_disk)
+        shipped_bytes = LT.serialize(doc, style)
+        on_disk_path = LT.path_for(self.game_root)
+
+        # Work on a copy taken BEFORE the edit: the verification below compares
+        # the edited document against this one, and comparing a document with
+        # itself would always pass.
+        import copy as _copy
+        before = _copy.deepcopy(doc)
+        # Preview through the same function `plan()` uses, so a group the
+        # preview refused cannot be written here.
+        try:
+            LT.add_group(doc, [m.id for m in r.members],
+                         comment=r.raw.get("comment") or "",
+                         kind=r.raw.get("type"))
+        except LT.LinkedTechError as exc:
+            raise C.IntentError(str(exc))
+
+        files = LT.emit_files(doc, style)
+        rel = list(files.keys())[0]
+        info = E.make_info(
+            title or LT.describe([m.display for m in r.members],
+                                 r.raw.get("type"), r.raw.get("comment") or ""),
+            author=author, description=description)
+        man = E.emit_json_mod(out_dir, files, info, thumbnail=thumbnail,
+                              base_dir=self.game_root, overwrite=overwrite)
+
+        # --- verification, from DISK --------------------------------------
+        emitted_path = os.path.join(out_dir, rel.replace("/", os.sep))
+        with open(emitted_path, "rb") as fh:
+            written = fh.read()
+        import json as _json
+        reparsed = _json.loads(written.decode("utf-8"))
+        groups_after = LT.groups(reparsed)
+        old_keys = [_json.dumps(g, sort_keys=True) for g in LT.groups(before)]
+        new_keys = [_json.dumps(g, sort_keys=True) for g in groups_after]
+        missing = [k for k in old_keys if k not in new_keys]
+        added = [g for g in groups_after
+                 if _json.dumps(g, sort_keys=True) not in old_keys]
+        ver = {
+            "emitted_path": emitted_path,
+            "emitted_bytes": len(written),
+            "emitted_matches_intended": written == files[rel],
+            "groups_before": shipped_groups,
+            "groups_after": len(groups_after),
+            "every_previous_group_survived": not missing,
+            "groups_added": len(added),
+            "serializer_reproduces_the_shipped_file": (
+                on_disk is None or shipped_bytes == on_disk),
+            "formatting_follows_the_shipped_file": bool(style.get("indent")),
+            # What the round trip CANNOT do, stated rather than left to a False
+            # that reads like a defect.  Measured: the shipped file has
+            # hand-written spacing (`"StartingTech" :  1215`) that no encoder
+            # reproduces, so byte equality is impossible by construction.
+            "formatting_note": (
+                "本工具按原文件的缩进与换行写出，但原文件有些冒号前后是手打的空格"
+                "（例如 \"StartingTech\" :  1215），那不是任何序列化器会产生的写法，"
+                "所以内容相同、空白可能不同。"),
+        }
+        ver["ok"] = bool(ver["emitted_matches_intended"]
+                         and ver["every_previous_group_survived"]
+                         and ver["groups_added"] == 1)
+        ver["proven"] = [
+            "the emitted file on disk equals the bytes handed to the emitter",
+            "the file re-parses and contains one more group than before",
+            "every group the player already had is still present with the same "
+            "content, key order and values",
+            # NOT "no .dat is included".  Measured: the emitter refuses to write
+            # `resources/_common/dat/` without the `.dat`, so this mod carries a
+            # byte-identical CARRIER.  Saying "no .dat" here was the same
+            # preview/build disagreement the manifest's `mod_contains_dat` would
+            # have contradicted one line later.
+            "that the .dat in this mod is a byte-identical carrier, not an edit: "
+            "`changes_dat` is False and the file exists only because the emitter "
+            "will not write the dat directory without it",
+        ]
+        if ver["formatting_follows_the_shipped_file"]:
+            ver["proven"].append(
+                "the file is written with the shipped file's own indentation "
+                "and line endings, so a diff shows the new group only")
+        if not ver["serializer_reproduces_the_shipped_file"]:
+            # Not a warning: this is a property of the shipped file, measured,
+            # and it cannot be fixed without inventing whitespace.  Say it once
+            # as a fact instead of warning on every build.
+            ver.setdefault("limits", []).append(
+                "原文件的空白无法逐字节复现（见 formatting_note）；内容与键序不变。")
+        # HONESTY BOUNDARY.  Measured, and the two halves are different facts:
+        #   * the SHIPPED groups are read -- Paphos' choice screen exists;
+        #   * a mod's replacement of this file IS honoured -- `dsh test v45`
+        #     (2026-10-22) put civilizations.json under a mod's dat directory and
+        #     all 63 names changed in game, in the same mod whose `.dat` canary
+        #     also took effect;
+        #   * a group ADDED by a mod has never been seen in game.  The file is
+        #     read; whether a new record in it becomes a choice on screen is
+        #     what an experiment has to answer, and until one has, this may not
+        #     say the player will see a choice.
+        ver["not_proven"] = [
+            "that a group ADDED by a mod becomes a visible choice in game "
+            "(the file is read -- v45 proved a mod's copy is honoured -- but no "
+            "run has yet shown a new group on screen)"]
+        man["verification"] = ver
+        man["shape"] = "linked_group"
+        man["group_type"] = r.raw.get("type")
+        man["members"] = [{"id": m.id, "name": m.display} for m in r.members]
+        man["member_count"] = len(r.members)
+        man["file_state"] = note
+        man["groups_before"] = shipped_groups
+        man["groups_after"] = len(groups_after)
+        man["edit_count"] = 1
+        man["changes_dat"] = False
+        man["civs_edited"] = 0
+        man["mod_contains_dat"] = bool(man.get("dat"))
+        man["dat_is_carrier"] = bool(man.get("dat")) and not man["changes_dat"]
+        man["resolved"] = LT.describe([m.display for m in r.members],
+                                      r.raw.get("type"),
+                                      r.raw.get("comment") or "")
+        return man
+
     # ---- stage 2: plan, then build ---------------------------------------
     def plan(self, intent):
         """Validate an intent WITHOUT touching any bytes.
@@ -2352,6 +2502,8 @@ class Toolkit(object):
             return self._plan_new_unit(r, base)
         if self._strategy(r.raw) == "repaint_sld":
             return self._plan_paint(r, base)
+        if self._strategy(r.raw) == "linked_techs_json":
+            return self._plan_toggle_group(r, base)
         if r.raw.get("intent", "").endswith(".availability"):
             return self._plan_availability(r, base)
         if r.kind == "tech":
@@ -2714,6 +2866,14 @@ class Toolkit(object):
             return self._build_paint(r, out_dir, title=title, author=author,
                                      description=description,
                                      thumbnail=thumbnail, overwrite=overwrite)
+        if strategy == "linked_techs_json":
+            intents_schema, bindings = C.load_schema()
+            r = C.resolve(intent, intents_schema, bindings=bindings)
+            return self._build_toggle_group(r, out_dir, title=title,
+                                            author=author,
+                                            description=description,
+                                            thumbnail=thumbnail,
+                                            overwrite=overwrite)
         if strategy != "in_place_patch":
             raise C.IntentError(
                 "intent %r declares compile strategy %r, which this build does "
@@ -2760,9 +2920,65 @@ class Toolkit(object):
         man["civs_edited"] = rep["civs_edited"]
         return man
 
+    def _plan_toggle_group(self, r, base):
+        """Preview for "make these technologies exclusive".
+
+        The whole preview comes from the same ``linkedtechs`` functions the
+        build calls -- ``group_of`` decides whether a member is already spoken
+        for, and ``add_group`` is what would raise.  A second implementation's
+        idea of "already grouped" would drift the moment the file gained a group
+        this session has not seen, and the drift would look like a preview
+        promising work the build then refuses.
+        """
+        from .game import linkedtechs as LT
+        base["shape"] = "linked_group"
+        base["writes"] = LT.LINKED_TECHS_REL.replace(os.sep, "/")
+        base["group_type"] = r.raw.get("type")
+        base["members"] = [{"id": m.id, "name": m.display} for m in r.members]
+        base["member_count"] = len(r.members)
+        # The file is one of the ones the engine reads straight off disk, so
+        # this does change what the game loads -- but only the dat-directory
+        # half of it, and the canary that proved a MOD's copy is honoured was
+        # run on 2026-10-22 (v45).  Keep the two facts apart: `changes_dat` is
+        # about empires2_x2_p1.dat, which this never touches.
+        base["changes_dat"] = False
+        # NOT False.  `linkedTechs.json` lives inside `resources/_common/dat`, and
+        # `mod/emitter.py` refuses to write that folder without the `.dat` next to
+        # it ("the game fails to start when a mod overrides that folder without
+        # its .dat").  Measured: the emitted mod carries an 11.98 MB CARRIER
+        # `empires2_x2_p1.dat` that is byte-identical to the shipped one.  So the
+        # mod does contain a `.dat` while no byte of it changed -- reporting
+        # `False` here was the "preview says one thing, build produces another"
+        # defect this project keeps finding, caught on 2026-10-22 by diffing this
+        # preview against `_probe/out_tg/`.
+        base["mod_contains_dat"] = True
+        base["dat_is_carrier"] = True
+        doc, note = LT.load(self.game_root)
+        base["shipped_groups"] = len(LT.groups(doc))
+        base["file_state"] = note
+        try:
+            LT.add_group(doc, [m.id for m in r.members],
+                         comment=r.raw.get("comment") or "",
+                         kind=r.raw.get("type"))
+        except LT.LinkedTechError as exc:
+            base["editable"] = False
+            base["description"] = str(exc)
+            base["reason"] = str(exc)
+            base["edit_count"] = 0
+            return base
+        base["editable"] = True
+        base["edit_count"] = 1
+        # The title is the schema's own sentence for this shape; the ids and the
+        # file it lands in are what a player would have to check by hand.
+        base["description"] = (
+            "%s；写进 %s（这一份原本有 %d 组）"
+            % (LT.describe([m.display for m in r.members],
+                           r.raw.get("type"), r.raw.get("comment") or ""),
+               base["writes"], base["shipped_groups"]))
+        return base
+
     def _split_by_strategy(self, resolved_list):
         """One resolved list -> ``(in_place_patch, civtechtrees_json, loose_files)``.
-
 
         A bundle may mix the three strategies, because their products are
         different FILES: the byte patcher writes the ``.dat``, the JSON strategy
@@ -2779,7 +2995,7 @@ class Toolkit(object):
         An undeclared strategy still raises: quietly dropping a sentence would
         produce a mod that does less than it says.
         """
-        dat, js, sld, paint, new = [], [], [], [], []
+        dat, js, sld, paint, new, linked = [], [], [], [], [], []
         for r in resolved_list:
             s = self._strategy(r.raw)
             if s == "in_place_patch":
@@ -2794,6 +3010,13 @@ class Toolkit(object):
                 # patcher's offset arithmetic (`tail` would be stale the moment a
                 # record is appended, because every civ after that one moves).
                 new.append(r)
+            elif s == "linked_techs_json":
+                # Its own bucket for the same reason as `new_unit`: a group is a
+                # record in a JSON file, not a field at an offset.  Keeping it
+                # out of `js` matters because that bucket is answered by
+                # `availability.plan`, which would refuse a sentence with no
+                # civilization -- correctly, for a different question.
+                linked.append(r)
             elif s == "repaint_sld":
                 # A repaint also ships loose files, but it ENCODES a picture
                 # rather than moving one that already exists, so it needs its own
@@ -2806,7 +3029,7 @@ class Toolkit(object):
                     "intent %r declares compile strategy %r, which this build "
                     "does not implement"
                     % (r.raw.get("intent"), s))
-        return dat, js, sld, paint, new
+        return dat, js, sld, paint, new, linked
 
     def _split_reskin_modes(self, sld_list):
         """Split reskin sentences by DELIVERY MODEL: ``(copy, rename)``.
@@ -3129,6 +3352,66 @@ class Toolkit(object):
             n["panel"] = _p_rep
         return files, notes, originals, proposal
 
+    def _linked_bundle(self, linked_list):
+        """Fold every group sentence into ONE ``linkedTechs.json``.
+
+        Returns ``(files, notes, style, shipped_bytes)``.
+
+        Folding here rather than letting each sentence emit its own copy is the
+        point: ``files`` is keyed by relative path, so a second sentence writing
+        ``resources/_common/dat/linkedTechs.json`` would silently replace the
+        first one's file -- the bundle would ship one group and promise three.
+        The groups are therefore added to one accumulating document, in sentence
+        order, so the second sentence's "already in a group" check sees the
+        first one's record.
+
+        The shipped file is read ONCE and its style (indent, line endings,
+        trailing newline) is measured once, because every group must land in a
+        file written the same way; measuring per sentence would let two
+        sentences disagree about the whitespace of one file.
+        """
+        doc, note = LT.load(self.game_root)
+        on_disk = LT.shipped_bytes(self.game_root)
+        style = LT.detect_style(on_disk)
+        before = copy.deepcopy(doc)
+        shipped_n = len(LT.groups(before))
+        notes = []
+        for r in linked_list:
+            # Snapshotted PER SENTENCE, not at the end: counting afterwards made
+            # both sentences of a two-group bundle report "20 -> 22", so each one
+            # claimed to have added two groups.  A number a player reads has to
+            # describe the sentence it is attached to.
+            n_before = len(LT.groups(doc))
+            try:
+                added = LT.add_group(doc, list(r.raw.get("techs") or ()),
+                                     name_id=int(r.raw.get("name_id")
+                                                 or LT.DEFAULT_NAME_ID),
+                                     comment=r.raw.get("comment") or "",
+                                     kind=r.raw.get("type") or "MutuallyExclusive",
+                                     local=True)
+            except LT.LinkedTechError as exc:
+                # A refusal is data, not a crash: the other sentences in this
+                # bundle still land, and the manifest names the one that did
+                # not.  Raising would throw away the sentences that worked.
+                notes.append({"resolved": r.describe(), "ok": False,
+                              "reason": str(exc), "added": None,
+                              "groups_before": n_before,
+                              "groups_after": n_before,
+                              "file_state": note})
+                continue
+            notes.append({
+                "resolved": r.describe(), "ok": True,
+                "members": [{"id": m.id, "name": m.display} for m in r.members],
+                "type": r.raw.get("type") or "MutuallyExclusive",
+                "comment": r.raw.get("comment") or "",
+                "added": added,
+                "groups_before": n_before,
+                "groups_after": len(LT.groups(doc)),
+                "shipped_groups": shipped_n,
+                "file_state": note})
+        files = LT.emit_files(doc, style)
+        return files, notes, style, on_disk
+
     def _availability_verification(self, originals, proposal, notes,
                                    files, out_dir):
         """Per-civ JSON verification, plus the on-disk comparison.
@@ -3233,8 +3516,25 @@ class Toolkit(object):
         # both.  Splitting is what lets "villagers are tougher AND Britons can
         # build Huskarls" be one request instead of two mods where the engine
         # loads only the higher-priority one.
-        dat_list, js_list, sld_list, paint_list, new_list = \
+        dat_list, js_list, sld_list, paint_list, new_list, linked_list = \
             self._split_by_strategy(resolved_list)
+
+        # The group sentences get the same dry run the other buckets get, through
+        # the SAME accumulating function the build calls -- so "the preview said
+        # 21 groups" cannot become "the build shipped 20".
+        linked = []
+        linked_refusals = []
+        if linked_list:
+            _lf, _lnotes, _lstyle, _lship = self._linked_bundle(linked_list)
+            for n in _lnotes:
+                if n.get("ok"):
+                    linked.append(n)
+                else:
+                    # A refusal keeps the sentence's own words: the player typed
+                    # it, and "one sentence could not be done" needs to name
+                    # which one.
+                    linked_refusals.append({"description": n["resolved"],
+                                            "reason": n["reason"]})
 
         # The availability sentences ALSO have a `.dat` half.  Counting it in the
         # preview is not optional: `changes_dat` used to be `bool(dat_list)`, so a
@@ -3381,7 +3681,7 @@ class Toolkit(object):
             # is how a preview of the 244-record model reported 466 -- the number of
             # files a model the user did not ask for would have copied.
             "edit_count": (len(edits) + _dat_half_edits + sprite_files
-                           + rename_edits + paint_files),
+                           + rename_edits + paint_files + len(linked)),
             "dat_half_edit_count": _dat_half_edits,
             "sprite_file_count": sprite_files,
             "sprite_rename_count": rename_edits,
@@ -3396,6 +3696,11 @@ class Toolkit(object):
             # can tell "no sprite sentence" from "the key is missing".
             "sprites": sprites,
             "sprite_files": sprite_files,
+            # One entry per group sentence, plus the refusals.  Reported even
+            # when empty, for the same reason as `sprites`: a caller must be able
+            # to tell "no group sentence" from "the key is missing".
+            "linked_groups": linked,
+            "linked_refusals": linked_refusals,
             # A reskin sentence that declared itself buildable and is not.  Same
             # contract as `dat_half_refusals`: the preview names it, the build
             # names it, and neither drops it in silence.
@@ -3418,7 +3723,8 @@ class Toolkit(object):
             # wrote `.dat` bytes.  A preview that omitted any of this would be the
             # recurring defect class: "preview says one thing, build produces another".
             "changes_dat": bool(dat_list) or bool(_halves) or bool(rename_edits),
-            "dat_is_carrier": (bool(js_list) and not dat_list and not _halves
+            "dat_is_carrier": ((bool(js_list) or bool(linked_list))
+                               and not dat_list and not _halves
                                and not rename_edits),
             # NOT `... or sld_list`: the COPY model ships loose `.sld` files and no
             # `.dat` at all, so listing it here would promise the emitter a file
@@ -3426,7 +3732,8 @@ class Toolkit(object):
             # writes records into the `.dat` and no picture -- so it does make the
             # mod contain a `.dat`, and leaving it out here would report a mod
             # without the one file it cannot work without.
-            "mod_contains_dat": bool(dat_list or js_list or rename_edits),
+            "mod_contains_dat": bool(dat_list or js_list or rename_edits
+                                     or linked_list),
             # A sentence that declared a `.dat` half and could not have one.  The
             # build reports the same list, so the preview cannot promise a
             # three-layer write and deliver two (`_declared_dat_halves`).
@@ -3470,7 +3777,7 @@ class Toolkit(object):
             raise C.IntentError("这个组合里一句都没有")
         intents_schema, bindings = C.load_schema()
         resolved_list = C.resolve_bundle(intents, intents_schema, bindings=bindings)
-        dat_list, js_list, sld_list, paint_list, new_list = \
+        dat_list, js_list, sld_list, paint_list, new_list, linked_list = \
             self._split_by_strategy(resolved_list)
 
         data, civs, _cs, gv, tail, how = self._parsed
@@ -3481,6 +3788,27 @@ class Toolkit(object):
                 self._apply_availability_bundle(js_list)
             json_files = files
             avail_notes = notes
+
+        # The group sentences write resources/_common/dat/linkedTechs.json, the
+        # same key space `avail_notes` writes CivTechTrees into, so they land in
+        # the same mapping and travel in the same mod.  Folding them through one
+        # document (see `_linked_bundle`) is what stops the second sentence from
+        # overwriting the first one's file.
+        linked_notes = []
+        linked_style = None
+        linked_shipped = None
+        if linked_list:
+            _lf, linked_notes, linked_style, linked_shipped = \
+                self._linked_bundle(linked_list)
+            for rel, data_b in _lf.items():
+                if rel in json_files and json_files[rel] != data_b:
+                    # Two strategies naming one path: one file cannot hold both.
+                    # Refused loudly rather than picked silently, so the mod
+                    # cannot do less than the manifest says.
+                    raise C.IntentError(
+                        "有一句要写 %s，另一个做法也要写同一个文件，一个文件装不下两种内容"
+                        % os.path.basename(rel))
+                json_files[rel] = data_b
 
         # Reskin sentences resolve to loose files under the same key space the
         # emitter already writes (game-root-relative path -> bytes), so they go
@@ -3651,6 +3979,10 @@ class Toolkit(object):
         man["rename_edits"] = _rename_changed
         man["new_units"] = new_notes
         man["new_unit_strings"] = sorted(new_strings)
+        man["linked_groups"] = linked_notes
+        man["linked_refusals"] = [{"description": n["resolved"],
+                                   "reason": n["reason"]}
+                                  for n in linked_notes if not n.get("ok")]
         man["edits"] = (len(edits) + man["dat_half_edit_count"]
                         + len(sprite_files) + _rename_changed + paint_files
                         + 2 * len(new_notes))

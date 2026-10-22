@@ -100,3 +100,64 @@ _probe/v23_facts.json
 _probe/hovergrid.ps1
 _probe/ocr_screen.ps1
 _probe/click_at.ps1
+
+# Screens the screen-reading probes leave behind: one measurement each, useful for
+# a minute and then stale.  Same rule as the frames above -- evidence, not sources.
+_probe/card_last.json
+_probe/nomod_last.json
+_probe/queue_scan.json
+_probe/objreplacement_abba.json
+
+# Build output of the probes that run the real emitter (test_linked_group.py and
+# tmp_tg_bundle.py).  Regenerated on every run; a mod folder checked in would drift
+# from the code that produced it.
+_probe/_group_out/
+_probe/out_tg/
+_probe/out_tg_bundle/
+
+# Backups of the game's own files taken while testing in-place edits.  They are
+# copies of shipped data, so they stay out of the tree; the restore step and the
+# sha256 comparison are in the reports beside them.
+_probe/backup_objreplacement.json
+_probe/shipped_objreplacement_backup.json
+
+# One-off measurements from the dat-JSON survey (2026-10-22): forty numbered probes
+# run once each to answer "is this file an engine input?"  The answers live in
+# _probe/report_*.md, which are committed; these are the scaffolding.
+_probe/p1_fields.py
+_probe/p2_dump.py
+_probe/p3_walk.py
+_probe/p4_report_fields.py
+_probe/p5_types.py
+_probe/p6_effcat.py
+_probe/p7_effcmds.py
+_probe/p8_strings.py
+_probe/p9_mods.py
+_probe/p10_scan.py
+_probe/p11_raw.py
+_probe/p12_curated.py
+_probe/p13_engine.py
+_probe/p14_repeatable_locs.py
+_probe/p15_rep_locs.py
+_probe/p16_locnames.py
+_probe/p17_trees.py
+_probe/p18_govchain.py
+_probe/p19_pompeii.py
+_probe/p20_modstrings.py
+_probe/p21_strings.py
+_probe/p22_tooltips.py
+_probe/p23_ui.py
+_probe/p24_dll.py
+_probe/p25_dll.py
+_probe/p26_names.py
+_probe/p27_res.py
+_probe/p28_enable.py
+_probe/p29_type.py
+_probe/p30_table.py
+_probe/p31_range.py
+_probe/p32_local.py
+_probe/p33_type2.py
+_probe/p34_table.py
+_probe/p35_tree.py
+_probe/p36_watch.py
+_probe/p37_status.py

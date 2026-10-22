@@ -41,6 +41,20 @@ class NewUnitError(Exception):
 FREE_ID_MIN = 2700          # above the highest id any shipped record uses (2749
                             # is taken by graphics-only entries; see free_ids)
 HEADER_SLOTS = 1701         # unit_headers has indices 0..1700 only
+# Where a NEW unit's id starts.  Past every shipped record (highest is 2,749) and
+# past a wide margin, because the shipped numbers are the ones a game update will
+# reuse: picking a hole in the shipped range means the next patch can put a real
+# unit there and the clone becomes a second meaning for that id.  Measured: the
+# pointer array can be extended to this range and the stream re-parses (ids
+# 2750 / 3000 / 4000 / 5000 all round-trip, +4 bytes per added slot).
+#
+# The cost, stated honestly: `unit_headers` only has indices 0..1700, so an id
+# here is NOT addressable by the editor or scenario triggers.  It still shows in
+# game and still builds -- measured on a real shipped unit (villager 1810) whose
+# id is above the header range and whose tooltip renders normally.
+NEW_ID_START = 30000
+# The flag array is an i16-prefixed list, so this is a hard ceiling.
+NEW_ID_MAX = 32000
 # A command card is a numbered grid.  Measured over every civ: the numbers
 # shipped data actually uses are 0..15 plus 24, and 255 appears 1,890 times as
 # the button of a placeholder entry (``unit_id == -1``) -- a sentinel for "no
@@ -215,7 +229,7 @@ def free_buttons(civs, civ_index, builder_id, limit=BUTTON_SLOTS):
 
 def add_unit(stats, raw, gv, civs_start, civ_index, donor_id, new_id,
              name_string_id=None, hp=None, creation_string_id=None,
-             button=None, civs=None):
+             button=None, civs=None, civ_zh=None):
     """Append one clone to ``civ_index``; returns ``(stats, record_dict)``.
 
     ``stats`` is mutated in place and must be a deep copy the caller owns --
@@ -231,6 +245,9 @@ def add_unit(stats, raw, gv, civs_start, civ_index, donor_id, new_id,
     if new_id in have:
         raise NewUnitError("这个文明已经有编号 %s 的单位了，换一个编号"
                            % (new_id,))
+    # Free in this civ is not free.  A duplicate id anywhere puts two records
+    # behind one flag, and the record count comes from the flags.
+    reject_taken_id(stats, new_id, civ_zh=civ_zh)
     if new_id >= HEADER_SLOTS:
         # Not fatal, but say it: nothing indexes a header by this id, so any
         # per-unit header data (tasks, etc.) simply has none.  A clone carries
@@ -278,13 +295,15 @@ def add_unit(stats, raw, gv, civs_start, civ_index, donor_id, new_id,
                                    % (s["rel"], img[s["rel"]]))
             moved = {"from": before, "to": button, "builder": s["builder"]}
     total = civ["unit_pointers_total"]
-    if new_id >= total:
-        raise NewUnitError(
-            "编号 %s 超出了这个文明的单位编号范围（只有 0..%d），换一个小一点的"
-            % (new_id, total - 1))
     ptrs = civ.get("_ptrs")
     if ptrs is None:
         ptrs = [1 if i in have else 0 for i in range(total)]
+    # An id past the shipped array is the NORMAL case now (NEW_ID_START), so the
+    # array grows instead of refusing.  The writer emits the new slots without
+    # advancing its raw cursor; without that, each added slot shifted every later
+    # op() by 4 bytes (measured: 3,009,559 extra bytes, parse dies in read_unit).
+    if new_id >= len(ptrs):
+        ptrs.extend([0] * (new_id + 1 - len(ptrs)))
     # The flag is what makes the record reachable: without it the record is
     # written but the reader's slot walk does not expect it, and the stream
     # desyncs (measured: `struct.error: bad char in struct format` inside
@@ -344,28 +363,54 @@ def referenced_ids(stats):
     return out
 
 
-def globally_free_ids(stats, max_id=HEADER_SLOTS - 1, avoid=()):
-    """Ids NO civilization uses and nothing points at.
+def globally_free_ids(stats, max_id=NEW_ID_MAX, avoid=(), start=NEW_ID_START):
+    """Ids NO civilization uses and nothing points at, from ``start`` upward.
 
     Free-in-one-civ is not free.  Measured: British alone has 586 holes and the
     lowest is 43 -- but 43 is a real shipped unit in Gaia and most other civs, so
     putting a villager clone there would make one id mean two different things
-    depending on who is looking.  A new unit needs an id nobody claims.
+    depending on who is looking.  A new unit needs an id nobody claims, and
+    ``start`` defaults to ``NEW_ID_START`` so the default answer is not a hole in
+    the shipped numbering that the next patch will fill.
     """
     used = set(avoid)
     for civ in stats["civs"]:
         used.update(u["id"] for u in civ["units"])
-    return [i for i in range(1, max_id + 1) if i not in used]
+    return [i for i in range(max(1, start), max_id + 1) if i not in used]
 
 
-def pick_free_id(stats, max_id=HEADER_SLOTS - 1, avoid=()):
-    """The lowest id that NO civilization uses, nothing points at, and that has
-    a header slot.
+def pick_free_id(stats, max_id=NEW_ID_MAX, avoid=(), start=NEW_ID_START):
+    """The lowest id past the shipped range that nothing uses or points at.
 
-    ``max_id`` defaults to the last header index so whatever indexes headers by
-    unit id (the editor, scenario triggers) can address the clone at all.
+    ``start`` defaults to ``NEW_ID_START`` rather than the lowest hole: a hole in
+    the shipped numbering is a hole *this* patch, and the marker of a good id is
+    that a future patch will not fill it.
     """
-    ids = globally_free_ids(stats, max_id=max_id, avoid=avoid)
+    ids = globally_free_ids(stats, max_id=max_id, avoid=avoid, start=start)
     if not ids:
         raise NewUnitError("这个版本里没有空着的单位编号了")
     return ids[0]
+
+
+def reject_taken_id(stats, new_id, civ_zh=None):
+    """Refuse an id any civilization already uses.
+
+    An id that is in use cannot hold a second record: the number of records is
+    read from the flag array, so inserting a duplicate id leaves the flags and
+    the record count disagreeing, and the whole tail desynchronises.  Measured:
+    the same clone at the shipped id 2,749 fails to re-parse, while 2,750 (one
+    past the array) is fine.  This is checked instead of assumed because the
+    failure shows up as a parse error twenty thousand records later.
+
+    ``civ_zh`` names the civilization in the player's language; the .dat layer
+    only knows the internal stem ("Gaia", "BRITONS"), and a refusal that says
+    "Gaia" to a Chinese player is the same leak this project keeps fixing.
+    """
+    for civ in stats["civs"]:
+        for u in civ["units"]:
+            if u["id"] == new_id:
+                who = civ_zh or "某个文明"
+                raise NewUnitError(
+                    "第 %d 号已经被用了（%s），换一个编号再加，否则同一号会有两条记录"
+                    % (new_id, who))
+    return new_id

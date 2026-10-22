@@ -235,6 +235,13 @@ SUITES = [
     # card cannot hold, and a donor whose train entry points at no building at
     # all (British has 683 such units, so that donor is reachable by name).
     r"_probe\test_new_unit_box.py",
+    # The first feature this project built on a dat-folder JSON file rather than on
+    # .dat bytes.  Its expensive failure is not "the group was not added" but "the
+    # file was rewritten and the player's own groups were replaced", so the pin
+    # re-reads the emitted file from disk and compares every pre-existing group key
+    # for key -- and checks the line endings survived, because a file that flips to
+    # LF shows up as a whole-file diff in any mod a player unpacks.
+    r"_probe\test_linked_group.py",
     # The registry itself.  Ten probes rotted unrun before anyone noticed, and
     # the reason nobody noticed is that "is every test reachable?" was a question
     # only a human could answer.  This asks it mechanically, including the four

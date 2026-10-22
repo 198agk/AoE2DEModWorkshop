@@ -73,8 +73,13 @@ def main():
     avoid = NU.referenced_ids(stats)
     free = NU.globally_free_ids(stats, avoid=avoid)
     check(len(free) > 0, "some id is free and unreferenced", free[:5])
-    check(free[0] == 382, "the lowest such id is 382, the one the build picks",
-          free[0])
+    # The rule is "past every shipped record", not "the lowest hole".  A hole in
+    # the shipped numbering is a hole THIS patch, and the next game update will
+    # happily fill it -- which is exactly the collision the id was meant to avoid.
+    highest = max(u["id"] for c in stats["civs"] for u in c["units"])
+    check(free[0] >= NU.NEW_ID_START and free[0] > highest,
+          "the chosen id is past every shipped record, not a hole in them",
+          (free[0], highest, NU.NEW_ID_START))
 
     # A hole in ONE civ is not free: the same integer must not be a real unit
     # somewhere else, or the clone makes one id mean two things.
@@ -87,7 +92,7 @@ def main():
           "a hole in one civ is used by another civ, so it is not free",
           sorted(overlap)[:5])
     check(min(civ1_holes) < 100 and min(free) > 300,
-          "the naive per-civ answer (43) and the correct one (382) differ",
+          "the naive per-civ answer (43) and the correct one (30000) differ",
           (min(civ1_holes), min(free)))
 
     # Referenced-but-record-less ids exist, so "no unit record uses it" is not
@@ -262,6 +267,24 @@ def main():
         except Exception as exc:            # noqa: BLE001
             check(no_english(str(exc)),
                   "an unknown donor is refused, in Chinese", str(exc))
+
+        # An id that a civilization already uses cannot hold a second record: the
+        # record count is read from the flag array, so a duplicate makes the two
+        # disagree and the tail desynchronises twenty thousand records later.
+        # Measured: same clone at shipped id 2,749 fails to re-parse, while 2,750
+        # (one past the array) is fine.  Checked here because the raw failure is a
+        # `struct.error` from inside `read_unit`, which says nothing about ids.
+        print("--- G2. an id that is already taken")
+        used = max(u["id"] for c in stats["civs"] for u in c["units"])
+        try:
+            NU.reject_taken_id(stats, used)
+            check(False, "a shipped id is refused as taken")
+        except NU.NewUnitError as exc:      # noqa: BLE001
+            check("已经被用了" in str(exc) and no_english(str(exc)),
+                  "a shipped id is refused as taken, in Chinese", str(exc))
+        free_probe = NU.reject_taken_id(stats, NU.pick_free_id(stats))
+        check(free_probe >= NU.NEW_ID_START,
+              "and the id the rule picks passes the same guard", free_probe)
     finally:
         shutil.rmtree(out, ignore_errors=True)
 

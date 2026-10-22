@@ -815,11 +815,12 @@ class Resolved(object):
 
     __slots__ = ("kind", "entity", "op", "stat", "amount",
                  "civ_scope", "resource", "class_id", "raw", "label",
-                 "civ", "action", "donor", "name", "button")
+                 "civ", "action", "donor", "name", "button", "members")
 
     def __init__(self, kind, entity, stat, op, amount, civ_scope, raw,
                  resource=None, class_id=None, label=None, civ=None,
-                 action=None, donor=None, name=None, button=None):
+                 action=None, donor=None, name=None, button=None,
+                 members=None):
         self.kind = kind            # 'unit' | 'tech'
         self.entity = entity        # semantic.Entity
         self.stat = stat            # binding key
@@ -850,6 +851,11 @@ class Resolved(object):
         # occupy.  ``None`` means "leave it where the donor was", which is the
         # honest default: the button is copied from the donor's own record.
         self.button = button
+        # Every entity a LIST-shaped intent names (`tech.toggle_group`).  Kept
+        # beside `entity` rather than replacing it because `entity` is the
+        # subject the sentence is about and `members` is the set the mechanism
+        # acts on -- a distinction the write needs and the description does not.
+        self.members = members or ()
 
     def describe_target(self):
         """Just the "what" half of the sentence ("成本 gold", "hit_points").
@@ -938,6 +944,15 @@ class Resolved(object):
             # A relationship, not a number: the three-part shape below would
             # render "弓箭手 长弓兵" and leave the user to guess which end moves.
             return "%s 改用 %s 的造型" % (self.entity.display, self.donor.display)
+        if self.members:
+            # A group is not an edit of one thing, so the three-part shape below
+            # would render "织布机 采邑" and leave the user guessing what happens
+            # between them.  State the relationship instead -- the verb comes
+            # from the file's own Type values.
+            names = "、".join(m.display for m in self.members)
+            return "%s %d 项做成%s" % (names, len(self.members),
+                                      _GROUP_ZH.get(self.raw.get("type"),
+                                                    self.raw.get("type")))
         return " ".join(x for x in (self.entity.display, self.describe_target(),
                                     self.describe_amount()) if x)
 
@@ -963,12 +978,49 @@ def resolve(intent, schema, semantic_index=None, bindings=None):
     # --- which entity -----------------------------------------------------
     kind = spec.get("applies_to", "unit")
     ref_field = it.split(".")[0]          # 'unit' or 'tech'
+    # A LIST-shaped intent (`tech.toggle_group`) has no single subject: it names
+    # two or more technologies and the entity is only what the sentence is
+    # about, not what gets addressed.  Resolving them all here rather than in
+    # the strategy keeps the "did you mean" refusal identical to every other
+    # intent's -- a group whose third technology is misspelt must be refused
+    # before anything is written, not after.
+    members = None
+    if "techs" in fields:
+        raw_members = intent.get("techs")
+        if isinstance(raw_members, (str, int)):
+            raw_members = [raw_members]
+        if not isinstance(raw_members, (list, tuple)) or not raw_members:
+            raise IntentError("这个分组要列出几项科技，收到的是%s"
+                              % _TYPE_ZH.get(type(raw_members).__name__,
+                                             type(raw_members).__name__))
+        members = []
+        first = None
+        for item in raw_members:
+            try:
+                ent = ix.resolve_one(kind, item)
+            except LookupError as exc:
+                raise IntentError(str(exc))
+            if first is None:
+                first = ent
+            if ent.id not in [m.id for m in members]:
+                members.append(ent)
+        need = int(fields["techs"].get("min_items") or 1)
+        if len(members) < need:
+            raise IntentError("这个分组至少要有 %d 项科技，现在只有 %d 项（重复的只算一次）。"
+                              % (need, len(members)))
+        intent = dict(intent)
+        intent["techs"] = [m.id for m in members]
     if ref_field not in intent and "donor" in fields and intent.get("donor"):
         # An intent that CREATES something has no subject to look up yet: the
         # sentence names the record to copy, and that donor is the only entity on
         # the table.  Resolving it through the same field keeps the "did you
         # mean" refusal identical to every other intent's.
         ref_field = "donor"
+    if ref_field not in intent and members:
+        # A list-shaped intent's subject is its FIRST member: there is no
+        # `tech` key, and demanding one would make the sentence unwritable.
+        intent = dict(intent)
+        intent[ref_field] = members[0].id
     if ref_field not in intent:
         raise IntentError("intent %r needs a %r field" % (it, ref_field))
     try:
@@ -1038,6 +1090,27 @@ def resolve(intent, schema, semantic_index=None, bindings=None):
         if action not in allowed_a:
             raise IntentError("unknown action %r; known: %s"
                               % (action, ", ".join(allowed_a)))
+
+    # --- any OTHER enumerated field --------------------------------------
+    # `kind` and `action` are special-cased above because other code reads them
+    # by name.  Everything else the schema declares as an enum gets the same
+    # two rules here: fill the declared default, and refuse a value outside the
+    # option list.  Without this `tech.toggle_group` wrote `"Type": null` into
+    # the file -- the engine compares Type against three literal spellings, so a
+    # null is not a wrong choice, it is a group that silently does nothing.
+    for _fname, _fspec in fields.items():
+        if _fname in ("kind", "action") or "options" not in _fspec:
+            continue
+        _val = intent.get(_fname)
+        if _val in (None, "") and "default" in _fspec:
+            _val = _fspec["default"]
+            intent = dict(intent)
+            intent[_fname] = _val
+        if _val is not None and _val not in _fspec["options"]:
+            raise IntentError(
+                "「%s」只能是 %s，收到的 %r 不认识"
+                % (_fspec.get("label") or _fname,
+                   "、".join(str(o) for o in _fspec["options"]), _val))
 
     # --- the second entity, when the intent relates two things -------------
     # `unit.sprite` asks for one unit's look to be copied onto another, so both
@@ -1145,7 +1218,7 @@ def resolve(intent, schema, semantic_index=None, bindings=None):
                     resource=intent.get("resource"),
                     class_id=intent.get("class_id"),
                     label=label, civ=civ, action=action, donor=donor,
-                    name=made_name, button=made_button)
+                    name=made_name, button=made_button, members=members)
 
 
 def resolve_bundle(intents, schema, bindings=None):
@@ -2167,6 +2240,15 @@ _TYPE_ZH = {
 #: "no unit with id 999999".  An unknown kind falls through unchanged rather than
 #: becoming an empty string, the same rule as `_FIELD_ZH`.
 _KIND_ZH = {"unit": "单位", "tech": "科技", "building": "建筑"}
+
+#: The three group types `linkedTechs.json` spells, as a player reads them.
+#: The file's own spellings are the keys -- they are what the engine compares
+#: against, so the Chinese lives here and never in the file.
+_GROUP_ZH = {
+    "MutuallyExclusive": "只能选一个的组",
+    "Toggleable": "可以互相开关的组",
+    "Cycle": "按顺序循环的组",
+}
 
 
 def _label_zh(label, resource=None):

@@ -1,8 +1,10 @@
 {
   "$comment": "AoE2 DE mod-toolkit intent schema. EXTERNALIZED ON PURPOSE: game patches change format details, and a version bump must be a data edit, not a code change. The compiler reads this file; nothing about an intent is hard-coded in Python.",
   "schema_version": 1,
-  "targets_dat_version": ["VER 8.9", "VER 7.8"],
-
+  "targets_dat_version": [
+    "VER 8.9",
+    "VER 7.8"
+  ],
   "intents": {
     "unit.stat": {
       "title": "改变单位属性",
@@ -21,12 +23,22 @@
           "type": "enum",
           "required": true,
           "label": "属性",
-          "options": ["hit_points", "displayed_attack", "displayed_melee_armour",
-                      "displayed_pierce_armour", "movement_speed",
-                      "line_of_sight", "creation_time",
-                      "max_range", "displayed_range",
-                      "reload_time", "displayed_reload_time",
-                      "min_range", "accuracy", "garrison_capacity"],
+          "options": [
+            "hit_points",
+            "displayed_attack",
+            "displayed_melee_armour",
+            "displayed_pierce_armour",
+            "movement_speed",
+            "line_of_sight",
+            "creation_time",
+            "max_range",
+            "displayed_range",
+            "reload_time",
+            "displayed_reload_time",
+            "min_range",
+            "accuracy",
+            "garrison_capacity"
+          ],
           "help": "Range and reload are float32 (fractions are allowed). reload_time is SECONDS BETWEEN ATTACKS, so a smaller number is a faster unit -- an intent UI should offer 'attack faster' rather than a raw negative. min_range is a dead zone: 0 means the unit can fire at any distance. accuracy is a whole percent (100 = always hits). garrison_capacity is how many units a building or ram can shelter; it is a single byte, so it caps at 255 and 0 means 'cannot shelter anyone' (most records)."
         },
         "delta": {
@@ -65,90 +77,207 @@
         "reject_on_nonmember_civ": true
       }
     },
-
     "unit.attack_class": {
       "title": "改变单位的攻击/护甲数值",
       "title_en": "Change a unit's attack or armour value",
       "applies_to": "unit",
       "description": "Adjust the raw attack/armour entry for a specific armour class.",
       "fields": {
-        "unit": {"type": "entity_ref", "kind": "unit", "required": true},
+        "unit": {
+          "type": "entity_ref",
+          "kind": "unit",
+          "required": true
+        },
         "class_id": {
           "type": "armor_class",
           "required": true,
           "label": "类别",
           "help": "Read from schema/armor_classes.json. Unknown ids render as 'Class N'."
         },
-        "kind": {"type": "enum", "required": true,
-                 "options": ["attack", "armour"],
-                 "default": "attack"},
-        "delta": {"type": "int", "required": false, "min": -32768, "max": 32767},
-        "value": {"type": "int", "required": false, "min": -32768, "max": 32767},
-        "civs": {"type": "civ_scope", "default": "all"}
+        "kind": {
+          "type": "enum",
+          "required": true,
+          "options": [
+            "attack",
+            "armour"
+          ],
+          "default": "attack"
+        },
+        "delta": {
+          "type": "int",
+          "required": false,
+          "min": -32768,
+          "max": 32767
+        },
+        "value": {
+          "type": "int",
+          "required": false,
+          "min": -32768,
+          "max": 32767
+        },
+        "civs": {
+          "type": "civ_scope",
+          "default": "all"
+        }
       },
-      "compile": {"strategy": "in_place_patch"},
-      "safety": {"field_width_bits": 16, "signed": true, "reject_on_overflow": true}
+      "compile": {
+        "strategy": "in_place_patch"
+      },
+      "safety": {
+        "field_width_bits": 16,
+        "signed": true,
+        "reject_on_overflow": true
+      }
     },
-
     "unit.cost": {
       "title": "改变单位造价",
       "title_en": "Change a unit's cost",
       "applies_to": "unit",
       "fields": {
-        "unit": {"type": "entity_ref", "kind": "unit", "required": true},
-        "resource": {"type": "enum", "required": true,
-                     "options": ["food", "wood", "gold", "stone", "population"]},
-        "delta": {"type": "int", "required": false, "min": -32768, "max": 32767},
-        "value": {"type": "int", "required": false, "min": -32768, "max": 32767},
-        "civs": {"type": "civ_scope", "default": "all"}
+        "unit": {
+          "type": "entity_ref",
+          "kind": "unit",
+          "required": true
+        },
+        "resource": {
+          "type": "enum",
+          "required": true,
+          "options": [
+            "food",
+            "wood",
+            "gold",
+            "stone",
+            "population"
+          ]
+        },
+        "delta": {
+          "type": "int",
+          "required": false,
+          "min": -32768,
+          "max": 32767
+        },
+        "value": {
+          "type": "int",
+          "required": false,
+          "min": -32768,
+          "max": 32767
+        },
+        "civs": {
+          "type": "civ_scope",
+          "default": "all"
+        }
       },
-      "compile": {"strategy": "in_place_patch"}
+      "compile": {
+        "strategy": "in_place_patch"
+      }
     },
-
     "tech.research_time": {
       "title": "改变科技研究时间",
       "title_en": "Change a technology's research time",
       "applies_to": "tech",
       "fields": {
-        "tech": {"type": "entity_ref", "kind": "tech", "required": true},
-        "delta": {"type": "int", "required": false, "min": -32768, "max": 32767},
-        "value": {"type": "int", "required": false, "min": 0, "max": 32767}
+        "tech": {
+          "type": "entity_ref",
+          "kind": "tech",
+          "required": true
+        },
+        "delta": {
+          "type": "int",
+          "required": false,
+          "min": -32768,
+          "max": 32767
+        },
+        "value": {
+          "type": "int",
+          "required": false,
+          "min": 0,
+          "max": 32767
+        }
       },
-      "compile": {"strategy": "in_place_patch"},
-      "safety": {"field_width_bits": 16, "signed": true}
+      "compile": {
+        "strategy": "in_place_patch"
+      },
+      "safety": {
+        "field_width_bits": 16,
+        "signed": true
+      }
     },
-
     "tech.cost": {
       "title": "改变科技造价",
       "title_en": "Change a technology's cost",
       "applies_to": "tech",
       "fields": {
-        "tech": {"type": "entity_ref", "kind": "tech", "required": true},
-        "resource": {"type": "enum", "required": true,
-                     "$comment": "No 'population' here, unlike unit.cost which has five. That is measured, not an oversight: no technology in the shipped data charges population. _probe/test_declared_resources.py walks every cost slot of every tech and unit record and fails unless this option set is EXACTLY what tech records actually charge -- so a game update that starts charging population on a tech becomes a test failure, instead of an intent that silently cannot reach the new slot.",
-                     "options": ["food", "wood", "gold", "stone"]},
-        "delta": {"type": "int", "required": false, "min": -32768, "max": 32767},
-        "value": {"type": "int", "required": false, "min": 0, "max": 32767}
+        "tech": {
+          "type": "entity_ref",
+          "kind": "tech",
+          "required": true
+        },
+        "resource": {
+          "type": "enum",
+          "required": true,
+          "$comment": "No 'population' here, unlike unit.cost which has five. That is measured, not an oversight: no technology in the shipped data charges population. _probe/test_declared_resources.py walks every cost slot of every tech and unit record and fails unless this option set is EXACTLY what tech records actually charge -- so a game update that starts charging population on a tech becomes a test failure, instead of an intent that silently cannot reach the new slot.",
+          "options": [
+            "food",
+            "wood",
+            "gold",
+            "stone"
+          ]
+        },
+        "delta": {
+          "type": "int",
+          "required": false,
+          "min": -32768,
+          "max": 32767
+        },
+        "value": {
+          "type": "int",
+          "required": false,
+          "min": 0,
+          "max": 32767
+        }
       },
-      "compile": {"strategy": "in_place_patch"},
-      "safety": {"field_width_bits": 16, "signed": true}
+      "compile": {
+        "strategy": "in_place_patch"
+      },
+      "safety": {
+        "field_width_bits": 16,
+        "signed": true
+      }
     },
-
     "tech.effect": {
       "title": "改变科技效果",
       "title_en": "Change what a technology does",
       "applies_to": "tech",
       "fields": {
-        "tech": {"type": "entity_ref", "kind": "tech", "required": true},
-        "command": {"type": "int", "required": true, "min": 0, "max": 255,
-                    "help": "Which entry of this tech's effect list to change. A tech's effect record is a list of commands, and the same (attribute, target, operation) triple can appear on it twice with different numbers ('C-Bonus, Military cost -20%' multiplies food cost by 1.174 and again by 0.800). Any scheme that addressed a command by its meaning would therefore have to guess in 12 of the shipped techs, so the address is the position in the list the user picked from. Read the list with Toolkit.effects(tech)."},
-        "delta": {"type": "float", "required": false},
-        "value": {"type": "float", "required": false}
+        "tech": {
+          "type": "entity_ref",
+          "kind": "tech",
+          "required": true
+        },
+        "command": {
+          "type": "int",
+          "required": true,
+          "min": 0,
+          "max": 255,
+          "help": "Which entry of this tech's effect list to change. A tech's effect record is a list of commands, and the same (attribute, target, operation) triple can appear on it twice with different numbers ('C-Bonus, Military cost -20%' multiplies food cost by 1.174 and again by 0.800). Any scheme that addressed a command by its meaning would therefore have to guess in 12 of the shipped techs, so the address is the position in the list the user picked from. Read the list with Toolkit.effects(tech)."
+        },
+        "delta": {
+          "type": "float",
+          "required": false
+        },
+        "value": {
+          "type": "float",
+          "required": false
+        }
       },
-      "compile": {"strategy": "in_place_patch"},
-      "safety": {"field_width_bits": 32, "signed": true}
+      "compile": {
+        "strategy": "in_place_patch"
+      },
+      "safety": {
+        "field_width_bits": 32,
+        "signed": true
+      }
     },
-
     "unit.availability": {
       "title": "改变某个文明能否建造某单位",
       "title_en": "Change whether a civilization can build a unit",
@@ -173,7 +302,10 @@
           "required": true,
           "default": "grant",
           "label": "操作",
-          "options": ["grant", "revoke"],
+          "options": [
+            "grant",
+            "revoke"
+          ],
           "help": "grant = make it buildable, revoke = make it not buildable. Granting copies a real row from a civilization that has it; no field value is ever invented."
         }
       },
@@ -181,11 +313,20 @@
         "strategy": "civtechtrees_json",
         "why_not_dat": "The unit RECORD carries no per-civ availability byte: across 2693 unit ids only 7 differ between civilizations in the Enabled/Disabled bytes, while British and Goths differ on 24 ids. The .dat expresses it elsewhere -- a civ-owned free technology carrying a `type 2` enable command -- which is the recipe below. Measured in _probe/probe_availability_decisive.py and _probe/test_civ_unit_gate.py.",
         "dat_half": {
-          "actions": ["grant", "revoke"],
+          "actions": [
+            "grant",
+            "revoke"
+          ],
           "recipe": "datgrant.apply_grant",
-          "recipe_by_action": {"grant": "datgrant.apply_grant", "revoke": "datgrant.apply_revoke"},
+          "recipe_by_action": {
+            "grant": "datgrant.apply_grant",
+            "revoke": "datgrant.apply_revoke"
+          },
           "write_operations": 2,
-          "write_operations_by_action": {"grant": 2, "revoke": 1},
+          "write_operations_by_action": {
+            "grant": 2,
+            "revoke": 1
+          },
           "write_operations_note": "Each action declares its own count above, because the two recipes write different numbers. GRANT writes two: one new Effect record, then the re-pointed technology -- the training ButtonID byte is part of that same recipe rather than a third operation. REVOKE writes ONE: one new Effect record carrying the carrier's commands plus `type 2 b=0`, then the re-pointed technology; there is no button to move, because the unit has to disappear rather than shift. Both numbers are declared rather than measured, because measuring them serialises the whole 93 MB .dat (25 s) while a preview must stay cheap; `_probe/test_dat_half_count.py` asserts each declaration still equals `len(apply_grant(...)[\"edits\"])` and `len(apply_revoke(...)[\"edits\"])`, so the two cannot drift apart silently.",
           "help": "GRANT: append a NEW effect carrying the anchor technology's own commands plus 'type 2, unit, 1' and re-point that technology at it, then move the unit's training button to a free slot (a byte patch, because the writer's model does not carry train_locations). REVOKE: append a NEW effect carrying the carrier technology's own commands plus 'type 2, unit, 0' and re-point that technology at it -- no button byte, because the unit has to disappear rather than move. The carrier for a revoke MUST fire LATER than whatever makes the unit available, or the enable overwrites the disable; `datgrant.pick_revoke_tech` enforces that ordering and refuses, with a reason, when no such carrier exists. EnablingResearch is deliberately left alone in both directions: the confirmed grant recipe wrote no such byte, and the field is global per unit id, so pointing it at one civilization's technology would claim that all 63 are enabled by it.",
           "why_enabling_research_is_not_written": "Three measurements, in _probe/probe_enabling_scope.py. (1) `dsh test v7`, the recipe the user confirmed in game (m27131), wrote no EnablingResearch byte at all -- its script patches only when the shipped value is not -1, and unit 2550 ships as -1. (2) The field does not gate: v5 set it to the age-gated tech 263 and v6 cleared it to -1, and both behaved identically in game. (3) It is one connection per unit id, not per civilization, so writing British's private tech 383 onto unit 2550 -- which Incas/Mapuche/Muisca/Tupi build and the British do not -- would create a pairing the shipped corpus contains zero of.",
@@ -195,9 +336,11 @@
         "writes_per_civ": 1,
         "mod_contains_dat": true
       },
-      "safety": {"field_width_bits": 0, "signed": false}
+      "safety": {
+        "field_width_bits": 0,
+        "signed": false
+      }
     },
-
     "tech.availability": {
       "title": "改变某个文明能否研究某科技",
       "title_en": "Change whether a civilization can research a technology",
@@ -222,7 +365,10 @@
           "required": true,
           "default": "grant",
           "label": "操作",
-          "options": ["grant", "revoke"],
+          "options": [
+            "grant",
+            "revoke"
+          ],
           "help": "grant = make it researchable, revoke = remove it from the tree. Granting copies a real row from a civilization that has it; no field value is ever invented."
         }
       },
@@ -233,9 +379,11 @@
         "writes_per_civ": 1,
         "mod_contains_dat": true
       },
-      "safety": {"field_width_bits": 0, "signed": false}
+      "safety": {
+        "field_width_bits": 0,
+        "signed": false
+      }
     },
-
     "unit.sprite": {
       "title": "换掉单位的造型",
       "title_en": "Make one unit look like another",
@@ -281,7 +429,10 @@
           "required": false,
           "label": "交付方式",
           "default": "copy",
-          "options": ["copy", "rename"],
+          "options": [
+            "copy",
+            "rename"
+          ],
           "help": "HOW the new picture reaches the game, and the two answers are different products. `copy` ships the donor's art once per target filename: proven in game on 2026-10-17, ships no .dat, and therefore coexists with every other data mod -- the villager family is 466 files and 418 MB. `rename` rewrites the graphics records' `file` strings to point at pictures the game already has: 244 record edits, the .dat gets 2,514 bytes SMALLER, the whole mod is 11 MB -- but it ships a .dat, and the game loads one data mod per match, so it cannot sit alongside a resource-multiplier or civ-overhaul mod. Default is `copy` because it is the proven and the non-conflicting one; the cheap model must be asked for. Both produce the same picture on screen (verified in game)."
         }
       },
@@ -299,9 +450,11 @@
         "verified_in_game": "2026-10-17, `dsh test v10` (villager -> sheep, 20 loose .sld, no .dat): the game drew the sheep. The villager was a sheep while standing and while attacking and a human while chopping, mining and building -- which proved the loose override AND exposed that one record's art is not one unit's art.",
         "verified_detail": "The override itself is PROVEN. What the first version got wrong is scope: unit 83's family spans 27 records and 18 stems, and replacing only the Villager Male stem left every task-specific record on its shipped human art. The engine never refuses; it simply draws whatever the record it re-pointed to names."
       },
-      "safety": {"field_width_bits": 0, "signed": false}
+      "safety": {
+        "field_width_bits": 0,
+        "signed": false
+      }
     },
-
     "unit.art": {
       "title": "给单位画一张新图",
       "title_en": "Paint a picture onto a unit's animations",
@@ -349,9 +502,11 @@
         "verified_in_game": null,
         "not_verified_reason": "A repainted .sld has not been loaded by a running game. Loose .sld loading itself IS proven (2026-10-17, `dsh test v10`/`v12`), but those mods copied shipped files; nothing in this project has yet put a hand-encoded block into a file the game then drew."
       },
-      "safety": {"field_width_bits": 0, "signed": false}
+      "safety": {
+        "field_width_bits": 0,
+        "signed": false
+      }
     },
-
     "unit.create": {
       "title": "照着现成的单位做一个新单位",
       "title_en": "Create a unit that the game does not have",
@@ -381,14 +536,20 @@
           "type": "int",
           "required": false,
           "label": "生命值",
-          "range": [-32768, 32767],
+          "range": [
+            -32768,
+            32767
+          ],
           "help": "Optional. The clone's hit points, patched into the record image at its fixed offset. Omit to keep the donor's."
         },
         "button": {
           "type": "int",
           "required": false,
           "label": "第几格",
-          "range": [0, 24],
+          "range": [
+            0,
+            24
+          ],
           "help": "Optional. Which numbered box of the builder's command card the new unit should occupy. Omit to leave it on the donor's own number. The build moves EVERY train location the clone copied, because moving only the first would leave the rest on the donor's buttons -- the thing this field exists to change. A donor whose training slot points at no building (builder -1) is refused rather than silently left unreachable; 683 of the 2,164 British records are like that, so it is the common case and not an edge."
         }
       },
@@ -406,14 +567,70 @@
         "verified_in_game": null,
         "not_verified_reason": "A record the toolkit created has not been loaded by a running game. What IS measured: the stream re-parses with the unmodified parser, the new id reads back with the donor's fields, the resulting file re-serialises byte-stably, and the name file lands at the path the game's own instructions name."
       },
-      "safety": {"field_width_bits": 16, "signed": true}
+      "safety": {
+        "field_width_bits": 16,
+        "signed": true
+      }
+    },
+    "tech.toggle_group": {
+      "title": "把几项科技做成只能选一个的组",
+      "title_en": "Make several technologies an exclusive group",
+      "applies_to": "tech",
+      "description": "The engine's own way of saying 'these technologies exclude each other' lives in resources/_common/dat/linkedTechs.json, not in a .dat effect. The shipped file carries 20 groups (Paphos: Satrapies / Oligarchy / Democracy / Tyranny), so this is a mechanism the game already runs, not one invented here.",
+      "fields": {
+        "techs": {
+          "type": "entity_list",
+          "kind": "tech",
+          "required": true,
+          "min_items": 2,
+          "label": "科技",
+          "help": "Two or more technologies. Fewer than two is not a choice, so it is refused rather than written as a group nobody can pick from."
+        },
+        "type": {
+          "type": "enum",
+          "required": false,
+          "default": "MutuallyExclusive",
+          "label": "分组方式",
+          "options": [
+            "MutuallyExclusive",
+            "Toggleable",
+            "Cycle"
+          ],
+          "help": "MutuallyExclusive = researching one closes the others (the shipped Paphos groups). Toggleable = they switch each other on and off. Cycle = they rotate in order. All three names are the file's own spellings; the engine reads them verbatim."
+        },
+        "comment": {
+          "type": "string",
+          "required": false,
+          "label": "备注",
+          "help": "Written into the file's Comment field. It is documentation, not a mechanic: the engine ignores it (Pompeii reuses one NameId for a different group), so nothing depends on it."
+        }
+      },
+      "compile": {
+        "strategy": "linked_techs_json",
+        "why_not_dat": "type 102 does express 'disable a technology', and the shipped Toggleable groups use it (tech 1202 effect 1192 carries one command per sibling). Writing it that way needs an effect id, a required-tech list and a button slot per technology -- three couplings that can each be wrong separately. This layer states the same thing in one record.",
+        "what_it_does_not_prove": "The shipped groups are read by the engine (the Paphos choice screen exists). Whether a group ADDED by a mod is honoured has not been tested yet.",
+        "mod_contains_dat": true
+      },
+      "safety": {
+        "field_width_bits": 0,
+        "signed": false
+      }
     }
   },
-
   "mod": {
-    "required_files": ["info.json"],
-    "optional_files": ["thumbnail.png", "thumbnail.jpg"],
-    "info_json_keys": ["Author", "CacheStatus", "Description", "Title"],
+    "required_files": [
+      "info.json"
+    ],
+    "optional_files": [
+      "thumbnail.png",
+      "thumbnail.jpg"
+    ],
+    "info_json_keys": [
+      "Author",
+      "CacheStatus",
+      "Description",
+      "Title"
+    ],
     "dat_storage_point": "resources/_common/dat/empires2_x2_p1.dat",
     "path_base": "mod_root",
     "note": "Mod folder contents mirror the GAME ROOT directly; do not add an extra 'resources' wrapper beyond the mirrored path.",
@@ -426,12 +643,19 @@
     "publish_validation": {
       "only_png_images": true,
       "banned_characters": true,
-      "error_codes": ["ZIP", "THUMBNAIL", "MISSING_FILE", "BAD_FILES",
-                      "IMAGE_FORMAT", "VIDEO_FORMAT", "MISSING_FIELDS",
-                      "NO_TITLE_ID", "PUBLISH_FAILED"]
+      "error_codes": [
+        "ZIP",
+        "THUMBNAIL",
+        "MISSING_FILE",
+        "BAD_FILES",
+        "IMAGE_FORMAT",
+        "VIDEO_FORMAT",
+        "MISSING_FIELDS",
+        "NO_TITLE_ID",
+        "PUBLISH_FAILED"
+      ]
     }
   },
-
   "verification": {
     "required": [
       "reparse_with_unmodified_parser",

@@ -577,6 +577,49 @@ def _sprite_hint_at(low):
     return best
 
 
+# "These technologies are a group" is a sentence about SEVERAL records, which no
+# single-entity resolution can express: resolving one span and dropping the rest
+# is a confident edit of one tech when the player named two.  The words below are
+# deliberately about the RELATIONSHIP, not about technology -- 科技/研究 already
+# mean "a tech sentence", and using them here would turn "研究时间减5" into a
+# group request.
+GROUP_HINTS = ("只能选一个", "只能研究一个", "二选一", "互斥", "互相排斥",
+               "做成一组", "归成一组", "分成一组", "同一组", "一组里",
+               "可以互相开关", "互相开关", "互相切换", "开关组",
+               "按顺序循环", "循环切换", "轮流")
+# The three type spellings are the FILE's own, so the sentence maps onto them
+# rather than onto Chinese names the engine has never heard of.  Order matters:
+# the more specific phrase wins, because "可以互相开关" contains no 互斥 but a
+# sentence can name two relationships and the first one it stated is the one the
+# player meant.
+_GROUP_KIND_WORDS = (
+    (("可以互相开关", "互相开关", "互相切换", "开关组"), "Toggleable"),
+    (("按顺序循环", "循环切换", "轮流"), "Cycle"),
+)
+
+
+def _group_hint(low):
+    """Where the sentence says it is about a relationship between records."""
+    best = None
+    for w in GROUP_HINTS:
+        pos = low.find(w)
+        if pos >= 0 and (best is None or pos < best):
+            best = pos
+    return best
+
+
+def _group_kind(low):
+    """``Toggleable`` / ``Cycle``, else the file's default ``MutuallyExclusive``.
+
+    A sentence that says "一组" without naming a relationship gets the same
+    default the schema declares (``MutuallyExclusive``), because that is what the
+    shipped groups are and what a player means by "only one of them".
+    """
+    for words, kind in _GROUP_KIND_WORDS:
+        if any(w in low for w in words):
+            return kind
+    return "MutuallyExclusive"
+
 
 def _operation(text):
     """SET / SUB / ADD, or None.
@@ -956,6 +999,37 @@ def read_clause(text, vocab, civ_names=None, civ_zh=None, pins=None,
         if hp_v is not None:
             cl.intent["hp"] = int(hp_v)
         cl.notes.append("照「%s」做，名字是「%s」" % (donor.display, new_name))
+        return cl
+
+    # --- tech.toggle_group: several technologies, not one -----------------
+    # Checked BEFORE the single-entity resolution, because this sentence names
+    # MORE THAN ONE technology on purpose: "把织布机和铸币术做成只能选一个"
+    # resolved to one entity is a confident edit of 织布机 with the other name
+    # silently dropped -- the exact shape of wrong answer this reader exists to
+    # avoid.  A group needs every tech span, so it is answered from the span
+    # list rather than from `ent`.
+    group_hint = _group_hint(low)
+    if group_hint is not None:
+        tech_ids, techs = [], []
+        # `sps` is the 6-tuple form (start, end, entity, text, kind, group);
+        # `spans` above is the 4-tuple one.  Using the wrong one here unpacked a
+        # start offset into the entity slot -- caught on the first run.
+        for _s, _e2, _e, _t, _k, _g in sps:
+            if _k == "tech" and _e.id not in tech_ids:
+                tech_ids.append(_e.id)
+                techs.append(_e)
+        if len(tech_ids) < 2:
+            cl.why = ("做成一组要说出至少两项科技，这句里只认出 %d 项。"
+                      "可以写「把A和B做成只能选一个」" % len(tech_ids))
+            return cl
+        kind_name = _group_kind(low)
+        cl.kind = "tech"
+        cl.entity = techs[0]
+        cl.intent = {"intent": "tech.toggle_group",
+                     "techs": tech_ids,
+                     "type": kind_name}
+        cl.notes.append("%d 项做成一组：%s"
+                        % (len(tech_ids), "、".join(t.display for t in techs)))
         return cl
 
     ent = None
@@ -1461,6 +1535,51 @@ _NAME_OPPOSED = ("血量", "生命", "攻击", "护甲", "成本", "时间", "�
                  "设为", "加", "减", "能造", "不能造", "解锁", "样子", "造型")
 
 
+def _names_only(part, vocab):
+    """True when a piece is nothing but shipped names and joining words.
+
+    Used by `_merge_group_list`: "织布机、铸币术只能选一个" splits at the 、 into
+    two pieces, and the first one is a bare name with no verb -- read alone it is
+    a refusal sitting next to a group request that lost one of its members.  A
+    piece that also carries a number or an operation word is an edit, not a name
+    being listed, and is never merged.
+    """
+    left = part or ""
+    for _e, txt, _k, _g in vocab.spans(left):
+        left = left.replace(txt, " ", 1)
+    left = re.sub(r"[和与及、,，\s]+", "", left)
+    return left == ""
+
+
+def _merge_group_list(pieces, vocab):
+    """Join an enumerated list onto the group sentence that follows it.
+
+    "织布机、铸币术、荣冠战争做成一组" is one request; `_pieces` splits it into
+    three because 、 is a comma.  Every piece but the last is a bare name, so
+    they are merged forward onto the piece that states the relationship.  The
+    last piece is never merged backward into something else, and a piece with a
+    number or a verb is left alone -- measured: "织布机寿命改成100" must stay a
+    refused edit, not become a group member.
+    """
+    if not pieces:
+        return pieces
+    out = []
+    carry = []
+    for part in pieces:
+        if carry:
+            part = "、".join(carry + [part])
+            carry = []
+        if (_group_hint(_norm(part)) is None
+                and _number(part)[0] is None
+                and _names_only(part, vocab)):
+            carry = [part]
+            continue
+        out.append(part)
+    if carry:
+        out.extend(carry)
+    return out
+
+
 def read(text, vocab, civ_names=None, civ_zh=None, pins=None, effect_count=None,
          unit_class=None):
     """Split on sentence punctuation and read every part.
@@ -1477,7 +1596,10 @@ def read(text, vocab, civ_names=None, civ_zh=None, pins=None, effect_count=None,
     for why a category word cannot be edited as if it were a record.
     """
     intents, clauses = [], []
-    for part in _merge_create_name(_pieces(text, vocab), civ_names, civ_zh, vocab):
+    _parts = _merge_group_list(_merge_create_name(_pieces(text, vocab),
+                                                  civ_names, civ_zh, vocab),
+                               vocab)
+    for part in _parts:
         cl = read_clause(part, vocab, civ_names=civ_names, civ_zh=civ_zh,
                          pins=pins, effect_count=effect_count,
                          unit_class=unit_class)
