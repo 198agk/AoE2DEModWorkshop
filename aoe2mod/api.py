@@ -3128,6 +3128,20 @@ class Toolkit(object):
             return self._plan_paint(r, base)
         if self._strategy(r.raw) == "linked_techs_json":
             return self._plan_toggle_group(r, base)
+        # The arms above handle five strategies; the two below handle the byte
+        # patcher and the tech-tree writer.  Anything ELSE used to fall straight
+        # into the byte-preview body and answer "will change the game data, 1701
+        # edits" -- measured 2026-10-22 with a 14th intent declaring the made-up
+        # strategy `not_a_real_strategy`: plan() said editable=True and build()
+        # then refused.  A preview that promises an edit the build refuses is
+        # exactly the defect _probe/test_plan_build_agreement.py exists to kill,
+        # and it matters twice over now that strategies are expected to come from
+        # data: a typo in a schema file must be refused, not previewed.
+        _strategy = self._strategy(r.raw)
+        if _strategy not in ("in_place_patch", "civtechtrees_json"):
+            raise C.IntentError(
+                "「%s」声明了编译策略 %r，这个版本既不预览也不构建它。"
+                % (r.raw.get("intent"), _strategy))
         if r.raw.get("intent", "").endswith(".availability"):
             return self._plan_availability(r, base)
         if r.kind == "tech":
@@ -3506,8 +3520,8 @@ class Toolkit(object):
                                             overwrite=overwrite)
         if strategy != "in_place_patch":
             raise C.IntentError(
-                "intent %r declares compile strategy %r, which this build does "
-                "not implement" % (intent.get("intent"), strategy))
+                "「%s」声明了编译策略 %r，这个版本不构建它。"
+                % (intent.get("intent"), strategy))
         rep = C.compile_intent(self.dat_path, intent, parsed=self._parsed,
                                stats=self._stats, game_root=self.game_root)
         patched = C.apply_edits(self._raw, rep["edits"])
@@ -3687,8 +3701,7 @@ class Toolkit(object):
                 paint.append(r)
             else:
                 raise C.IntentError(
-                    "intent %r declares compile strategy %r, which this build "
-                    "does not implement"
+                    "「%s」声明了编译策略 %r，这个版本的 bundle 路径不构建它。"
                     % (r.raw.get("intent"), s))
         return dat, js, sld, paint, new, linked, tech
 

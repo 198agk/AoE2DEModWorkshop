@@ -35,6 +35,9 @@ _shots/
 _probe/tmp_*.py
 _probe/tmp_*.ps1
 _probe/tmp_*.txt
+# Recon probes dump their findings as JSON next to themselves (tmp_recon3.json,
+# tmp_wall.json, ...).  The same convention: a scratch answer, not a source.
+_probe/tmp_*.json
 _probe/_newlog.md
 # Written every run by _probe/schema/test_branch_extract.py: a human-readable
 # PREVIEW of what the branch extractor saw.  The artifacts that matter are the

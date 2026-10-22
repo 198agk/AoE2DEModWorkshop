@@ -110,12 +110,66 @@ def main():
                   man.get("edit_count") == edits,
                   "plan=%r build=%r" % (edits, man.get("edit_count")))
 
+    unknown_strategy(tk)
+
     print()
     if FAIL:
         print("PLAN/BUILD AGREEMENT FAILED (%d): %s" % (len(FAIL), FAIL))
         return 1
     print("PLAN AND BUILD AGREE ON EVERY CASE -- INCLUDING THE REFUSALS")
     return 0
+
+
+def unknown_strategy(tk):
+    """A strategy the chains do not implement must be refused by BOTH sides.
+
+    Measured 2026-10-23: an intent declaring the made-up strategy
+    `not_a_real_strategy` previewed as `editable=True, edit_count=1701` and only
+    failed at build time.  Every other case in this file drifts on a *value*;
+    this one drifts on the *dispatch*, which is the shape that matters more now
+    that strategies are declared in data and a plugin or a typo can introduce a
+    name no chain knows.  `plan()` had no final refusal, so it fell through into
+    the byte-preview body and promised edits it could never write.
+    """
+    import copy
+
+    import aoe2mod.intent.compiler as C
+
+    intents, bindings = C.load_schema()
+    fake = copy.deepcopy(intents)
+    fake["intents"]["unit.probe_unknown_strategy"] = {
+        "applies_to": "unit",
+        "title": "probe",
+        "fields": {"unit": {"type": "entity_ref", "kind": "unit",
+                            "required": True},
+                   "stat": {"type": "enum", "required": True,
+                            "options": ["hit_points"], "label": "属性"},
+                   "value": {"type": "int", "label": "设为"}},
+        "compile": {"strategy": "not_a_real_strategy"},
+        "safety": {"field_width_bits": 16, "signed": True},
+    }
+    saved = dict(C._SCHEMA_CACHE)
+    C._SCHEMA_CACHE.clear()
+    C._SCHEMA_CACHE[C._SCHEMA] = (fake, bindings)
+    probe = {"intent": "unit.probe_unknown_strategy", "unit": 83,
+             "stat": "hit_points", "value": 40}
+    try:
+        try:
+            got = tk.plan(probe)
+            check("an unknown strategy is refused by the plan", False,
+                  "plan accepted it: editable=%r edit_count=%r"
+                  % (got.get("editable"), got.get("edit_count")))
+        except Exception:                                  # noqa: BLE001
+            check("an unknown strategy is refused by the plan", True)
+        try:
+            _build(tk, probe)
+            check("an unknown strategy is refused by the build as well", False,
+                  "build accepted it")
+        except Exception:                                  # noqa: BLE001
+            check("an unknown strategy is refused by the build as well", True)
+    finally:
+        C._SCHEMA_CACHE.clear()
+        C._SCHEMA_CACHE.update(saved)
 
 
 def _build(tk, intent):
