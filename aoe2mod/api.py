@@ -1038,10 +1038,30 @@ class Toolkit(object):
             "所以这项科技只有 .dat 那一半（能被研究，但科技树面板上没有它）" % new_id,
         ]
         if base["building_names"]:
+            # A box is not a private resource: 66 shipped (building, button) pairs
+            # already hold two or more technologies (the town centre's box 8 holds
+            # Town Watch and Town Patrol; box 11 holds all three ages).  Saying
+            # "takes box 8" without saying WHO ELSE is in it is the same
+            # under-report as naming only one of two written files -- the player
+            # finds out when two technologies share a button and wonder whether
+            # they broke something.
+            _box = locs[0].get("button_id")
+            _where = locs[0].get("location_id")
+            _mates = [(tid, rec.get("name"))
+                      for tid, rec in enumerate(self._tech_records())
+                      for loc in (rec.get("research_locations") or [])
+                      if loc.get("location_id") == _where
+                      and loc.get("button_id") == _box]
             base["warnings"].append(
-                "它借用 %s 的第 %s 格，因为研究位置是从原记录抄来的"
-                % (base["building_names"][0],
-                   "、".join(str(loc["button_id"]) for loc in locs)))
+                "它借用 %s 的第 %s 格"
+                % (base["building_names"][0], _box))
+            if _mates:
+                base["warnings"].append(
+                    "那一格本来已经有 %d 项科技（%s）：同一格放多项是出厂数据里就有的做法，"
+                    "多出来的会挤在一起，不是冲突"
+                    % (len(_mates),
+                       "、".join((_tech_display(self, tid) or str(tid))
+                                for tid, _n in _mates[:4])))
         # Notes raised while choosing the research card travel with the plan: the
         # chosen building may be a DIFFERENT record that answers to the same
         # display name (five town centres), and the player has to be able to see

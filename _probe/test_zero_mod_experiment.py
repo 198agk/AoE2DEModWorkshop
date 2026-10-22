@@ -169,6 +169,7 @@ try:
     st = json.loads(open(os.path.join(MODS, "mod-status.json"), "rb")
                     .read().decode("utf-8-sig"), strict=False)
     dirty = []
+    ours = []
     for m in st.get("Mods", []):
         if not m.get("Enabled"):
             continue
@@ -180,9 +181,21 @@ try:
                 rel = os.path.relpath(os.path.join(root, f), d).lower()
                 if ("civtechtrees" in rel or "futuravailableunits" in rel
                         or rel.endswith("empires2_x2_p1.dat")):
-                    dirty.append((os.path.basename(d), rel))
-    check("no ENABLED mod ships a tree / panel / dat file", not dirty,
-          "contaminated by %s" % dirty[:3])
+                    (ours if os.path.basename(d).startswith("dsh ")
+                     else dirty).append((os.path.basename(d), rel))
+    # This machine's own experiment mods are EXPECTED to be enabled and to ship
+    # a `.dat` -- that is what they are for.  What this pin has to catch is a
+    # THIRD-PARTY mod quietly shipping game data the shipped files disagree
+    # with, because then a reading cannot be attributed to the shipped data.
+    # Measured 2026-10-22: the first version of this pin counted `dsh test v49`
+    # (this tool's own mod, enabled on purpose) and reported a clean machine as
+    # contaminated -- the same defect as pinning the player's mod list as a
+    # literal.
+    check("no THIRD-PARTY enabled mod ships a tree / panel / dat file",
+          not dirty, "contaminated by %s" % dirty[:3])
+    if ours:
+        print("     (this tool's own enabled mods, expected: %s)"
+              % sorted({n for n, _r in ours}))
 except (OSError, ValueError) as e:
     check("the profile's mod-status.json is readable", False, str(e))
 

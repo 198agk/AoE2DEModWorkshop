@@ -107,7 +107,7 @@ check("its effect enables the Longbowman (unit 8)",
       [c.get("a") for c in e251.get("commands")] == [LONGBOW])
 
 print()
-print("B  route 1 (in-place length change) is UNSAFE -- measured")
+print("B  route 1 (in-place length change) was UNSAFE; it is safe now -- measured")
 def r1(st):
     st["effects"][251]["commands"] = list(st["effects"][251]["commands"]) + [
         (2, UNIT, 1, -1, 0.0)]
@@ -117,9 +117,19 @@ print("     bytes %d (delta %+d), mismatches %d, reparse clean: %s"
       % (len(o1), len(o1) - len(data), rep1["model_vs_original_mismatches"], ok1))
 if not ok1:
     print("     reparse failure: %s" % str(why1)[:90])
-check("route 1 changes far more bytes than the edit warrants",
-      abs(len(o1) - len(data)) > 1000, "delta=%+d" % (len(o1) - len(data)))
-check("and it does NOT re-parse", not ok1)
+# 2026-10-22: `write_effect` now advances the raw cursor by the DIFFERENCE when
+# the command count changes (`Writer.advance_raw`), so this route stopped being
+# the disaster the docstring above describes: measured delta +11 bytes instead of
+# +3,061,463, and the re-parse completes.  The old assertions pinned the bug, so
+# they would have gone red on the fix -- exactly what a pin must not do.  What is
+# worth pinning is the property that made route 3 the right choice: a length
+# change must grow by exactly the command and nothing else.
+check("route 1 grows by exactly the 11 bytes of one command",
+      len(o1) - len(data) == 11, "delta=%+d" % (len(o1) - len(data)))
+check("route 1 re-parses cleanly", ok1)
+check("and the disagreement stays inside the edited record",
+      0 < rep1["model_vs_original_mismatches"] <= 11,
+      "mismatches=%s" % rep1["model_vs_original_mismatches"])
 
 print()
 print("C  route 2 (append a tech) serialises, but deviates on `costs`")

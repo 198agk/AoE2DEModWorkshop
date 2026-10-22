@@ -185,7 +185,24 @@ def main():
         check("and the table has exactly one instructions banner",
               body.count("//INSTRUCTIONS:") == 1, body[:200])
 
+    # A box is shared, not owned: 66 shipped (building, button) pairs hold two
+    # or more technologies.  The preview must say who else is in the box, or the
+    # player meets two technologies on one button and cannot tell whether they
+    # broke something.
     from aoe2mod.dat import newtech as NT
+    _busy = tk.plan({"intent": "tech.create", "donor": 22, "name": "手艺八",
+                     "building": 109, "button": 8})
+    _wn = " ".join(_busy.get("warnings") or [])
+    check("a shared box says which technologies already sit in it",
+          "那一格本来已经有" in _wn, _wn[-160:])
+    check("and names at least one of them",
+          "城镇瞭望" in _wn or "城镇巡逻" in _wn, _wn[-160:])
+    _free = tk.plan({"intent": "tech.create", "donor": 22, "name": "手艺单",
+                     "building": 109, "button": 1})
+    _wf = " ".join(_free.get("warnings") or [])
+    check("an unused box does not claim a crowd",
+          "那一格本来已经有" not in _wf, _wf[-160:])
+
     # A sentence that names a BUILDING must not inherit every box that
     # building ever had.  Measured 2026-10-22: the town centre has 18 shipped
     # research locations (8 distinct buttons, each repeated for the technologies
