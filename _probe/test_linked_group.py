@@ -100,6 +100,27 @@ def main():
     check("an unknown property is still refused, not turned into a group",
           not intents, str([i.get("intent") for i in intents]))
 
+    # Two phrasings that used to fall through, both measured on 2026-10-22.
+    # 「只能研究其中一个」 reached the availability branch and produced a
+    # confident WRONG answer ("要改「能不能造」的可用性，得说清是哪个文明"), and
+    # 「做成循环」 asked for a number.  Both are now group requests.
+    for _text in ("锻造、步兵鳞甲只能研究其中一个", "把织布机和荣冠战争做成循环"):
+        intents, clauses = read(_text, vocab, tk)
+        check("%s is a group, not an availability edit" % _text,
+              [i.get("intent") for i in intents] == ["tech.toggle_group"],
+              str([i.get("intent") for i in intents] or [c.why for c in clauses]))
+    intents, _clauses = read("把织布机和荣冠战争做成循环", vocab, tk)
+    check("   and 做成循环 means Cycle", intents[0].get("type") == "Cycle",
+          str(intents[0].get("type") if intents else None))
+
+    # The weak hint must stay weak: 「其中一个」 means "a relationship" only when
+    # the sentence really names two technologies.  With one, it must not turn a
+    # plain stat edit into a refusal -- that is how it behaved for an hour.
+    intents, _clauses = read("其中一个村民血量改成1000", vocab, tk)
+    check("a weak group word does not hijack a plain edit",
+          [i.get("intent") for i in intents] == ["unit.stat"],
+          str([i.get("intent") for i in intents]))
+
     print("=== B. the preview says what the file has and what is added")
     got = tk.plan({"intent": "tech.toggle_group", "techs": [22, 23]})
     check("the preview is editable", got.get("editable") is True, str(got.get("reason")))

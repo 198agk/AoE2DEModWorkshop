@@ -583,10 +583,19 @@ def _sprite_hint_at(low):
 # deliberately about the RELATIONSHIP, not about technology -- 科技/研究 already
 # mean "a tech sentence", and using them here would turn "研究时间减5" into a
 # group request.
-GROUP_HINTS = ("只能选一个", "只能研究一个", "二选一", "互斥", "互相排斥",
+GROUP_HINTS = ("只能选一个", "只能研究一个", "只能研究其中一个", "只能选择其中一个",
+               "二选一", "互斥", "互相排斥",
                "做成一组", "归成一组", "分成一组", "同一组", "一组里",
                "可以互相开关", "互相开关", "互相切换", "开关组",
-               "按顺序循环", "循环切换", "轮流")
+               "按顺序循环", "循环切换", "轮流", "做成循环", "循环")
+# Words that only mean "a relationship" when the sentence really does name two
+# records.  `其中一个` was added on 2026-10-22 because 「锻造、步兵鳞甲只能研究
+# 其中一个」 fell through to the availability branch and produced a confident
+# WRONG answer ("要改「能不能造」的可用性，得说清是哪个文明").  But as a strong
+# hint it also swallowed 「其中一个村民血量改成1000」, a sentence that has
+# nothing to do with groups.  So it is weak: with two tech spans it is a group,
+# without them the reader continues as before instead of refusing.
+GROUP_HINTS_WEAK = ("其中一个",)
 # The three type spellings are the FILE's own, so the sentence maps onto them
 # rather than onto Chinese names the engine has never heard of.  Order matters:
 # the more specific phrase wins, because "可以互相开关" contains no 互斥 but a
@@ -594,7 +603,7 @@ GROUP_HINTS = ("只能选一个", "只能研究一个", "二选一", "互斥", "
 # player meant.
 _GROUP_KIND_WORDS = (
     (("可以互相开关", "互相开关", "互相切换", "开关组"), "Toggleable"),
-    (("按顺序循环", "循环切换", "轮流"), "Cycle"),
+    (("按顺序循环", "循环切换", "轮流", "做成循环", "循环"), "Cycle"),
 )
 
 
@@ -1009,7 +1018,8 @@ def read_clause(text, vocab, civ_names=None, civ_zh=None, pins=None,
     # avoid.  A group needs every tech span, so it is answered from the span
     # list rather than from `ent`.
     group_hint = _group_hint(low)
-    if group_hint is not None:
+    _weak_grp = any(w in low for w in GROUP_HINTS_WEAK)
+    if group_hint is not None or _weak_grp:
         tech_ids, techs = [], []
         # `sps` is the 6-tuple form (start, end, entity, text, kind, group);
         # `spans` above is the 4-tuple one.  Using the wrong one here unpacked a
@@ -1018,19 +1028,24 @@ def read_clause(text, vocab, civ_names=None, civ_zh=None, pins=None,
             if _k == "tech" and _e.id not in tech_ids:
                 tech_ids.append(_e.id)
                 techs.append(_e)
-        if len(tech_ids) < 2:
+        if len(tech_ids) >= 2:
+            kind_name = _group_kind(low)
+            cl.kind = "tech"
+            cl.entity = techs[0]
+            cl.intent = {"intent": "tech.toggle_group",
+                         "techs": tech_ids,
+                         "type": kind_name}
+            cl.notes.append("%d 项做成一组：%s"
+                            % (len(tech_ids), "、".join(t.display for t in techs)))
+            return cl
+        # A strong hint with fewer than two technologies is a half-stated group,
+        # so it is refused by name.  A weak hint is not: 「其中一个村民血量改成
+        # 1000」 says nothing about a relationship, so let the ordinary reader
+        # have the sentence instead of turning it into a refusal.
+        if group_hint is not None:
             cl.why = ("做成一组要说出至少两项科技，这句里只认出 %d 项。"
                       "可以写「把A和B做成只能选一个」" % len(tech_ids))
             return cl
-        kind_name = _group_kind(low)
-        cl.kind = "tech"
-        cl.entity = techs[0]
-        cl.intent = {"intent": "tech.toggle_group",
-                     "techs": tech_ids,
-                     "type": kind_name}
-        cl.notes.append("%d 项做成一组：%s"
-                        % (len(tech_ids), "、".join(t.display for t in techs)))
-        return cl
 
     ent = None
     kind = None
