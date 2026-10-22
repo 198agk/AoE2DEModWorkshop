@@ -52,12 +52,18 @@ LINKED_TECHS_REL = os.path.join("resources", "_common", "dat", "linkedTechs.json
 
 TYPES = ("MutuallyExclusive", "Toggleable", "Cycle")
 
-# The ``NameId`` written into a group this project adds.  424001 is the first
-# string id after the shipped Paphos block, which ends at 424020 in
-# ``key-value-paphos-strings-utf8.txt`` -- measured, not guessed
-# (``_probe/report_linkedtechs.md``).  The engine ignores this field, so a
-# collision would be cosmetic; using a fresh id keeps it from being.
-DEFAULT_NAME_ID = 424001
+# The first ``NameId`` this project may hand out.  The shipped Paphos block
+# occupies 424001..424020, and **all twenty of those ids are defined in the
+# string tables** -- 424001 is "Satrapies".  So the old constant here (424001)
+# made every group this project wrote display under somebody else's name;
+# measured 2026-10-22 by reading the locale tables: 424001..424020 defined,
+# 424021 the first free id.
+#
+# This is not cosmetic.  Two groups sharing a ``NameId`` are indistinguishable
+# on screen, and a group named "Satrapies" is a lie about what the player
+# chose.  Allocation is therefore computed, never assumed: see
+# :func:`next_name_id`.
+DEFAULT_NAME_ID = 424021
 
 
 class LinkedTechError(Exception):
@@ -142,7 +148,27 @@ def group_of(doc, tech_id):
     return out
 
 
-def add_group(doc, techs, name_id=424001, comment="", kind="MutuallyExclusive",
+def next_name_id(doc, start=DEFAULT_NAME_ID):
+    """The first ``NameId`` at or after ``start`` that no shipped group uses.
+
+    Computed from the file rather than assumed, because the shipped block is
+    not fixed: Paphos added nineteen ids at once, and a community mod that adds
+    groups will take ids of its own.  A collision shows up as two groups wearing
+    the same name, which looks like a bug in this tool.
+    """
+    used = set()
+    for g in groups(doc):
+        try:
+            used.add(int(g.get("NameId")))
+        except (TypeError, ValueError):
+            continue
+    nid = int(start)
+    while nid in used:
+        nid += 1
+    return nid
+
+
+def add_group(doc, techs, name_id=None, comment="", kind="MutuallyExclusive",
               local=True):
     """Append one group.  ``doc`` is mutated and returned.
 
@@ -172,6 +198,8 @@ def add_group(doc, techs, name_id=424001, comment="", kind="MutuallyExclusive",
             "这些科技已经在别的组里了：%s。一组科技只能被一条记录管，"
             "否则两条记录会互相覆盖。"
             % "、".join("#%d（%s）" % (k, v) for k, v in sorted(taken.items())))
+    if name_id is None:
+        name_id = next_name_id(doc)
     doc.setdefault("LinkedTechs", []).append({
         "NameId": int(name_id),
         "Comment": comment,

@@ -70,6 +70,11 @@ def main():
 
     shipped = json.load(io.open(LT.path_for(tk.game_root), encoding="utf-8-sig"))
     shipped_groups = LT.groups(shipped)
+    # A copy of the shipped document taken BEFORE any build runs.  `next_name_id`
+    # has to be asked about the file as the player has it, not about a document a
+    # previous section already appended to -- otherwise the "first free id"
+    # assertion would silently compare against its own earlier group.
+    before_any = json.loads(json.dumps(shipped))
 
     print("=== A. the sentence names every technology it lists")
     cases = [
@@ -199,6 +204,38 @@ def main():
           disk_groups[-1].get("Type") in LT.TYPES, str(disk_groups[-1].get("Type")))
     check("the comment reached the file",
           disk_groups[-1].get("Comment") == "织布机与采邑", str(disk_groups[-1]))
+    # `NameId` is a string id, and 424001..424020 are ALL defined -- 424001 is
+    # "Satrapies".  Until 2026-10-22 the writer hard-coded 424001, so every group
+    # this project ever made would have shown a shipped group's name on screen.
+    # The assertions below are the reason this cannot come back: a fresh id, an
+    # id no shipped group already uses, and the same number reported in the
+    # manifest so a build can be audited afterwards.
+    _nid = disk_groups[-1].get("NameId")
+    _used = set(int(g.get("NameId")) for g in shipped_groups
+                if isinstance(g.get("NameId"), int))
+    check("the new group took a NameId of its own",
+          isinstance(_nid, int) and _nid not in _used, "NameId %r, used %r"
+          % (_nid, sorted(_used)[:3]))
+    # Computed HERE, not by asking `next_name_id` again: comparing the module
+    # against itself would pass while the allocator is broken, which is the one
+    # thing this assertion exists to catch.
+    _expect = 424021
+    while _expect in _used:
+        _expect += 1
+    check("and that NameId is the first id no shipped group uses",
+          _nid == _expect, "got %r, expected %r" % (_nid, _expect))
+    check("the manifest reports the same NameId it wrote",
+          man.get("name_id") == _nid, "%r vs %r" % (man.get("name_id"), _nid))
+    # The preview promises this number before the build runs.  It has to be the
+    # number the build then uses, or a player who wrote it down has been told
+    # something the product did not do.
+    _pv = tk.plan({"intent": "tech.toggle_group", "techs": [22, 23],
+                   "comment": "织布机与采邑"})
+    check("the preview already names the id the group will get",
+          _pv.get("name_id") == _nid, "%r vs %r" % (_pv.get("name_id"), _nid))
+    check("and says it is fresh", man.get("verification", {}).get(
+              "name_id_is_fresh") is True,
+          str((man.get("verification") or {}).get("name_id_is_fresh")))
     check("the shipped file on this machine was not touched",
           json.load(io.open(LT.path_for(tk.game_root), encoding="utf-8-sig"))
           == shipped)

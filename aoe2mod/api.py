@@ -2762,12 +2762,17 @@ class Toolkit(object):
         reproduce the input byte for byte means every later claim about "only
         the new group changed" is unfounded.
 
-        No `.dat` is written, so no carrier is needed: `emit_json_mod` would
-        refuse to put a file under the dat directory without one, EXCEPT that
-        `linkedTechs.json` is not in the CRC table (measured: 6 of the dat JSON
-        files are, this one is not), so the mod may override it on its own.  The
-        v45 canary on 2026-10-22 proved a mod's copy of a dat-directory JSON is
-        honoured, which is the result this method's honesty boundary cites.
+        Two files may be written.  `linkedTechs.json` is always one of them, and
+        it is not in the CRC table (measured: 6 of the dat JSON files are, this
+        one is not), so a mod may override it on its own.  The v45 canary on
+        2026-10-22 proved a mod's copy of a dat-directory JSON is honoured, which
+        is what makes the label worth writing.
+
+        For `MutuallyExclusive` and `Toggleable` the label alone does nothing on
+        screen (measured in game the same day: the user studied Forging and read
+        「不变灰」), so the `.dat` half is written too -- a `type 102` command in
+        each member's own effect, which is the shape all 16 shipped non-Cycle
+        groups use.  That makes this a data mod rather than a JSON-only one.
         """
         from .game import linkedtechs as LT
         doc, note = LT.load(self.game_root)
@@ -2920,6 +2925,18 @@ class Toolkit(object):
                          and ver["every_previous_group_survived"]
                          and ver["groups_added"] == 1)
         ver["commands_added"] = commands_added
+        # The id the group was ALLOCATED.  Until 2026-10-22 this was hard-coded
+        # to 424001, which the string tables define as "Satrapies" -- so every
+        # group this tool ever wrote displayed under a shipped group's name.
+        # Naming the allocated id in the manifest is how a build can be checked
+        # for that class of collision after the fact.
+        _newgrp = added[0] if added else {}
+        ver["name_id"] = _newgrp.get("NameId")
+        ver["name_id_is_fresh"] = bool(
+            isinstance(ver["name_id"], int)
+            and ver["name_id"] not in
+            [int(g.get("NameId")) for g in LT.groups(before)
+             if isinstance(g.get("NameId"), int)])
         ver["dat_half"] = ("written" if commands_added
                            else ("label_only" if not wants_dat else "not_needed"))
         ver["proven"] = [
@@ -2985,6 +3002,7 @@ class Toolkit(object):
             "the disable-by-effect route was confirmed for `type 2` on "
             "2026-10-19, but no run has yet watched an added `type 102` fire"]
         man["verification"] = ver
+        man["name_id"] = ver["name_id"]
         man["shape"] = "linked_group"
         man["group_type"] = r.raw.get("type")
         man["members"] = [{"id": m.id, "name": m.display} for m in r.members]
@@ -3495,6 +3513,11 @@ class Toolkit(object):
         doc, note = LT.load(self.game_root)
         base["shipped_groups"] = len(LT.groups(doc))
         base["file_state"] = note
+        # The id the group will be given, shown in the preview for the same
+        # reason the manifest shows it: 424001..424020 are all defined in the
+        # string tables (424001 is "Satrapies"' own group), so a group reusing
+        # one of them displays under somebody else's name.  Measured 2026-10-22.
+        base["name_id"] = LT.next_name_id(doc)
         try:
             LT.add_group(doc, [m.id for m in r.members],
                          comment=r.raw.get("comment") or "",
@@ -3941,9 +3964,15 @@ class Toolkit(object):
             # describe the sentence it is attached to.
             n_before = len(LT.groups(doc))
             try:
+                # `name_id=None` asks the module to ALLOCATE one from the
+                # document it is about to write into.  Passing the default here
+                # would hand every group in a bundle the same id -- two groups
+                # wearing one name, which is exactly the defect fixed in
+                # `linkedtechs.next_name_id` on 2026-10-22.
+                _want_nid = r.raw.get("name_id")
                 added = LT.add_group(doc, list(r.raw.get("techs") or ()),
-                                     name_id=int(r.raw.get("name_id")
-                                                 or LT.DEFAULT_NAME_ID),
+                                     name_id=(int(_want_nid)
+                                              if _want_nid is not None else None),
                                      comment=r.raw.get("comment") or "",
                                      kind=r.raw.get("type") or "MutuallyExclusive",
                                      local=True)
@@ -3957,11 +3986,13 @@ class Toolkit(object):
                               "groups_after": n_before,
                               "file_state": note})
                 continue
+            _grp = (LT.groups(added) or [])[-1] if added else {}
             notes.append({
                 "resolved": r.describe(), "ok": True,
                 "members": [{"id": m.id, "name": m.display} for m in r.members],
                 "type": r.raw.get("type") or "MutuallyExclusive",
                 "comment": r.raw.get("comment") or "",
+                "name_id": _grp.get("NameId"),
                 "added": added,
                 "groups_before": n_before,
                 "groups_after": len(LT.groups(doc)),
