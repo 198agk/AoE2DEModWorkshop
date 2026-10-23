@@ -332,6 +332,13 @@ let AUTO_SENT = null;
 // The page must say so -- shipping 21 files while the screen says "已生成并安装"
 // is a silent half-done job.
 let DROPPED = [];
+// Warnings the manifest carries back from a SUCCESSFUL build.  They are learned
+// at write time, so the preview cannot have them: a JSON override that is
+// byte-identical to the shipped file would pin it to today's content, and one
+// folder carrying several layers changes which data mod the player must pick.
+// Measured 2026-10-23: a real grant build returned 8 warnings with
+// `verification.ok` true and the page rendered none of them.
+let BUILD_WARNINGS = [];
 
 // What /api/mods answers.  Two mods, one of which carries a whole .dat and the
 // other of which does not, because the badge the page draws is "this one competes
@@ -385,7 +392,8 @@ const sandbox = {
       // sentences the bundle succeeded without.  The page must print them, or a
       // half-done job looks finished.
       return { json: async () => ({ ok: true, manifest: { mod_dir: "/tmp/x",
-        info: { Title: BUILT_TITLE }, sprite_refusals: DROPPED } }) };
+        info: { Title: BUILT_TITLE }, sprite_refusals: DROPPED,
+        warnings: BUILD_WARNINGS } }) };
     }
     if (url.indexOf("/api/update-check") === 0) {
       // The route wraps its answer the way the server does ({ok, update}); a stub
@@ -657,6 +665,30 @@ function buildChecks() {
   }).then(() => {
     check("a complete build says nothing about dropped sentences",
           text(ids.buildnote).indexOf("有一句没做成") < 0, text(ids.buildnote));
+    // A build that SUCCEEDS can still learn something at write time that the
+    // preview could not know.  Measured 2026-10-23: `unit.availability` grant of
+    // unit 775 to Armenians returns 8 warnings next to `verification.ok: true`,
+    // and the page printed none of them -- the same shape as the preview-side
+    // `plan.warnings` gap fixed just before, one layer further along the same
+    // pipeline.  The stub echoes the two shapes a real manifest carries.
+    BUILD_WARNINGS = [
+      "「名字」是从捐赠方那一行照抄下来的，不是为这个文明写的",
+      "有 1 个 JSON 覆盖文件和本机那份逐字节相同，这等于把这个文件钉在今天的内容上",
+    ];
+    ids.title.value = "";
+    page.renderClauses(FIXTURES.mixed.clauses);
+    return page.doBuild();
+  }).then(() => {
+    check("a successful build's own warnings reach the screen",
+          text(ids.buildnote).indexOf("照抄下来的") >= 0,
+          text(ids.buildnote));
+    check("...and the later one is there too, not just the first",
+          text(ids.buildnote).indexOf("钉在今天的内容上") >= 0,
+          text(ids.buildnote));
+    check("...and they are warnings, not failures",
+          !walk(ids.buildnote, []).some((n) => n.className === "err"),
+          JSON.stringify(walk(ids.buildnote, []).map((n) => n.className)));
+    BUILD_WARNINGS = [];
     return pickChecks();
   }).catch((e) => { fails.push("doBuild threw: " + e.message);
                     console.log("FAIL doBuild threw :: " + e.stack); finish(); });

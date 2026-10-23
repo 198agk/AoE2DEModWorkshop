@@ -113,6 +113,63 @@ with tempfile.TemporaryDirectory() as td:
     _bytes = os.path.getsize(os.path.join(dest, E.DAT_REL))
     check("the carried file is on disk at the DAT path", _bytes > 1_000_000,
           "%d bytes" % _bytes)
+    # Which layers this ONE folder carries is now measured from the files on
+    # disk.  It used to be an unconditional `deliver_data_and_ui_as_separate_mods:
+    # True`, which asserted a policy the emitter did not follow: a bundle with a
+    # `.dat` edit plus a reskin ships 93 MB of `.dat` next to 20 `.sld` files in
+    # one folder (measured 2026-10-23).  A field nobody reads AND that describes
+    # the opposite of what happened is worse than no field.
+    check("the manifest reports which layers the folder carries",
+          m.get("layers") == ["dat", "json"], "layers=%r" % (m.get("layers"),))
+    check("and it no longer claims data and UI ship as separate mods",
+          "deliver_data_and_ui_as_separate_mods" not in m,
+          "the removed field came back")
+    _w = " ".join(m.get("warnings") or [])
+    check("a carrier .dat does NOT count as a second data layer",
+          "同时带了" not in _w,
+          "the mix warning fired on a JSON-only mod: %r" % _w)
+
+print()
+print("C2  a JSON override identical to the shipped file IS reported, in Chinese")
+with tempfile.TemporaryDirectory() as td:
+    _rel = os.path.join("resources", "_common", "dat", "CivTechTrees",
+                        "BRITONS.json")
+    with open(os.path.join(GAME, _rel), "rb") as fh:
+        _shipped = fh.read()
+    m_id = E.emit_json_mod(
+        os.path.join(td, "m2b"), {_rel: _shipped},
+        E.make_info("redundant", author="aoe2mod probe"), base_dir=GAME)
+    check("the redundancy is detected", m_id.get("json_identical_to_base") ==
+          ["resources/_common/dat/CivTechTrees/BRITONS.json"],
+          "json_identical_to_base=%r" % (m_id.get("json_identical_to_base"),))
+    _w = " ".join(m_id.get("warnings") or [])
+    check("its warning speaks Chinese (it used to be English on screen)",
+          "钉在今天的内容上" in _w and "逐字节相同" in _w,
+          "warnings=%r" % _w)
+    check("and it does not leak the old English sentence",
+          "byte-identical to the shipped file" not in _w,
+          "warnings=%r" % _w)
+
+print()
+print("C3  a folder carrying .dat AND .sld reports both, and says so")
+with tempfile.TemporaryDirectory() as td:
+    _tk = A.open_toolkit()
+    _m = _tk.build_bundle([
+        {"intent": "unit.stat", "unit": 83, "stat": "hit_points", "value": 77},
+        {"intent": "unit.sprite", "unit": 83, "donor": 4},
+    ], os.path.join(td, "mixed"), title="mixed layers pin", author="aoe2mod probe",
+        overwrite=True)
+    check("both layers are named", _m.get("layers") == ["dat", "sld"],
+          "layers=%r" % (_m.get("layers"),))
+    # `info.json` is the folder's own manifest, not an override of a game file.
+    # Counting it would report a "json" layer for EVERY build -- measured
+    # 2026-10-23: the first version of this check read `['dat', 'sld', 'json']`.
+    check("info.json is not counted as a json layer",
+          "json" not in (_m.get("layers") or []), "layers=%r" % (_m.get("layers"),))
+    _w = " ".join(_m.get("warnings") or [])
+    check("a mixed folder says which layers it carries", "同时带了" in _w,
+          "warnings=%r" % _w)
+    check("and names them", "dat" in _w and "sld" in _w, "warnings=%r" % _w)
 
 print()
 print("D  without base_dir the emitter REFUSES instead of emitting a broken mod")

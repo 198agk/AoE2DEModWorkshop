@@ -710,8 +710,8 @@
     "rules": {
       "parse_info_json_strict_false": true,
       "info_json_reason": "Shipped mods contain bare \r\n control characters in Description, which strict JSON parsing rejects.",
-      "deliver_data_and_ui_as_separate_mods": true,
-      "separate_mods_reason": "The game's own mod manager warns (IDS_MODMGR_DATAMOD_SCENARIO_WARNING / _UNEXPECTED_WARNING) that mixing data mods with scenario/UI mods misbehaves."
+      "deliver_data_and_ui_as_separate_mods": false,
+      "separate_mods_reason": "REFUTED 2026-10-23. This used to claim the game's mod manager warns (IDS_MODMGR_DATAMOD_SCENARIO_WARNING / _UNEXPECTED_WARNING) that mixing data mods with scenario/UI mods misbehaves. The string says 「警告。您将加载一个带有非官方数据集的场景。」 -- it is about a scenario carrying its own data set, not about one mod folder holding two kinds of file. Measured: two shipped third-party mods (310130_1233 For Stephen Chow, 445153_4X科技...) each put a .dat and text tables in one folder, and this project's dsh test v49 (.dat + 17 locale string tables in one folder) was verified in game. One folder may carry several layers; the emitter now reports them in manifest['layers']."
     },
     "publish_validation": {
       "only_png_images": true,

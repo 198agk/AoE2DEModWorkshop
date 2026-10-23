@@ -13,8 +13,19 @@ mod would break without it:
   CR/LF control characters inside `Description`, which strict JSON rejects.
 * Only `Author`, `CacheStatus`, `Description`, `Title` are required; the
   publisher adds the rest.
-* Data mods and UI/texture mods must ship as SEPARATE mods.  The game's own
-  publisher warns about mixing them (`IDS_MODMGR_DATAMOD_SCENARIO_WARNING`).
+* Data and UI/texture content may live in ONE folder.  This docstring used to
+  say they "must ship as SEPARATE mods", citing
+  `IDS_MODMGR_DATAMOD_SCENARIO_WARNING` -- and that reading of the string was
+  wrong.  Read on 2026-10-23 out of
+  `resources/zh/strings/key-value/key-value-strings-utf8.txt`, it says
+  「警告。您将加载一个带有非官方数据集的场景。」: it is about a SCENARIO that
+  carries its own data set, not about a mod folder holding two kinds of file.
+  Measured the same day: two shipped third-party mods
+  (`310130_1233 For Stephen Chow`, `445153_4X科技 …`) each put a `.dat` and
+  text tables in one folder, and this project's own `dsh test v49` -- a `.dat`
+  plus 17 locale string tables in a single folder -- was verified in game.
+  So the manifest now reports which layers a folder carries instead of
+  asserting a policy nothing follows.
 * There is no central manifest: a mod wins by providing the same relative path
   as the base game, ordered by `Priority` in `mod-status.json`.
 """
@@ -409,7 +420,6 @@ def emit_data_mod(mod_dir, dat_bytes, info, thumbnail=None, base_dir=None,
         "dat_storage_point_json": (dat_storage_point_files(json_files) or None),
         "thumbnail": thumb_abs,
         "files": [{"rel": "info.json", "bytes": os.path.getsize(info_abs)}],
-        "deliver_data_and_ui_as_separate_mods": True,
     }
     if dat_abs is not None:
         manifest["files"].append({
@@ -452,6 +462,52 @@ def emit_data_mod(mod_dir, dat_bytes, info, thumbnail=None, base_dir=None,
         manifest["json_overrides"] = sorted(
             r.replace(os.sep, "/") for r in json_files)
 
+    # Which layers this ONE folder actually carries.  Computed from the files on
+    # disk rather than declared, because the old field here asserted a policy
+    # (`deliver_data_and_ui_as_separate_mods: True`) that the emitter itself did
+    # not follow: a bundle with a `.dat` edit and a `unit.sprite` sentence ships
+    # 93 MB of `.dat` next to 20 `.sld` files in one folder, measured 2026-10-23.
+    # A manifest field nobody reads AND that describes the opposite of what
+    # happened is worse than no field: the next reader trusts it.
+    _rels = [f["rel"] for f in manifest["files"]]
+    _layers = []
+    if any(r.endswith(".dat") for r in _rels):
+        _layers.append("dat")
+    if any(r.endswith(".sld") for r in _rels):
+        _layers.append("sld")
+    if any("/strings/key-value/" in r for r in _rels):
+        _layers.append("strings")
+    if any(r.startswith("resources/_common/wpfg/") for r in _rels):
+        _layers.append("wpfg")
+    # JSON is judged from the FILES, not from `json_overrides`: that dict is the
+    # generic loose-file bin, so a reskin's 20 `.sld` paths land in it and the
+    # folder would be reported as carrying a "json" layer it does not have
+    # (measured 2026-10-23: `layers` came back `['dat', 'sld', 'json']` for a
+    # build whose only non-dat files were `.sld`).
+    # `info.json` is the manifest of the folder itself, not an override of a game
+    # file, so it never counts -- otherwise EVERY build carries a "json" layer.
+    if any(r.endswith(".json") and r != "info.json" for r in _rels):
+        _layers.append("json")
+    if thumb_abs:
+        _layers.append("thumbnail")
+    manifest["layers"] = _layers
+    # More than one data-ish layer means this folder mixes them, which the game
+    # allows but which makes "which mod is the data mod" ambiguous at selection
+    # time.  Say it; do not refuse it (measured: shipped mods do it too).
+    #
+    # A CARRIER `.dat` does not count here: it is there because the JSON needs the
+    # folder, it changes no byte, and it already has its own warning.  Counting it
+    # would tell every JSON-only build that its folder "carries several layers",
+    # which is noise on top of a true sentence.
+    _mixing = [l for l in _layers
+               if l in ("strings", "wpfg", "sld", "json")
+               or (l == "dat" and not dat_carrier)]
+    if len(_mixing) > 1:
+        manifest.setdefault("warnings", []).append(
+            "这一个模组文件夹同时带了 %s 这几层。游戏允许这样做（本机就有第三方"
+            "模组这么发货），但在「数据模组：」下拉框里它只算一个数据模组，"
+            "所以要和别的数据模组一起用时只能选它一个。" % "、".join(_mixing))
+
     # A redundant copy is a real defect: the shipped mods contain files that are
     # byte-identical to the base game, which wastes space and hides the change.
     # The base .dat on disk is compressed, so compare RAW streams -- hashing the
@@ -472,12 +528,16 @@ def emit_data_mod(mod_dir, dat_bytes, info, thumbnail=None, base_dir=None,
                     # start if that folder is overridden without its .dat.  Report
                     # it as a carrier, NOT as "this mod changes nothing" -- the
                     # mod DOES change the JSON files listed alongside it.
-                    manifest["warnings"] = [
+                    # APPEND, do not assign: the layer warning above was written
+                    # by this same call, and an assignment silently replaced it
+                    # (measured: `layers` said the folder carried two layers while
+                    # `warnings` said nothing about it).
+                    manifest.setdefault("warnings", []).append(
                         "这个 mod 要往 %s 里写文件，所以 .dat 被原样带了一份"
                         "（没改）：游戏不允许只覆盖那个文件夹而不带 .dat，"
                         "否则开局就失败。真正的改动在旁边的 JSON 里。"
                         % "、".join(dat_storage_point_files(json_files)
-                                    or ["(none)"])]
+                                    or ["(none)"]))
                 elif same:
                     manifest["warnings"] = [
                         "这份 .dat 和出厂那份逐字节相同，所以这个 mod 什么都没改"]
@@ -509,7 +569,8 @@ def emit_data_mod(mod_dir, dat_bytes, info, thumbnail=None, base_dir=None,
             if redundant:
                 manifest["json_identical_to_base"] = redundant
                 manifest.setdefault("warnings", []).append(
-                    "%d JSON override(s) are byte-identical to the shipped file, "
-                    "so they pin it to today's content and would silently revert a "
-                    "future game patch: %s" % (len(redundant), ", ".join(redundant)))
+                    "有 %d 个 JSON 覆盖文件和本机那份逐字节相同，这等于把这个文件"
+                    "钉在今天的内容上：以后游戏更新它时，这个模组会把它悄悄改回去。"
+                    "要改就改出真实差异，不改就别把它放进模组：%s"
+                    % (len(redundant), "、".join(redundant)))
     return manifest

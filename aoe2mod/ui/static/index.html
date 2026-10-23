@@ -929,6 +929,15 @@ async function doBuild() {
       $("#buildnote").appendChild(el("div", "warn",
         "有一句没做成：" + (ref.reason || ref.description || "")));
     }
+    // A build can succeed and still carry warnings the preview never had: the
+    // emitter learns things only at write time (a JSON file it was handed is
+    // byte-identical to the shipped one so the mod would pin it to today's
+    // content; one folder ended up carrying several layers).  Measured
+    // 2026-10-23: `unit.availability` grant for unit 775 to Armenians returns
+    // 8 warnings with verification.ok true, and the page rendered none of them.
+    for (const wn of (man.warnings) || []) {
+      $("#buildnote").appendChild(el("div", "warn", wn));
+    }
   } catch (e) {
     toast("没做成：" + e.message, "bad");
     $("#buildnote").innerHTML = "";

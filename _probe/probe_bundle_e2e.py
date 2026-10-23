@@ -171,7 +171,16 @@ try:
                     title="Should Not Exist", author="probe")
     check("an empty bundle is refused", False, "it built")
 except C.IntentError as exc:
-    check("an empty bundle is refused", "at least one" in str(exc), str(exc))
+    # Pin the FACT (refused, and the sentence names the request rather than the
+    # filesystem), not the English wording.  This assertion used to look for
+    # "at least one"; the message has been Chinese since the screen-speaks-Chinese
+    # pass (`这个组合里一句都没有`), so the old string could only ever go red for
+    # a reason that is not a defect -- the same trap as 2026-10-20's three
+    # effect-refusal nails.
+    _msg = str(exc)
+    check("an empty bundle is refused", True)
+    check("and the refusal is a sentence about the request, not a filesystem error",
+          "一句都没有" in _msg and "emit" not in _msg, _msg)
 
 print()
 print("=== 7. single-intent behaviour is unchanged (no regression) ===")
