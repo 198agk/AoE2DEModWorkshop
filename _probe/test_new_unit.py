@@ -67,6 +67,41 @@ def no_english(text):
     return not re.search(r"[A-Za-z]{2,}", re.sub(r"「[^」]*」", "", text or ""))
 
 
+def _seed_png(folder, name="seed.png"):
+    """A 256x256 picture with a pattern, not a flat colour.
+
+    A flat fill lets a decoder that transposes rows or swaps R/B pass, so the
+    only reason this writes a pattern is to make those defects visible.
+    """
+    from PIL import Image as _PIL
+    from aoe2mod.game import ddstex as _DD
+    path = os.path.join(folder, name)
+    pixels = bytes(bytearray(
+        v for y in range(256) for x in range(256)
+        for v in (x % 256, y % 256, (x * y) % 256, 255)))
+    with io.open(path, "wb") as fh:
+        fh.write(_DD.encode_png(256, 256, pixels))
+    return path
+
+
+def _fake_profile(root):
+    """A throwaway profile the installer will accept.
+
+    `install_mod` deliberately refuses to guess: without an account folder under
+    `mods` it raises and tells the player to open the in-game mod browser once.
+    A test cannot do that, so it lays down the same two things the game does --
+    the account folder and a `mod-status.json` -- because a bare folder is not
+    enough for `list_mods` to see anything.
+    """
+    prof = os.path.join(root, "profile")
+    acc = os.path.join(prof, "12345678901234567")
+    os.makedirs(os.path.join(acc, "mods", "local"), exist_ok=True)
+    with io.open(os.path.join(acc, "mods", "mod-status.json"), "w",
+                 encoding="utf-8") as fh:
+        fh.write('{"Mods": []}')
+    return prof
+
+
 def main():
     tk = api.open_toolkit(game_root=GAME)
     # The model is built lazily, and every check below reads it directly rather
@@ -636,6 +671,91 @@ def main():
                       % (type(exc).__name__, exc))
     finally:
         shutil.rmtree(bundle_dir, ignore_errors=True)
+
+    print("--- M. install it, then read it back off the disk the game reads")
+    # L proves the BUILD produced both icons.  This proves the thing that
+    # survives -- the folder in the profile -- still carries them.  The
+    # distinction is not academic: two defects on 2026-10-23 both reported
+    # success and both produced a folder with no icon work in it (a missing
+    # `import json` turned the sentence into a refusal, and two creators each
+    # re-reading the shipped tables let the second overwrite the first's merged
+    # pair).  A builder's own report cannot falsify either one.
+    inst_dir = tempfile.mkdtemp(prefix="newunit_install_icon_")
+    try:
+        from aoe2mod.game import locations as _LOC
+        built = tk.build_bundle(
+            [{"intent": "unit.create", "donor": 83, "civ": "British",
+              "name": "画师学徒二", "button": 6, "icon": _seed_png(inst_dir)},
+             {"intent": "tech.create", "donor": 22, "name": "血祭二",
+              "building": 109, "research_time": 25, "button": 8,
+              "icon": _seed_png(inst_dir, "seed2.png")}],
+            out_dir=os.path.join(inst_dir, "out"), title="dsh install icons",
+            author="dsh", overwrite=True)
+        slot_unit = built["new_units"][0]["icon_slot"]
+        slot_tech = built["new_techs"][0]["icon_slot"]
+        # One throwaway profile, used twice: `_fake_profile` writes an empty
+        # status document, so calling it again after the install would wipe the
+        # registration the install just made.
+        prof = _fake_profile(inst_dir)
+        got = tk.install(built["mod_dir"], name="dsh install icons",
+                         title="dsh install icons",
+                         profile_root=prof,
+                         overwrite=True)
+        rows = [m for m in _LOC.list_mods(prof)
+                if m.get("title") == "dsh install icons"]
+        check(bool(rows) and rows[0]["exists"],
+              "the built folder is installed into the profile", got.get("name"))
+        if rows:
+            root = rows[0]["path"]
+            icons_doc = json.loads(io.open(
+                os.path.join(root, "widgetui", "icons.json"),
+                encoding="utf-8").read())
+            mats_doc = json.loads(io.open(
+                os.path.join(root, "widgetui", "materials.json"),
+                encoding="utf-8").read())
+            tex = {}
+            for one in mats_doc.get("GlobalTextures") or []:
+                d = one.get("TextureDef") or {}
+                tex[d.get("Name")] = d.get("FileName")
+            for section, slot, ext in (("Units", slot_unit, ".dds"),
+                                       ("Techs", slot_tech, ".png")):
+                name = (icons_doc.get(section) or {}).get(str(slot).zfill(3))
+                check(bool(name),
+                      "the installed %s table keeps the slot the preview named"
+                      % section, (section, slot))
+                if not name:
+                    continue
+                rel = tex.get(name)
+                check(bool(rel) and rel.endswith(ext),
+                      "and the installed material points at a %s file" % ext,
+                      rel)
+                path = os.path.join(root, "widgetui",
+                                    (rel or "").replace("/", os.sep))
+                check(os.path.isfile(path),
+                      "which exists in the installed folder", path)
+            # The record the game reads must agree with the table.
+            import aoe2mod.dat.locate as _L
+            import aoe2mod.dat.parser as _P
+            _raw, _how = _P.load_dat(os.path.join(
+                root, "resources", "_common", "dat", "empires2_x2_p1.dat"))
+            _pr = _P.Parser(_raw)
+            _pr.parse()
+            _civs, _cs, _gv, _tail = _L.locate(_raw, parser=_pr)
+            _units = _L.find_units(_civs, built["new_units"][0]["id"])
+            _techs = _L.locate_techs(_raw, _tail, _gv)
+            check(bool(_units) and _units[0][2].get("icon_id") == slot_unit,
+                  "the installed unit record names the unit icon slot",
+                  _units[0][2].get("icon_id") if _units else "no record")
+            check(all(t.get("icon_id") == slot_tech for t in _techs
+                      if t.get("lang_name") == built["new_techs"][0]["string_id"]),
+                  "and the installed technology record names the tech slot",
+                  [t.get("icon_id") for t in _techs
+                   if t.get("lang_name") == built["new_techs"][0]["string_id"]])
+    except Exception as exc:  # noqa: BLE001
+        check(False, "the installed-icon section ran to completion :: %s: %s"
+                      % (type(exc).__name__, exc))
+    finally:
+        shutil.rmtree(inst_dir, ignore_errors=True)
 
     if FAILS:
         print("\nNEW UNIT: %d CHECK(S) FAILED" % len(FAILS))
