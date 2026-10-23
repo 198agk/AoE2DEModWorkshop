@@ -1320,6 +1320,23 @@ def resolve(intent, schema, semantic_index=None, bindings=None):
             made_button = raw_button
         intent = dict(intent)
         intent["button"] = made_button
+
+    # --- which building shows it, when that is not the donor's --------------
+    # Resolved through the same index as the donor so a misspelt building fails
+    # HERE with the same candidate list, instead of surfacing at build time as
+    # "this civ has no building 999999" -- the preview-promises-what-build-refuses
+    # family this file keeps paying for.
+    made_builder = None
+    if "builder" in fields:
+        raw_builder = intent.get("builder")
+        if raw_builder not in (None, ""):
+            b_field = fields["builder"].get("kind") or "unit"
+            try:
+                made_builder = ix.resolve_one(b_field, raw_builder)
+            except LookupError as exc:
+                raise IntentError(str(exc))
+        intent = dict(intent)
+        intent["builder"] = (made_builder.id if made_builder is not None else None)
     civ_scope = intent.get("civs", "all")
     # A picture is a path on the user's disk, not an entity, so it never goes
     # through the semantic index -- but it must be checked HERE rather than at

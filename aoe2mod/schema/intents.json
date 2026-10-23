@@ -511,7 +511,7 @@
       "title": "照着现成的单位做一个新单位",
       "title_en": "Create a unit that the game does not have",
       "applies_to": "unit",
-      "description": "Clone one of a civilization's unit records into an id nothing uses, then name it. The clone keeps the donor's class, animations, sounds, armour classes and train locations, so it is built from the same buttons as the unit it copies.",
+      "description": "Clone one of a civilization's unit records into an id nothing uses, then name it.  The clone keeps the donor's class, animations, sounds and armour classes.  Its train location starts as the donor's, and the `builder`/`button` fields move it to another building or box.",
       "fields": {
         "donor": {
           "type": "entity_ref",
@@ -551,6 +551,13 @@
             24
           ],
           "help": "Optional. Which numbered box of the builder's command card the new unit should occupy. Omit to leave it on the donor's own number. The build moves EVERY train location the clone copied, because moving only the first would leave the rest on the donor's buttons -- the thing this field exists to change. A donor whose training slot points at no building (builder -1) is refused rather than silently left unreachable; 683 of the 2,164 British records are like that, so it is the common case and not an edge."
+        },
+        "builder": {
+          "type": "entity_ref",
+          "kind": "unit",
+          "required": false,
+          "label": "放在哪座建筑",
+          "help": "Optional. Which building shows the button, when that is not the one the donor uses. A unit's train location -- the entry that names the building, the box number and the train time -- lives on the UNIT's own record, so re-pointing it rewrites two bytes of the clone the build already writes; it does not touch the building and it appends nothing. So a building that never trained the donor can still show the clone. Omit to keep the donor's building."
         }
       },
       "compile": {
@@ -560,12 +567,12 @@
         "record_boundaries": "Record lengths come from `locate.walk_unit`'s own extent, which was verified against the shipped file: for both civ 0 (2,693 records) and civ 1 (2,164), every record's end equals the next record's start. Rebuilding a record from field values is deliberately NOT done, because its tail is type-dependent and each field would be a guess.",
         "id_choice": "The id must be one NO civilization uses and nothing points at. A hole in one civ is not a hole: British alone has 586, and the lowest is 43 -- but 43 is a real unit in Gaia and most other civs, so a clone there would make one id mean two different things. Of the 57 ids no record uses, 17 are named by shipped effect commands, a tech-tree node or the build panel, leaving 40 truly free; the lowest with a unit-header slot is 382. `_probe/test_new_unit.py` pins the whole selection.",
         "why_ships_strings": "The record names itself by a STRING ID, so a clone without a string shows as the donor's name or as nothing. The game's own modded-string file is the supported add-a-string route (its shipped 605-byte instructions say so), and zh/en/tw each end at id 30030001, so 30030002 is the first id no locale uses.",
-        "what_it_cannot_do": "A clone has no icon of its own: `widgetui/icons.json`'s Units section is full (0..999 all taken), so it draws the donor's icon unless the player edits that layer. Its place in a BUILD MENU is limited to the buildings that already train the donor: the button NUMBER can be moved (the `button` field), but which building shows it comes from the donor's own train locations, and adding a building that never trained it means writing a new train location into the builder's record -- a different, longer edit that has not been measured in game.",
+        "what_it_cannot_do": "A clone has no icon of its own: this version does not write the icon layer, so it draws the donor's icon.  That is a missing feature, not a limit of the game -- the shipped Units table does stop at 999, but the record's icon_id is an i16 (engine ceiling 32767) and a mod may ship its own icons.json; one released community UI mod extends Units to 2149 keys, 127 of them real.  Its place in a build menu follows the donor unless the `builder` field names another building: the train location is on the clone's own record, so re-pointing it rewrites two bytes there and never touches the building.",
         "mod_contains_dat": true,
         "in_bundle": true,
         "bundle_edit_count_note": "edit_count is RECORDS plus FLAGS: one appended record and one flag slot, so 2 -- not the byte count, which a caller cannot compare against other intents.",
         "verified_in_game": null,
-        "not_verified_reason": "A record the toolkit created has not been loaded by a running game. What IS measured: the stream re-parses with the unmodified parser, the new id reads back with the donor's fields, the resulting file re-serialises byte-stably, and the name file lands at the path the game's own instructions name."
+        "not_verified_reason": "A unit built by THIS method -- the bundle path -- has not been installed and loaded: `_probe/tmp_product_check.py` built v35 and never installed it.  What IS measured: the same `newunit` append+clone code produced `dsh test v26`..`v33`, which the user loaded and read in game (the unit appeared on the town centre's fourth button and could be trained), and the stream re-parses here with the unmodified parser, the clone reads back with the donor's fields and the re-pointed building, and the resulting file re-serialises byte-stably."
       },
       "safety": {
         "field_width_bits": 16,

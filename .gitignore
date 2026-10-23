@@ -165,3 +165,4 @@ _probe/p35_tree.py
 _probe/p36_watch.py
 _probe/p37_status.py
 _probe/_tmp_out/
+_probe/_builder_out/

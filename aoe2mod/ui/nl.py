@@ -1104,6 +1104,23 @@ def read_clause(text, vocab, civ_names=None, civ_zh=None, pins=None,
         hp_v, _is_float = _number(_strip_names(_rest, donor))
         if hp_v is not None:
             cl.intent["hp"] = int(hp_v)
+        # --- WHICH BUILDING shows it -------------------------------------
+        # The train location lives on the clone's own record, so naming another
+        # building is a two-byte rewrite, not a second edit of that building
+        # (measured 2026-10-23).  The building is the unit-kind span that is NOT
+        # the donor: 「放在兵营的第5格」 names 兵营 and means 兵营.
+        #
+        # Read AFTER the box number, because both are digits in the same clause
+        # and the box is the one attached to 格 -- the same reason hp is read
+        # from the sentence with the 第N格 phrase removed.
+        bld = None
+        for _s, _e2, _e, _t, _k, _g in sps:
+            if _k == "unit" and getattr(_e, "id", None) != donor.id:
+                bld = _e
+                break
+        if bld is not None:
+            cl.intent["builder"] = bld.id
+            cl.notes.append("放在「%s」的建造按钮上" % bld.display)
         cl.notes.append("照「%s」做，名字是「%s」" % (donor.display, new_name))
         return cl
 
@@ -1530,6 +1547,43 @@ def _pieces(text, vocab=None):
     return out
 
 
+def _donor_id_of(text, vocab=None):
+    """The donor id a creating fragment names, or None.
+
+    Only used to tell "the building it goes in" apart from "a second request":
+    a piece that names an entity OTHER than the donor is a fact about where the
+    new unit appears, not somebody asking to edit that entity.
+    """
+    if vocab is None or not text:
+        return None
+    _d, _same = _creator_entity(text, _norm(text), vocab,
+                               vocab.spans_at(text), "unit")
+    return getattr(_d, "id", None) if _d is not None else None
+
+
+def _names_builder(part, vocab=None, donor_id=None):
+    """Does this fragment name the building the new unit should appear in?
+
+    Measured 2026-10-23: 「不列颠照村民做一个新单位，叫铁匠学徒，放在兵营」 split
+    into three pieces, and the last one was refused as "no number to change into
+    a value" -- while the sentence had said everything needed.  A fragment that
+    names an entity that is NOT the donor is a qualifier when the creating
+    sentence is about a unit: the train location sits on the clone's own record,
+    so that name is where the button goes.
+
+    A fragment naming the donor itself is NOT a qualifier -- "做一个和村民一样
+    的新单位" names 村民 and means the copy source.
+    """
+    if vocab is None or not part:
+        return False
+    for _s, _e2, _e, _t, _k, _g in vocab.spans_at(part):
+        if _k != "unit":
+            continue
+        if getattr(_e, "id", None) != donor_id:
+            return True
+    return False
+
+
 def _says_property(text):
     """Does the sentence name a stat or a resource at all?
 
@@ -1655,7 +1709,8 @@ def _merge_create_name(pieces, civ_names=None, civ_zh=None, vocab=None):
             # says where it goes, and it is exactly one of the facts a creating
             # sentence can hand over in a separate piece.
             qual = ((_number(part)[0] is not None and _says_property(part))
-                    or _slot_in(part) is not None)
+                    or _slot_in(part) is not None
+                    or _names_builder(part, vocab, _donor_id_of(prev, vocab)))
             if (gap or qual) and not _separate_edit(part, vocab):
                 out[-1] = prev + "，" + part
                 continue

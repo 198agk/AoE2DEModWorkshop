@@ -64,6 +64,15 @@ BUTTON_SLOTS = 25
 BUTTON_SENTINEL = 255
 # Inside one TrainLocation: i16 train_time, i16 unit_id, then the u8 button id.
 TRAIN_BUTTON_OFF = 4
+# ...and the i16 before it is the BUILDING that shows the button (`unit_id`).
+TRAIN_BUILDER_OFF = TRAIN_BUTTON_OFF - 2
+# Whole entry: i16 train_time, i16 unit_id, u8 button_id, then (C30+) i32 HotKeyID.
+# MEASURED, not read off a doc: 1134 units in the shipped file carry 2+ entries
+# and EVERY gap between consecutive `_off_train_time` values is exactly 9; a
+# single-entry record shows `00 00 ff ff 00 | 80 3e 00 00` (train_time 0, unit -1,
+# button 0, hotkey 16000).  A 5-byte guess spliced one entry and the stream
+# stopped parsing inside `read_bird` -- that is what a wrong stride looks like.
+TRAIN_ENTRY_BYTES = 9
 
 
 def unit_spans(raw, gv, civs_start, civ_index):
@@ -229,16 +238,25 @@ def free_buttons(civs, civ_index, builder_id, limit=BUTTON_SLOTS):
 
 def add_unit(stats, raw, gv, civs_start, civ_index, donor_id, new_id,
              name_string_id=None, hp=None, creation_string_id=None,
-             button=None, civs=None, civ_zh=None):
+             button=None, builder=None, civs=None, civ_zh=None):
     """Append one clone to ``civ_index``; returns ``(stats, record_dict)``.
 
     ``stats`` is mutated in place and must be a deep copy the caller owns --
     ``serialize_dat`` reads ``_ptrs`` off every civ, so this also builds that for
     the civs that needed it.
 
-    ``civs`` (the located list) is only needed when ``button`` is given, because
-    the train locations are read from there; passing ``stats`` instead makes
-    every donor look like it trains nothing.
+    ``civs`` (the located list) is only needed when ``button`` or ``builder`` is
+    given, because the train locations are read from there; passing ``stats``
+    instead makes every donor look like it trains nothing.
+
+    ``builder`` re-points the clone's train locations at a different building.
+    This is the answer to "a building that never trained the donor": the entry
+    that says which building shows the button lives on the UNIT's own record, so
+    changing it is a two-byte rewrite of the record the clone already has -- not
+    an edit to the building, and not an append.  Measured 2026-10-23: 1134
+    shipped units carry two or more entries, every consecutive pair is exactly 9
+    bytes apart, and bumping a count + splicing one 9-byte entry re-parses
+    cleanly with zero other records touched, so the format was never the wall.
     """
     civ = stats["civs"][civ_index]
     have = {u["id"] for u in civ["units"]}
@@ -251,13 +269,21 @@ def add_unit(stats, raw, gv, civs_start, civ_index, donor_id, new_id,
     if new_id >= HEADER_SLOTS:
         # Not fatal, but say it: nothing indexes a header by this id, so any
         # per-unit header data (tasks, etc.) simply has none.  A clone carries
-        # the donor's own sub-records, so this only matters to editor tooling.
+        # the donor's own sub-records, so this only matters to editor tools.
         pass
     image = donor_image(raw, gv, civs_start, civ_index, donor_id)
     img = clone_image(image, new_id, name_string_id=name_string_id, hp=hp,
                       creation_string_id=creation_string_id)
     moved = None
-    if button is not None:
+    rebuilt = None
+    if button is not None or builder is not None:
+        if button is None:
+            # A builder change alone must not silently keep the donor's number;
+            # but it also must not invent one.  Take the donor's own number so
+            # the caller sees exactly one thing change per run.
+            slots0 = train_slots(raw, gv, civs_start, civ_index, donor_id,
+                                 civs=civs)
+            button = slots0[0]["button"] if slots0 else 0
         button = int(button)
         if button == BUTTON_SENTINEL or not (0 <= button < BUTTON_SLOTS):
             raise NewUnitError("按钮号只能填 0 到 %d，%s 填不进命令卡"
@@ -273,13 +299,25 @@ def add_unit(stats, raw, gv, civs_start, civ_index, donor_id, new_id,
         # Measured: 683 British units have only placeholder entries (63 GTAA3,
         # 57 VFFIS ...), 904 have none at all, so this is the common case and
         # not an edge.
-        if all(s["builder"] in (-1, None) for s in slots):
+        #
+        # Unless a BUILDER was named: then the placeholder is exactly what the
+        # caller wants to overwrite -- "no building shows this" becomes "this
+        # building shows it", which is a two-byte write on an entry that is
+        # already there.  The byte positions are real either way, so the only
+        # thing -1 rules out is leaving the clone where it was.
+        if builder is None and all(s["builder"] in (-1, None) for s in slots):
             raise NewUnitError(
                 "「%s」的建造位置没有指向任何建筑（记录里的建筑编号是 -1），"
                 "挪按钮也放不到任何菜单上" % (donor_id,))
-        # Move EVERY copied entry onto the chosen number, keeping the list
-        # otherwise intact.  Moving only the first one would leave the rest on
-        # the donor's buttons, which is the thing the player asked to stop.
+        if builder is not None:
+            builder = int(builder)
+            in_civ = {u["id"] for u in civs[civ_index]["units"]}
+            if builder not in in_civ:
+                raise NewUnitError("这个文明里没有编号 %s 的建筑，没有菜单可以放"
+                                   % (builder,))
+        # Move EVERY copied entry onto the chosen number and building, keeping the
+        # list otherwise intact.  Moving only the first one would leave the rest
+        # on the donor's buttons, which is the thing the player asked to stop.
         img = bytearray(img)
         for s in slots:
             before = s["button"]
@@ -294,6 +332,17 @@ def add_unit(stats, raw, gv, civs_start, civ_index, donor_id, new_id,
                 raise NewUnitError("按钮没写进去（第 %s 个位置还是 %s）"
                                    % (s["rel"], img[s["rel"]]))
             moved = {"from": before, "to": button, "builder": s["builder"]}
+            if builder is not None:
+                brel = s["rel"] - (TRAIN_BUTTON_OFF - TRAIN_BUILDER_OFF)
+                was_builder = struct.unpack_from("<h", img, brel)[0]
+                struct.pack_into("<h", img, brel, builder)
+                if struct.unpack_from("<h", img, brel)[0] != builder:
+                    raise NewUnitError(
+                        "建筑没写进去（第 %s 个位置还是 %s）"
+                        % (brel, struct.unpack_from("<h", img, brel)[0]))
+                moved["builder_from"] = was_builder
+                moved["builder"] = builder
+                rebuilt = {"from": was_builder, "to": builder}
     total = civ["unit_pointers_total"]
     ptrs = civ.get("_ptrs")
     if ptrs is None:
@@ -323,7 +372,8 @@ def add_unit(stats, raw, gv, civs_start, civ_index, donor_id, new_id,
     civ["units"].insert(pos, rec)
     return stats, {"id": new_id, "civ": civ_index, "donor": donor_id,
                    "bytes": len(img), "slot": pos,
-                   "buttons": ([moved] if moved else [])}
+                   "buttons": ([moved] if moved else []),
+                   "builder_rebuilt": rebuilt}
 
 
 def free_ids(stats, civ_index):

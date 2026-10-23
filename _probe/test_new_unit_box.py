@@ -190,6 +190,84 @@ def main():
     check("with a Chinese reason", not built and any("\u4e00" <= c <= "\u9fff" for c in detail),
           detail)
 
+    print("=== E. the sentence can name a DIFFERENT building")
+    # Measured 2026-10-23: the train location (train_time, building, box, hotkey)
+    # lives on the UNIT's own record, so pointing the clone at another building is
+    # a two-byte rewrite of the record the build already emits.  It is not an edit
+    # of that building and it appends nothing -- which is why "a building that
+    # never trained the donor" is a field this tool was missing, not a wall.
+    for text, want_builder, want_box in (
+        ("不列颠照村民做一个新单位，叫铁匠学徒，放在兵营", 12, None),
+        ("不列颠照村民做一个新单位，叫铁匠学徒，放在兵营的第5格", 12, 5),
+        ("不列颠照村民做一个新单位，叫铁匠学徒", None, None),
+    ):
+        intents, _clauses = read(text, vocab, tk)
+        got = intents[0] if intents else {}
+        check("%s -> building %r" % (text, want_builder),
+              got.get("builder") == want_builder, str(got))
+        check("and the box is still read separately :: %s" % text,
+              got.get("button") == want_box, "box=%r" % (got.get("button"),))
+
+    moved = tk.plan({"intent": "unit.create", "civ": "British", "donor": 83,
+                     "name": "测试兵", "builder": 12, "button": 6})
+    check("the preview reports the building that was asked for",
+          moved.get("builder_ids") == [12], str(moved.get("builder_ids")))
+    check("and says the button moved there",
+          any("兵营" in w and "改到" in w for w in (moved.get("warnings") or [])),
+          str(moved.get("warnings")))
+    # Naming the donor's OWN building writes the same two bytes back, so claiming
+    # a move would describe an edit that is not happening.
+    same = tk.plan({"intent": "unit.create", "civ": "British", "donor": 83,
+                    "name": "测试兵", "builder": 109})
+    check("naming the donor's own building is not reported as a move",
+          not any("改到" in w for w in (same.get("warnings") or [])),
+          str(same.get("warnings")))
+
+    try:
+        man_e = tk.build({"intent": "unit.create", "civ": "British", "donor": 83,
+                          "name": "铁匠学徒", "builder": 12, "button": 6},
+                         out_dir=os.path.join(out_root, "builder"),
+                         title="box pin builder", author="dsh", overwrite=True)
+        why_e = ""
+    except Exception as exc:                            # noqa: BLE001
+        man_e, why_e = None, str(exc)
+    check("the build with another building succeeds", man_e is not None, why_e)
+    if man_e is not None:
+        raw3, _how3 = A.P.load_dat(os.path.join(man_e["mod_dir"], G.DAT_REL))
+        _p3 = A.P.Parser(raw3)
+        _p3.parse()
+        civs3, cs3, gv3, _t3 = L.locate(raw3, parser=_p3)
+        slots3 = NU.train_slots(raw3, gv3, cs3, civ_index,
+                                man_e["new_unit"]["id"], civs=civs3)
+        check("the emitted clone is trained at the new building and box",
+              [(s["builder"], s["button"]) for s in slots3] == [(12, 6)],
+              str([(s["builder"], s["button"]) for s in slots3]))
+        donor3 = NU.train_slots(raw3, gv3, cs3, civ_index, 83, civs=civs3)
+        check("and the donor is still at its own building and box",
+              [(s["builder"], s["button"]) for s in donor3] == [(109, 1)],
+              str([(s["builder"], s["button"]) for s in donor3]))
+    # A building the civilization does not have cannot show anything.
+    try:
+        bad = tk.plan({"intent": "unit.create", "civ": "British", "donor": 83,
+                       "name": "测试兵", "builder": 2338})
+        refused_b = bad.get("editable") is False
+        detail_b = str(bad.get("reason"))
+    except Exception as exc:                            # noqa: BLE001
+        refused_b, detail_b = True, str(exc)
+    check("a building this civilization lacks is refused", refused_b, detail_b)
+    check("and the refusal is in Chinese",
+          any("\u4e00" <= c <= "\u9fff" for c in detail_b), detail_b)
+
+    print("=== F. a placeholder-only donor CAN be given a building")
+    # The clone copies the donor's entry verbatim; when that entry says "no
+    # building shows this" (-1), naming a building is exactly the fix, so the
+    # refusal that protects a bare box move must not fire here.
+    ph2 = tk.plan({"intent": "unit.create", "civ": "British", "donor": 114,
+                   "name": "测试兵", "builder": 12})
+    check("naming a building accepts a donor whose entries point nowhere",
+          ph2.get("editable") is True, "%r / %r" % (ph2.get("editable"),
+                                                    ph2.get("reason")))
+
     if FAILS:
         print("\nBOX: %d CHECK(S) FAILED -> %s" % (len(FAILS), FAILS))
         return 1

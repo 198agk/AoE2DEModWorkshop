@@ -923,12 +923,25 @@ class Toolkit(object):
         # Measured from the located civs (`_civs`), because the parsed stats
         # model drops `train_locations` -- see `newunit.train_slots`.
         want_button = getattr(r, "button", None)
+        # Which building shows the button.  `None` = the donor's own.  Measured
+        # 2026-10-23: the train location (the entry that names the building, the
+        # box number and the train time) lives on the UNIT's record, so pointing
+        # the clone at a different building rewrites two bytes of the record the
+        # build already emits.  It does not edit the building and appends
+        # nothing -- so "a building that never trained the donor" was never a
+        # wall, only an unimplemented field.
+        want_builder = r.raw.get("builder")
         try:
             _slots = NU.train_slots(self._raw, self._parsed[3], self._parsed[2],
                                     civ_index, r.donor.id, civs=self._civs)
         except NU.NewUnitError:
             _slots = []
         _builders = sorted({s["builder"] for s in _slots if s["builder"] not in (-1, None)})
+        if want_builder is not None:
+            # A clone re-pointed at another building does not need the donor's
+            # card to exist at all, so the "no card" refusal below must not fire
+            # on a donor whose entries all say -1.
+            _builders = [int(want_builder)]
         base["buttons"] = [s["button"] for s in _slots]
         base["builder_ids"] = _builders
         base["builder_names"] = [(self.describe(b, "unit") or {}).get("zh")
@@ -979,12 +992,38 @@ class Toolkit(object):
         ]
         if _builders:
             _free = free_by_builder.get(str(_builders[0])) or []
-            base["warnings"].append(
-                "它出现在 %s 的建造按钮里（第 %s 格），因为建造位置是从原记录抄来的；"
-                "那一排还空着的是第 %s 格"
-                % (base["builder_names"][0],
-                   "、".join(str(x) for x in base["buttons"]),
-                   "、".join(str(x) for x in _free) if _free else "（一格都不空）"))
+            # The number that will actually be written: the one asked for, or the
+            # donor's own when only the building changed.  Printing every slot
+            # the donor had would describe a state that will not exist.
+            _box = (int(want_button) if want_button is not None
+                    else (int(base["buttons"][0]) if base["buttons"] else 0))
+            # Naming the donor's OWN building is not a re-point, and saying so
+            # would describe an edit that is not happening (measured: unit 83
+            # trains at 109, so `builder=109` writes the same two bytes back).
+            _donor_builders = {s["builder"] for s in _slots
+                               if s["builder"] not in (-1, None)}
+            if want_builder is not None and int(want_builder) not in _donor_builders:
+                base["warnings"].append(
+                    "这个单位被改到 %s 的建造按钮上（第 %d 格），不是照着做的那个单位原来"
+                    "所在的那座建筑；那一排还空着的是第 %s 格"
+                    % (base["builder_names"][0], _box,
+                       "、".join(str(x) for x in _free) if _free else "（一格都不空）"))
+            else:
+                base["warnings"].append(
+                    "它出现在 %s 的建造按钮里（第 %s 格），因为建造位置是从原记录抄来的；"
+                    "那一排还空着的是第 %s 格"
+                    % (base["builder_names"][0],
+                       "、".join(str(x) for x in base["buttons"]),
+                       "、".join(str(x) for x in _free) if _free else "（一格都不空）"))
+        elif want_builder is not None:
+            # Named a building, but the donor has no train entry at all: there is
+            # no slot whose two bytes could be re-pointed, so `add_unit` refuses.
+            # Say it here or the preview promises a build that fails.
+            base["editable"] = False
+            base["reason"] = (
+                "「%s」自己没有任何建造位置（它是那种谁都不训练的单位），"
+                "没有可以改到 %s 上的位置"
+                % (r.donor.display, base["builder_names"][0] if base["builder_names"] else r.raw.get("builder")))
         else:
             base["warnings"].append(
                 "照着做的那个单位没有任何建筑在训练它，所以新单位暂时不会出现在任何建造菜单里")
@@ -1420,6 +1459,7 @@ class Toolkit(object):
                                  creation_string_id=creation_id,
                                  hp=r.raw.get("hp"),
                                  button=getattr(r, "button", None),
+                                 builder=r.raw.get("builder"),
                                  civs=self._civs,
                                  civ_zh=CN.chinese(self._civs[civ_index].get("name")
                                                    or r.civ))
@@ -1685,6 +1725,7 @@ class Toolkit(object):
                                          creation_string_id=creation_id,
                                          hp=r.raw.get("hp"),
                                          button=getattr(r, "button", None),
+                                         builder=r.raw.get("builder"),
                                          civs=civs,
                                          civ_zh=CN.chinese(civ_name))
             except (NU.NewUnitError, S.StringError) as exc:
