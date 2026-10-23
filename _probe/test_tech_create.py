@@ -145,6 +145,17 @@ def main():
     warns = " ".join(plan.get("warnings") or [])
     check("the preview warns it will not be in the tech tree", "科技树" in warns, warns)
     check("and warns about the icon", "图标" in warns, warns)
+    # The reason it is not in the tree must be "this tool does not write that
+    # half yet", NOT "the node id is taken".  The old sentence claimed the id
+    # collided with the unit `City Gate NE (Rubble)`; measured 2026-10-23, no
+    # tree row in any of the 62 civilizations carries node 1510 in either space
+    # (`_probe/tmp_tree_for_tech.py`).  A nail that only looked for 科技树 stayed
+    # green through that -- which is the whole reason this assertion exists.
+    check("and gives an honest reason, not a collision that does not exist",
+          "还没动" in warns and "共用" not in warns and "已经是单位" not in warns,
+          warns)
+    check("   and does not name the unit that no tree row has",
+          "City Gate" not in warns and "CityGate" not in warns, warns)
 
     # ---- C. the mod on disk ------------------------------------------------
     print("C. the mod on disk really has the record")

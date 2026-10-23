@@ -1031,11 +1031,29 @@ class Toolkit(object):
                                               else -1)))
                if base["building_names"] else "没有研究位置"))
         base["edit_count"] = 1
+        # This warning used to say the new technology could never be in the tech
+        # tree, because node id 1510 "is already the unit City Gate NE (Rubble)".
+        # That was FALSE, and measured false on 2026-10-23 (`_probe/tmp_tree_for_
+        # tech.py` + `tmp_what_1510.py`, which is why those two files exist):
+        #
+        #   * the .dat record at index 1510 IS `CityGate NE (Rubble)`, hp 0;
+        #   * but NO tree row in ANY of the 62 civilizations carries Node ID 1510,
+        #     in the Unit space or the Tech space -- `civtechtrees.py`'s own
+        #     UNIT_USE_TYPES/TECH_USE_TYPES comment says why: a Node ID is a unit
+        #     id in a Unit row and a tech id in a Tech row, and the row's
+        #     `Use Type` decides which;
+        #   * and no shipped tree references any tech node id above 1509 at all.
+        #
+        # So the tree half is not blocked by a collision; it is simply not written
+        # yet by this tool.  Saying "impossible" when the answer is "not yet" is
+        # the difference between a player giving up and a player knowing what to
+        # ask for -- and the old sentence ALSO named a unit that no tree row
+        # mentions, so it could not be checked by anyone reading it.
         base["warnings"] = [
             "新科技的图标是照着做的那个科技的（图标的号 0..312 已满，这个工具不会去改图标那层）",
-            "它不会出现在科技树里：科技树的 Node ID 与单位共用一套整数，"
-            "编号 %d 在科技树里已经是单位「City Gate NE (Rubble)」，"
-            "所以这项科技只有 .dat 那一半（能被研究，但科技树面板上没有它）" % new_id,
+            "它还不会出现在科技树面板里：这一版只写 .dat 那一半，科技树那层（每个文明一个 "
+            "JSON，Node 编号 %d 在 62 个文明里现在一个都没占）本工具还没动。"
+            "研究卡上有它、科技树面板上没有它" % new_id,
         ]
         if base["building_names"]:
             # A box is not a private resource: 66 shipped (building, button) pairs

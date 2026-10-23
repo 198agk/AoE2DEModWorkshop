@@ -684,7 +684,7 @@
       "safety": {
         "field_width_bits": 16,
         "notes": [
-          "A technology is addressed by its array position, so the new id is the shipped count (1,510 today). 1,510 is also the id of the unit 'CityGate NE (Rubble)' -- units and technologies share one integer space in CivTechTrees, and the first id neither uses is 2,113. The record itself does not care, but a CivTechTrees node for this technology would collide, so this intent writes the .dat side only.",
+          "A technology is addressed by its array position, so the new id is the shipped count (1,510 today) and it moves whenever a patch adds technologies. The node id for a tree row is free: measured 2026-10-23, no CivTechTrees row in any of the 62 civilizations carries 1510 in the Unit space or the Tech space, and no shipped tech row is above 1509. The .dat record at index 1510 is the unit 'CityGate NE (Rubble)', which is a different space -- `civtechtrees.py`'s UNIT_USE_TYPES/TECH_USE_TYPES note is what keeps those two apart. This intent writes the .dat side only because the tree half has not been written yet, not because it collides.",
           "The tech-tree research counter is a u8 with 14 rows of headroom. This intent does not add a tree row, so it does not spend any of it."
         ]
       }
