@@ -68,7 +68,8 @@ def pick_donor(techs, tech_id):
 
 def clone_tech(donor, internal_name, lang_name,
                lang_description=0, lang_help=0, lang_tech_tree=0,
-               research_locations=None, cost=None, research_time=None):
+               research_locations=None, cost=None, research_time=None,
+               icon_id=None):
     """A ``_new`` record modelled on ``donor``.
 
     ``internal_name`` is the record's own ASCII name -- it is what a crash dump
@@ -79,6 +80,12 @@ def clone_tech(donor, internal_name, lang_name,
     ``research_locations`` defaults to the donor's, because a technology that
     appears nowhere is invisible and the donor is the only evidence the caller
     gave about where it should live.  Passing a list overrides it.
+
+    ``icon_id`` defaults to the donor's icon (the copy carries it).  It is an
+    ``i16`` on the record -- measured out of ``parser.py``'s ``read_tech`` -- so
+    the ceiling is 32767 even though the shipped ``icons.json`` Techs table stops
+    at 312; a mod may extend that table (the installed Three Kingdoms UI mod
+    ships keys up to 548).
     """
     if not isinstance(internal_name, str):
         raise NewTechError("新科技得有一个内部名字。")
@@ -120,6 +127,12 @@ def clone_tech(donor, internal_name, lang_name,
         # accepting it and shipping a tech that costs nothing.
         raise NewTechError("这个版本还不能给新科技定成本"
                            "（成本槽是逐字节重放的，写不进去）。")
+    if icon_id is not None:
+        icon_id = int(icon_id)
+        if icon_id < 0 or icon_id > 32767:
+            raise NewTechError("科技图标号只能是 0..32767（记录里那个字段是 16 位），"
+                               "收到的是 %d。" % icon_id)
+        rec["icon_id"] = icon_id
     return rec
 
 

@@ -1166,17 +1166,59 @@ class Toolkit(object):
         # ask for -- and the old sentence ALSO named a unit that no tree row
         # mentions, so it could not be checked by anyone reading it.
         base["warnings"] = [
-            # Same correction as unit.create's icon warning: the shipped table
-            # stops at 312, but the ceiling is the record's own i16 and a mod may
-            # extend the table (measured 2026-10-23 -- the installed Three
-            # Kingdoms UI mod ships Techs up to 548 with 49 real materials).
-            "新科技的图标就是照着做的那个科技的：这一版的工具还不写图标那层。"
-            "（游戏自己的科技图标表 0..312 已经占满，但模组可以往上加 —— "
-            "已装的三国界面模组加到了 548，所以这是本工具还没做，不是做不到）",
             "它还不会出现在科技树面板里：这一版只写 .dat 那一半，科技树那层（每个文明一个 "
             "JSON，Node 编号 %d 在 62 个文明里现在一个都没占）本工具还没动。"
             "研究卡上有它、科技树面板上没有它" % new_id,
         ]
+        # The icon layer, same wiring as unit.create's, but through the Techs
+        # section -- which differs in three measured ways (2026-10-23, from the
+        # only shipped precedent, `[UI]7V1_Three Kingdoms`): its keys start at
+        # 500 rather than 1000, its textures live under `textures/ingame/tech`,
+        # and its added icons are PNG rather than uncompressed DDS.  Copying the
+        # unit shape here would point at a folder the tech icons do not use.
+        _want_icon = r.raw.get("icon")
+        if _want_icon:
+            from .game import iconart as IA
+            try:
+                # Checked on the PREVIEW path on purpose: `iconart.plan` only
+                # picks numbers and never opens the file, so without this the
+                # preview would promise an icon and the build would die decoding
+                # it (measured on the unit path, 2026-10-23).
+                _w, _h = IA.check_picture(_want_icon)
+                _icons_doc, _materials_doc = IA.shipped(self.game_root)
+                _art = IA.plan(_icons_doc, _materials_doc, _want_icon,
+                               stem=r.name, slot=base.get("icon_slot"),
+                               kind="tech")
+            except IA.IconError as exc:
+                base["editable"] = False
+                base["changes_dat"] = False
+                base["reason"] = str(exc)
+                base["description"] = str(exc)
+                base["edit_count"] = 0
+                return base
+            base["icon_slot"] = _art["slot"]
+            base["icon_material"] = _art["material"]
+            base["icon_source_size"] = [_w, _h]
+            base["icon_files"] = sorted([_art["file_rel"].replace(os.sep, "/"),
+                                        _art["icons_rel"].replace(os.sep, "/"),
+                                        _art["materials_rel"].replace(os.sep, "/")])
+            base["description"] += ("，并给它一张自己的图标（图标槽 %d，"
+                                    "外加贴图和两张图标表）" % _art["slot"])
+            base["edit_count"] += 1
+            base["warnings"].append(
+                "图标这一层要发 %d 个文件：一张 256×256 的图片，加上完整合并的"
+                "图标表和材质表（引擎读的是模组里的整份表，不是补丁）。"
+                % len(base["icon_files"]))
+            if (_w, _h) != (IA.SIDE, IA.SIDE):
+                base["warnings"].append(
+                    "你给的图是 %d×%d，会被等比缩进 %d×%d 的正方形里，"
+                    "四周留透明边（不裁切、不拉伸）。" % (_w, _h, IA.SIDE, IA.SIDE))
+        else:
+            base["warnings"].append(
+                "新科技的图标就是照着做的那个科技的。想要它自己的图标，在句子里"
+                "加一句「图标用 <图片路径>」——这一版会把它作为新的一张图发出去，"
+                "挂在科技图标表 0..312 之后（出厂那 313 格是全占的；这一层能扩到"
+                "多大由记录的 i16 字段决定，上限 32767）。")
         if base["building_names"]:
             # A box is not a private resource: 66 shipped (building, button) pairs
             # already hold two or more technologies (the town centre's box 8 holds
@@ -1661,6 +1703,27 @@ class Toolkit(object):
         from .dat import newtech as NT
         new_id = NT.next_tech_id(self._stats)
         string_id = S.first_free_id(self.game_root)
+        # The icon layer, when the sentence named a picture.  Built BEFORE the
+        # record for the same reason the unit path does it: the record carries
+        # only the slot NUMBER, so the slot has to exist before the record can
+        # point at it.  The Techs section differs from Units in three measured
+        # ways (2026-10-23, `_probe/tmp_tech_icon_shape.py`): keys start at 500,
+        # textures live under `textures/ingame/tech`, and the only shipped
+        # precedent used PNG rather than uncompressed DDS.
+        icon_files = {}
+        icon_id = None
+        if r.raw.get("icon"):
+            from .game import iconart as IA
+            _icons_doc, _materials_doc = IA.shipped(self.game_root)
+            _art = IA.plan(_icons_doc, _materials_doc, r.raw["icon"],
+                           stem=r.name, slot=r.raw.get("icon_slot"),
+                           kind="tech")
+            icon_id = _art["slot"]
+            _sw, _sh, _rgba = IA._rgba_from_picture(r.raw["icon"],
+                                                   side=_art["side"])
+            icon_files = IA.emit(_icons_doc, _materials_doc, _art["key"], _rgba,
+                                 side=_art["side"], slot=_art["slot"],
+                                 stem=_art["material"], kind="tech")
         # A deep copy: `add_tech` mutates the model in place and this Toolkit
         # answers every later call from the same cached object.
         stats = copy.deepcopy(self._stats)
@@ -1670,7 +1733,8 @@ class Toolkit(object):
                 NT.internal_name_for(r.name, new_id), string_id,
                 research_locations=_tech_locations_from_intent(r, self, r.donor.id),
                 research_time=r.raw.get("research_time"),
-                effect=r.raw.get("effect"))
+                effect=r.raw.get("effect"),
+                icon_id=icon_id)
         except NT.NewTechError as exc:
             raise C.IntentError(str(exc))
         data, rep = W.serialize_dat(stats, raw=self._raw)
@@ -1679,11 +1743,15 @@ class Toolkit(object):
                 "写完以后 .dat 的读取位置对不上原来的文件（%s / %s），所以这份不改了"
                 % (rep.get("raw_consumed"), len(self._raw)))
         string_files = S.build_files(self.game_root, [(string_id, r.name)])
+        # One folder, two bins: strings live outside the DAT storage point, the
+        # icon tables inside it, and a mod is a mod folder, not a bin.
+        _extra = dict(string_files or {})
+        _extra.update(icon_files or {})
         info = E.make_info(title or ("新科技 %s" % r.name), author=author,
                            description=description)
         man = E.emit_data_mod(out_dir, data, info, thumbnail=thumbnail,
                               base_dir=self.game_root, overwrite=overwrite,
-                              json_files=string_files or None)
+                              json_files=_extra or None)
         # The emitted file must survive the game's inflate path and a re-parse,
         # and the new record must be IN it -- a reparse that succeeds on a file
         # without the record would look like the same green.
@@ -1706,11 +1774,19 @@ class Toolkit(object):
             "index": new_id, "name": back.get("name"),
             "lang_name": back.get("lang_name"),
             "effect_id": back.get("effect_id"),
+            "icon_id": back.get("icon_id"),
             "locations": [{"location_id": loc.get("location_id"),
                            "research_time": loc.get("research_time"),
                            "button_id": loc.get("button_id")}
                           for loc in (back.get("research_locations") or [])],
         }
+        # The icon slot is read back OFF THE EMITTED FILE, like the unit path:
+        # trusting the number asked for would pass on a build that never wrote it.
+        # `locate_techs` DOES keep `icon_id` (unlike the parser's per-unit model),
+        # so the locator is the right reader here.
+        if icon_id is not None:
+            man["icon_slot_written"] = back.get("icon_id")
+            man["icon_slot_ok"] = (back.get("icon_id") == icon_id)
         man["new_tech"] = {
             "id": new_id, "name": r.name, "string_id": string_id,
             "internal_name": (rec.get("record") or {}).get("name"),
@@ -1720,15 +1796,19 @@ class Toolkit(object):
             "locations": rec.get("locations"),
             "strings": sorted(string_files) if string_files else [],
         }
+        if icon_id is not None:
+            man["new_tech"]["icon_slot"] = icon_id
+            man["new_tech"]["icon_files"] = sorted(icon_files)
         man["resolved"] = r.describe()
-        man["edits"] = 1
-        man["edit_count"] = 1
+        man["edits"] = 2 if icon_id is not None else 1
+        man["edit_count"] = man["edits"]
         man["civs_edited"] = 0
         man["changes_dat"] = True
         man["dat_is_carrier"] = False
         man["mod_contains_dat"] = bool(man.get("dat"))
         man["verification"] = {
-            "ok": bool(man["reparse_ok"] and man["tech_added"]),
+            "ok": bool(man["reparse_ok"] and man["tech_added"]
+                       and (icon_id is None or man["icon_slot_ok"])),
             "why_not_dat": "this intent appends a record instead of patching bytes",
             "reparse_ok": bool(man["reparse_ok"]),
             "tech_record_present": bool(man["tech_added"]),
@@ -1756,6 +1836,16 @@ class Toolkit(object):
                 "is no longer in doubt (v49, 2026-10-22)" % new_id,
             ],
         }
+        if icon_id is not None:
+            # Same split the unit path states: the three files are checked byte
+            # for byte and the record reads the slot back, but no run has watched
+            # the game draw a TECH icon -- the shipped precedent only proves a mod
+            # MAY extend the table, not that this particular picture renders.
+            man["verification"]["not_proven"].append(
+                "that a game draws the icon this build shipped for the new "
+                "technology: its three files are checked byte for byte and record "
+                "index %d reads icon slot %d back, but no run has watched that "
+                "picture on a command card" % (new_id, icon_id))
         return man
 
     def _new_unit_bundle(self, new_list, base_raw):
@@ -1788,6 +1878,12 @@ class Toolkit(object):
         cur = base_raw
         touched = False
         next_string = None
+        # The icon tables are CUMULATIVE: `IA.emit` returns the whole merged file,
+        # so two sentences that each add an icon must work on the table the
+        # previous one produced or the second would silently drop the first.  The
+        # working pair is re-adopted from the emitted bytes after every icon.
+        _icons_doc = _materials_doc = None
+        icon_files = {}
         for r in new_list:
             if stats is None:
                 # Parsed ONCE, and the same model is mutated by every sentence.
@@ -1824,6 +1920,28 @@ class Toolkit(object):
                     self.game_root,
                     start=next_string or (S.LAST_SHIPPED_ID + 1))
                 creation_id = S.first_free_id(self.game_root, start=string_id + 1)
+                # Icons first: the record only carries the SLOT NUMBER, so the
+                # slot has to be allocated against tables that already contain
+                # every icon this bundle has shipped so far.
+                _icon_id = None
+                if r.raw.get("icon"):
+                    from .game import iconart as IA
+                    if _icons_doc is None:
+                        _icons_doc, _materials_doc = IA.shipped(self.game_root)
+                    _art = IA.plan(_icons_doc, _materials_doc, r.raw["icon"],
+                                   stem=r.name, slot=r.raw.get("icon_slot"))
+                    _icon_id = _art["slot"]
+                    _rgba = IA._rgba_from_picture(r.raw["icon"],
+                                                  side=_art["side"])[2]
+                    _files = IA.emit(_icons_doc, _materials_doc, _art["key"],
+                                     _rgba, side=_art["side"],
+                                     slot=_art["slot"], stem=_art["material"])
+                    icon_files.update(_files)
+                    # Re-adopt the merged tables so the NEXT icon sees them.
+                    _icons_doc = json.loads(_files[IA.ICONS_REL.replace(
+                        os.sep, "/")].decode("utf-8"))
+                    _materials_doc = json.loads(_files[IA.MATERIALS_REL.replace(
+                        os.sep, "/")].decode("utf-8"))
                 stats, rec = NU.add_unit(stats, cur, gv, civs_start, civ_index,
                                          r.donor.id, new_id,
                                          name_string_id=string_id,
@@ -1832,7 +1950,8 @@ class Toolkit(object):
                                          button=getattr(r, "button", None),
                                          builder=r.raw.get("builder"),
                                          civs=civs,
-                                         civ_zh=CN.chinese(civ_name))
+                                         civ_zh=CN.chinese(civ_name),
+                                         icon_id=_icon_id)
             except (NU.NewUnitError, S.StringError) as exc:
                 refusals.append({"description": r.describe(), "reason": str(exc)})
                 continue
@@ -1854,15 +1973,16 @@ class Toolkit(object):
                 "creation_text": "生产" + str(r.name),
                 "donor_id": r.donor.id, "donor_name": r.donor.display,
                 "record_bytes": rec["bytes"], "slot": rec["slot"],
+                "icon_slot": _icon_id,
             })
         if not touched:
-            return None, notes, refusals, []
+            return None, notes, refusals, [], {}
         out, rep = W.serialize_dat(stats, raw=cur)
         if rep.get("raw_consumed") != len(cur):
             raise C.IntentError(
                 "写完以后 .dat 的读取位置对不上原来的文件（%s / %s），所以这份不改了"
                 % (rep.get("raw_consumed"), len(cur)))
-        return out, notes, refusals, string_entries
+        return out, notes, refusals, string_entries, icon_files
 
     def _new_tech_bundle(self, tech_list, base_raw):
         """Fold every "make a new technology" sentence onto ONE stream.
@@ -1887,6 +2007,10 @@ class Toolkit(object):
         cur = base_raw
         touched = False
         next_string = None
+        # Cumulative like the unit path: each icon re-adopts the merged tables so
+        # a second sentence cannot silently drop the first one's material.
+        _icons_doc = _materials_doc = None
+        icon_files = {}
         for r in tech_list:
             if stats is None:
                 # Parsed ONCE; every sentence mutates this same model.
@@ -1904,13 +2028,34 @@ class Toolkit(object):
                 string_id = S.first_free_id(
                     self.game_root,
                     start=next_string or (S.LAST_SHIPPED_ID + 1))
+                _icon_id = None
+                if r.raw.get("icon"):
+                    from .game import iconart as IA
+                    if _icons_doc is None:
+                        _icons_doc, _materials_doc = IA.shipped(self.game_root)
+                    _art = IA.plan(_icons_doc, _materials_doc, r.raw["icon"],
+                                   stem=r.name, slot=r.raw.get("icon_slot"),
+                                   kind="tech")
+                    _icon_id = _art["slot"]
+                    _rgba = IA._rgba_from_picture(r.raw["icon"],
+                                                  side=_art["side"])[2]
+                    _files = IA.emit(_icons_doc, _materials_doc, _art["key"],
+                                     _rgba, side=_art["side"],
+                                     slot=_art["slot"], stem=_art["material"],
+                                     kind="tech")
+                    icon_files.update(_files)
+                    _icons_doc = json.loads(_files[IA.ICONS_REL.replace(
+                        os.sep, "/")].decode("utf-8"))
+                    _materials_doc = json.loads(_files[IA.MATERIALS_REL.replace(
+                        os.sep, "/")].decode("utf-8"))
                 rec = NT.add_tech(
                     stats, r.donor.id,
                     NT.internal_name_for(r.name, new_id), string_id,
                     research_locations=_tech_locations_from_intent(
                         r, self, r.donor.id),
                     research_time=r.raw.get("research_time"),
-                    effect=r.raw.get("effect"))
+                    effect=r.raw.get("effect"),
+                    icon_id=_icon_id)
             except (NT.NewTechError, S.StringError) as exc:
                 refusals.append({"description": r.describe(), "reason": str(exc)})
                 continue
@@ -1928,15 +2073,16 @@ class Toolkit(object):
                 "donor_id": r.donor.id, "donor_name": r.donor.display,
                 "effect_id": rec.get("effect_id"),
                 "locations": rec.get("locations"),
+                "icon_slot": _icon_id,
             })
         if not touched:
-            return None, notes, refusals, {}
+            return None, notes, refusals, {}, {}
         out, rep = W.serialize_dat(stats, raw=cur)
         if rep.get("raw_consumed") != len(cur):
             raise C.IntentError(
                 "写完以后 .dat 的读取位置对不上原来的文件（%s / %s），所以这份不改了"
                 % (rep.get("raw_consumed"), len(cur)))
-        return out, notes, refusals, string_entries
+        return out, notes, refusals, string_entries, icon_files
 
     def _build_retarget(self, r, out_dir, title=None, author="",
 
@@ -4902,9 +5048,11 @@ class Toolkit(object):
         tech_entries = []
         if new_list:
             _base = dat_bytes if dat_bytes is not None else data
-            new_bytes, new_notes, new_ref, new_entries = \
+            new_bytes, new_notes, new_ref, new_entries, new_icons = \
                 self._new_unit_bundle(new_list, _base)
             sprite_refusals = sprite_refusals + new_ref
+            for _rel, _blob in (new_icons or {}).items():
+                json_files[_rel] = _blob
             if new_bytes is not None:
                 dat_bytes = new_bytes
 
@@ -4915,9 +5063,11 @@ class Toolkit(object):
         tech_notes = []
         if tech_list:
             _base = dat_bytes if dat_bytes is not None else data
-            tech_bytes, tech_notes, tech_ref, tech_entries = \
+            tech_bytes, tech_notes, tech_ref, tech_entries, tech_icons = \
                 self._new_tech_bundle(tech_list, _base)
             sprite_refusals = sprite_refusals + tech_ref
+            for _rel, _blob in (tech_icons or {}).items():
+                json_files[_rel] = _blob
             if tech_bytes is not None:
                 dat_bytes = tech_bytes
 

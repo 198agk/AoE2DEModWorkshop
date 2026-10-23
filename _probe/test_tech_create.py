@@ -145,13 +145,16 @@ def main():
     warns = " ".join(plan.get("warnings") or [])
     check("the preview warns it will not be in the tech tree", "科技树" in warns, warns)
     check("and warns about the icon", "图标" in warns, warns)
-    # Same class of correction as the tree sentence above: the icon warning used
-    # to say "the icon ids 0..312 are full, this tool will not touch that layer",
-    # which turns a missing feature into a wall.  The shipped table does stop at
-    # 312, but a released community mod already ships Techs keys up to 548 with
-    # real materials (measured 2026-10-23, `_probe/tmp_mod_icons_real.py`).
-    check("and the icon warning says not-yet, not impossible",
-          "还不写" in warns and "模组可以" in warns, warns)
+    # Same class of correction as the tree sentence above, one step further: the
+    # icon warning first said "the icon ids 0..312 are full, this tool will not
+    # touch that layer" (a missing feature dressed as a wall), then "this version
+    # does not write the icon layer" -- which stopped being true on 2026-10-23
+    # when `tech.create` grew an `icon` field.  What is true now is that the icon
+    # is OPTIONAL: leave the field out and the clone draws the donor's picture.
+    check("and the icon warning asks for a picture, not a missing layer",
+          "图标用" in warns and "还不写" not in warns and "做不到" not in warns, warns)
+    check("and it says the clone would otherwise draw the donor's icon",
+          "照着做的那个科技" in warns, warns)
     # The reason it is not in the tree must be "this tool does not write that
     # half yet", NOT "the node id is taken".  The old sentence claimed the id
     # collided with the unit `City Gate NE (Rubble)`; measured 2026-10-23, no
@@ -311,6 +314,162 @@ def main():
         latin = [w for w in re.findall(r"[A-Za-z]{2,}", why)
                  if w.lower() not in ("civ", "tech", "dat")]
         check("and the refusal is Chinese", not latin, "%r -> %s" % (latin, why))
+
+    # ---- E. the icon is a real file chain, not a promise --------------------
+    # Every link here is silent when wrong: the preview could pick a slot the
+    # build never fills, the merged table could be written without the new
+    # material, the PNG could be filed where the engine does not look, or the
+    # record could keep the donor's icon.  So check the chain end to end and read
+    # the tables BACK FROM THE DISK.
+    #
+    # The Techs section is NOT the Units section.  Measured 2026-10-23 from the
+    # only shipped precedent (`[UI]7V1_Three Kingdoms`): its keys start at 500,
+    # its textures live under `textures/ingame/tech`, and its added icons are PNG
+    # rather than uncompressed DDS.  Reusing the unit shape would write files the
+    # engine never asks for and still look green.
+    print("E. a picture becomes the new technology's own icon")
+    import tempfile
+    from aoe2mod.game import ddstex as DD
+    from aoe2mod.game import iconart as IA
+    from PIL import Image
+
+    _tmp = tempfile.mkdtemp(prefix="techcreate_icon_")
+    _side = 256
+    _rgba = bytearray()
+    for _y in range(_side):
+        for _x in range(_side):
+            # A pattern, not a flat colour: a decoder that transposes rows or
+            # swaps R and B passes on a flat fill.
+            _rgba += bytes((_x % 256, _y % 256, (_x * _y) % 256, 255))
+    pic = os.path.join(_tmp, "sigil.png")
+    io.open(pic, "wb").write(DD.encode_png(_side, _side, bytes(_rgba)))
+
+    _icons0, _mats0 = IA.shipped(tk.game_root)
+    _techs0 = dict(_icons0.get("Techs") or {})
+    _units0 = dict(_icons0.get("Units") or {})
+    _mats0_names = {e["MaterialDef"]["Name"] for e in _mats0["Materials"]}
+
+    icon_intent = {"intent": "tech.create", "donor": 22, "name": "血祭",
+                   "button": 4, "icon": pic}
+    icon_plan = tk.plan(icon_intent)
+    # The SENTENCE has to carry the picture too.  Without this block the whole
+    # segment below stays green while the reader silently drops the path -- the
+    # player writes 「图标用 <路径>」, the technology is created with the donor's
+    # icon, and nothing anywhere says a word was ignored.  (Found by breaking
+    # the reader: the nail stayed green, because every other assertion here
+    # builds the intent in Python instead of parsing a sentence.)
+    _sent = "照着织布机做一个新科技，就叫血祭，图标用 %s" % pic
+    _ints, _cls = read(_sent)
+    check("a sentence hands the picture to the new technology",
+          bool(_ints) and _ints[0].get("intent") == "tech.create"
+          and _ints[0].get("icon") == pic,
+          json.dumps(_ints, ensure_ascii=False)[:200])
+    check("...as one request, not two",
+          len(_cls) == 1 and bool(_ints),
+          "%d clause(s), %d intent(s)" % (len(_cls), len(_ints)))
+    check("the sentence's own plan names the same icon slot",
+          bool(_ints) and tk.plan(_ints[0]).get("icon_slot") == icon_plan.get("icon_slot"),
+          repr(bool(_ints) and tk.plan(_ints[0]).get("icon_slot")))
+    check("the preview accepts a picture", icon_plan.get("editable") is True,
+          repr(icon_plan.get("reason")))
+    check("and picks a slot past the shipped Techs range",
+          (icon_plan.get("icon_slot") or 0) >= IA.FIRST_FREE["tech"],
+          repr(icon_plan.get("icon_slot")))
+    check("and names the three files it will ship",
+          len(icon_plan.get("icon_files") or []) == 3,
+          json.dumps(icon_plan.get("icon_files"), ensure_ascii=False))
+    check("and the description says it gets its own icon",
+          "自己的图标" in (icon_plan.get("description") or ""),
+          (icon_plan.get("description") or "")[:160])
+
+    # A picture that is not a picture must be refused by the PREVIEW.  The build
+    # path raises too, but by then the player has waited for 93 MB of work.
+    _bad_pic = os.path.join(_tmp, "not_a_picture.png")
+    io.open(_bad_pic, "wb").write(b"this is text")
+    _bad = tk.plan({"intent": "tech.create", "donor": 22, "name": "坏图",
+                    "icon": _bad_pic})
+    check("a file that is not a picture is refused before the build",
+          _bad.get("editable") is False, repr(_bad.get("editable")))
+    check("...with a Chinese reason, not PIL's",
+          "不是一张能识别的图片" in (_bad.get("reason") or "")
+          and "UnidentifiedImageError" not in (_bad.get("reason") or ""),
+          (_bad.get("reason") or "")[:120])
+
+    OUT_ICON = os.path.join(HERE, "out_tech_create_icon")
+    if os.path.isdir(OUT_ICON):
+        shutil.rmtree(OUT_ICON)
+    icon_man = tk.build(icon_intent, OUT_ICON, title="dsh test tech create icon",
+                        author="dsh", overwrite=True)
+    check("the icon build verifies", (icon_man.get("verification") or {}).get("ok") is True,
+          json.dumps((icon_man.get("verification") or {}).get("not_proven"),
+                     ensure_ascii=False))
+    check("and the record reads back the slot the preview named",
+          (icon_man.get("new_tech") or {}).get("icon_slot") == icon_plan.get("icon_slot"),
+          "%r vs %r" % ((icon_man.get("new_tech") or {}).get("icon_slot"),
+                        icon_plan.get("icon_slot")))
+
+    _icons1 = json.load(io.open(os.path.join(OUT_ICON, "widgetui", "icons.json"),
+                                encoding="utf-8"))
+    _mats1 = json.load(io.open(os.path.join(OUT_ICON, "widgetui", "materials.json"),
+                               encoding="utf-8"))
+    _techs1 = _icons1.get("Techs") or {}
+    _key = str(icon_plan["icon_slot"])
+    check("the shipped Techs keys all survive",
+          all(_techs1.get(k) == v for k, v in _techs0.items()),
+          "%d of %d" % (sum(1 for k, v in _techs0.items() if _techs1.get(k) == v),
+                        len(_techs0)))
+    check("and one key was added", len(_techs1) == len(_techs0) + 1,
+          "%d -> %d" % (len(_techs0), len(_techs1)))
+    _mat_name = _techs1.get(_key)
+    check("the new key points at the new material", _mat_name == icon_plan.get("icon_material"),
+          "%r vs %r" % (_mat_name, icon_plan.get("icon_material")))
+    check("the Units section was not touched by a Techs edit",
+          _icons1.get("Units") == _units0, "")
+    _new_mats = ({e["MaterialDef"]["Name"] for e in _mats1["Materials"]} - _mats0_names)
+    check("exactly one material was added", _new_mats == {_mat_name}, sorted(_new_mats))
+    check("and every shipped material survives",
+          _mats0_names <= {e["MaterialDef"]["Name"] for e in _mats1["Materials"]}, "")
+
+    # Follow the chain the ENGINE follows rather than the names this tool chose:
+    # material -> GlobalTextures entry -> FileName under widgetui/.
+    _def = None
+    for _e in _mats1["Materials"]:
+        _md = _e["MaterialDef"]
+        if _md["Name"] == _mat_name:
+            _def = _md
+            break
+    check("the material is a plain Texture, not an atlas slice",
+          bool(_def) and _def.get("Type") == "Texture",
+          json.dumps(_def, ensure_ascii=False)[:160])
+    _tex = None
+    for _e in _mats1.get("GlobalTextures") or []:
+        _td = _e["TextureDef"]
+        if _td["Name"] == _mat_name:
+            _tex = _td
+            break
+    check("and it names a texture file", bool(_tex), json.dumps(_tex, ensure_ascii=False))
+    _tex_rel = (_tex or {}).get("FileName") or ""
+    check("under the tech icon folder, as a picture",
+          _tex_rel.startswith("textures/ingame/tech/") and _tex_rel.endswith(".png"),
+          _tex_rel)
+    _on_disk = os.path.join(OUT_ICON, "widgetui", *_tex_rel.split("/"))
+    check("the file the engine would ask for exists", os.path.isfile(_on_disk), _on_disk)
+    if os.path.isfile(_on_disk):
+        _back = Image.open(_on_disk)
+        _back.load()
+        check("and it decodes to the picture that was handed in",
+              _back.size == (_side, _side)
+              and _back.convert("RGBA").tobytes() == bytes(_rgba),
+              "%r %s" % (_back.size, _back.mode))
+
+    _raw_icon, _how_icon = A.P.load_dat(
+        os.path.join(OUT_ICON, "resources", "_common", "dat", "empires2_x2_p1.dat"))
+    _c3, _cs3, _gv3, _t3 = A.L.locate(_raw_icon)
+    _recs3 = A.L.locate_techs(_raw_icon, _t3, _gv3)
+    _rec3 = _recs3[(icon_man.get("new_tech") or {}).get("id", -1)]
+    check("the emitted record carries the new icon id",
+          _rec3.get("icon_id") == icon_plan.get("icon_slot"),
+          "%r vs %r" % (_rec3.get("icon_id"), icon_plan.get("icon_slot")))
 
     print()
     if FAILS:

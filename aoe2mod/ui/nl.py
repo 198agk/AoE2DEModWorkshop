@@ -1081,6 +1081,13 @@ def read_clause(text, vocab, civ_names=None, civ_zh=None, pins=None,
             if bld is not None:
                 cl.intent["building"] = bld.id
                 cl.notes.append("放在「%s」的研究卡上" % bld.display)
+            # A path is the one thing that cannot be misread, so it needs no hint
+            # word -- and it is the NEW technology's icon, not a repaint of the
+            # donor, because this branch returns before the art branch.
+            _tpic = _picture_in(raw)
+            if _tpic:
+                cl.intent["icon"] = _tpic
+                cl.notes.append("用这张图当它自己的图标")
             cl.notes.append("照「%s」做，名字是「%s」" % (donor.display, new_name))
             return cl
         if not civ0:
@@ -1319,7 +1326,13 @@ def read_clause(text, vocab, civ_names=None, civ_zh=None, pins=None,
     pic = _picture_in(raw)
     if pic:
         if kind != "unit":
-            cl.why = "换图只能用在单位上；科技没有自己的图"
+            # Measured 2026-10-23: a technology DOES have a picture of its own --
+            # icons.json holds a Techs section (313 shipped slots) and this tool now
+            # ships new ones for `tech.create`.  What it cannot do yet is point an
+            # EXISTING technology at a new one, so the refusal says that instead of
+            # the old blanket "technologies have no picture", which was false.
+            cl.why = ("换图只能用在单位上。科技确实有自己的图标（图标表里有一段是科技的），"
+                      "但这一版只会给「新建的科技」配图标，还不能换已有科技的图标")
             return cl
         cl.intent = {"intent": "unit.art", "unit": eid, "picture": pic}
         if civ:

@@ -558,6 +558,12 @@
           "required": false,
           "label": "放在哪座建筑",
           "help": "Optional. Which building shows the button, when that is not the one the donor uses. A unit's train location -- the entry that names the building, the box number and the train time -- lives on the UNIT's own record, so re-pointing it rewrites two bytes of the clone the build already writes; it does not touch the building and it appends nothing. So a building that never trained the donor can still show the clone. Omit to keep the donor's building."
+        },
+        "icon": {
+          "type": "path",
+          "required": false,
+          "label": "图标图片",
+          "help": "Optional. A picture on your disk becomes the new unit's own icon. The build ships it as an uncompressed BGRA DDS plus the WHOLE merged icons.json and materials.json, and points the record at a slot above the shipped 0..999 range -- that range is not a wall: the record's icon field is an i16 (ceiling 32767, read out of parser.py) and a released UI mod on this machine already extends Units to 2149 keys with 127 real materials. A patch would not be read; the engine takes the mod's copy in place of the game's. Omit the field and the clone draws the donor's icon."
         }
       },
       "compile": {
@@ -680,6 +686,12 @@
           "required": false,
           "label": "效果",
           "help": "Optional shorthand for the effect's single command, as '<type>,<a>,<b>,<c>,<d>' -- for example '4,0,3,-1,1' is '+1 building armour'. Omit it and the new technology has no effect of its own, which is a legal state the shipped data also uses (330 technologies point at no effect)."
+        },
+        "icon": {
+          "type": "path",
+          "required": false,
+          "label": "图标图片",
+          "help": "Optional. A picture on your disk becomes the new technology's own icon. It goes under the Techs section, which differs from Units in three measured ways: its keys start at 500, its textures live under textures/ingame/tech, and the only shipped precedent used PNG rather than uncompressed DDS. The record's icon field is an i16 (ceiling 32767) even though the shipped table stops at 312. Omit the field and the clone draws the donor's icon."
         }
       },
       "compile": {

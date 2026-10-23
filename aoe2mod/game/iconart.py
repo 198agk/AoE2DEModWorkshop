@@ -46,16 +46,35 @@ from . import ddstex as D
 
 ICONS_REL = os.path.join("widgetui", "icons.json")
 MATERIALS_REL = os.path.join("widgetui", "materials.json")
-TEXTURE_DIR = "textures/ingame/units"
+
+# Two sections behave the same way but live in different folders, and the only
+# shipped example of an extended one used a different FILE FORMAT per section --
+# measured 2026-10-23 on `[UI]7V1_Three Kingdoms`:
+#   * its 127 added UNIT icons are `textures/ingame/units/lt_soldier_unit_NNN.dds`
+#   * its 49 added TECH icons are `textures/ingame/tech/lt_tech_NNN.png`
+# So the shape is copied per section rather than generalised: a unit icon is an
+# uncompressed DDS (which this project can encode), a tech icon is a PNG (which
+# it can also encode, via `ddstex.encode_png`).  Neither has been watched being
+# drawn by the game -- that boundary is stated where the build reports.
+SECTIONS = {
+    "unit": {"section": "Units", "texture_dir": "textures/ingame/units",
+             "ext": ".dds"},
+    "tech": {"section": "Techs", "texture_dir": "textures/ingame/tech",
+             "ext": ".png"},
+}
+TEXTURE_DIR = SECTIONS["unit"]["texture_dir"]
 
 # The game draws icons at 256x256; so does every shipped icon and so does the
 # UI mod above (`lt_soldier_unit_000.dds` is 262272 B = 128 + 256*256*4).
 SIDE = 256
 
 # Units keys are zero-padded to three digits in the shipped table, then keep
-# growing as plain numbers past 999 (the mod above ends at "2148").
-FIRST_FREE = 1000
-MAX_SLOT = 32767            # the unit record's icon field is an i16
+# growing as plain numbers past 999 (the mod above ends at "2148").  The Techs
+# floor is 500 because that is where the only shipped precedent starts; Units
+# keep 1000 because the shipped table ends at 999.
+FIRST_FREE = {"unit": 1000, "tech": 500}
+MAX_SLOT = 32767            # both the unit record's and the tech record's icon
+                            # field are i16 -- read out of parser.py, not assumed
 
 
 class IconError(Exception):
@@ -76,18 +95,27 @@ def shipped(game_root):
             _load_json(os.path.join(game_root, MATERIALS_REL)))
 
 
-def _slots(icons_doc):
-    return {int(k) for k in (icons_doc.get("Units") or {}) if str(k).isdigit()}
+def _slots(icons_doc, kind="unit"):
+    section = SECTIONS[kind]["section"]
+    return {int(k) for k in (icons_doc.get(section) or {}) if str(k).isdigit()}
 
 
-def next_slot(icons_doc):
-    """The first Units key at or above 1000 that the table does not already use."""
-    used = _slots(icons_doc)
-    slot = FIRST_FREE
+def next_slot(icons_doc, kind="unit"):
+    """The first key in that section at or above this project's own floor.
+
+    The floor is a choice, not a rule of the engine: 1000 for units because the
+    shipped table stops at 999, 500 for techs because that is where the only
+    shipped precedent (`[UI]7V1_Three Kingdoms`: keys 500..548) put its own.  A
+    lower free key exists in both sections and using it would be legal, but then
+    a future official patch adding a tech could collide with a number that looked
+    safe when it was chosen -- the same reason `tech.create` says its id may move.
+    """
+    used = _slots(icons_doc, kind)
+    slot = FIRST_FREE[kind]
     while slot in used:
         slot += 1
     if slot > MAX_SLOT:
-        raise IconError("图标槽已经用到 %d，超过单位记录能存的上限 %d"
+        raise IconError("图标槽已经用到 %d，超过记录里那个字段能存的上限 %d"
                         % (slot, MAX_SLOT))
     return slot
 
@@ -217,22 +245,26 @@ def _rgba_from_picture(path, side=SIDE):
     return side, side, canvas.tobytes()
 
 
-def plan(icons_doc, materials_doc, picture, stem=None, slot=None):
+def plan(icons_doc, materials_doc, picture, stem=None, slot=None, kind="unit"):
     """-> what the build will do, without doing it.
 
     Returns the slot, the material name, the two file paths and the picture's
     own pixel size, so the preview can say exactly which numbers change.
+    `kind` picks the section: units and techs are separate tables AND separate
+    texture folders, and the one shipped precedent used a different file format
+    for each, so a single "icon" shape would be wrong for one of them.
     """
+    spec = SECTIONS[kind]
     if slot is None:
-        slot = next_slot(icons_doc)
+        slot = next_slot(icons_doc, kind)
     slot = int(slot)
-    if slot < FIRST_FREE or slot > MAX_SLOT:
-        raise IconError("图标槽只能取 %d..%d，拿到的是 %d"
-                        % (FIRST_FREE, MAX_SLOT, slot))
-    units = icons_doc.get("Units") or {}
-    if str(slot) in units and units[str(slot)] not in (None, "None"):
+    floor = FIRST_FREE[kind]
+    if slot < floor or slot > MAX_SLOT:
+        raise IconError("图标槽只能取 %d..%d，拿到的是 %d" % (floor, MAX_SLOT, slot))
+    table = icons_doc.get(spec["section"]) or {}
+    if str(slot) in table and table[str(slot)] not in (None, "None"):
         raise IconError("第 %d 号图标槽已经被「%s」占了，换一个号"
-                        % (slot, units[str(slot)]))
+                        % (slot, table[str(slot)]))
     by_name, textures = _materials(materials_doc)
     material = _clean_stem(stem)
     if material in by_name:
@@ -240,35 +272,47 @@ def plan(icons_doc, materials_doc, picture, stem=None, slot=None):
     if material in textures:
         raise IconError("贴图表里已经有叫「%s」的贴图了，换个名字" % material)
     side = SIDE
-    file_rel = "%s/%s.dds" % (TEXTURE_DIR, material)
-    return {"slot": slot, "key": str(slot).zfill(3) if slot < 1000 else str(slot),
-            "material": material, "file_rel": file_rel, "side": side,
+    file_rel = "%s/%s%s" % (spec["texture_dir"], material, spec["ext"])
+    return {"slot": slot, "key": _key(slot), "material": material,
+            "file_rel": file_rel, "side": side, "kind": kind,
+            "section": spec["section"],
             "icons_rel": ICONS_REL, "materials_rel": MATERIALS_REL}
 
 
+def _key(slot):
+    """How the tables spell this key: zero-padded below their own first free."""
+    return str(slot).zfill(3)
+
+
 def emit(icons_doc, materials_doc, label, rgba, side=SIDE, slot=None,
-         stem=None):
+         stem=None, kind="unit"):
     """-> {relative_path: bytes} for the whole icon layer.
 
     `label` is the slot key as the table spells it; `rgba` is `side*side*4` bytes.
     Both JSON files come back as the full merged table -- see the module
     docstring for why a patch would not work.
+
+    A unit icon is written as uncompressed BGRA DDS and a tech icon as PNG,
+    because those are the shapes the only shipped precedent used per section.
+    Nothing in the engine requires that split -- it is copied from a mod that
+    works, which is the strongest evidence available without another run.
     """
     import copy
 
+    spec = SECTIONS[kind]
     icons = copy.deepcopy(icons_doc)
     materials = copy.deepcopy(materials_doc)
     if slot is None:
-        slot = next_slot(icons)
+        slot = next_slot(icons, kind)
     slot = int(slot)
     material = _clean_stem(stem)
-    dds_rel = "%s/%s.dds" % (TEXTURE_DIR, material)
-    key = str(slot).zfill(3) if slot < 1000 else str(slot)
+    file_rel = "%s/%s%s" % (spec["texture_dir"], material, spec["ext"])
+    key = _key(slot)
 
-    units = icons.setdefault("Units", {})
-    if key in units and units[key] not in (None, "None"):
-        raise IconError("第 %d 号图标槽已经被「%s」占了" % (slot, units[key]))
-    units[key] = material
+    table = icons.setdefault(spec["section"], {})
+    if key in table and table[key] not in (None, "None"):
+        raise IconError("第 %d 号图标槽已经被「%s」占了" % (slot, table[key]))
+    table[key] = material
 
     materials.setdefault("Materials", []).append(
         {"MaterialDef": {"Name": material, "Type": "Texture",
@@ -278,10 +322,11 @@ def emit(icons_doc, materials_doc, label, rgba, side=SIDE, slot=None,
     # 三国 mod: all 127 of its added icon materials have a TextureDef of exactly
     # the same name; a "-tex" suffix would resolve to nothing).
     materials.setdefault("GlobalTextures", []).append(
-        {"TextureDef": {"Name": material, "FileName": dds_rel,
+        {"TextureDef": {"Name": material, "FileName": file_rel,
                         "Cached": "none"}})
 
-    blob = D.encode_bgra(side, side, rgba)
+    blob = (D.encode_bgra(side, side, rgba) if spec["ext"] == ".dds"
+            else D.encode_png(side, side, rgba))
     # TWO different paths on purpose.  `TextureDef.FileName` is resolved
     # relative to `widgetui/`, so it says `textures/ingame/units/x.dds`; the
     # file inside the MOD folder must therefore sit one level deeper.  Shipping
@@ -289,7 +334,7 @@ def emit(icons_doc, materials_doc, label, rgba, side=SIDE, slot=None,
     # texture lookup never finds it -- measured 2026-10-23 on a real build: the
     # JSON named `textures/ingame/units/newicon.dds` and that is where the file
     # landed, next to `info.json` rather than under `widgetui/`.
-    return {_mod_rel(dds_rel): blob,
+    return {_mod_rel(file_rel): blob,
             ICONS_REL.replace(os.sep, "/"): _dump(icons),
             MATERIALS_REL.replace(os.sep, "/"): _dump(materials)}
 
