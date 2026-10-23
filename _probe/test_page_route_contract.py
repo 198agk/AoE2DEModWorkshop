@@ -149,12 +149,21 @@ def page_queries(html):
     writes that shape.
     """
     out = {}
+    plain = set()
     for m in re.finditer(r'"(/api/[a-z\-]+)\?', html):
         window = html[m.start():m.start() + 500]
         # Stop at the end of the statement: a `;` outside a literal ends the URL.
         keys = set(re.findall(r"[?&]([A-Za-z_]+)=", window))
         out.setdefault(m.group(1), set()).update(keys)
-    return out
+    # A route can also be called with NO query at all -- `/api/repair-check` is
+    # one: the page just asks, and `profile_root` exists only so a test can point
+    # it at a throwaway profile.  These must count as CALLED for the "route with
+    # no caller" check, but they contribute no keys: folding them into `out`
+    # would assert that the page sends keys to a route that has none, which is
+    # the opposite of the contract this file states.
+    for m in re.finditer(r'api\("(/api/[a-z\-]+)"\)', html):
+        plain.add(m.group(1))
+    return out, plain
 
 
 def server_queries(src):
@@ -221,7 +230,7 @@ def main():
     # to `fetch` stubs for the same reason it is invisible in a body: the stub
     # answers whatever it is asked.  `/api/icon` and `/api/describe` are the two
     # the screen leans on hardest (every grid cell and every detail panel).
-    ask = page_queries(html)
+    ask, ask_plain = page_queries(html)
     qread = server_queries(src)
     print("page builds %d query URLs; the server handles %d GET routes that read a query"
           % (len(ask), len(qread)))
@@ -250,15 +259,18 @@ def main():
     # the page asks for it).  Both are real capabilities with no button, which is
     # exactly the state this whole file exists to keep visible.
     no_screen_get = {"search": "superseded by /api/browse",
-                     "emblem": "no screen shows a civilization emblem yet",
-                     # Costs 3-12 s per mod (16 on this machine), so the page
-                     # must not call it on load.  No button yet; saying so here
-                     # is the difference between "not wired yet" and "forgotten".
-                     "repair-check": "no button on the page yet; it parses every shipped .dat"}
-    uncalled = sorted(r for r in qread if r not in ask)
+                     "emblem": "no screen shows a civilization emblem yet"}
+    called = set(ask) | ask_plain
+    uncalled = sorted(r for r in qread if r not in called)
     unexplained_get = [r for r in uncalled if r.rsplit("/", 1)[-1] not in no_screen_get]
     check("every GET route the page never queries is a declared decision",
           not unexplained_get, "unexplained: %s" % unexplained_get)
+    # Non-vacuous: the "no query" half above is only worth anything if the page
+    # really calls a route that way.  Naming one keeps the regex honest -- without
+    # it, deleting the second pass would leave this file green while
+    # `/api/repair-check` silently fell back into "no caller".
+    check("a route the page calls with no query at all is counted as called",
+          "/api/repair-check" in ask_plain, sorted(ask_plain))
 
     # ---- the routes with no screen must be named, not forgotten ---------
     # `/api/plan` and `/api/search` are used by `tools/` and by hand, and
@@ -266,12 +278,7 @@ def main():
     # between "no screen yet" and "someone forgot the button".
     no_screen = {"uninstall": "no button on the page yet",
                  "plan": "the page reads previews out of /api/parse",
-                 "search": "the page browses by picture instead",
-                 # Rebuilds a mod and reinstalls it.  Sits behind GET
-                 # /api/repair-check for the same reason: 3-12 s of parsing per
-                 # mod.  No button yet -- naming it here is what keeps that
-                 # visible instead of looking like an oversight.
-                 "repair-apply": "no button on the page yet; it rebuilds and reinstalls a mod"}
+                 "search": "the page browses by picture instead"}
     unsent = sorted(r for r in read if r not in sent)
     unexpected = [r for r in unsent if r.rsplit("/", 1)[-1] not in no_screen]
     check("every POST route the page never calls is a declared decision",

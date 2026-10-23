@@ -256,6 +256,14 @@
     <div class="box">
       <h2>已安装的模组</h2>
       <div class="body" id="mods"><div class="empty">读取中…</div></div>
+      <div class="body" style="border-top:1px solid var(--line);margin-top:10px;padding-top:10px">
+        <div class="hint" style="margin:0 0 8px">
+          社区模组如果自带一整份数据文件，游戏更新后它会把新内容盖回去。
+          这里能把作者改过的东西在今天的数据上重做一遍，作者的其他文件原地保留。
+        </div>
+        <button id="btn-repair" class="chip">检查自带数据文件的模组</button>
+        <div id="repair"></div>
+      </div>
     </div>
     <div class="box" style="margin-top:16px">
       <h2>能做的事</h2>
@@ -368,6 +376,85 @@ async function rebuildAll(rows) {
   if (failed.length) toast(failed.join("；"), "bad");
   await checkUpdates();
   try { renderMods((await api("/api/mods")).mods); } catch (e) {}
+}
+
+// ---- can a community mod that ships a whole .dat be saved? --------------
+// The guard above only knows about mods THIS tool built (it has a record to
+// compare against).  A mod someone else made has no record, so the question it
+// can answer is different and just as useful: what did it change, and can that
+// change be replayed on the data the game has today?  Both answers cost 3-12 s
+// per mod of parsing, so this is a button, never a page load.
+const REPAIR_VERDICT_ZH = {
+  auto: "可以自动修",
+  manual: "只能部分自动修",
+  impossible: "不能自动修",
+  identical: "不用修",
+  no_dat: "不带数据文件",
+};
+
+function repairRow(r) {
+  const row = el("div", "mod");
+  const left = el("div", "");
+  left.appendChild(el("div", "nm", r.title || r.name));
+  const v = REPAIR_VERDICT_ZH[r.verdict] || r.verdict || "?";
+  const badge = el("span", "stat" + (r.verdict === "auto" ? "" : " dim"), v);
+  const line = el("div", "hint");
+  line.appendChild(badge);
+  left.appendChild(line);
+  // The summary is the product's own sentence, printed verbatim: re-phrasing it
+  // here would drift away from what every other surface says.
+  left.appendChild(el("div", "hint", r.summary || ""));
+  row.appendChild(left);
+  if (r.verdict === "auto") {
+    const b = el("button", "chip", "修好它");
+    b.onclick = async (ev) => {
+      const btn = ev.target;
+      btn.disabled = true;
+      btn.textContent = "修…";
+      try {
+        const got = await api("/api/repair-apply", {name: r.name});
+        toast("已修好并装回：" + (r.title || r.name), "ok");
+        if (got.installed && got.installed.running_warning)
+          toast(got.installed.running_warning, "warn");
+        // Re-ask rather than assume: the row must now read 不用修, and if it does
+        // not, the rebuild did not reproduce what the author had.
+        await checkRepairs();
+      } catch (e) {
+        btn.disabled = false;
+        btn.textContent = "修好它";
+        toast("没修成：" + e.message, "bad");
+      }
+    };
+    row.appendChild(b);
+  }
+  return row;
+}
+
+async function checkRepairs() {
+  const box = $("#repair");
+  const btn = $("#btn-repair");
+  btn.disabled = true;
+  btn.textContent = "检查中…（每个模组要读一遍数据文件）";
+  box.innerHTML = "";
+  try {
+    const got = await api("/api/repair-check");
+    const rows = (got.mods || []).filter(r => r.verdict && r.verdict !== "no_dat");
+    if (!rows.length) {
+      box.appendChild(el("div", "hint", "没有自带数据文件的模组。"));
+    } else {
+      // Say the split before the list: a player who sees twenty rows needs to
+      // know how many of them this tool can actually fix.
+      const fixable = rows.filter(r => r.verdict === "auto").length;
+      box.appendChild(el("div", "hint",
+        "自带数据文件的模组 " + rows.length + " 个，其中 " + fixable + " 个能在这里修好。"));
+      for (const r of rows) box.appendChild(repairRow(r));
+    }
+  } catch (e) {
+    box.appendChild(el("div", "err", "检查失败：" + e.message));
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "检查自带数据文件的模组";
+  }
 }
 
 function renderIntentList() {
@@ -964,6 +1051,7 @@ async function doBuild() {
 
 $("#btn-parse").onclick = doParse;
 $("#btn-build").onclick = doBuild;
+$("#btn-repair").onclick = checkRepairs;
 // Dropping a picture onto the sentence box.  Assigned as properties rather than
 // through addEventListener because that is also what the page harness can call
 // -- a listener registered on a stub that ignores listeners would make the drag

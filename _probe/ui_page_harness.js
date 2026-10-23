@@ -340,6 +340,29 @@ let DROPPED = [];
 // `verification.ok` true and the page rendered none of them.
 let BUILD_WARNINGS = [];
 
+// What /api/repair-check answers: four installed mods that ship their own .dat,
+// one per verdict that can be acted on or must be refused.  The page's job is to
+// say which of them this tool can fix and to offer the button ONLY on those --
+// a stub where every row looked fixable would let a page that drew the button
+// unconditionally pass, and the player would be offered a rebuild for a
+// cross-generation mod that cannot be rebuilt.
+let REPAIR_ANSWER = {
+  ok: true, count: 4, mods: [
+    { name: "dsh test v46", title: "村民血量一组", verdict: "auto", enabled: true,
+      summary: "可以自动修：5 处数值改动（单位 5 / 科技 0）" },
+    { name: "167396_Red Alert 2 MOD", title: "Red Alert 2", verdict: "manual",
+      enabled: true,
+      summary: "只能部分自动修：555 处数值可以重放；45 个新单位、39 个新科技要重建" },
+    { name: "10 倍资源", title: "10 倍资源文明联盟3倍科技", verdict: "impossible",
+      enabled: true, summary: "不能自动修：不是偏移挪了位，是数据格式换代了" },
+    { name: "dsh test v61", title: "自己的图标", verdict: "identical",
+      enabled: true, summary: "这份 .dat 和游戏现在的一样，不用修" },
+    { name: "some ui mod", title: "纯 UI 模组", verdict: "no_dat", enabled: true,
+      summary: "没量出来：这一个不带数据文件" },
+  ],
+};
+const repairedNow = [];
+
 // What /api/mods answers.  Two mods, one of which carries a whole .dat and the
 // other of which does not, because the badge the page draws is "this one competes
 // for the single data-mod slot" -- and a stub where every mod looked the same
@@ -413,6 +436,28 @@ const sandbox = {
       // level) pass here and fail on screen.
       return { json: async () => ({ ok: true, update: UPDATE_ANSWER }) };
     }
+    if (url.indexOf("/api/repair-check") === 0) {
+      return { json: async () => REPAIR_ANSWER };
+    }
+    if (url.indexOf("/api/repair-apply") === 0) {
+      const body = opt && opt.body ? JSON.parse(opt.body) : {};
+      repairedNow.push(body.name);
+      // A repair reinstalls, so it carries the same game-running answer as
+      // install/rebuild.  After a successful repair the row must read as
+      // nothing-left-to-do, because the whole claim is "same intents, same base
+      // data, same bytes" -- if the page kept showing 可以自动修, the user would
+      // click again.
+      REPAIR_ANSWER = {
+        ok: true, count: 1, mods: [
+          { name: "dsh test v46", title: "村民血量一组", verdict: "identical",
+            enabled: true, summary: "这份 .dat 和游戏现在的一样，不用修" },
+        ],
+      };
+      return { json: async () => ({ ok: true, manifest: {}, installed: {
+        installed: true, game_running: RUNNING,
+        running_warning: RUNNING ? RUNNING_TEXT : null,
+      } }) };
+    }
     if (url.indexOf("/api/rebuild") === 0) {
       const body = opt && opt.body ? JSON.parse(opt.body) : {};
       rebuilt.push(body.title);
@@ -459,6 +504,7 @@ const fn = new Function(
   "setPickKind: setPickKind, PICK: () => PICK, PINS: () => PINS, " +
   "dropOnSay: dropOnSay, DRAGGING: () => DRAGGING, " +
   "checkUpdates: checkUpdates, rebuildAll: rebuildAll, " +
+  "checkRepairs: checkRepairs, REPAIR: () => REPAIR_ANSWER, " +
   "renderMods: renderMods, " +
   "renderIntentList: renderIntentList, " +
   "boot: boot, " +
@@ -1014,9 +1060,60 @@ function updateChecks() {
   }).then(() => {
     check("the banner disappears once nothing is stale",
           ids.banner.className.indexOf("open") < 0, ids.banner.className);
-    return intentListChecks();
+    return repairChecks();
   }).catch((e) => { fails.push("the update banner threw: " + e.message);
                     console.log("FAIL the update banner threw :: " + e.stack);
+                    finish(); });
+}
+
+// ---- saving a community mod that ships its own .dat ----------------------
+// Three things can go wrong here and only one of them is cosmetic: offering the
+// button on a mod that cannot be fixed, saying "fixed" without re-checking, and
+// dropping the game-running warning on the repair path (a repair reinstalls, so
+// it rewrites mod-status.json exactly like install does).  The last one is the
+// same defect that made "重建并重装" look safe, one level down.
+function repairChecks() {
+  return page.checkRepairs().then(() => {
+    const box = ids.repair;
+    const flat = text(box);
+    // The count comes first: twenty rows with no "3 of them can be fixed here"
+    // makes the player read all twenty to find out.
+    check("the repair box says how many it can actually fix",
+          flat.indexOf("4 个") >= 0 && flat.indexOf("1 个能在这里修好") >= 0, flat);
+    check("an auto row offers the button",
+          walk(box, []).filter((n) => n.className === "chip"
+            && text(n) === "修好它").length === 1,
+          JSON.stringify(walk(box, []).map((n) => text(n)).slice(0, 12)));
+    // A cross-generation mod cannot be rebuilt, and a rebuild attempt would
+    // produce a mod that silently is not the author's.  No button on that row.
+    check("a row that cannot be fixed offers no button",
+          walk(box, []).filter((n) => text(n).indexOf("10 倍资源文明联盟3倍科技") >= 0
+            && n.children.some((c) => text(c) === "修好它")).length === 0,
+          flat);
+    check("the verdict is printed in Chinese, not as the file's spelling",
+          flat.indexOf("可以自动修") >= 0 && flat.indexOf("impossible") < 0,
+          flat);
+    const btn = walk(box, []).find((n) => n.className === "chip"
+      && text(n) === "修好它");
+    RUNNING = true;
+    return btn ? btn.onclick({ target: btn }) : null;
+  }).then(() => {
+    check("the repair posts the installed mod's own folder name",
+          repairedNow.length === 1 && repairedNow[0] === "dsh test v46",
+          JSON.stringify(repairedNow));
+    check("a repair says the game is open too",
+          text(ids.toast).indexOf("游戏正开着") >= 0, text(ids.toast));
+    // Re-asked, not assumed: the row has to read 不用修 afterwards.  Asserting
+    // the toast would pass even if the rebuild produced a different .dat.
+    check("the row reads as nothing-left-to-do after the repair",
+          text(ids.repair).indexOf("不用修") >= 0, text(ids.repair));
+    check("and no button is left on it",
+          walk(ids.repair, []).filter((n) => n.className === "chip"
+            && text(n) === "修好它").length === 0, text(ids.repair));
+    RUNNING = false;
+    return intentListChecks();
+  }).catch((e) => { fails.push("the repair box threw: " + e.message);
+                    console.log("FAIL the repair box threw :: " + e.stack);
                     finish(); });
 }
 
