@@ -46,7 +46,7 @@ STATIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
 #: so the screen literally read "IntentError: 「生命值」会变成 99999…" -- an English
 #: class name glued to the front of a Chinese refusal.  The class name is for us;
 #: the message is for the player.
-_QUIET_ERRORS = ("IntentError", "ModError", "ValueError", "RuntimeError",
+_QUIET_ERRORS = ("AIError", "IntentError", "ModError", "ValueError", "RuntimeError",
                  "TypeError", "KeyError", "OSError", "FileNotFoundError",
                  "NotADirectoryError", "PermissionError", "UnsupportedVersionError",
                  "struct.error", "zlib.error")

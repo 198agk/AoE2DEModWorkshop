@@ -102,22 +102,98 @@ def available():
     return config() is not None
 
 
+def _sentence_ids():
+    """Which intent ids the hand-written sentence layer actually covers.
+
+    Imported lazily and defensively: this module must still answer when the
+    reader is broken or being fixed, and "no sentence layer" is a fact the grammar
+    can state rather than a reason to crash.  The set lives in `ui/nl.py` because
+    that is the only place that knows it -- guessing here would make the grammar
+    promise what the reader cannot parse, which is precisely the mistake this
+    whole entry point is built to avoid.
+    """
+    try:
+        from .ui import nl as _nl
+        return set(_nl.SENTENCE_INTENTS)
+    except Exception:
+        return set()
+
+
+def _brief_rows(intents):
+    """Normalise the shapes this gets handed into one list of dicts.
+
+    Accepted: a list of ``{id, title, fields, by_sentence}``; the raw schema
+    ``{"intents": {intent_id: {...}}}``; or that inner mapping on its own.  All
+    three are legitimate and a caller passing the raw schema used to crash with
+    ``AttributeError: 'str' object has no attribute 'get'`` -- iterating a dict
+    yields its keys.  A schema spec carries no ``by_sentence`` (that is a property
+    of the reader, not of the data), so it is derived from `ui/nl.py` rather than
+    assumed true: defaulting to true would advertise plugin intents as reachable
+    by a sentence when they are not.
+    """
+    known = None
+
+    def _flag(spec, key):
+        nonlocal known
+        if "by_sentence" in spec:
+            return spec.get("by_sentence")
+        if known is None:
+            known = _sentence_ids()
+        return key in known
+
+    rows = []
+    if isinstance(intents, dict):
+        src = intents.get("intents")
+        if not isinstance(src, dict):
+            # A bare ``{intent_id: spec}`` mapping (the inner one).  Falling back
+            # to `list(src)` would hand back the KEYS, which produces an EMPTY
+            # grammar with no error at all -- the failure then looks like the
+            # model being unhelpful instead of like this function dropping input.
+            if any(isinstance(v, dict) for v in intents.values()):
+                src = intents
+            else:
+                return list(intents.values())
+        for key, spec in src.items():
+            spec = spec or {}
+            fields = spec.get("fields")
+            if isinstance(fields, dict):
+                fields = list(fields)
+            rows.append({"id": key,
+                         "title": spec.get("title") or spec.get("title_en") or key,
+                         "fields": list(fields or []),
+                         "by_sentence": _flag(spec, key)})
+        return rows
+    for one in intents or []:
+        if not isinstance(one, dict):
+            continue
+        fields = one.get("fields")
+        if isinstance(fields, dict):
+            fields = list(fields)
+        row = dict(one)
+        row["fields"] = list(fields or [])
+        if "by_sentence" not in row:
+            row["by_sentence"] = _flag(one, one.get("id"))
+        rows.append(row)
+    return rows
+
+
 def grammar(intents):
     """Describe what this build understands, from the loaded schema.
 
-    ``intents`` is ``{intent_id: {"title": ..., "fields": [...], "by_sentence":
-    bool}}`` as `aoe2mod.ui.server.App.meta` already builds it.  Intents a
-    sentence cannot reach are listed as API-only rather than omitted: a model
-    told only about ten of thirteen will confidently write for thirteen.
+    ``intents`` is either ``[{id, title, fields, by_sentence}]`` or the raw
+    ``{"intents": {...}}`` schema; `_brief_rows` accepts both.  Intents a sentence
+    cannot reach are listed as API-only rather than omitted: a model told only
+    about ten of thirteen will confidently write for thirteen.
     """
+    rows = _brief_rows(intents)
     lines = []
-    for one in intents:
+    for one in rows:
         if not one.get("by_sentence"):
             continue
         fields = "、".join(one.get("fields") or [])
         lines.append("· %s —— %s（字段：%s）"
                      % (one.get("id"), one.get("title") or "", fields))
-    api_only = sorted(one.get("id") for one in intents if not one.get("by_sentence"))
+    api_only = sorted(str(one.get("id")) for one in rows if not one.get("by_sentence"))
     out = ["这个工具能听懂的意图："] + lines
     if api_only:
         out.append("只能用接口、句子还写不出来的：%s（不要为这些编句子）。"

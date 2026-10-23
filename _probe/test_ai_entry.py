@@ -78,6 +78,17 @@ def main():
     check("the refusal names the variables, never their values",
           "AOE2MOD_AI_KEY" in refused and "=" not in refused.split("AOE2MOD_AI_MODEL")[0],
           refused)
+    # The route wrapper prefixes unexpected exceptions with their class name so a
+    # player can quote it in a bug report.  AIError is not unexpected: it is this
+    # product refusing in Chinese, and "AIError: 这个版本没有配 AI 接入口…" is an
+    # English word glued to the front of a sentence written for a player.  This
+    # was caught through the live route, which is the only place it shows.
+    check("the surfaced refusal carries no English class name",
+          S._sentence(AI.AIError("这个版本没有配 AI 接入口")) == "这个版本没有配 AI 接入口",
+          S._sentence(AI.AIError("这个版本没有配 AI 接入口")))
+    check("...while an unexpected exception still says which class it was",
+          "ZeroDivisionError:" in S._sentence(ZeroDivisionError("boom")),
+          S._sentence(ZeroDivisionError("boom")))
 
     print()
     print("=== B. the grammar comes from the schema, and admits what it cannot reach")
@@ -99,6 +110,35 @@ def main():
     check("no example is a bare intent id",
           not any(l.strip("· ") in by_sentence for l in text.splitlines()),
           [l for l in text.splitlines() if l.strip("· ") in by_sentence])
+
+    # The raw schema is the OTHER shape a caller will hand this, and it is the
+    # shape that used to crash: `for one in schema_intents` iterates the keys of
+    # a dict and then calls .get on a string.  Normalising only one shape keeps
+    # that mistake one refactor away, so both are pinned here -- and so is the
+    # worse failure next to it, a bare mapping that silently produced an EMPTY
+    # grammar (a model told nothing answers nothing, and it looks like the model
+    # being unhelpful rather than like this function dropping its input).
+    import aoe2mod.intent.compiler as _C
+    _schema, _bindings = _C.load_schema()
+    _raw_intents = _schema.get("intents") or {}
+    _raw_text = AI.grammar(_raw_intents)
+    check("the raw schema shape produces the same grammar, not a crash",
+          "unit.stat" in _raw_text and "（字段：" in _raw_text,
+          _raw_text[:200])
+    check("...and it is the whole grammar, not an empty one",
+          len(_raw_text.splitlines()) > len(by_sentence),
+          [len(_raw_text.splitlines()), len(by_sentence)])
+    # A schema spec has no `by_sentence`; that is a property of the reader, so it
+    # must be derived from ui/nl.py rather than assumed true.  Defaulting to true
+    # would advertise plugin intents as reachable by a sentence.
+    _fake = {"intents": {"unit.stat": {"title": "改数值"},
+                         "plugin.only": {"title": "插件意图"}}}
+    _fake_text = AI.grammar(_fake)
+    check("a spec with no flag is judged by the reader, not assumed reachable",
+          "plugin.only" in _fake_text and "只能用接口" in _fake_text,
+          _fake_text)
+    check("...while one the reader does cover is described normally",
+          "unit.stat" in _fake_text, _fake_text)
 
     print()
     print("=== C. ask() returns sentences, and only sentences")

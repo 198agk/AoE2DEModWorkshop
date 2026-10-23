@@ -26,6 +26,9 @@ __pycache__/
 _probe/out_*/
 _probe/out_*.txt
 _probe/out_*.err
+# `Start-Process -RedirectStandardError` writes this pair; naming it after the
+# commit the run describes is the only way to tell two runs apart afterwards.
+_probe/err_*.txt
 发布包/
 _shots/
 *.zip
