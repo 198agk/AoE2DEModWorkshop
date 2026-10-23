@@ -270,6 +270,14 @@ SUITES = [
     # report "读不开" because the version was read AFTER the parse -- the file's
     # layout is exactly what cannot be walked, so the order is load-bearing.
     r"_probe\test_repair.py",
+    # Turning that diff back into edits.  The interesting fact is not that a
+    # read-back works but that it is EXACT: `dsh test v46` changed five
+    # town-centre records, one intent reproduces all five, and the rebuilt
+    # stream is byte-identical to the author's own file.  A fold that is skipped
+    # cannot even run (sentence 2 is a no-op), and a family split across two
+    # values has no single-intent answer -- the second is the one worth a
+    # conflict report rather than a quiet choice.
+    r"_probe\test_replay.py",
     # What a newcomer reads.  Six defects shared one shape: the bytes were right
     # and the SENTENCE was wrong (a raw "wood" in a Chinese preview, a reader's
     # assumption dropped on the floor, no way to tell which of twenty mods the
