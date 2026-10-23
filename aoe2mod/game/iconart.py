@@ -144,12 +144,13 @@ def _clean_stem(name):
     return stem[:48]
 
 
-def _rgba_from_picture(path, side=SIDE):
-    """Any picture PIL can open -> (side, side, RGBA bytes), letterboxed on alpha 0.
+def _open_picture(path):
+    """-> a PIL image whose header has been read, or raise IconError in Chinese.
 
-    The letterbox is deliberate: a 200x100 logo squashed to a square would look
-    wrong on a square button, and silently cropping it would hide most of the
-    picture.  Fitting keeps the whole thing and leaves transparent margins.
+    Only the header is parsed here (`Image.open` is lazy), which is what makes it
+    affordable on the preview path -- the page plans on every keystroke.  The
+    full decode still happens in `_rgba_from_picture`, because a file can pass the
+    header check and still be truncated.
     """
     try:
         from PIL import Image
@@ -158,17 +159,53 @@ def _rgba_from_picture(path, side=SIDE):
     if not os.path.isfile(path):
         raise IconError("找不到这张图片：%s" % path)
     try:
-        img = Image.open(path)
-    except Exception as exc:                        # noqa: BLE001
-        raise IconError("这张图片打不开（%s）：%s" % (type(exc).__name__, exc))
+        return Image.open(path)
+    except Exception:                               # noqa: BLE001
+        # Measured 2026-10-23: a text file named .png reached the build, which
+        # answered with PIL's own English sentence.  The type name is the only
+        # part a player could act on, and even that only means "this is not a
+        # picture", so say that plainly instead of pasting the exception.
+        raise IconError("这张图片打不开：%s 不是一张能识别的图片"
+                        "（支持 PNG、JPG、BMP、GIF）" % os.path.basename(path))
+
+
+def check_picture(path):
+    """-> (width, height) of the source picture, or raise IconError.
+
+    Exists so the PREVIEW can refuse what the BUILD would refuse.  The plan used
+    to allocate a slot and report `editable: True` for any path that existed,
+    and the build then died decoding it -- measured 2026-10-23 with a text file
+    named `not_a_picture.png`: plan said edit_count=3, build raised.
+    """
+    img = _open_picture(path)
+    try:
+        size = img.size
+    finally:
+        try:
+            img.close()
+        except Exception:                           # noqa: BLE001
+            pass
+    w, h = size
+    if w <= 0 or h <= 0:
+        raise IconError("这张图片是空的（%dx%d）" % (w, h))
+    return w, h
+
+
+def _rgba_from_picture(path, side=SIDE):
+    """Any picture PIL can open -> (side, side, RGBA bytes), letterboxed on alpha 0.
+
+    The letterbox is deliberate: a 200x100 logo squashed to a square would look
+    wrong on a square button, and silently cropping it would hide most of the
+    picture.  Fitting keeps the whole thing and leaves transparent margins.
+    """
+    from PIL import Image
+    img = _open_picture(path)
     try:
         img.load()
-    except Exception as exc:                        # noqa: BLE001
-        raise IconError("这张图片读到一半失败（%s）：%s" % (type(exc).__name__, exc))
-    if img.mode not in ("RGBA", "LA"):
-        img = img.convert("RGBA")
-    else:
-        img = img.convert("RGBA")
+    except Exception:                               # noqa: BLE001
+        raise IconError("这张图片读到一半失败，文件可能是坏的：%s"
+                        % os.path.basename(path))
+    img = img.convert("RGBA")
     w, h = img.size
     if w <= 0 or h <= 0:
         raise IconError("这张图片是空的（%dx%d）" % (w, h))

@@ -996,6 +996,14 @@ class Toolkit(object):
         if want_icon:
             from .game import iconart as IA
             try:
+                # The picture is checked HERE, on the preview path, because
+                # `iconart.plan` only decides numbers -- it never opens the file.
+                # Measured 2026-10-23: a text file named `not_a_picture.png` got
+                # `editable: True, edit_count: 3` from the preview and then killed
+                # the build with PIL's own English sentence.  `check_picture`
+                # reads only the header, so a plan stays cheap enough to run on
+                # every keystroke, and the build still does the full decode.
+                _w, _h = IA.check_picture(want_icon)
                 _icons_doc, _materials_doc = IA.shipped(self.game_root)
                 _art = IA.plan(_icons_doc, _materials_doc, want_icon,
                                stem=r.name, slot=base.get("icon_slot"))
@@ -1009,6 +1017,7 @@ class Toolkit(object):
                 return base
             base["icon_slot"] = _art["slot"]
             base["icon_material"] = _art["material"]
+            base["icon_source_size"] = [_w, _h]
             # Three files, named without building them: the preview must be cheap
             # (a plan is run on every keystroke in the page) and encoding a
             # 262,272 B DDS plus merging a 2.5 MB materials table only to count
@@ -1024,6 +1033,15 @@ class Toolkit(object):
                 "图标这一层要发 %d 个文件：一张 256×256 的图片，加上完整合并的"
                 "图标表和材质表（引擎读的是模组里的整份表，不是补丁）。"
                 % len(base["icon_files"]))
+            # Say the shaping out loud when it happens: a 300x120 logo is NOT
+            # shrunk to a square (that would distort it) and NOT cropped (that
+            # would hide most of it) -- it is fitted into the square and the
+            # margins stay transparent.  A player who expected a full-bleed
+            # button needs to hear this before the build, not after.
+            if (_w, _h) != (IA.SIDE, IA.SIDE):
+                base["warnings"].append(
+                    "你给的图是 %d×%d，会被等比缩进 %d×%d 的正方形里，"
+                    "四周留透明边（不裁切、不拉伸）。" % (_w, _h, IA.SIDE, IA.SIDE))
         else:
             base["warnings"].append(
                 "新单位的图标就是照着做的那个单位的：这句话没说要用哪张图。"

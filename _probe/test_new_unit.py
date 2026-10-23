@@ -509,6 +509,55 @@ def main():
         check(iman.get("icon_slot_ok") is True,
               "the build read the slot back out of the file it wrote",
               iman.get("icon_slot_written"))
+
+        # K. A preview must not promise an icon the build then refuses.  The
+        # first wiring checked only that the PATH existed, so a text file named
+        # `.png` got `editable: True, edit_count: 3` and the build died with
+        # PIL's own English sentence -- measured 2026-10-23.  Both halves are
+        # asserted here: the plan refuses, and the refusal is a sentence rather
+        # than a pasted exception.
+        bad_dir = tempfile.mkdtemp(prefix="newunit_badpic_")
+        bad = os.path.join(bad_dir, "not_a_picture.png")
+        with open(bad, "wb") as fh:
+            fh.write(b"this is text, not a PNG\n")
+        bad_plan = tk.plan({"intent": "unit.create", "donor": 83,
+                            "civ": "British", "name": "画师学徒", "icon": bad})
+        check(bad_plan.get("editable") is False,
+              "a file that is not a picture is refused by the PREVIEW",
+              (bad_plan.get("editable"), bad_plan.get("edit_count")))
+        _bad_why = bad_plan.get("reason") or ""
+        # The file's own name is data and is allowed to be Latin; what must not
+        # appear is the decoded exception (type name + library wording).
+        check("不是一张能识别的图片" in _bad_why
+              and "UnidentifiedImageError" not in _bad_why
+              and "cannot identify" not in _bad_why,
+              "and that refusal says what is wrong, not which exception fired",
+              _bad_why)
+
+        # The letterbox has to be announced: a 300x120 logo is neither stretched
+        # nor cropped, and a player who expected a full-bleed button needs to
+        # hear it before the build.
+        wide = os.path.join(bad_dir, "wide_logo.png")
+        from PIL import Image as _PIL
+        _PIL.new("RGB", (300, 120), (10, 120, 200)).save(wide)
+        wide_plan = tk.plan({"intent": "unit.create", "donor": 83,
+                             "civ": "British", "name": "画师学徒", "icon": wide})
+        _wn = " ".join(wide_plan.get("warnings") or ())
+        check("300×120" in _wn and "透明边" in _wn,
+              "a non-square picture is announced as fitted, not stretched",
+              wide_plan.get("warnings"))
+        check(wide_plan.get("icon_source_size") == [300, 120],
+              "and the preview reports the source's own size",
+              wide_plan.get("icon_source_size"))
+        # A square picture must NOT carry the letterbox warning -- otherwise the
+        # sentence is just noise on every build and players stop reading it.
+        square = os.path.join(bad_dir, "square.png")
+        _PIL.new("RGB", (256, 256), (200, 40, 40)).save(square)
+        sq_plan = tk.plan({"intent": "unit.create", "donor": 83,
+                           "civ": "British", "name": "画师学徒", "icon": square})
+        check("透明边" not in " ".join(sq_plan.get("warnings") or ()),
+              "a square picture gets no letterbox warning",
+              sq_plan.get("warnings"))
     except Exception as exc:  # noqa: BLE001 -- a crash here must be a FAIL
         check(False, "the icon section ran to completion :: %s: %s"
                       % (type(exc).__name__, exc))
