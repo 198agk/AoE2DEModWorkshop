@@ -247,6 +247,43 @@ class App(object):
             out.append(row)
         return {"ok": True, "clauses": out, "intents": intents}
 
+    def ai_meta(self):
+        """Is an AI entry point configured, and what does it understand?
+
+        The page must not draw an AI box that always fails.  `available` is the
+        only thing it reads to decide, and the grammar shown here is what the
+        endpoint is told, so a player can read what is being asked of it.
+        """
+        from aoe2mod import ai as _ai
+        intents, _b = _load_schema()
+        brief = [{"id": k,
+                  "title": v.get("title") or v.get("title_en") or k,
+                  "fields": list((v.get("fields") or {})),
+                  "by_sentence": k in nl.SENTENCE_INTENTS}
+                 for k, v in intents["intents"].items()]
+        cfg = _ai.config()
+        return {"ok": True,
+                "available": cfg is not None,
+                "model": (cfg or {}).get("model"),
+                "base": (cfg or {}).get("base"),
+                "grammar": _ai.grammar(brief),
+                # Not a hint: this build NEVER turns a model's answer into an
+                # edit.  It writes sentences and the reader judges them, so every
+                # refusal and preview a human sees applies unchanged.
+                "writes": "sentences"}
+
+    def ai_sentences(self, text):
+        """One wish -> candidate sentences.  Nothing is parsed or built here."""
+        from aoe2mod import ai as _ai
+        intents, _b = _load_schema()
+        brief = [{"id": k,
+                  "title": v.get("title") or v.get("title_en") or k,
+                  "fields": list((v.get("fields") or {})),
+                  "by_sentence": k in nl.SENTENCE_INTENTS}
+                 for k, v in intents["intents"].items()]
+        got = _ai.ask(text, brief)
+        return {"ok": True, "ai": got}
+
     def plan(self, intent):
         return {"ok": True, "plan": self._decorate(self.tk.plan(intent))}
 
@@ -613,6 +650,11 @@ def make_handler(app):
                     q.get("civ", [""])[0]))
             if path == "/api/update-check":
                 return self._guard(app.update_check)
+            if path == "/api/ai-meta":
+                # Cheap and keyless (no call is made): the page reads this on
+                # load to decide whether to draw the AI box at all.  An AI box
+                # that always fails is worse than none.
+                return self._guard(app.ai_meta)
             if path == "/api/repair-check":
                 # Deliberately NOT part of /api/mods: this parses about 12 MB
                 # per mod, and the mod list is drawn on every page load.
@@ -655,6 +697,8 @@ def make_handler(app):
                 return self._guard(lambda: app.rebuild(payload["title"]))
             if path == "/api/repair-apply":
                 return self._guard(lambda: app.repair_apply(payload["name"]))
+            if path == "/api/ai-sentences":
+                return self._guard(lambda: app.ai_sentences(payload.get("text") or ""))
             return _json(self, {"ok": False, "error": "no such route"}, 404)
 
         def _guard(self, fn):

@@ -285,6 +285,15 @@ SUITES = [
     # machine ship more than info.json + .dat).  Both are asserted, and the
     # strong claim is byte identity: same intents, same base data, same stream.
     r"_probe\test_repair_apply.py",
+    # The AI entry, and the one thing it must never do.  A model is asked for
+    # sentences and answers with sentences; those go into the box and the
+    # ordinary reader judges them.  If a model's answer ever came back as an
+    # intent, plan or bytes, it would re-enter below all three gates -- the
+    # reader's refusal, plan()'s refusal, and the plan/build agreement nail -- so
+    # the core assertion here is that nothing but text crosses back.  The rest
+    # covers the two states of the button (no configuration means no box at all)
+    # and the HTTP shape, against a local server so no key and no network exist.
+    r"_probe\test_ai_entry.py",
     # What a newcomer reads.  Six defects shared one shape: the bytes were right
     # and the SENTENCE was wrong (a raw "wood" in a Chinese preview, a reader's
     # assumption dropped on the floor, no way to tell which of twenty mods the

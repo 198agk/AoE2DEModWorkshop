@@ -213,8 +213,16 @@
         </div>
         <div class="row end" style="margin-top:12px">
           <button id="btn-pick" class="chip">▦ 看着选</button>
+          <button id="btn-ai" class="chip" style="display:none">✦ 让 AI 写成句子</button>
           <span class="spacer"></span>
           <button id="btn-parse" class="primary">读一下</button>
+        </div>
+        <div id="ai" style="display:none;margin-top:10px">
+          <div class="hint" id="ainote">
+            AI 只负责把你的话说成这个工具认得的句子，认不认、能不能做，
+            仍然由下面那些同一条规则判断 —— 它不会直接改任何数据。
+          </div>
+          <div id="aigot"></div>
         </div>
 
         <div id="pick">
@@ -322,6 +330,7 @@ async function boot() {
   // The .dat facts a player cares about, phrased as facts rather than fields.
   $("#datinfo").textContent = META.civs.length + " 个文明 · 已就绪";
   checkUpdates();
+  aiBoot();
 }
 
 // ---- did the game's data move under an installed mod? ------------------
@@ -454,6 +463,64 @@ async function checkRepairs() {
   } finally {
     btn.disabled = false;
     btn.textContent = "检查自带数据文件的模组";
+  }
+}
+
+// ---- AI as one more way to WRITE, never a way around the checks ----------
+// The model is asked for sentences and nothing else.  Those sentences go into
+// the box and the ordinary reader judges them, so a wrong or over-reaching
+// answer arrives as a refusal the player can read, not as a byte edit.  The
+// button stays hidden unless the endpoint is configured: an AI box that always
+// fails is worse than no box.
+let AI_META = null;
+
+async function aiBoot() {
+  try {
+    AI_META = await api("/api/ai-meta");
+  } catch (e) {
+    AI_META = null;
+  }
+  $("#btn-ai").style.display = (AI_META && AI_META.available) ? "" : "none";
+  if (AI_META && AI_META.available) {
+    $("#btn-ai").title = "把上面的愿望写成这个工具认得的句子"
+      + (AI_META.model ? "（" + AI_META.model + "）" : "");
+    $("#ainote").textContent =
+      "AI 只负责把你的话说成这个工具认得的句子，认不认、能不能做，"
+      + "仍然由下面那些同一条规则判断 —— 它不会直接改任何数据。";
+  }
+}
+
+async function doAI() {
+  const btn = $("#btn-ai");
+  const box = $("#aigot");
+  const wish = ($("#say").value || "").trim();
+  if (!wish) { toast("先说你想要什么，再让 AI 写", "warn"); return; }
+  btn.disabled = true;
+  btn.textContent = "✦ 正在写…";
+  box.innerHTML = "";
+  $("#ai").style.display = "block";
+  try {
+    const got = await api("/api/ai-sentences", {text: wish});
+    const list = (got.ai && got.ai.sentences) || [];
+    if (!list.length) { box.appendChild(el("div", "hint", "AI 一句话都没写出来。")); }
+    for (const s of list) {
+      const row = el("div", "mod");
+      row.appendChild(el("div", "nm", s));
+      const use = el("button", "chip", "用这句");
+      // "Use this" REPLACES the box rather than appending: the wish the player
+      // typed is on its way out, and keeping it would leave two versions of the
+      // same request in one box for the reader to mis-parse together.
+      use.onclick = () => { $("#say").value = s; doParse(); };
+      row.appendChild(use);
+      box.appendChild(row);
+    }
+    // The model's own sentence is offered, not applied: every line still has to
+    // pass the reader, and the player is the one who decides what to send.
+  } catch (e) {
+    box.appendChild(el("div", "err", "AI 没写成：" + e.message));
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "✦ 让 AI 写成句子";
   }
 }
 
@@ -1052,6 +1119,7 @@ async function doBuild() {
 $("#btn-parse").onclick = doParse;
 $("#btn-build").onclick = doBuild;
 $("#btn-repair").onclick = checkRepairs;
+$("#btn-ai").onclick = doAI;
 // Dropping a picture onto the sentence box.  Assigned as properties rather than
 // through addEventListener because that is also what the page harness can call
 // -- a listener registered on a stub that ignores listeners would make the drag

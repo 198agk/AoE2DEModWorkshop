@@ -363,6 +363,24 @@ let REPAIR_ANSWER = {
 };
 const repairedNow = [];
 
+// What /api/ai-meta and /api/ai-sentences answer.  The whole point of this entry
+// is that the model's output is SENTENCES and nothing else, so the stub hands
+// back text and the page must put it in the box for the ordinary reader to judge
+// -- a stub that returned an intent would let a page that applied model output
+// directly pass this harness and edit bytes on screen.  `AI_OFF` is the state
+// without the three environment variables: the button must not be drawn at all,
+// because an AI box that always fails is worse than no box.
+let AI_ON = {
+  ok: true, available: true, model: "some-model",
+  base: "http://127.0.0.1:9/v1", writes: "sentences", grammar: "…",
+};
+let AI_OFF = {
+  ok: true, available: false, model: "", base: "", writes: "sentences",
+  grammar: "…",
+};
+let AI_ANSWER = AI_ON;
+const aiAsked = [];
+
 // What /api/mods answers.  Two mods, one of which carries a whole .dat and the
 // other of which does not, because the badge the page draws is "this one competes
 // for the single data-mod slot" -- and a stub where every mod looked the same
@@ -439,6 +457,20 @@ const sandbox = {
     if (url.indexOf("/api/repair-check") === 0) {
       return { json: async () => REPAIR_ANSWER };
     }
+    // The AI entry.  Note the answer carries no intent, no plan and no bytes --
+    // only the sentences a model would have written.  If a future page tried to
+    // build straight from this, there would be nothing here to build from.
+    if (url.indexOf("/api/ai-meta") === 0) {
+      return { json: async () => AI_ANSWER };
+    }
+    if (url.indexOf("/api/ai-sentences") === 0) {
+      const body = opt && opt.body ? JSON.parse(opt.body) : {};
+      aiAsked.push(body.text);
+      return { json: async () => ({ ok: true, ai: {
+        ok: true, model: "some-model",
+        sentences: ["村民血量改成 1000", "弓箭手攻击力加 2"],
+      } }) };
+    }
     if (url.indexOf("/api/repair-apply") === 0) {
       const body = opt && opt.body ? JSON.parse(opt.body) : {};
       repairedNow.push(body.name);
@@ -505,6 +537,7 @@ const fn = new Function(
   "dropOnSay: dropOnSay, DRAGGING: () => DRAGGING, " +
   "checkUpdates: checkUpdates, rebuildAll: rebuildAll, " +
   "checkRepairs: checkRepairs, REPAIR: () => REPAIR_ANSWER, " +
+  "aiBoot: aiBoot, doAI: doAI, " +
   "renderMods: renderMods, " +
   "renderIntentList: renderIntentList, " +
   "boot: boot, " +
@@ -1153,9 +1186,65 @@ function intentListChecks() {
           String((ids.intents.children || []).map((n) => n.title).join(" "))
             .indexOf("/api/plan") >= 0,
           JSON.stringify(walk(ids.intents, []).map((n) => n.title)));
-    finish();
+    return aiChecks();
   }).catch((e) => { fails.push("the capability list threw: " + e.message);
                     console.log("FAIL the capability list threw :: " + e.stack);
+                    finish(); });
+}
+
+// ---- the AI entry ---------------------------------------------------------
+// Two things can go wrong and neither is cosmetic.  (1) A page that draws the
+// button when the endpoint is not configured sends the player into a box that
+// can only fail.  (2) A page that applies the model's answer directly would put
+// a guess straight into bytes -- so the only thing this entry may do is replace
+// the text and re-run the ordinary reader, which is what the second half pins.
+function aiChecks() {
+  AI_ANSWER = AI_OFF;
+  return page.aiBoot().then(() => {
+    check("no endpoint configured means no button",
+          String(ids["btn-ai"].style.display) === "none",
+          JSON.stringify(ids["btn-ai"].style.display));
+    AI_ANSWER = AI_ON;
+    return page.aiBoot();
+  }).then(() => {
+    check("a configured endpoint draws the button",
+          ids["btn-ai"].style.display === "",
+          JSON.stringify(ids["btn-ai"].style.display));
+    check("and the button names the model it will call",
+          String(ids["btn-ai"].title).indexOf("some-model") >= 0,
+          ids["btn-ai"].title);
+    ids.say.value = "让村民更耐打一点";
+    return page.doAI();
+  }).then(() => {
+    check("the wish is what gets sent",
+          aiAsked.length === 1 && aiAsked[0] === "让村民更耐打一点",
+          JSON.stringify(aiAsked));
+    const rows = walk(ids.aigot, []);
+    check("every sentence comes back as its own row",
+          rows.filter((n) => n.className === "mod").length === 2,
+          JSON.stringify(rows.map((n) => text(n)).slice(0, 6)));
+    check("the model's sentence is offered, not applied",
+          text(ids.say).indexOf("村民血量改成 1000") < 0,
+          text(ids.say));
+    const use = rows.find((n) => n.className === "chip"
+      && text(n) === "用这句");
+    check("each row carries a button that replaces the box",
+          !!use, JSON.stringify(rows.map((n) => text(n)).slice(0, 6)));
+    return use ? use.onclick({ target: use }) : null;
+  }).then(() => {
+    // Replaced, not appended: the wish the player typed is on its way out, and
+    // keeping both would leave two versions of one request in a single box.
+    check("using a sentence replaces the box instead of stacking requests",
+          String(ids.say.value).indexOf("村民血量改成 1000") >= 0
+          && String(ids.say.value).indexOf("让村民更耐打一点") < 0,
+          ids.say.value);
+    // And the click re-runs the ORDINARY reader, so a refusal is still a refusal.
+    check("...and it goes back through the same reader",
+          posted.filter((p) => p.url.indexOf("/api/parse") === 0).length >= 1,
+          JSON.stringify(posted.map((p) => p.url).slice(-4)));
+    finish();
+  }).catch((e) => { fails.push("the AI entry threw: " + e.message);
+                    console.log("FAIL the AI entry threw :: " + e.stack);
                     finish(); });
 }
 
