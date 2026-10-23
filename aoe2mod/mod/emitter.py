@@ -147,8 +147,7 @@ def emit_json_mod(mod_dir, json_files, info, thumbnail=None, base_dir=None,
     never drift apart.
     """
     if not json_files:
-        raise ModError("emit_json_mod needs at least one JSON file; a mod with no "
-                       "changed file would do nothing")
+        raise ModError("没有任何文件要写进模组：一个什么都不改的模组没有意义")
     return emit_data_mod(mod_dir, None, info, thumbnail=thumbnail,
                          base_dir=base_dir, overwrite=overwrite,
                          json_files=json_files)
@@ -327,16 +326,15 @@ def emit_data_mod(mod_dir, dat_bytes, info, thumbnail=None, base_dir=None,
     if _into_dat and dat_bytes is None:
         if not base_dir:
             raise ModError(
-                "this mod writes %s inside the DAT storage point but carries no "
-                "empires2_x2_p1.dat, and the game fails to start when a mod "
-                "overrides that folder without its .dat; pass base_dir so the "
-                "base .dat can be carried along" % ", ".join(_into_dat))
+                "这个模组要往 %s 里写文件，却没有带上 empires2_x2_p1.dat；"
+                "游戏会直接开不了局。调用时传 base_dir，让它把本机那份 .dat "
+                "原样带过去。" % "、".join(_into_dat))
         _base_dat = os.path.join(base_dir, DAT_REL)
         if not os.path.exists(_base_dat):
             raise ModError(
-                "this mod writes %s inside the DAT storage point but carries no "
-                "empires2_x2_p1.dat, and no base .dat was found at %s to carry "
-                "along" % (", ".join(_into_dat), _base_dat))
+                "这个模组要往 %s 里写文件，却没有带上 empires2_x2_p1.dat；"
+                "而且在 %s 也找不到可以原样带过去的那份 .dat。"
+                % ("、".join(_into_dat), _base_dat))
         dat_bytes, _how = P.load_dat(_base_dat)
         dat_carrier = True
 
@@ -382,10 +380,10 @@ def emit_data_mod(mod_dir, dat_bytes, info, thumbnail=None, base_dir=None,
     thumb_abs = None
     if thumbnail:
         if not os.path.exists(thumbnail):
-            raise ModError("thumbnail not found: %r" % thumbnail)
+            raise ModError("找不到缩略图：%r" % thumbnail)
         # The publisher only accepts PNG for images.
         if os.path.splitext(thumbnail)[1].lower() not in (".png", ".jpg", ".jpeg"):
-            raise ModError("thumbnail must be PNG or JPEG, got %r"
+            raise ModError("缩略图只能是 PNG 或 JPEG，收到的是 %r"
                            % os.path.basename(thumbnail))
         ext = os.path.splitext(thumbnail)[1].lower()
         target = os.path.join(mod_dir, "thumbnail" + (".jpg" if ext in (".jpg", ".jpeg") else ".png"))
@@ -475,16 +473,14 @@ def emit_data_mod(mod_dir, dat_bytes, info, thumbnail=None, base_dir=None,
                     # it as a carrier, NOT as "this mod changes nothing" -- the
                     # mod DOES change the JSON files listed alongside it.
                     manifest["warnings"] = [
-                        "the .dat is carried UNMODIFIED because this mod writes "
-                        "%s inside the DAT storage point, and the game fails to "
-                        "start when a mod overrides that folder without it; the "
-                        "change itself is in the JSON override(s)"
-                        % ", ".join(dat_storage_point_files(json_files)
+                        "这个 mod 要往 %s 里写文件，所以 .dat 被原样带了一份"
+                        "（没改）：游戏不允许只覆盖那个文件夹而不带 .dat，"
+                        "否则开局就失败。真正的改动在旁边的 JSON 里。"
+                        % "、".join(dat_storage_point_files(json_files)
                                     or ["(none)"])]
                 elif same:
                     manifest["warnings"] = [
-                        "the emitted .dat is byte-identical to the base game, so "
-                        "this mod changes nothing"]
+                        "这份 .dat 和出厂那份逐字节相同，所以这个 mod 什么都没改"]
                     # `changes_dat` was set above from "a .dat was handed in", but
                     # the whole point of that field is whether a byte changed.  An
                     # audit measured the two disagreeing: a build whose .dat is

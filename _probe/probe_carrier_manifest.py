@@ -3,8 +3,9 @@ r"""What does the manifest of a unit.availability grant look like now?
 The pin `test_dat_carrier.py` section E was written when the availability path
 wrote only JSON, so the `.dat` was a CARRIER (byte-identical copy).  After the
 `.dat` half was wired in (m27131), the grant really modifies the `.dat`, so
-`dat_is_carrier` must be False and there must be no "carried UNMODIFIED"
-warning.  This probe prints the truth so the pin can be rewritten to assert it.
+`dat_is_carrier` must be False and there must be no "原样带了一份"
+warning (that string was English until 2026-10-23; the warning is now Chinese,
+so a probe matching the old spelling would silently find nothing).  This probe prints the truth so the pin can be rewritten to assert it.
 """
 import json
 import os

@@ -117,6 +117,13 @@ def main():
     check("the old wrong instruction is gone",
           "数据模组要开局前在游戏里的模组界面选中它" not in page)
     check("the page renders the reader's notes", "c.notes" in page)
+    # `plan.warnings` is the fourth surface: sentences the product wrote about
+    # what a buildable edit still will not do (borrowed icon, not in the tech
+    # tree, research box already holds others).  Measured 2026-10-23: tech.create
+    # produced four and the preview rendered none, because the page only ever
+    # read `c.notes`.  Asserting on the literal loop is the cheapest way to catch
+    # a rewrite that drops it again.
+    check("and renders the plan's warnings", "p.warnings" in page)
     check("the page reads verification", "verification" in page)
     check("a toggle repeats the game-running warning", "running_warning" in page)
 

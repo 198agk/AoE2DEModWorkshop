@@ -753,6 +753,17 @@ function renderClauses(clauses) {
       for (const nt of (c.notes || [])) {
         body.appendChild(el("div", "hint", nt));
       }
+      // A plan can be buildable and still leave something the player should know
+      // before they press 生成: a new technology will not appear in the tech tree
+      // (its id is shared with a unit), it borrows the donor's icon, and its
+      // research box already holds two other technologies.  Those sentences
+      // existed in `plan.warnings` from the day the intent landed and the page
+      // never printed them -- measured 2026-10-23: `tech.create` produced four
+      // warnings and the preview showed none of them.  They are not refusals, so
+      // they must not look like one (`.warn`, not `.why`).
+      for (const wn of (p && p.warnings) || []) {
+        body.appendChild(el("div", "warn", wn));
+      }
       // A plan can be understood AND refused (`editable: false`) -- a donor that
       // no building trains, a tech with no cost slot.  The refusal reason is the
       // only sentence that says why, and the "做不了" badge below does not carry

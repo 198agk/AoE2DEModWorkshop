@@ -107,9 +107,9 @@ with tempfile.TemporaryDirectory() as td:
           m.get("dat_identical_to_base") is True)
     _w = " ".join(m.get("warnings") or [])
     check("the warning explains the carrier instead of saying 'changes nothing'",
-          "carried UNMODIFIED" in _w and "fails to start" in _w, "warnings=%r" % _w)
+          "原样带了一份" in _w and "开局就失败" in _w, "warnings=%r" % _w)
     check("the warning does NOT claim the mod changes nothing",
-          "changes nothing" not in _w)
+          "什么都没改" not in _w)
     _bytes = os.path.getsize(os.path.join(dest, E.DAT_REL))
     check("the carried file is on disk at the DAT path", _bytes > 1_000_000,
           "%d bytes" % _bytes)
@@ -156,7 +156,7 @@ _w = " ".join(m.get("warnings") or [])
 check("the row warnings are present", ("照抄" in _w and "名字" in _w),
       "warnings=%r" % (m.get("warnings"),))
 check("but the carrier warning is NOT (it would deny the edit)",
-      "carried UNMODIFIED" not in _w, "warnings=%r" % (m.get("warnings"),))
+      "原样带了一份" not in _w, "warnings=%r" % (m.get("warnings"),))
 check("the mod still changes the JSON layers it promised",
       os.path.exists(os.path.join(out, "resources", "_common", "dat",
                                   "CivTechTrees", "BRITONS.json")))

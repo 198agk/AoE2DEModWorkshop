@@ -873,6 +873,18 @@ function boxChecks() {
           JSON.stringify(got.map((n) => n.textContent)));
     check("...and names the building whose card they are",
           text(ids.preview).indexOf("修道院") >= 0, text(ids.preview));
+    // A plan can be buildable and still carry sentences the player needs before
+    // pressing 生成: the icon is borrowed, a new technology will not appear in
+    // the tech tree, the research box already holds two others.  `plan.warnings`
+    // existed from the day these intents landed and the page printed none of
+    // them -- measured 2026-10-23: `tech.create` produced four and the preview
+    // showed zero.  Not a refusal, so the class must not be `.why`.
+    check("a buildable plan's warnings reach the screen",
+          text(ids.preview).indexOf("图标的号 0..999 已满") >= 0, text(ids.preview));
+    check("...and are not styled as a refusal",
+          walk(ids.preview, []).every(
+            (n) => !(n.className === "why" &&
+                     (n.textContent || "").indexOf("图标的号") >= 0)));
     // 14 is where the donor's own entry sits: five units already share it, so
     // offering it would be offering the collision the player is trying to leave.
     check("...and does not offer the box the donor already occupies",
