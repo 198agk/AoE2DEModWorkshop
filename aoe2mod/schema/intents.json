@@ -608,7 +608,7 @@
       "compile": {
         "strategy": "linked_techs_json",
         "why_not_dat": "type 102 does express 'disable a technology', and the shipped Toggleable groups use it (tech 1202 effect 1192 carries one command per sibling). Writing it that way needs an effect id, a required-tech list and a button slot per technology -- three couplings that can each be wrong separately. This layer states the same thing in one record.",
-        "what_it_does_not_prove": "That a group ADDED by a mod is honoured on the very first turn after install (this run researched after a fresh launch), and that Cycle groups do anything without their own `type 102`.",
+        "what_it_does_not_prove": "That a group ADDED by a mod is honoured on the very first turn after install (v47 researched after a fresh launch, 2026-10-23), and that a CYCLE group does anything: v47 measured MutuallyExclusive (the sibling disappears) but no run has been made with Type=Cycle, and the shipped Cycle groups carry no `type 102` at all.",
         "mod_contains_dat": true
       },
       "safety": {
@@ -679,7 +679,7 @@
         "strategy": "new_tech",
         "mod_contains_dat": true,
         "why_not_dat": "The record HAS to be in the .dat: a technology is an array position, so there is no file in the dat directory that can add one. What the other layers can do is name it (the modded string table) and place it on a card (the record's own research_locations), and both are shipped with it.",
-        "what_it_does_not_prove": "That the engine will SHOW the new technology's button. The record, its name and its research location are written and read back, but no run has yet put this technology on a card in game."
+        "what_it_does_not_prove": "That a created technology survives a GAME UPDATE. A technology is an array position, so its id is only the first free one against TODAY's shipped count -- a patch that adds technologies can move it. Whether the engine shows it on a card is no longer in doubt: dsh test v49 (2026-10-22) put it on the town centre's 8th research box and the user read it there."
       },
       "safety": {
         "field_width_bits": 16,

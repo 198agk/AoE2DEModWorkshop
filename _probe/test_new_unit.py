@@ -25,9 +25,12 @@ WHAT IS PINNED HERE, and why each one could go wrong silently:
     STRING ID, so a clone without a string line shows the donor's name.
 
 WHAT THIS FILE DOES NOT CLAIM
-It does not claim a running game draws or lists the clone.  No test in this
-project has loaded a record the toolkit created.  The .dat-level facts above are
-measured; the in-game reading is not.
+It does not claim that the BUNDLE PATH has been seen in game.  The record-level
+clone has been: 2026-10-22 the user confirmed a new unit on the town centre's 4th
+box, trainable, with a name in the production queue (v26..v33, built by probe
+scripts that call the same `newunit.clone_image`).  v35 -- the same intent through
+`build_bundle` -- was built and never installed, so the product path itself still
+has no in-game reading.  That is the narrow claim the manifest now makes.
 """
 import copy
 import io

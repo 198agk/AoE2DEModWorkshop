@@ -248,10 +248,19 @@ def main():
           man.get("changes_dat") is True, str(man.get("changes_dat")))
     check("and reports the disable commands it added",
           man.get("commands_added") == 4, str(man.get("commands_added")))
-    check("the manifest does not claim the on-screen result is proven",
-          any("not" in s.lower() or "never" in s.lower() or "no run" in s.lower()
-              for s in (man.get("verification") or {}).get("not_proven") or []),
-          str((man.get("verification") or {}).get("not_proven")))
+    # The manifest must still carry a limit, and it must be the limit that this
+    # project has NOT settled.  The old assertion accepted any sentence
+    # containing "not"/"never"/"no run", which the word "nothing" satisfies --
+    # i.e. it would keep passing after the honest sentence was deleted and
+    # replaced by something unrelated.  Measured facts it should now speak to:
+    # v47 (2026-10-23) settled the MutuallyExclusive half in game; the four
+    # shipped Cycle groups carry no `type 102`, so Cycle is the open half.
+    _npro = " ".join((man.get("verification") or {}).get("not_proven") or [])
+    check("the manifest still states a limit", _npro.strip() != "", _npro)
+    check("...and the limit is the CYCLE half, which no run has settled",
+          "Cycle" in _npro, _npro)
+    check("...and it no longer claims the added command is untested",
+          "watched an added" not in _npro, _npro)
     # Refactor guard: the payload keeps the file's line endings, so replacing it
     # in a mod is a one-line diff rather than a whole-file rewrite.
     raw = io.open(emitted, "rb").read()

@@ -19,9 +19,12 @@ writes what it promised.  Both failures are quiet:
 So this nails the PATH a player takes: sentence -> intent -> preview -> mod on
 disk -> read back from the disk (never from the manifest).
 
-`tech.create` has one honest limit and it is asserted here rather than hidden:
-the new record's index is `len(techs)`, and the engine has never been shown to
-draw a card for an index past the shipped count.  `not_proven` must say so.
+`tech.create` had one honest limit that this file used to assert -- "the engine
+has never been shown to draw a card for an index past the shipped count".  That
+stopped being true on 2026-10-22: v49 put the created technology on the town
+centre's 8th research box and the user read it there.  The limit that is still
+true is the opposite direction (a game patch can move the first free id), and
+that is what the manifest now has to say.
 """
 
 import io
@@ -249,11 +252,20 @@ def main():
           same == len(shipped_recs), "%d of %d" % (same, len(shipped_recs)))
 
     # The honest limit travels with the manifest, not only in a doc.
+    #
+    # This used to assert "the manifest admits the engine has never drawn it" --
+    # which stopped being true on 2026-10-22 (v49 put the created technology on
+    # the town centre's 8th research box and the user read it there).  A nail that
+    # pins a now-FALSE admission is worse than no nail: it makes the honest limit
+    # sound stale, and the next reader deletes the whole `not_proven` field.
+    # So pin the limit that remains true instead.
     npro = " ".join((man.get("verification") or {}).get("not_proven") or [])
-    check("the manifest admits the engine has never drawn it",
-          "never" in npro or "no test" in npro.lower(), npro)
-    check("and admits the index may be unreachable",
-          "reachable" in npro or "index" in npro, npro)
+    check("the manifest still carries an honest limit", npro.strip() != "", npro)
+    check("...and it is the game-update risk, which no run has settled",
+          "UPDATE" in npro or "update" in npro, npro)
+    check("...and it no longer claims the engine has never drawn one",
+          "never drawn" not in npro.lower() and "no run has yet" not in npro.lower(),
+          npro)
 
     # ---- D. what is refused ------------------------------------------------
     print("D. impossible requests are refused in Chinese")

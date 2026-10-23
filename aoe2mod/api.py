@@ -1440,8 +1440,22 @@ class Toolkit(object):
                 "instructions name as the way a mod adds a string",
             ],
             "not_proven": [
-                "that a running game draws or lists the new unit.  No test in this "
-                "project has loaded a record the toolkit created",
+                # PROVEN 2026-10-22: v26..v33 built the record with the same
+                # `newunit.clone_image` this method calls, and the user confirmed
+                # in game that a new unit appears on the town centre's 4th box,
+                # can be trained, and shows a name in the production queue.
+                # What has NOT been inside the game is THIS method's output --
+                # `tmp_product_check.py` builds v35 through `build_bundle` and it
+                # was never installed (measured 2026-10-23: no `v35` folder, no
+                # log line).  Say the narrow true thing, not the broad false one:
+                # the old sentence ("no test has loaded a record the toolkit
+                # created") would make the next reader re-run v26..v33.
+                "that a running game shows a unit built by THIS method (the "
+                "bundle path).  The record-level clone was proven in game "
+                "2026-10-22 (v26..v33, user-confirmed on the town centre's 4th "
+                "box), but v35 -- the same intent through build_bundle -- was "
+                "built and never installed, so the product path itself has no "
+                "in-game reading",
             ],
         }
         return man
@@ -1540,12 +1554,18 @@ class Toolkit(object):
                 "instructions name as the way a mod adds a string",
             ],
             "not_proven": [
-                "that a running game draws the new icon on that building's card.  "
-                "No test in this project has loaded a technology the toolkit created",
-                "that index %d is reachable by the engine at all: the shipped tree "
-                "already references 517 Node IDs above 1,509, which encourages but "
-                "does not prove that a tech record past the shipped count is read"
-                % new_id,
+                # PROVEN 2026-10-22: v49 put a created technology on the town
+                # centre's 8th research box and the user read it there, so both
+                # halves of this old note are now answered -- the engine shows the
+                # button, and index 1510 is reachable (the shipped tree already
+                # referenced 517 Node IDs above 1,509, which was the encouragement
+                # this note used to cite).  What remains unpublished is the
+                # opposite direction: nothing has shown what happens when the
+                # SHIPPED count moves under such a mod.
+                "that a created technology survives a GAME UPDATE: index %d is "
+                "the first free id only against today's shipped count, so a "
+                "patch that adds technologies can move it.  Reachability itself "
+                "is no longer in doubt (v49, 2026-10-22)" % new_id,
             ],
         }
         return man
@@ -3068,16 +3088,21 @@ class Toolkit(object):
         #     kinds that carry `type 102` -- measured in game on 2026-10-22 (the
         #     user studied Forging and read 「不变灰」).  That is why this method
         #     writes the `.dat` half too.
-        #   * what is STILL not proven: that the rebuilt `.dat` set of commands
-        #     actually disables the sibling in game.  The shipped data uses this
-        #     exact shape for all 16 non-Cycle groups, and the `.dat` half of
-        #     revoke (`type 2, b=0`) was confirmed on 2026-10-19 (v17), but no run
-        #     has yet watched an added `type 102` take a button away.
+        #   * answered in game on 2026-10-23: `dsh test v47` IS this method's
+        #     output (installed through the product) and the user read
+        #     「相当于只能研究其中一个」 -- studying the first one removed the
+        #     sibling from the panel.  So only the limits this run did NOT
+        #     settle are still unproven: Type=Cycle, and the first turn right
+        #     after an install.
         ver["not_proven"] = [
-            "that an ADDED `type 102` command actually greys the sibling out in "
-            "game. The shape is copied from all 16 shipped non-Cycle groups and "
-            "the disable-by-effect route was confirmed for `type 2` on "
-            "2026-10-19, but no run has yet watched an added `type 102` fire"]
+            "that a CYCLE group does anything: `dsh test v47` (2026-10-23, user "
+            "read 「只能研究其中一个」) wrote MutuallyExclusive, and the four "
+            "Cycle groups the game ships carry no `type 102` at all, so nothing "
+            "about them can be predicted from the shipped file",
+            "that the group is honoured on the very first turn after an "
+            "install: v47 was studied after a fresh launch, not straight off "
+            "the install",
+        ]
         man["verification"] = ver
         man["name_id"] = ver["name_id"]
         man["shape"] = "linked_group"
@@ -4905,8 +4930,16 @@ class Toolkit(object):
                         "string",
                     ],
                     "not_proven": [
-                        "that a running game draws or lists a unit the toolkit "
-                        "created.  No test in this project has loaded one",
+                        # Same sentence as the single-intent path, and the same
+                        # reason for the correction: v26..v33 proved the RECORD
+                        # in game (2026-10-22, user-confirmed), while v35 -- this
+                        # bundle path -- was built and never installed.  Keeping
+                        # the old broad claim here would contradict the wording
+                        # 30 lines above it in the same file.
+                        "that a running game shows a unit built by THIS path.  "
+                        "The record-level clone was proven in game 2026-10-22 "
+                        "(v26..v33), but the bundle path itself has no in-game "
+                        "reading yet",
                     ],
                 }
             else:
