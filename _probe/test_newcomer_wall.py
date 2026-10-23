@@ -148,12 +148,36 @@ def main():
               encoding="utf-8").read())
 
     print()
+    print("=== G. a clone has a front door")
+    readme = os.path.join(ROOT, "README.md")
+    check("the repository has a README at its root", os.path.isfile(readme))
+    if os.path.isfile(readme):
+        txt = io.open(readme, encoding="utf-8").read()
+        check("it is in Chinese", has_cjk(txt))
+        # The four things a newcomer needs before anything else: the absolute
+        # python (PATH holds a Store stub), the entry point, the dropdown, and
+        # the fact that a mod has to be CHOSEN before the match starts.
+        check("it gives the absolute python path", "dependencies\\python\\python.exe" in txt)
+        check("it names the entry point", "tools\\run_ui.py" in txt)
+        check("it names the dropdown that actually exists", "创建游戏" in txt)
+        check("it warns the mods screen is not that place", "不是「模组」界面" in txt)
+        check("it lists all thirteen intents",
+              all(k in txt for k in ("unit.stat", "unit.attack_class", "unit.cost",
+                                     "tech.research_time", "tech.cost", "tech.effect",
+                                     "unit.availability", "tech.availability",
+                                     "unit.sprite", "unit.art", "unit.create",
+                                     "tech.toggle_group", "tech.create")))
+        check("it states the vendored-source rule", "sync_engine" in txt)
+        check("it states the no-inline-python rule", "内联" in txt)
+        check("it admits what cannot be done", "做不到" in txt)
+
+    print()
     shutil.rmtree(os.path.join(HERE, "_newcomer_out"), ignore_errors=True)
     if FAILS:
         print("NEWCOMER WALL: %d CHECK(S) FAILED -> %s" % (len(FAILS), FAILS))
         return 1
     print("NEWCOMER WALL: THE SCREEN NAMES THE REAL DROPDOWN, THE REAL RESOURCE, "
-          "AND WHICH DATA MOD WINS")
+          "AND WHICH DATA MOD WINS -- AND A CLONE HAS A FRONT DOOR")
     return 0
 
 
