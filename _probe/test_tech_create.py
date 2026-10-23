@@ -145,6 +145,13 @@ def main():
     warns = " ".join(plan.get("warnings") or [])
     check("the preview warns it will not be in the tech tree", "科技树" in warns, warns)
     check("and warns about the icon", "图标" in warns, warns)
+    # Same class of correction as the tree sentence above: the icon warning used
+    # to say "the icon ids 0..312 are full, this tool will not touch that layer",
+    # which turns a missing feature into a wall.  The shipped table does stop at
+    # 312, but a released community mod already ships Techs keys up to 548 with
+    # real materials (measured 2026-10-23, `_probe/tmp_mod_icons_real.py`).
+    check("and the icon warning says not-yet, not impossible",
+          "还不写" in warns and "模组可以" in warns, warns)
     # The reason it is not in the tree must be "this tool does not write that
     # half yet", NOT "the node id is taken".  The old sentence claimed the id
     # collided with the unit `City Gate NE (Rubble)`; measured 2026-10-23, no

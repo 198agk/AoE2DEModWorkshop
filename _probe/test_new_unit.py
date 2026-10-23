@@ -124,6 +124,24 @@ def main():
           plan.get("description"))
     for w in plan.get("warnings") or []:
         check(no_english(w), "warning has no English :: %s" % w[:24], w)
+    # The icon warning must not say the icon layer is impossible.  The shipped
+    # table does stop at 999, but the record's icon_id is an i16 and a released
+    # community mod already ships Units keys up to 2126 with real materials
+    # (measured 2026-10-23, `_probe/tmp_mod_icons_real.py`) -- so the honest
+    # sentence is "this tool does not write that layer yet".
+    #
+    # NOTE the argument order: this file's `check(ok, label, detail)` takes the
+    # boolean FIRST.  The first version of these three lines passed the label
+    # string as `ok`, so they could never fail and the reverse validation stayed
+    # green while the false sentence was on disk.
+    _icon_w = [w for w in (plan.get("warnings") or []) if "图标" in w]
+    check(bool(_icon_w), "the icon warning is present", plan.get("warnings"))
+    if _icon_w:
+        _iw = _icon_w[0]
+        check("还不写" in _iw,
+              "   and it says this tool has not written that layer yet", _iw)
+        check("模组可以" in _iw,
+              "   and it says a mod CAN go past the shipped ids", _iw)
 
     units_before = len(stats["civs"][1]["units"])
 

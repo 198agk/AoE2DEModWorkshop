@@ -955,8 +955,27 @@ class Toolkit(object):
                     "「%s」的建造位置没有指向任何建筑（记录里的建筑编号是 -1），"
                     "所以第 %d 格没有一块命令卡可以放"
                     % (base.get("donor_name") or r.donor.display, int(want_button)))
+        # The old sentence said a clone has no icon of its own because "the icon
+        # numbers 0..999 are full".  The first half is a fact about the SHIPPED
+        # file; the second was wrong, and it made a missing feature sound like a
+        # wall.  Measured 2026-10-23 (`_probe/tmp_icon_ceiling.py`,
+        # `tmp_icon_field_width.py`, `tmp_mod_icons_real.py`):
+        #
+        #   * the record's `icon_id` is an i16 (parser.py `r.i16()  # IconID`),
+        #     so the engine's ceiling is 32767 -- not 999;
+        #   * the shipped table stops at 999 for Units / 312 for Techs, and the
+        #     shipped records only ever use -1..936;
+        #   * a RELEASED community mod (the user's installed
+        #     `[UI]7V1_Three Kingdoms ... v1.46`) ships its own icons.json with
+        #     Units extended to 2149 keys, of which 127 (2000..2126) name real
+        #     materials, and every one of them resolves in that mod's
+        #     materials.json.
+        #
+        # So the layer IS writable by a mod; this tool has not written it yet.
         base["warnings"] = [
-            "新单位的图标是照着做的那个单位的（图标的号 0..999 已满，这个工具不会去改图标那层）",
+            "新单位的图标就是照着做的那个单位的：这一版的工具还不写图标那层。"
+            "（游戏自己的单位图标表 0..999 已经占满，但模组可以往 1000 以上加 —— "
+            "已装的三国界面模组就加到了 2126，所以这是本工具还没做，不是做不到）",
         ]
         if _builders:
             _free = free_by_builder.get(str(_builders[0])) or []
@@ -1050,7 +1069,13 @@ class Toolkit(object):
         # ask for -- and the old sentence ALSO named a unit that no tree row
         # mentions, so it could not be checked by anyone reading it.
         base["warnings"] = [
-            "新科技的图标是照着做的那个科技的（图标的号 0..312 已满，这个工具不会去改图标那层）",
+            # Same correction as unit.create's icon warning: the shipped table
+            # stops at 312, but the ceiling is the record's own i16 and a mod may
+            # extend the table (measured 2026-10-23 -- the installed Three
+            # Kingdoms UI mod ships Techs up to 548 with 49 real materials).
+            "新科技的图标就是照着做的那个科技的：这一版的工具还不写图标那层。"
+            "（游戏自己的科技图标表 0..312 已经占满，但模组可以往上加 —— "
+            "已装的三国界面模组加到了 548，所以这是本工具还没做，不是做不到）",
             "它还不会出现在科技树面板里：这一版只写 .dat 那一半，科技树那层（每个文明一个 "
             "JSON，Node 编号 %d 在 62 个文明里现在一个都没占）本工具还没动。"
             "研究卡上有它、科技树面板上没有它" % new_id,
