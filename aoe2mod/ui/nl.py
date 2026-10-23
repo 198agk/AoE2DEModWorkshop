@@ -81,6 +81,22 @@ REVOKE_WORDS = ("不能造", "禁用", "禁止", "取消", "去掉", "移除", "
 
 TECH_HINTS = ("科技", "研究", "研发", "技术")
 
+# The intent ids THIS module can emit.  A plugin can add an intent to the
+# schema (2026-10-23) and the page lists everything in the schema under
+# "能做的事" -- so without this set the screen advertises a capability no
+# sentence can reach.  Measured: a plugin intent `unit.set_stat` showed up in
+# `meta.intents`, and `把村民血量设成40` still parsed to `unit.stat`.  Keep this
+# in step with the branches below; `_probe/test_newcomer_wall.py` compares it
+# to what `read()` actually produces for one sentence per intent.
+SENTENCE_INTENTS = (
+    "unit.stat", "unit.attack_class", "unit.cost",
+    "tech.research_time", "tech.cost", "tech.effect",
+    "unit.availability", "tech.availability",
+    "unit.sprite", "unit.art", "unit.create",
+    "tech.toggle_group", "tech.create",
+)
+
+
 # "把村民的样子换成步弓手" -- a reskin names a RELATIONSHIP between two units.
 # The hint words are required: without them "村民换成1000" would be read as a
 # donor swap.  The verb alone is not enough because 换成/改成 also introduce a

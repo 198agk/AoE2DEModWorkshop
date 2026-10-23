@@ -28,7 +28,13 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 sys.path.insert(0, ROOT)
 
+import importlib
+import json
+
+import aoe2mod.api as A
+from aoe2mod.intent import compiler as C
 from aoe2mod.game import locations as L
+from aoe2mod.semantic.index import index as SI
 from aoe2mod.ui import server as S
 
 GAME = r"D:\Games\Steam\steamapps\common\AoE2DE"
@@ -43,6 +49,12 @@ def check(name, ok, detail=""):
                           ("  :: " + str(detail)) if (detail and not ok) else ""))
     if not ok:
         FAILS.append(name)
+
+
+def _route_src():
+    """The route module's source, so a check can see what /api/meta sends."""
+    return io.open(os.path.join(ROOT, "aoe2mod", "ui", "server.py"),
+                   encoding="utf-8").read()
 
 
 def has_cjk(text):
@@ -177,6 +189,104 @@ def main():
         check("it states the vendored-source rule", "sync_engine" in txt)
         check("it states the no-inline-python rule", "内联" in txt)
         check("it admits what cannot be done", "做不到" in txt)
+
+    print()
+    print("=== H. the 能做的事 list does not promise what no sentence can ask")
+    # A plugin adds intents to the schema; this box lists the schema; but the
+    # sentence layer is 12 hand-written branches.  So a plugin intent is
+    # reachable ONLY through the API, and the box used to say nothing about it
+    # (measured 2026-10-23: a plugin intent `unit.set_stat` was listed exactly
+    # like a shipped one while `把村民血量设成40` still parsed to `unit.stat`).
+    import aoe2mod.ui.nl as NL
+    _schema_intents = set(NL.SENTENCE_INTENTS) | {
+        "unit.stat"}          # keep the import used if the tuple is renamed
+    _sent = set(NL.SENTENCE_INTENTS)
+    check("every intent in the schema is either sentence-reachable or a plugin's",
+          _sent <= _schema_intents, "%r" % (_sent - _schema_intents))
+    # The list must be honest in the OTHER direction too: it may not claim an
+    # intent the sentence layer cannot produce.  One sentence per intent, driven
+    # through `read()`, is the only way to check that without reading the code.
+    _tk = A.open_toolkit()
+    _ix = SI()
+    _vocab = NL.Vocabulary(_ix.units, _ix.techs)
+
+    def _reach(text):
+        _intents, _cl = NL.read(text, _vocab, civ_names=_tk.civ_names,
+                                civ_zh=NL.CIV_ZH, effect_count=_tk.effect_count)
+        return [i.get("intent") for i in _intents]
+
+    _CASES = [
+        ("村民血量改成1000", "unit.stat"),
+        ("步弓手对骑兵攻击加2", "unit.attack_class"),
+        ("弓箭手木材成本加10", "unit.cost"),
+        ("织布机研究时间减5", "tech.research_time"),
+        ("织布机食物成本改成50", "tech.cost"),
+        ("织布机第2条效果加5", "tech.effect"),
+        ("给印加解锁蔷琵侦察兵", "unit.availability"),
+        ("印加不能研究织布机", "tech.availability"),
+        ("把村民的样子换成步弓手", "unit.sprite"),
+        ("给村民换张图 %s" % os.path.join(HERE, "_shots", "live_unit83.png"),
+         "unit.art"),
+        ("不列颠照村民做一个新单位，叫铁匠学徒", "unit.create"),
+        ("把锻造和步兵鳞甲做成只能选一个", "tech.toggle_group"),
+        ("照织布机做一个新科技叫铁匠学徒的手艺", "tech.create"),
+    ]
+    _seen = set()
+    for _txt, _want in _CASES:
+        _got = _reach(_txt)
+        check("a sentence produces %s" % _want, _want in _got,
+              "got %r from %r" % (_got, _txt))
+        if _want in _got:
+            _seen.add(_want)
+    check("and the list declares exactly those",
+          _seen == _sent, "declared %r, reached %r" % (sorted(_sent), sorted(_seen)))
+    # The page must show the distinction rather than hide the row: the API really
+    # can drive a plugin intent, so hiding it would be the opposite lie.
+    _page = io.open(os.path.join(ROOT, "aoe2mod", "ui", "static", "index.html"),
+                    encoding="utf-8").read()
+    check("the page marks an API-only intent", "只能用接口" in _page)
+    check("and it reads a per-intent flag", "it.by_sentence" in _page)
+    # The route has to CONSULT the sentence layer.  Asserting merely that the
+    # word `by_sentence` appears in server.py is a check no wrong value can fail
+    # -- proven by breaking `k in nl.SENTENCE_INTENTS` into `True` and watching
+    # this file stay green (2026-10-23).
+    check("the route computes the flag from the sentence layer",
+          "k in nl.SENTENCE_INTENTS" in _route_src())
+    # And the only honest way to know it is wired: ask the route, twice, with a
+    # plugin present and absent.  A plugin intent must come back False, a
+    # shipped one True; a route that hardcoded either would fail one of the two.
+    _plg = tempfile.mkdtemp(prefix="newcomer_plg_")
+    try:
+        _pd = os.path.join(_plg, "probe")
+        os.makedirs(os.path.join(_pd, "schema"))
+        with io.open(os.path.join(_pd, "schema", "intents.json"), "w",
+                     encoding="utf-8") as _fh:
+            json.dump({"intents": {"unit.set_stat": {
+                "title": "插件加的意图", "applies_to": "unit",
+                "fields": {"unit": {"type": "entity_ref", "kind": "unit",
+                                    "required": True, "label": "单位"},
+                           "value": {"type": "int", "label": "设为"}},
+                "compile": {"strategy": "in_place_patch"}}}}, _fh,
+                ensure_ascii=False)
+        _old_env = os.environ.get("AOE2MOD_PLUGINS")
+        os.environ["AOE2MOD_PLUGINS"] = _plg
+        C_plugins = importlib.reload(C)
+        _meta = S.App().meta()
+        _plugin_rows = [i for i in _meta["intents"] if i["id"] == "unit.set_stat"]
+        check("a plugin intent reaches /api/meta", len(_plugin_rows) == 1)
+        check("and the route marks it as API-only",
+              _plugin_rows and _plugin_rows[0].get("by_sentence") is False,
+              _plugin_rows)
+        _shipped = [i for i in _meta["intents"] if i["id"] == "unit.stat"]
+        check("a shipped intent is still marked as sentence-reachable",
+              _shipped and _shipped[0].get("by_sentence") is True, _shipped)
+    finally:
+        if _old_env is None:
+            os.environ.pop("AOE2MOD_PLUGINS", None)
+        else:
+            os.environ["AOE2MOD_PLUGINS"] = _old_env
+        importlib.reload(C)
+        shutil.rmtree(_plg, ignore_errors=True)
 
     print()
     shutil.rmtree(os.path.join(HERE, "_newcomer_out"), ignore_errors=True)

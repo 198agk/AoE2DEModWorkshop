@@ -107,7 +107,18 @@ class App(object):
             "intents": [{"id": k,
                          "title": v.get("title") or v.get("title_en") or k,
                          "fields": list((v.get("fields") or {})),
-                         "strategy": (v.get("compile") or {}).get("strategy")}
+                         "strategy": (v.get("compile") or {}).get("strategy"),
+                         # Whether a SENTENCE can ever produce this intent.
+                         # A plugin adds intents to the schema, and this screen
+                         # lists everything in the schema under "能做的事" --
+                         # but the sentence layer is hand-written, so a plugin
+                         # intent is only reachable through the API.  Measured
+                         # 2026-10-23: a plugin intent `unit.set_stat` appeared
+                         # in this list while `把村民血量设成40` kept parsing to
+                         # `unit.stat`.  Advertising a capability no sentence can
+                         # reach is the same defect as a build that does less
+                         # than it says, one screen earlier.
+                         "by_sentence": k in nl.SENTENCE_INTENTS}
                         for k, v in intents["intents"].items()],
             "mods": _mods_brief(tk),
         }

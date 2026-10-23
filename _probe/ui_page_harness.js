@@ -352,6 +352,18 @@ let MODS = [
     dat_competing: 1 },
 ];
 
+// What /api/meta answers for the 能做的事 box.  One shipped intent (reachable by
+// a sentence) and one a plugin added (`by_sentence: false`), because the defect
+// this pins is exactly that the box used to list both as equally available:
+// a plugin intent is in the schema but the sentence layer is hand-written, so
+// only the API can drive it.  A stub where every intent had `by_sentence: true`
+// would make the caveat untestable.
+const META_INTENTS = [
+  { id: "unit.stat", title: "改数值", by_sentence: true },
+  { id: "unit.set_stat", title: "把一项属性设成某个值（插件示例）",
+    by_sentence: false },
+];
+
 // What the parse route answers.  Most sections want the two-edit answer; the
 // new-unit section swaps in a creating sentence, because whether the box picker
 // appears is decided by the PLAN, and only a real creating sentence has one.
@@ -433,7 +445,7 @@ const sandbox = {
         running_warning: RUNNING ? RUNNING_TEXT : null }) };
     }
     return { json: async () => ({ ok: true, version: 54, civs: new Array(63),
-      intents: [], mods: [], manifest: { mod_dir: "/tmp/x", info: {} } }) };
+      intents: META_INTENTS, mods: [], manifest: { mod_dir: "/tmp/x", info: {} } }) };
   },
   setTimeout: () => 0, clearTimeout: () => {},
   console,
@@ -448,6 +460,8 @@ const fn = new Function(
   "dropOnSay: dropOnSay, DRAGGING: () => DRAGGING, " +
   "checkUpdates: checkUpdates, rebuildAll: rebuildAll, " +
   "renderMods: renderMods, " +
+  "renderIntentList: renderIntentList, " +
+  "boot: boot, " +
   "setLast: (v) => { LAST = v; }};");
 const page = fn(sandbox.document, sandbox.fetch, sandbox.setTimeout,
                 sandbox.clearTimeout, sandbox.console, sandbox.JSON);
@@ -1000,9 +1014,51 @@ function updateChecks() {
   }).then(() => {
     check("the banner disappears once nothing is stale",
           ids.banner.className.indexOf("open") < 0, ids.banner.className);
-    finish();
+    return intentListChecks();
   }).catch((e) => { fails.push("the update banner threw: " + e.message);
                     console.log("FAIL the update banner threw :: " + e.stack);
+                    finish(); });
+}
+
+// ---- the 能做的事 list ---------------------------------------------------
+// A plugin adds intents to the schema and this box lists the schema, but the
+// sentence layer is hand-written: a plugin intent is reachable only through the
+// API.  Measured 2026-10-23: a plugin intent `unit.set_stat` was listed as if a
+// sentence could ask for it, while `把村民血量设成40` still parsed to `unit.stat`.
+function intentListChecks() {
+  return page.boot().then(() => {
+    const rows = walk(ids.intents, []);
+    const flat = text(ids.intents);
+    check("the capability list renders one row per intent",
+          rows.filter((n) => n.className === "" && n.children.length >= 1).length >= 2,
+          flat);
+    check("an intent a sentence can reach is listed plainly",
+          flat.indexOf("改数值") >= 0,
+          flat);
+    // The tag belongs to the plugin row, not to the whole box: asserting "the box
+    // does not contain the phrase" would be satisfied by a page that printed the
+    // tag on BOTH rows, which is the mistake this guards against.  Read the row
+    // with `text()` (it walks children); `textContent` only holds the row's own
+    // direct string in this stub, so it would miss the appended span.
+    const _rows = (ids.intents.children || []);
+    const _plain = _rows.filter((n) => text(n).indexOf("改数值") >= 0);
+    const _api = _rows.filter((n) => text(n).indexOf("插件示例") >= 0);
+    check("the sentence-reachable row carries no caveat",
+          _plain.length === 1 && text(_plain[0]).indexOf("只能用接口") < 0,
+          _plain.length ? text(_plain[0]) : "row missing");
+    check("one that only the API can reach says so",
+          _api.length === 1
+          && text(_api[0]).indexOf("只能用接口（句子还认不出来）") >= 0,
+          _api.length ? text(_api[0]) : "row missing");
+    check("...and it is still listed, not hidden",
+          flat.indexOf("把一项属性设成某个值") >= 0, flat);
+    check("...with a tooltip that names the API",
+          String((ids.intents.children || []).map((n) => n.title).join(" "))
+            .indexOf("/api/plan") >= 0,
+          JSON.stringify(walk(ids.intents, []).map((n) => n.title)));
+    finish();
+  }).catch((e) => { fails.push("the capability list threw: " + e.message);
+                    console.log("FAIL the capability list threw :: " + e.stack);
                     finish(); });
 }
 

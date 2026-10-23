@@ -44,6 +44,9 @@
   textarea:focus { border-color: var(--gold); }
   .hint { color: var(--dim); font-size: 12px; margin-top: 8px; }
   .hint code { color: var(--gold); background: none; }
+  /* The "this one is API-only" tag in the 能做的事 list.  Dimmer than the title
+     beside it, because it is a caveat on that line, not a second entry. */
+  #intents .bysentence { color: var(--dim); font-size: 12px; }
 
   button {
     font: inherit; cursor: pointer; border-radius: 6px; border: 1px solid var(--line);
@@ -373,6 +376,18 @@ function renderIntentList() {
   for (const it of META.intents) {
     const d = el("div", "", "· " + it.title);
     d.style.margin = "2px 0";
+    // A plugin can add an intent to the schema, and this list IS the schema.
+    // The sentence layer is hand-written, though, so a plugin intent can only be
+    // driven through the API -- and saying nothing makes this list a promise the
+    // screen cannot keep (measured 2026-10-23: a plugin intent `unit.set_stat`
+    // was listed here while `把村民血量设成40` kept parsing to `unit.stat`).
+    // Marked, not hidden: the API genuinely can do it.
+    if (it.by_sentence === false) {
+      d.appendChild(el("span", "bysentence",
+        " · 只能用接口（句子还认不出来）"));
+      d.title = "这项是插件加的。命令行 /api/plan 能用它，"
+        + "但这屏的句子解析器还没有对应说法。";
+    }
     box.appendChild(d);
   }
 }
