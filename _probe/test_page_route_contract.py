@@ -266,7 +266,12 @@ def main():
     # between "no screen yet" and "someone forgot the button".
     no_screen = {"uninstall": "no button on the page yet",
                  "plan": "the page reads previews out of /api/parse",
-                 "search": "the page browses by picture instead"}
+                 "search": "the page browses by picture instead",
+                 # Rebuilds a mod and reinstalls it.  Sits behind GET
+                 # /api/repair-check for the same reason: 3-12 s of parsing per
+                 # mod.  No button yet -- naming it here is what keeps that
+                 # visible instead of looking like an oversight.
+                 "repair-apply": "no button on the page yet; it rebuilds and reinstalls a mod"}
     unsent = sorted(r for r in read if r not in sent)
     unexpected = [r for r in unsent if r.rsplit("/", 1)[-1] not in no_screen]
     check("every POST route the page never calls is a declared decision",

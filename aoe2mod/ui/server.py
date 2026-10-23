@@ -340,6 +340,19 @@ class App(object):
         """
         return self.tk.repair_check(profile_root=profile_root)
 
+    def repair_apply(self, name, profile_root=None, out_dir=None):
+        """Rebuild one installed mod's `.dat` from today's data and reinstall it.
+
+        Same cost as one `repair_check` row (3-12 s of parsing) plus a full
+        rebuild and install, so it is a button press on a mod the player has
+        chosen -- never something that runs because a page loaded.
+
+        ``profile_root`` exists for the same reason as everywhere else: the tests
+        must be able to point at a throwaway profile instead of the player's.
+        """
+        return self.tk.repair_apply(name, out_dir=out_dir,
+                                    profile_root=profile_root)
+
     def rebuild(self, title, profile_root=None):
         """Rebuild a stale mod from the intents its record kept, then reinstall.
 
@@ -640,6 +653,8 @@ def make_handler(app):
                 return self._guard(lambda: app.uninstall(payload["name"]))
             if path == "/api/rebuild":
                 return self._guard(lambda: app.rebuild(payload["title"]))
+            if path == "/api/repair-apply":
+                return self._guard(lambda: app.repair_apply(payload["name"]))
             return _json(self, {"ok": False, "error": "no such route"}, 404)
 
         def _guard(self, fn):

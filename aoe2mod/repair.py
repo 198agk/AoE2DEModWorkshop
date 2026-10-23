@@ -56,9 +56,16 @@ DAT_REL = os.path.join("resources", "_common", "dat", "empires2_x2_p1.dat")
 SCHEMA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
                           "aoe2mod", "schema")
 
+# One spelling of each verdict, and callers compare against these names rather
+# than against string literals.  They were literals first, and `repair_apply`
+# crashed on `R.IDENTICAL` the moment a caller wanted to say "one of the two
+# harmless ones" -- a typo in a comparison is silent, a missing constant is not.
+NO_DAT = "no_dat"
+IDENTICAL = "identical"
 AUTO = "auto"
 MANUAL = "manual"
 IMPOSSIBLE = "impossible"
+VERDICTS = (NO_DAT, IDENTICAL, AUTO, MANUAL, IMPOSSIBLE)
 
 # Every field this file reports on the unit side comes from the schema, so a new
 # binding appears here the moment it is declared.  Cost is not one of those
@@ -237,7 +244,7 @@ def check(mod_dat, game_root, limit=400):
     if os.path.getsize(mod_dat) == os.path.getsize(base_dat):
         with io.open(mod_dat, "rb") as a, io.open(base_dat, "rb") as b:
             if a.read() == b.read():
-                return {"ok": True, "verdict": "identical", "changes": [],
+                return {"ok": True, "verdict": IDENTICAL, "changes": [],
                         "reasons": [], "notes": ["这份 .dat 与游戏现在那份逐字节相同："
                                                  "它只是随模组复制了一份，没有改动，不需要修"]}
 
@@ -320,7 +327,7 @@ def check(mod_dat, game_root, limit=400):
     elif uremoved or tremoved:
         verdict = MANUAL
     else:
-        verdict = "identical"
+        verdict = IDENTICAL
 
     return {
         "ok": True,
@@ -485,6 +492,13 @@ def scan_installed(profile_root, game_root, limit=40):
         got["name"] = row.get("name")
         got["title"] = row.get("title")
         got["enabled"] = row.get("enabled")
+        # Where it lives, so a caller that repairs it does not have to rebuild the
+        # path from the profile layout and guess.  `path` is the absolute folder
+        # list_mods already resolved; `kind`/`priority` are what install needs to
+        # put the repaired copy back where the old one was.
+        got["path"] = path
+        got["kind"] = row.get("kind")
+        got["priority"] = row.get("priority")
         out.append(got)
     return out
 
@@ -495,7 +509,7 @@ def describe(report):
         return "没量出来：" + "；".join(report.get("reasons") or ["原因不明"])
     verdict = report.get("verdict")
     counts = report.get("counts") or {}
-    if verdict == "identical":
+    if verdict == IDENTICAL:
         return "这份 .dat 和游戏现在的一样，不用修"
     if verdict == IMPOSSIBLE:
         return "不能自动修：%s" % (report.get("reasons") or ["格式换代"])[0]

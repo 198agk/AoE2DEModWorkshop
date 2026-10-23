@@ -278,6 +278,13 @@ SUITES = [
     # values has no single-intent answer -- the second is the one worth a
     # conflict report rather than a quiet choice.
     r"_probe\test_replay.py",
+    # The step after replay: rebuild the mod and put it back.  Two failures look
+    # like success here -- a rebuilt .dat carrying the wrong numbers (the mod
+    # still loads) and a reinstall that deletes the author's other files
+    # (install_mod does rmtree + copytree, and 14 of the 16 mods measured on this
+    # machine ship more than info.json + .dat).  Both are asserted, and the
+    # strong claim is byte identity: same intents, same base data, same stream.
+    r"_probe\test_repair_apply.py",
     # What a newcomer reads.  Six defects shared one shape: the bytes were right
     # and the SENTENCE was wrong (a raw "wood" in a Chinese preview, a reader's
     # assumption dropped on the floor, no way to tell which of twenty mods the

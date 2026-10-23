@@ -5409,6 +5409,91 @@ class Toolkit(object):
         return {"ok": True, "profile_root": prof, "mods": rows,
                 "count": len(rows)}
 
+    def repair_apply(self, name, out_dir=None, author="", overwrite=True,
+                     profile_root=None, limit=400):
+        """Rebuild one installed mod's `.dat` from the shipped file, then reinstall it.
+
+        The shape is deliberate: read the author's file, turn what it changed into
+        intents, build those intents against TODAY's `.dat`, carry every other
+        file of the old folder across, install the result over the old folder.
+
+        Why not just patch the old file: it is a snapshot of a game that no longer
+        exists.  Patching it keeps the snapshot's other 11 MB of stale bytes and
+        loses whatever the patch added.  Rebuilding from the shipped file is the
+        only shape that both restores the author's numbers and picks up the new
+        content.
+
+        Only the `auto` and `identical` verdicts are handled.  `manual` means the
+        author added or removed records, which needs graphics, strings, icons and
+        train locations carried in the right order -- doing that badly would
+        produce a mod that loads and then misbehaves, which is worse than saying
+        no.  `impossible` is a format generation change, where no offset from
+        today's file reaches the old bytes at all.
+
+        ``profile_root`` is for tests, as everywhere else: a test must never read
+        or write the player's real mod list by accident.
+        """
+        from . import repair as R
+        from .game import locations as G
+        prof = profile_root or G.find_profile_root()
+        rows = R.scan_installed(prof, self.game_root, limit=limit)
+        mine = [r for r in rows if r.get("name") == name]
+        if not mine:
+            raise C.IntentError("这个玩家的模组列表里没有叫「%s」的、自带 .dat 的模组" % name)
+        row = mine[0]
+        verdict = row.get("verdict")
+        if verdict == R.IMPOSSIBLE:
+            raise C.IntentError("「%s」不能这样修：%s"
+                                % (name, "；".join(row.get("reasons") or []) or "格式换代了"))
+        if verdict not in (R.AUTO, R.IDENTICAL):
+            raise C.IntentError(
+                "「%s」只能部分自动修（%s）。它%s，把它搬过来要按顺序带上图片、文本、"
+                "图标和训练位，这一版还不做 —— 只搬数值会得到一个能加载但行为不对的模组。"
+                % (name, row.get("verdict"),
+                   "新增或删除过记录" if verdict == R.MANUAL else "没有可搬的改动"))
+
+        old_dir = row.get("path")
+        if not old_dir or not os.path.isdir(old_dir):
+            raise C.IntentError("找不到「%s」装在哪：%s" % (name, old_dir))
+
+        plan = R.plan_replay(row, self._families())
+        if plan.get("conflicts"):
+            c = plan["conflicts"][0]
+            raise C.IntentError(
+                "「%s」里同一个家族被改成了不同的值（%s：%s），没有任何一句话能表达这件事"
+                % (name, c.get("field"), "、".join("%s→%s" % (i, v)
+                                                  for i, v in zip(c.get("ids") or [],
+                                                                  c.get("values") or []))))
+
+        info = E.read_info_json(os.path.join(old_dir, "info.json"))
+        title = info.get("Title") or name
+        notes = []
+        if verdict == R.IDENTICAL:
+            # Nothing to replay: the author's file already matches today's game.
+            # Deliberately no copy here -- carry_over into the same folder would
+            # be copying every file onto itself (shutil.copyfile raises
+            # SameFileError), and "install it again over itself" is not a repair
+            # either; the honest answer is that this mod needs nothing.
+            notes.append("这份 .dat 与今天出厂的数据逐字节相同，不需要重做，其他文件也都在原处。")
+            return {"ok": True, "name": name, "title": title, "verdict": verdict,
+                    "replayed": 0, "notes": notes, "carried": None,
+                    "installed": None}
+
+        out_dir = out_dir or os.path.join(self.game_root, "_dsh_repair", row["name"])
+        man = self.build_bundle(plan["intents"], out_dir, title=title,
+                                author=author or info.get("Author") or "dsh",
+                                description=info.get("Description") or "",
+                                overwrite=True)
+        carried = R.carry_over(old_dir, man["mod_dir"], log=notes)
+        installed = self.install(man["mod_dir"], name=name, title=title,
+                                 enabled=True, position=row.get("priority") or 0,
+                                 profile_root=prof, overwrite=True)
+        return {"ok": True, "name": name, "title": title, "verdict": verdict,
+                "replayed": len(plan["intents"]), "collapsed": plan.get("collapsed"),
+                "skipped": plan.get("skipped"), "conflicts": plan.get("conflicts"),
+                "carried": carried, "notes": notes, "manifest": man,
+                "installed": installed}
+
     def update_check(self, profile_root=None, game_dat=None,
                      state_file=None):
         """Has the game's data moved since any installed mod was built?
