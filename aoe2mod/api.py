@@ -3667,6 +3667,35 @@ class Toolkit(object):
             % (LT.describe([m.display for m in r.members],
                            r.raw.get("type"), r.raw.get("comment") or ""),
                _where, base["shipped_groups"]))
+        # The limit has to reach the SCREEN, not just the manifest.
+        #
+        # `not_proven` only exists after a build, and the page has never
+        # rendered it -- so a limit that lives only there is a limit the player
+        # meets after the mod is installed and nothing happened.  Cycle is
+        # exactly that case: the four Cycle groups the game ships carry no
+        # `type 102` at all, so this method writes the JSON half only, and no
+        # run has watched whether the engine does anything with it.  Saying so
+        # in `warnings` puts it in front of the player BEFORE they build, which
+        # is the only moment they can choose differently.
+        #
+        # MutuallyExclusive does not get this warning because it is measured:
+        # `dsh test v47` (2026-10-23) was studied in game and the user read
+        # 「只能研究其中一个」.  A warning there would train the player to ignore
+        # warnings.
+        #
+        # Everything the player reads here is Chinese, including the group
+        # name -- `_GROUP_ZH` is the compiler's own table, so the preview and
+        # the sentence cannot drift apart.  The raw enum spelling would also
+        # fail `test_prose_language`'s "no English on screen" assertion, which
+        # is how this one was caught.
+        if not wants_dat:
+            base.setdefault("warnings", []).append(
+                "「%s」只写 %s，不动 .dat：这类组按文件顺序循环，而它的机制"
+                "在本项目一次实机测试都没做过，出厂数据里那 4 个同类型的组"
+                "也都不带禁止命令，没有现成形状可以照抄 —— 做完可能什么都不"
+                "发生。"
+                % (C._GROUP_ZH.get(kind, kind),
+                   LT.LINKED_TECHS_REL.replace(os.sep, "/")))
         return base
 
     def _split_by_strategy(self, resolved_list):

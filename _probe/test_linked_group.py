@@ -420,6 +420,39 @@ def main():
           len(_b_man.get("shared_effects_cloned") or []) == 2,
           str(_b_man.get("shared_effects_cloned")))
 
+    # ---- E. the limit reaches the SCREEN, not just the manifest ------------
+    # `not_proven` is only born after a build, and the page has never rendered
+    # it.  So until 2026-10-23 the one thing true of a Cycle group -- that its
+    # mechanism has never been measured here -- was visible only to someone who
+    # had already installed the mod and watched nothing happen.  Meanwhile the
+    # kinds that ARE measured (MutuallyExclusive via `dsh test v47`) must stay
+    # quiet, or the player learns to ignore warnings.
+    print("=== E. the one unmeasured kind says so before the build")
+    seen = {}
+    for kind in ("MutuallyExclusive", "Toggleable", "Cycle"):
+        p = tk.plan({"intent": "tech.toggle_group", "techs": [22, 23],
+                     "type": kind})
+        seen[kind] = [str(w) for w in (p.get("warnings") or ())]
+    check("Cycle warns before the build",
+          any("实机测试" in w for w in seen["Cycle"]), str(seen["Cycle"]))
+    check("   and the warning says the .dat is untouched",
+          any(".dat" in w and "linkedTechs.json" in w for w in seen["Cycle"]),
+          str(seen["Cycle"]))
+    check("   and it does not promise anything will happen",
+          any("什么都不发生" in w for w in seen["Cycle"]), str(seen["Cycle"]))
+    # The group is named in Chinese.  The raw enum spelling is what the file
+    # says, not what the player reads -- and it is exactly what
+    # `_probe/test_prose_language.py`'s "no English on screen" assertion
+    # catches.
+    check("   and the group is named in Chinese, not by its file spelling",
+          any("按顺序循环" in w for w in seen["Cycle"])
+          and not any("Cycle" in w for w in seen["Cycle"]),
+          str(seen["Cycle"]))
+    check("the measured kinds stay quiet",
+          not seen["MutuallyExclusive"] and not seen["Toggleable"],
+          "mutual=%r toggle=%r" % (seen["MutuallyExclusive"],
+                                   seen["Toggleable"]))
+
     print("=== D. every impossible group is refused in Chinese")
     bad = [
         ("one technology", {"intent": "tech.toggle_group", "techs": [22]}),
