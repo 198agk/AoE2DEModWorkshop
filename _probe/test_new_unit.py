@@ -562,6 +562,81 @@ def main():
         check(False, "the icon section ran to completion :: %s: %s"
                       % (type(exc).__name__, exc))
 
+    print("--- L. a sentence with an icon survives a BUNDLE, and nothing is lost")
+    # Measured 2026-10-23, and it is the worst shape a defect can take: every
+    # icon path called `json.loads` from `aoe2mod/api.py`, which never did
+    # `import json`.  The NameError was caught by the bundle's own
+    # `except Exception` and turned into a refusal entry, so the request
+    # reported `verification.ok: True`, `new_units: []` and no failure -- the
+    # sentence simply disappeared.  A single-sentence test cannot see this,
+    # because `build()` never reaches the code that re-adopts the merged tables.
+    #
+    # Two invariants, both about SILENCE rather than about pixels:
+    #   1. a sentence that was accepted appears in `new_units`/`new_techs`;
+    #   2. a sentence that was refused appears in `refusals`.
+    # Neither may be empty on both sides -- that is the shape that shipped.
+    bundle_dir = tempfile.mkdtemp(prefix="newunit_bundle_icon_")
+    try:
+        seed = os.path.join(bundle_dir, "seed.png")
+        from PIL import Image as _PIL2
+        _PIL2.new("RGB", (256, 256), (30, 200, 90)).save(seed)
+        three = tk.build_bundle(
+            [{"intent": "unit.create", "donor": 83, "civ": "British",
+              "name": "画师学徒", "button": 6, "icon": seed},
+             {"intent": "tech.create", "donor": 22, "name": "血祭",
+              "building": 109, "research_time": 25, "button": 8, "icon": seed}],
+            out_dir=bundle_dir, title="dsh bundle icons", author="dsh",
+            overwrite=True)
+        _units = three.get("new_units") or []
+        _techs = three.get("new_techs") or []
+        _refs = three.get("refusals") or []
+        check(len(_units) == 1,
+              "an icon sentence still becomes a unit inside a bundle",
+              "%d unit(s), refusals %r" % (len(_units), _refs))
+        check(len(_techs) == 1,
+              "and an icon sentence still becomes a technology inside a bundle",
+              "%d tech(s), refusals %r" % (len(_techs), _refs))
+        check(not _refs,
+              "no sentence was quietly turned into a refusal it does not say",
+              _refs)
+        check(bool(_units) and _units[0].get("icon_slot") is not None,
+              "the bundle reports the unit's icon slot, not None",
+              _units[0].get("icon_slot") if _units else "no unit")
+        check(bool(_techs) and _techs[0].get("icon_slot") is not None,
+              "the bundle reports the technology's icon slot, not None",
+              _techs[0].get("icon_slot") if _techs else "no tech")
+        # Both icons have to be in the ONE shipped pair of tables: the tables
+        # are cumulative inside the loop, and each icon re-adopts the merged
+        # document, so a second one that started from the shipped copy would
+        # drop the first one's material while still reporting success.
+        _mod = three["mod_dir"]
+        check(os.path.isfile(os.path.join(_mod, "widgetui", "icons.json"))
+              and os.path.isfile(os.path.join(_mod, "widgetui", "materials.json")),
+              "the bundle ships the icon tables", _mod)
+        _ship_icons = json.loads(io.open(
+            os.path.join(_mod, "widgetui", "icons.json"), encoding="utf-8").read())
+        _ship_mats = json.loads(io.open(
+            os.path.join(_mod, "widgetui", "materials.json"), encoding="utf-8").read())
+        _keys = set((_ship_icons.get("Units") or {}).values()) | \
+            set((_ship_icons.get("Techs") or {}).values())
+        _mats = [m["MaterialDef"]["Name"] for m in _ship_mats.get("Materials") or []]
+        _new_mats = [n for n in _mats if n not in
+                     set(m["MaterialDef"]["Name"]
+                         for m in (json.loads(io.open(
+                             os.path.join(tk.game_root, "widgetui", "materials.json"),
+                             encoding="utf-8").read()).get("Materials") or []))]
+        check(len(_new_mats) >= 2,
+              "both creations' materials are in the one merged table",
+              _new_mats)
+        check(all(n in _keys for n in _new_mats),
+              "and both are named by a slot in the merged icon table",
+              sorted(_keys)[:6])
+    except Exception as exc:  # noqa: BLE001 -- a crash here must be a FAIL
+        check(False, "the bundle icon section ran to completion :: %s: %s"
+                      % (type(exc).__name__, exc))
+    finally:
+        shutil.rmtree(bundle_dir, ignore_errors=True)
+
     if FAILS:
         print("\nNEW UNIT: %d CHECK(S) FAILED" % len(FAILS))
         return 1

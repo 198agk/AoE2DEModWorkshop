@@ -330,6 +330,16 @@ class App(object):
         got["banner"] = _banner(got)
         return {"ok": True, "update": got}
 
+    def repair_check(self, profile_root=None):
+        """Which installed mods ship a `.dat` the game has since outgrown.
+
+        Cost, measured 2026-10-23 on this machine: 16 mods, 3-12 s of parsing
+        each, so this is a button press rather than a load-time call -- unlike
+        `update_check`, which only hashes two files and can run on every page
+        load.  The screen asks for it on demand and says it is slow.
+        """
+        return self.tk.repair_check(profile_root=profile_root)
+
     def rebuild(self, title, profile_root=None):
         """Rebuild a stale mod from the intents its record kept, then reinstall.
 
@@ -590,6 +600,11 @@ def make_handler(app):
                     q.get("civ", [""])[0]))
             if path == "/api/update-check":
                 return self._guard(app.update_check)
+            if path == "/api/repair-check":
+                # Deliberately NOT part of /api/mods: this parses about 12 MB
+                # per mod, and the mod list is drawn on every page load.
+                return self._guard(lambda: app.repair_check(
+                    profile_root=(q.get("profile_root", [None])[0] or None)))
             return _json(self, {"ok": False, "error": "no such route"}, 404)
 
         # ---- actions ----

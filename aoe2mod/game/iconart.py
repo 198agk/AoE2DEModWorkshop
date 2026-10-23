@@ -163,12 +163,44 @@ def atlas_source(materials_doc, material_name):
     return None
 
 
-def _clean_stem(name):
-    stem = re.sub(r"[^A-Za-z0-9_\-]+", "_", name or "newicon").strip("_")
+def _clean_stem(name, slot=None, kind=None):
+    """A file-safe stem for the material, texture and file name.
+
+    The SLOT NUMBER goes into the name, and that is load-bearing rather than
+    cosmetic.  Every character of a Chinese name is stripped by the filter
+    below, so 画师学徒 and 血祭 both cleaned down to the empty string and both
+    fell back to the same placeholder -- measured 2026-10-23 on a real
+    `build_bundle` with one new unit and one new technology: both got the
+    material name `newicon`, the second `TextureDef` replaced the first, the
+    unit's slot 1000 resolved to the TECHNOLOGY's png, and the unit's own dds
+    was shipped but unreachable while both previews said the icon was fine.
+
+    The KIND goes in as well, because the two tables have different floors
+    (units free at 1000, technologies at 500) so the same number is reachable
+    from both, while `materials.json` is SHARED by both sections.
+    """
+    stem = re.sub(r"[^A-Za-z0-9_\-]+", "_", name or "icon").strip("_")
     if not stem:
-        stem = "newicon"
+        stem = "icon"
     if not stem[0].isalpha():
         stem = "icon_" + stem
+    if kind:
+        # STRIP the prefix, then add it back: that is idempotent for every input,
+        # including a stem that came from `plan` and already carries it.
+        # Without this the second pass turned `tech_icon_500` into
+        # `tech_tech_icon_500` -- the tables then named a material `emit` never
+        # created, which `_probe/test_tech_create.py` caught as "the new key
+        # points at the new material".
+        prefix = "%s_" % kind
+        while stem.startswith(prefix):
+            stem = stem[len(prefix):]
+        stem = prefix + stem
+    if slot is not None:
+        suffix = "_%d" % int(slot)
+        # IDEMPOTENT on purpose: the caller feeds `plan`'s material name back
+        # into `emit`, so cleaning twice must not produce `icon_1000_1000`.
+        if not stem.endswith(suffix):
+            stem = stem[:48 - len(suffix)] + suffix
     return stem[:48]
 
 
@@ -266,7 +298,7 @@ def plan(icons_doc, materials_doc, picture, stem=None, slot=None, kind="unit"):
         raise IconError("第 %d 号图标槽已经被「%s」占了，换一个号"
                         % (slot, table[str(slot)]))
     by_name, textures = _materials(materials_doc)
-    material = _clean_stem(stem)
+    material = _clean_stem(stem, slot, kind)
     if material in by_name:
         raise IconError("材质表里已经有叫「%s」的材质了，换个名字" % material)
     if material in textures:
@@ -305,7 +337,7 @@ def emit(icons_doc, materials_doc, label, rgba, side=SIDE, slot=None,
     if slot is None:
         slot = next_slot(icons, kind)
     slot = int(slot)
-    material = _clean_stem(stem)
+    material = _clean_stem(stem, slot, kind)
     file_rel = "%s/%s%s" % (spec["texture_dir"], material, spec["ext"])
     key = _key(slot)
 

@@ -262,6 +262,14 @@ SUITES = [
     # build did not write.
     r"_probe\test_new_tech.py",
     r"_probe\test_tech_create.py",
+    # Reading a community mod back.  This is the newest capability and the one
+    # with the longest failure mode: a mod that ships a whole .dat keeps handing
+    # the engine a snapshot from the day it was built, and nothing says so.  Four
+    # verdicts, each reachable and named: identical / no_dat / auto (one edit) /
+    # impossible (a different generation of the format).  The last one used to
+    # report "读不开" because the version was read AFTER the parse -- the file's
+    # layout is exactly what cannot be walked, so the order is load-bearing.
+    r"_probe\test_repair.py",
     # What a newcomer reads.  Six defects shared one shape: the bytes were right
     # and the SENTENCE was wrong (a raw "wood" in a Chinese preview, a reader's
     # assumption dropped on the floor, no way to tell which of twenty mods the

@@ -17,6 +17,7 @@ The contract a caller can rely on:
 import contextlib
 import copy
 import io
+import json
 import os
 import struct
 
@@ -1848,10 +1849,18 @@ class Toolkit(object):
                 "picture on a command card" % (new_id, icon_id))
         return man
 
-    def _new_unit_bundle(self, new_list, base_raw):
+    def _new_unit_bundle(self, new_list, base_raw, icon_state=None):
         """Fold every "make a new unit" sentence onto ONE stream.
 
-        Returns ``(bytes_or_None, notes, refusals, string_entries)``.
+        Returns ``(bytes_or_None, notes, refusals, string_entries, icon_files)``.
+
+        ``icon_state`` is SHARED with the other creation bundle.  Both
+        sections draw their materials from ONE ``materials.json``, so a
+        unit icon and a technology icon in the same bundle must be
+        written into one table -- measured 2026-10-23: each bundle
+        re-read the shipped tables, so the tech bundle overwrote the
+        unit bundle's merged file, slot 1000 vanished, and both
+        previews still said the icon was fine.
 
         ``string_entries`` is a LIST of ``(id, text)`` pairs, not files: the
         caller builds one table from every creation in the request, because a
@@ -1882,8 +1891,11 @@ class Toolkit(object):
         # so two sentences that each add an icon must work on the table the
         # previous one produced or the second would silently drop the first.  The
         # working pair is re-adopted from the emitted bytes after every icon.
-        _icons_doc = _materials_doc = None
-        icon_files = {}
+        if icon_state is None:
+            icon_state = {"icons": None, "materials": None, "files": {}}
+        _icons_doc = icon_state.get("icons")
+        _materials_doc = icon_state.get("materials")
+        icon_files = icon_state.setdefault("files", {})
         for r in new_list:
             if stats is None:
                 # Parsed ONCE, and the same model is mutated by every sentence.
@@ -1942,6 +1954,8 @@ class Toolkit(object):
                         os.sep, "/")].decode("utf-8"))
                     _materials_doc = json.loads(_files[IA.MATERIALS_REL.replace(
                         os.sep, "/")].decode("utf-8"))
+                    icon_state["icons"] = _icons_doc
+                    icon_state["materials"] = _materials_doc
                 stats, rec = NU.add_unit(stats, cur, gv, civs_start, civ_index,
                                          r.donor.id, new_id,
                                          name_string_id=string_id,
@@ -1984,7 +1998,7 @@ class Toolkit(object):
                 % (rep.get("raw_consumed"), len(cur)))
         return out, notes, refusals, string_entries, icon_files
 
-    def _new_tech_bundle(self, tech_list, base_raw):
+    def _new_tech_bundle(self, tech_list, base_raw, icon_state=None):
         """Fold every "make a new technology" sentence onto ONE stream.
 
         Returns ``(bytes_or_None, notes, refusals, string_entries)``.
@@ -2009,8 +2023,11 @@ class Toolkit(object):
         next_string = None
         # Cumulative like the unit path: each icon re-adopts the merged tables so
         # a second sentence cannot silently drop the first one's material.
-        _icons_doc = _materials_doc = None
-        icon_files = {}
+        if icon_state is None:
+            icon_state = {"icons": None, "materials": None, "files": {}}
+        _icons_doc = icon_state.get("icons")
+        _materials_doc = icon_state.get("materials")
+        icon_files = icon_state.setdefault("files", {})
         for r in tech_list:
             if stats is None:
                 # Parsed ONCE; every sentence mutates this same model.
@@ -2048,6 +2065,8 @@ class Toolkit(object):
                         os.sep, "/")].decode("utf-8"))
                     _materials_doc = json.loads(_files[IA.MATERIALS_REL.replace(
                         os.sep, "/")].decode("utf-8"))
+                    icon_state["icons"] = _icons_doc
+                    icon_state["materials"] = _materials_doc
                 rec = NT.add_tech(
                     stats, r.donor.id,
                     NT.internal_name_for(r.name, new_id), string_id,
@@ -5046,10 +5065,14 @@ class Toolkit(object):
         new_notes = []
         new_entries = []
         tech_entries = []
+        # ONE icon state for both creation bundles: the two sections add their
+        # materials to the same `materials.json`, so a separate read per bundle
+        # would let the second overwrite the first's merged file.
+        _icon_state = {"icons": None, "materials": None, "files": {}}
         if new_list:
             _base = dat_bytes if dat_bytes is not None else data
             new_bytes, new_notes, new_ref, new_entries, new_icons = \
-                self._new_unit_bundle(new_list, _base)
+                self._new_unit_bundle(new_list, _base, _icon_state)
             sprite_refusals = sprite_refusals + new_ref
             for _rel, _blob in (new_icons or {}).items():
                 json_files[_rel] = _blob
@@ -5064,7 +5087,7 @@ class Toolkit(object):
         if tech_list:
             _base = dat_bytes if dat_bytes is not None else data
             tech_bytes, tech_notes, tech_ref, tech_entries, tech_icons = \
-                self._new_tech_bundle(tech_list, _base)
+                self._new_tech_bundle(tech_list, _base, _icon_state)
             sprite_refusals = sprite_refusals + tech_ref
             for _rel, _blob in (tech_icons or {}).items():
                 json_files[_rel] = _blob
@@ -5362,6 +5385,29 @@ class Toolkit(object):
             man["provenance"] = {"title": None, "state_file": None,
                                  "why_not": "%s: %s" % (type(exc).__name__, exc)}
         return man
+
+    def repair_check(self, profile_root=None, limit=40, name=None):
+        """Which installed mods ship a `.dat` that no longer matches the game?
+
+        Read-only, and it never claims more than it measured: every row comes
+        back with one of five verdicts (see `aoe2mod/repair.py`).  This is the
+        question an official patch creates -- about 12 MB of stale snapshot per
+        mod -- so it belongs on the toolkit, not in a one-off script.
+
+        ``profile_root`` is for tests, exactly as in ``install()``: the one
+        thing a test must never do is read the player's real mod list by
+        accident and then assert on whatever it happens to find there.
+        """
+        from . import repair as R
+        from .game import locations as G
+        prof = profile_root or G.find_profile_root()
+        rows = R.scan_installed(prof, self.game_root, limit=limit)
+        if name:
+            rows = [r for r in rows if r.get("name") == name]
+        for r in rows:
+            r["summary"] = R.describe(r)
+        return {"ok": True, "profile_root": prof, "mods": rows,
+                "count": len(rows)}
 
     def update_check(self, profile_root=None, game_dat=None,
                      state_file=None):

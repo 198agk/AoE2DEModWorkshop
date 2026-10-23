@@ -250,7 +250,11 @@ def main():
     # the page asks for it).  Both are real capabilities with no button, which is
     # exactly the state this whole file exists to keep visible.
     no_screen_get = {"search": "superseded by /api/browse",
-                     "emblem": "no screen shows a civilization emblem yet"}
+                     "emblem": "no screen shows a civilization emblem yet",
+                     # Costs 3-12 s per mod (16 on this machine), so the page
+                     # must not call it on load.  No button yet; saying so here
+                     # is the difference between "not wired yet" and "forgotten".
+                     "repair-check": "no button on the page yet; it parses every shipped .dat"}
     uncalled = sorted(r for r in qread if r not in ask)
     unexplained_get = [r for r in uncalled if r.rsplit("/", 1)[-1] not in no_screen_get]
     check("every GET route the page never queries is a declared decision",
