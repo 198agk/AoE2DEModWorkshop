@@ -53,6 +53,23 @@ $py = 'C:\Users\26913\.dsh\dsh-runtimes\dsh-primary-runtime\dependencies\python\
 
 ---
 
+## 想要 AI 帮你写那句中文
+
+设三个环境变量再启动 `tools\run_ui.py`，页面会多一个「问问 AI」按钮：
+
+```powershell
+$env:AOE2MOD_AI_BASE  = 'https://api.openai.com/v1'   # 任何 OpenAI 兼容端点
+$env:AOE2MOD_AI_KEY   = 'sk-...'
+$env:AOE2MOD_AI_MODEL = 'gpt-4o-mini'
+```
+
+**它只会把你说的话换成这个工具认得的句子**，不产生任何改动。句子仍然要过「读一下」
+那一关、仍然要看预览能不能构建 —— 模型说错了，你看到的是同一句拒绝，而不是一次你
+没法审的字节编辑。没配这三个变量时按钮不出现（一个只会失败的框比没有更糟）；配置只
+从环境变量读，项目不存任何 key。
+
+---
+
 ## 能做什么，以及**做不到**什么
 
 **实机验证过**（不是推测）：改数值、改可用性（v17 印加城堡时代没有蔷琵侦察兵）、
@@ -63,8 +80,11 @@ $py = 'C:\Users\26913\.dsh\dsh-runtimes\dsh-primary-runtime\dependencies\python\
 
 - **改不了游戏界面**。EXE 是纯 native（无 CLR 头），WPF 由游戏自己的渲染器解析；
   能换的是磁盘上的图片与布局文件，控件类集是封闭的。
-- **新建单位没有自己的图标**。`icons.json` 的 `Units` 段 0..999 全占满，`Techs`
-  0..312 全满；借捐赠者的图标是当前唯一选择。
+- **图标层能写**（2026-10-23 做出来了）：`unit.create` / `tech.create` 都能带一张
+  自己的图 —— 单位走 `Units` 段 + 未压缩 DDS，科技走 `Techs` 段 + PNG，两段的
+  `materials.json` 是同一份所以要共享一次合并。出厂 0..999 / 0..312 确实是满的，但
+  模组能往上加（已发布的三国 UI 模组把 Units 扩到 2148），而记录里那个字段是 i16。
+  **还没被一局游戏画出来过** —— 这是这一层唯一的空白。
 - **新科技不进科技树面板**（它出现在研究卡上，不在树里）。
 - **科技的成本改不了**（成本槽是逐字节重放的，写不进去）。
 - **「变灰」做不到**。禁掉一个科技的唯一机制是 `type 102`，它的表现是**按钮消失**。
@@ -85,6 +105,8 @@ aoe2mod/            产品代码
   dat/              .dat 读写（parser / writer / locate 是 vendored，见下）
   game/             icons（图标链）、linkedtechs、civtechtrees、locations、ddstex
   mod/              emitter（写 mod 目录）、strings（名字随 mod 发货）、provenance
+  repair.py         读回一个社区模组：改了什么、还能不能救（四档判决 + 重放）
+  ai.py            AI 接入口：只把愿望换成句子，绝不产出 intent（见下）
   semantic/         名字索引、prose（科技描述；单位「没有描述」的诚实拒绝）
   schema/           intents.json（13 个意图）、dat_bindings.json、中文标签表
   ui/               server.py（本地 HTTP）、nl.py（中文句子 → intent）、static/
@@ -106,7 +128,7 @@ _probe/             研究层：110+ 条钉子、一次性探针、报告
 ## 怎么验证它还好的
 
 ```powershell
-& $py -X utf8 -u '_probe\run_suites.py'    # 112 条快套件，约 1 小时
+& $py -X utf8 -u '_probe\run_suites.py'    # 116 条快套件，约 1 小时
 & $py -X utf8 -u '_probe\run_long.py'      # 8 条长套件，约 2 小时
 ```
 

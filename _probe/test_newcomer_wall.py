@@ -189,6 +189,23 @@ def main():
         check("it states the vendored-source rule", "sync_engine" in txt)
         check("it states the no-inline-python rule", "内联" in txt)
         check("it admits what cannot be done", "做不到" in txt)
+        # The AI entry is user-facing and its safety property is not obvious from
+        # the screen, so the front door has to say it: the model writes sentences
+        # and nothing else.  A README that only says "ask AI" invites the reading
+        # that the model makes the edit.
+        check("it says how to turn the AI entry on",
+              "AOE2MOD_AI_BASE" in txt and "AOE2MOD_AI_MODEL" in txt)
+        check("...and that the model only writes sentences",
+              "只会把你说的话换成这个工具认得的句子" in txt)
+        check("...and that no key is stored", "项目不存任何 key" in txt)
+        # The icon layer shipped on 2026-10-23; the README claimed for two days
+        # that a new unit cannot have an icon of its own.  That sentence is the
+        # expensive kind: it tells the reader not to ask for something the tool
+        # now does.
+        check("it no longer says a new unit cannot have an icon",
+              "新建单位没有自己的图标" not in txt)
+        check("...and it says the icon layer is written but never yet drawn",
+              "图标层能写" in txt and "还没被一局游戏画出来过" in txt)
 
     print()
     print("=== H. the 能做的事 list does not promise what no sentence can ask")
