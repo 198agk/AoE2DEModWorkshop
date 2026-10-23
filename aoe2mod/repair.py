@@ -45,6 +45,7 @@ construction: it opens two files, decodes them, and returns a dict.
 import io
 import json
 import os
+import shutil
 
 import aoe2mod.dat.parser as P
 import aoe2mod.dat.locate as L
@@ -337,6 +338,130 @@ def check(mod_dat, game_root, limit=400):
         "reasons": reasons,
         "notes": notes,
     }
+
+
+_RESOURCE_KEY = {0: "food", 1: "wood", 2: "stone", 3: "gold"}
+
+
+def plan_replay(report, families):
+    """Turn a diff into the SHORTEST intent list that reproduces it.
+
+    `families` is the family map from `aoe2mod/dat/families.py`, already built
+    and WARMED by the caller (`Toolkit._families()`), because an un-warmed map
+    is missing the declared swap edges from `objreplacement.json` and would
+    report every record as a family of one -- silently, which is the failure
+    mode this whole collapse exists to prevent.
+
+    Measured 2026-10-23: `dsh test v46` changed five town-centre records
+    (71/109/141/142/444) to 4000, and `check()` truthfully listed five rows.
+    Replaying those five verbatim dies on sentence 2 with
+    「城镇中心 的生命值已经是这个值了」 -- because ONE `unit.stat` intent and
+    the family map already treat those five as one unit
+    (`unit_ids=[71,109,141,142,444]`, `edit_count=315`).  Collapsing by family
+    is therefore not an optimisation; without it the replay cannot run.
+
+    The reverse case matters more: if two members of one family were left at
+    DIFFERENT values, no single intent can express that.  This reports it as a
+    conflict instead of quietly picking one -- 315 records silently taking one
+    member's value is exactly the kind of wrong answer that looks like success.
+
+    Returns ``{intents, skipped, conflicts, collapsed}``.
+    """
+    from .dat import families as F
+
+    fams = families or {}
+    seen = {}            # (kind, family_key, field) -> row
+    collapsed = []
+    conflicts = []
+    skipped = []
+    for row in report.get("changes") or ():
+        field = row.get("field") or ""
+        if row.get("kind") == "unit":
+            # `family_of` returns a LIST; a key has to be hashable, and the
+            # family's own ordering is stable, so a tuple of it is the identity.
+            key = ("unit", tuple(F.family_of(fams, row["id"])), field)
+        else:
+            # Technologies have no variant family: the array index IS the id.
+            key = ("tech", (row["id"],), field)
+        prev = seen.get(key)
+        if prev is None:
+            seen[key] = row
+            continue
+        if prev.get("to") != row.get("to"):
+            conflicts.append({"family": list(key[1]), "field": field,
+                              "ids": [prev["id"], row["id"]],
+                              "values": [prev.get("to"), row.get("to")]})
+        else:
+            collapsed.append({"kept": prev["id"], "dropped": row["id"],
+                              "field": field, "value": row.get("to")})
+
+    intents = []
+    for row in seen.values():
+        field = row.get("field") or ""
+        if row.get("kind") == "unit" and field.startswith("cost."):
+            rtype = int(field.split(".", 1)[1])
+            intents.append({"intent": "unit.cost", "unit": row["id"],
+                            "resource": _RESOURCE_KEY.get(rtype, "food"),
+                            "value": row.get("to")})
+        elif row.get("kind") == "unit":
+            intents.append({"intent": "unit.stat", "unit": row["id"],
+                            "stat": field, "value": row.get("to")})
+        elif field.startswith("cost."):
+            rtype = int(field.split(".", 1)[1])
+            intents.append({"intent": "tech.cost", "tech": row["id"],
+                            "resource": _RESOURCE_KEY.get(rtype, "food"),
+                            "value": row.get("to")})
+        elif field == "research_time":
+            intents.append({"intent": "tech.research_time", "tech": row["id"],
+                            "value": row.get("to")})
+        else:
+            # effect_id / icon_id / civ have no single-value intent: an effect
+            # rewrite is a command inside an effect block, an icon slot is a
+            # table slot, and a technology's civ is what the tree layer decides.
+            skipped.append(row)
+    return {"intents": intents, "skipped": skipped,
+            "conflicts": conflicts, "collapsed": collapsed}
+
+
+def carry_over(old_mod_dir, new_mod_dir, log=None):
+    """Copy everything the old mod shipped EXCEPT its .dat into the new folder.
+
+    Measured 2026-10-23 on this machine: **14 of the 16 installed mods that ship
+    a `.dat` also ship other files** -- `WAIFor Arcade` carries 688 DRS files and
+    is 357 MB, `Red Alert 2 MOD` 306 DRS and 68.8 MB, and several carry
+    `resources/strings` (their own text tables).  `locations.install_mod` with
+    `overwrite=True` does `shutil.rmtree(target)` and then copies the source, so
+    installing a rebuilt folder that holds only `info.json` + `.dat` would
+    DELETE the art.  The numbers would come back and the mod would look broken
+    in a brand new way.
+
+    `info.json` and the thumbnail are skipped on purpose: the new folder has its
+    own (built by `emit_data_mod`), and the point of a repair is that the
+    manifest describes what the repaired file actually is.
+    """
+    copied = []
+    skipped = []
+    old_root = os.path.abspath(old_mod_dir)
+    dat_low = DAT_REL.replace(os.sep, "/").lower()
+    for base, _dirs, files in os.walk(old_root):
+        rel_dir = os.path.relpath(base, old_root)
+        for name in files:
+            rel = name if rel_dir == "." else os.path.join(rel_dir, name)
+            low = rel.replace(os.sep, "/").lower()
+            if low == "info.json" or low.startswith("thumbnail") or low == dat_low:
+                skipped.append(rel.replace(os.sep, "/"))
+                continue
+            src = os.path.join(base, name)
+            dst = os.path.join(new_mod_dir, rel)
+            parent = os.path.dirname(dst)
+            if parent and not os.path.isdir(parent):
+                os.makedirs(parent)
+            shutil.copyfile(src, dst)
+            copied.append(rel.replace(os.sep, "/"))
+    if log is not None:
+        log.append("从旧模组搬来 %d 个文件（跳过 %d 个：清单、缩略图、旧 .dat）"
+                   % (len(copied), len(skipped)))
+    return {"copied": sorted(copied), "skipped": sorted(skipped)}
 
 
 def scan_installed(profile_root, game_root, limit=40):

@@ -48,6 +48,14 @@ def check(ok, label, detail=""):
     return ok
 
 
+def _w(path, blob):
+    parent = os.path.dirname(path)
+    if parent and not os.path.isdir(parent):
+        os.makedirs(parent)
+    with open(path, "wb") as fh:
+        fh.write(blob)
+
+
 def _rewrite_version(src, dst, old=b"VER 8.9", new=b"VER 7.8"):
     """Copy a .dat with its version STRING changed, offsets untouched.
 
@@ -146,6 +154,57 @@ def main():
         check(all("summary" not in r for r in rows),
               "the scanner returns facts, not the screen's one-liner",
               [r.get("summary") for r in rows if "summary" in r][:2])
+
+        print()
+        print("=== F. a repair carries what the author shipped beside the .dat")
+        # Measured 2026-10-23: 14 of the 16 installed mods that ship a .dat also
+        # ship other files (WAIFor Arcade: 688 DRS, 357 MB).  install_mod does
+        # rmtree + copytree, so a rebuilt folder holding only info.json + .dat
+        # would delete the art.  This section builds its own source folder so it
+        # does not depend on what this machine happens to have installed.
+        src = os.path.join(tmp, "author_mod")
+        os.makedirs(os.path.join(src, "resources", "zh", "strings", "key-value"))
+        os.makedirs(os.path.join(src, "resources", "_common", "dat"))
+        os.makedirs(os.path.join(src, "resources", "_common", "drs", "graphics"))
+        _w(os.path.join(src, "info.json"), b'{"Title":"author mod"}')
+        _w(os.path.join(src, "thumbnail.png"), b"\x89PNG-shim")
+        _w(os.path.join(src, R.DAT_REL), b"OLD-DAT-BYTES")
+        _w(os.path.join(src, "resources", "zh", "strings", "key-value",
+                        "key-value-modded-strings-utf8.txt"), b'1 "\x61\x62\x63"')
+        _w(os.path.join(src, "resources", "_common", "drs", "graphics",
+                        "unit.sld"), b"SLDDATA")
+        dst = os.path.join(tmp, "rebuilt_mod")
+        os.makedirs(dst)
+        _w(os.path.join(dst, "info.json"), b'{"Title":"rebuilt"}')
+        got = R.carry_over(src, dst)
+        copied = got["copied"]
+        check(any(p.endswith("key-value-modded-strings-utf8.txt") for p in copied),
+              "the author's text table came over", copied)
+        check(any(p.endswith(".sld") for p in copied),
+              "and so did the art", copied)
+        check(not any(p.lower().endswith("empires2_x2_p1.dat") for p in copied),
+              "the old .dat did not come over", copied)
+        check("info.json" not in copied and not any(p.startswith("thumbnail") for p in copied),
+              "the new folder keeps its own manifest and thumbnail", copied)
+        check(sorted(p for p in got["skipped"] if p.lower().endswith(".dat"))
+              == [R.DAT_REL.replace(os.sep, "/")],
+              "and both decisions are reported, not silent", got["skipped"])
+        with open(os.path.join(dst, "info.json"), "rb") as fh:
+            check(fh.read() == b'{"Title":"rebuilt"}',
+                  "the old info.json did not overwrite the new one")
+        # Read the copied file through a guard, not with a bare open().  A bare
+        # open() raises FileNotFoundError when the copy never happened, and a
+        # raised exception is a CRASH: the suite exits non-zero with no FAIL line,
+        # which reads like a broken harness rather than like a broken product.
+        # The first version of this section did exactly that, and the reverse
+        # validation could not tell "the check failed" from "the test died".
+        art = os.path.join(dst, "resources", "_common", "drs", "graphics", "unit.sld")
+        if os.path.isfile(art):
+            with open(art, "rb") as fh:
+                check(fh.read() == b"SLDDATA", "and the copied file is byte for byte")
+        else:
+            check(False, "and the copied file is byte for byte",
+                  "the file is not there at all: " + art)
 
         print()
         if FAILS:
