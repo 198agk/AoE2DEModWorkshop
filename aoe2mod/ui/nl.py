@@ -1101,6 +1101,13 @@ def read_clause(text, vocab, civ_names=None, civ_zh=None, pins=None,
             cl.intent["button"] = int(slot)
             cl.notes.append("放在命令卡的第 %d 格" % slot)
             _rest = _SLOT_RE.sub(" ", raw)
+        # The picture path is removed before the hit points are read for the same
+        # reason the box number is: a file name carries digits ("live_unit83.png")
+        # and they are not a stat.  Measured 2026-10-23 -- the first wiring read
+        # hp=83 out of the donor's screenshot file name.
+        icn = _picture_in(_rest)
+        if icn:
+            _rest = _rest.replace(icn, " ")
         hp_v, _is_float = _number(_strip_names(_rest, donor))
         if hp_v is not None:
             cl.intent["hp"] = int(hp_v)
@@ -1121,6 +1128,15 @@ def read_clause(text, vocab, civ_names=None, civ_zh=None, pins=None,
         if bld is not None:
             cl.intent["builder"] = bld.id
             cl.notes.append("放在「%s」的建造按钮上" % bld.display)
+        # --- WHICH PICTURE it uses as its own icon ------------------------
+        # A path is the one thing in a Chinese sentence that cannot be misread,
+        # so no hint word is needed (same rule as `unit.art`).  Read here rather
+        # than later because the create branch returns before the art branch: a
+        # path in this sentence is the NEW unit's icon, not a repaint of the
+        # donor -- and repainting the donor would change an existing unit.
+        if icn:
+            cl.intent["icon"] = icn
+            cl.notes.append("用这张图当它自己的图标")
         cl.notes.append("照「%s」做，名字是「%s」" % (donor.display, new_name))
         return cl
 
@@ -1598,6 +1614,43 @@ def _says_property(text):
     return bool(_first_word(low, STAT_WORDS) or _first_word(low, RESOURCE_WORDS))
 
 
+def _icon_only(part, vocab=None):
+    """True when a piece only hands over an image for the NEW unit's icon.
+
+    "图标用 D:\\a.png" after a creating sentence is a fact about the thing being
+    created, not a repaint request: `unit.art` needs something to repaint and this
+    piece names no entity at all.  Measured 2026-10-23 -- without this distinction
+    the piece counted as its own request (the picture test in `_separate_edit`
+    exists for "给村民换张图 X"), so the merge refused it and the icon silently
+    never happened while the sentence still looked accepted.
+
+    A piece that names an entity stays a repaint: "…，给村民换张图 D:\\a.png".
+    """
+    if not _picture_in(part):
+        return False
+    # Strip the path before looking for numbers: a file name is allowed to carry
+    # digits ("live_unit83.png"), and counting those would disqualify every real
+    # screenshot path while letting "D:\x.png" through -- measured 2026-10-23.
+    rest = (part or "").replace(_picture_in(part), " ")
+    low = _norm(rest)
+    # A stat word means the player is describing an EDIT that happens to carry a
+    # path-shaped token; leave it to the ordinary branches so it either reads
+    # correctly or is refused loudly.
+    if _first_word(low, STAT_WORDS) or _first_word(low, RESOURCE_WORDS):
+        return False
+    if _number(rest)[0] is not None:
+        return False
+    # Naming an entity turns it back into a repaint of that entity -- but the
+    # search runs on the sentence WITHOUT the path.  A file may be called
+    # "villager83.png", and "villager" is a shipped unit's internal name: matching
+    # inside the path made "图标用 D:\pics\villager83.png" read as a repaint of the
+    # villager instead of an icon for the new unit (measured 2026-10-23,
+    # `_probe/test_ui_nl.py` stayed red until this was `rest`).
+    if vocab is not None and vocab.spans_at(rest):
+        return False
+    return True
+
+
 def _separate_edit(part, vocab=None):
     """Is this piece a request of its own, rather than a fragment of a sentence?
 
@@ -1710,8 +1763,16 @@ def _merge_create_name(pieces, civ_names=None, civ_zh=None, vocab=None):
             # sentence can hand over in a separate piece.
             qual = ((_number(part)[0] is not None and _says_property(part))
                     or _slot_in(part) is not None
-                    or _names_builder(part, vocab, _donor_id_of(prev, vocab)))
-            if (gap or qual) and not _separate_edit(part, vocab):
+                    or _names_builder(part, vocab, _donor_id_of(prev, vocab))
+                    # A path is a fact about the new unit ("图标用 D:\a.png"),
+                    # never a request of its own -- there is nothing else a bare
+                    # path in a creating sentence could mean.  Measured
+                    # 2026-10-23: without this the piece was a separate clause
+                    # and got refused with "没听出你要改哪个东西", so the icon
+                    # silently did not happen.
+                    or _picture_in(part) is not None)
+            if (gap or qual) and not (_separate_edit(part, vocab)
+                                      and not _icon_only(part, vocab)):
                 out[-1] = prev + "，" + part
                 continue
         out.append(part)

@@ -32,6 +32,7 @@ mod would break without it:
 import hashlib
 import json
 import os
+import shutil
 import zlib
 
 from ..dat import parser as P
@@ -349,15 +350,26 @@ def emit_data_mod(mod_dir, dat_bytes, info, thumbnail=None, base_dir=None,
         dat_bytes, _how = P.load_dat(_base_dat)
         dat_carrier = True
 
-    if os.path.exists(mod_dir) and not overwrite:
-        # Refuse rather than merge: silently adding to an existing folder is how
-        # a user ends up shipping someone else's files.
-        if os.listdir(mod_dir):
-            # The page always passes overwrite=True, so this is not the route a
-            # player takes -- but it is one API call away, and a refusal that
-            # speaks English is the same defect however it is reached.
-            raise ModError("这个模组文件夹已经存在，里面还有别的东西：%s。"
-                           "要整个换掉的话，调用时带上 overwrite=True。" % mod_dir)
+    if os.path.exists(mod_dir):
+        if not overwrite:
+            # Refuse rather than merge: silently adding to an existing folder is
+            # how a user ends up shipping someone else's files.
+            if os.listdir(mod_dir):
+                # The page always passes overwrite=True, so this is not the route
+                # a player takes -- but it is one API call away, and a refusal
+                # that speaks English is the same defect however it is reached.
+                raise ModError("这个模组文件夹已经存在，里面还有别的东西：%s。"
+                               "要整个换掉的话，调用时带上 overwrite=True。" % mod_dir)
+        else:
+            # ★ A rebuild must be a REPLACEMENT, not a merge.  Measured
+            # 2026-10-23: a build that put a texture at the wrong relative path
+            # was fixed and rebuilt into the same folder with overwrite=True, and
+            # the stale copy at the old path was still there afterwards -- a mod
+            # that ships two copies of the same picture in two places, one of
+            # them unreachable, and nothing in the manifest says so.  The old
+            # files are also the only thing that can make "which build is
+            # installed" ambiguous.
+            shutil.rmtree(mod_dir, ignore_errors=True)
 
     dat_abs = None
     blob = None

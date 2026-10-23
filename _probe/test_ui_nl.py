@@ -421,6 +421,25 @@ def main():
     check("a property after the name qualifies the new unit",
           len(intents) == 1 and intents[0].get("hp") == 500, intents)
 
+    # A picture path is not a stat.  File names carry digits ("villager83.png")
+    # and the first wiring read hp=83 straight out of the donor's screenshot
+    # name -- a build that succeeded, a unit with the wrong health, and no error
+    # anywhere.  The path has to reach the icon field and leave hp alone.
+    intents, clauses = read(
+        "不列颠照村民做一个新单位，叫铁匠学徒，图标用 D:\\pics\\villager83.png")
+    check("a picture path becomes the icon and is not read as a number",
+          len(intents) == 1
+          and intents[0].get("icon") == "D:\\pics\\villager83.png"
+          and "hp" not in intents[0],
+          (intents, [c.why for c in clauses]))
+
+    # …and a repaint still wins when the piece names what to repaint: the two
+    # readings must not collapse into one.
+    intents, _clauses = read("给村民换张图 D:\\pics\\villager.png")
+    check("a path with an entity in front of it stays a repaint",
+          len(intents) == 1 and intents[0].get("intent") == "unit.art",
+          intents)
+
     # Missing facts are refused, and each refusal names the fact that is missing:
     # a refusal that says "did not understand" here would leave the player with a
     # correct sentence and no idea what to add.

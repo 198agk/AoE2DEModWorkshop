@@ -34,6 +34,7 @@ has no in-game reading.  That is the narrow claim the manifest now makes.
 """
 import copy
 import io
+import json
 import os
 import re
 import shutil
@@ -45,6 +46,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from aoe2mod import api
 from aoe2mod.dat import newunit as NU
+from aoe2mod.dat import parser as P
 from aoe2mod.mod import strings as S
 
 GAME = r"D:\Games\Steam\steamapps\common\AoE2DE"
@@ -127,8 +129,13 @@ def main():
     # The icon warning must not say the icon layer is impossible.  The shipped
     # table does stop at 999, but the record's icon_id is an i16 and a released
     # community mod already ships Units keys up to 2126 with real materials
-    # (measured 2026-10-23, `_probe/tmp_mod_icons_real.py`) -- so the honest
-    # sentence is "this tool does not write that layer yet".
+    # (measured 2026-10-23, `_probe/tmp_mod_icons_real.py`).
+    #
+    # It also must not say "this tool does not write that layer yet" any more:
+    # that stopped being true the same day, when `aoe2mod/game/iconart.py`
+    # learned to ship a DDS plus the merged tables.  A warning describing a
+    # limitation that no longer exists is the same defect as one that invents a
+    # wall -- both send the player to a workaround for nothing.
     #
     # NOTE the argument order: this file's `check(ok, label, detail)` takes the
     # boolean FIRST.  The first version of these three lines passed the label
@@ -138,8 +145,12 @@ def main():
     check(bool(_icon_w), "the icon warning is present", plan.get("warnings"))
     if _icon_w:
         _iw = _icon_w[0]
-        check("还不写" in _iw,
-              "   and it says this tool has not written that layer yet", _iw)
+        check("说要用哪张图" in _iw,
+              "   and it names the missing decision (which picture)", _iw)
+        check("图标用" in _iw,
+              "   and it spells the sentence that would supply one", _iw)
+        check("还不写" not in _iw and "做不到" not in _iw,
+              "   and it no longer claims this tool cannot write that layer", _iw)
         check("模组可以" in _iw,
               "   and it says a mod CAN go past the shipped ids", _iw)
 
@@ -375,6 +386,132 @@ def main():
     check(all(claim.get((b, n), 0) >= 1 for b, n in rows),
           "so the clone sharing its donor's button is the shipped shape",
           [(b, n, claim.get((b, n))) for b, n in rows])
+
+    # ---------------------------------------------------------------- J.
+    # A sidecar icon is THREE files and one rewritten field, and every part of
+    # that is invisible if you only look at the manifest: a build that shipped
+    # the DDS but forgot to widen icons.json produces a mod that loads, a unit
+    # that exists, and an icon that is quietly the donor's.  So this section
+    # reads the emitted files back off disk and follows the chain the engine
+    # follows -- slot -> material -> texture -> file.
+    #
+    # The picture is generated here rather than taken from the repo, because a
+    # pinned path is a fact about this machine and the first run without that
+    # file would fail for the wrong reason.
+    print("--- J. an icon of its own: slot, material, texture, file")
+    icon_slot = None
+    try:
+        from aoe2mod.game import ddstex as DD
+        from aoe2mod.game import iconart as IA
+        from aoe2mod.dat import locate as LL
+
+        side = 256
+        rgba = bytearray()
+        for y in range(side):
+            for x in range(side):
+                # A recognisable pattern, not a flat colour: a decoder that
+                # transposed the rows or swapped R and B would still "succeed"
+                # on a flat fill.
+                rgba += bytes((x % 256, y % 256, (x * y) % 256, 255))
+
+        import PIL.Image  # noqa: F401  (report which writers exist)
+        pic = os.path.join(tempfile.mkdtemp(prefix="newunit_icon_"), "probe.png")
+        from aoe2mod.game import ddstex as _D
+        _D.encode_png(side, side, bytes(rgba)) and None
+        io.open(pic, "wb").write(_D.encode_png(side, side, bytes(rgba)))
+
+        icons_doc, mats_doc = IA.shipped(tk.game_root)
+        art = IA.plan(icons_doc, mats_doc, pic, stem="probe_icon")
+        icon_slot = art["slot"]
+        check(icon_slot >= 1000,
+              "a new icon takes a slot above the shipped 0..999", icon_slot)
+        # The stem is derived from the unit's name; a Chinese name has no ASCII
+        # letters, so the fallback applies.  What matters is that it is a usable
+        # file stem, not which fallback fired.
+        check(bool(re.fullmatch(r"[A-Za-z][A-Za-z0-9_\-]{0,47}", art["material"])),
+              "and the material name is a file-safe stem",
+              art["material"])
+
+        icon_intent = {"intent": "unit.create", "donor": 83, "civ": "British",
+                       "name": "画师学徒", "icon": pic}
+        icon_plan = tk.plan(icon_intent)
+        check(icon_plan.get("icon_slot") == icon_slot,
+              "the preview promises the slot the writer will use",
+              (icon_plan.get("icon_slot"), icon_slot))
+        check(len(icon_plan.get("icon_files") or []) == 3,
+              "and says three files, because the tables are cumulative",
+              icon_plan.get("icon_files"))
+
+        icon_out = tempfile.mkdtemp(prefix="newunit_icon_mod_")
+        iman = tk.build(icon_intent, icon_out, author="dsh", overwrite=True)
+        rels = [f["rel"].replace("\\", "/") for f in iman["files"]]
+        check(any(r.endswith(".dds") for r in rels),
+              "the build ships the picture itself", rels)
+        check("widgetui/icons.json" in rels and "widgetui/materials.json" in rels,
+              "and both whole tables", rels)
+
+        dds_rel = [r for r in rels if r.endswith(".dds")][0]
+        w, h, back = DD.decode(os.path.join(icon_out, dds_rel))
+        check((w, h) == (side, side), "the DDS is the size it claims", (w, h))
+        check(bytes(back) == bytes(rgba),
+              "and decodes back pixel for pixel, not merely 'without error'")
+        check(os.path.getsize(os.path.join(icon_out, dds_rel)) == 128 + side * side * 4,
+              "the file is an uncompressed BGRA DDS, which is what the shipped ones are")
+
+        built_icons = json.load(open(os.path.join(icon_out, "widgetui", "icons.json"),
+                                     encoding="utf-8-sig"))
+        built_mats = json.load(open(os.path.join(icon_out, "widgetui", "materials.json"),
+                                    encoding="utf-8-sig"))
+        # Follow the CHAIN rather than a name this file guessed at: the build
+        # derives the material name from the unit's name, and a Chinese name has
+        # no ASCII letters to keep, so the stem is a fallback.  Asserting the name
+        # here would pin a transliteration rule that is not the point -- the point
+        # is that slot -> material -> texture -> file all land on each other.
+        built_material = built_icons["Units"].get("%03d" % icon_slot)
+        check(bool(built_material),
+              "slot %d points at some material" % icon_slot, built_material)
+        by_name = {m["MaterialDef"]["Name"]: m["MaterialDef"]
+                   for m in built_mats["Materials"]}
+        tex = {t["TextureDef"]["Name"]: t["TextureDef"]
+               for t in built_mats["GlobalTextures"]}
+        check(by_name.get(built_material, {}).get("Type") == "Texture",
+              "that material is a Texture, not an atlas slice",
+              by_name.get(built_material))
+        check(tex.get(built_material, {}).get("FileName") == dds_rel.replace(
+                  "widgetui/", ""),
+              "and its texture names the file that was actually shipped",
+              (tex.get(built_material, {}).get("FileName"), dds_rel))
+
+        shipped_icons, shipped_mats = IA.shipped(tk.game_root)
+        changed = [k for k in shipped_icons["Units"]
+                   if built_icons["Units"].get(k) != shipped_icons["Units"][k]]
+        check(not changed,
+              "not one shipped Units slot was rewritten", len(changed))
+        base_mats = {m["MaterialDef"]["Name"]: m["MaterialDef"]
+                     for m in shipped_mats["Materials"]}
+        lost = [k for k in base_mats if by_name.get(k) != base_mats[k]]
+        check(not lost,
+              "and not one shipped material was rewritten", len(lost))
+
+        # The record itself: read the built .dat with the product's own parser.
+        import contextlib
+        raw2, _how = P.load_dat(os.path.join(
+            icon_out, "resources", "_common", "dat", "empires2_x2_p1.dat"))
+        pr2 = P.Parser(raw2)
+        with contextlib.redirect_stdout(io.StringIO()):
+            pr2.parse()
+        civs2, _cs, _gv, _tail = LL.locate(raw2, parser=pr2)
+        mine = [u for c in civs2 for u in c["units"] if u.get("id") == 30000]
+        check(len(mine) == 1, "exactly one record carries the clone's id", len(mine))
+        check(mine and mine[0].get("icon_id") == icon_slot,
+              "and its icon field is the slot the tables were widened with",
+              (mine[0].get("icon_id") if mine else None, icon_slot))
+        check(iman.get("icon_slot_ok") is True,
+              "the build read the slot back out of the file it wrote",
+              iman.get("icon_slot_written"))
+    except Exception as exc:  # noqa: BLE001 -- a crash here must be a FAIL
+        check(False, "the icon section ran to completion :: %s: %s"
+                      % (type(exc).__name__, exc))
 
     if FAILS:
         print("\nNEW UNIT: %d CHECK(S) FAILED" % len(FAILS))

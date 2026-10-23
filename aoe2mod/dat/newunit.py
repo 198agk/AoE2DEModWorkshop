@@ -73,6 +73,13 @@ TRAIN_BUILDER_OFF = TRAIN_BUTTON_OFF - 2
 # button 0, hotkey 16000).  A 5-byte guess spliced one entry and the stream
 # stopped parsing inside `read_bird` -- that is what a wrong stride looks like.
 TRAIN_ENTRY_BYTES = 9
+# Where the record keeps its icon id.  Derived here, not copied from the parser:
+# walk the fixed prefix (type u8, id i16, 2 x i32 strings, class i16, 2 x i16
+# standing graphic, dying i16, undead i16, undead mode u8, hit points i16, line of
+# sight f32, garrison u8, 3 x f32 collision size, 4 x i16 sounds, 2 x u8, then the
+# i16) = 51.  Checked against the parsed model on 8 shipped units: 8 of 8 agree
+# (83 -> 15, 12 -> 2, 109 -> 28, 2550 -> 540).
+ICON_OFF = 51
 
 
 def unit_spans(raw, gv, civs_start, civ_index):
@@ -114,7 +121,8 @@ def donor_image(raw, gv, civs_start, civ_index, donor_id):
     return raw[start:end]
 
 
-def clone_image(image, new_id, name_string_id=None, hp=None, creation_string_id=None):
+def clone_image(image, new_id, name_string_id=None, hp=None,
+                creation_string_id=None, icon_id=None):
     """Patch a donor image into a new record.
 
     Field offsets are fixed by the record header, which every unit record shares:
@@ -149,7 +157,7 @@ def clone_image(image, new_id, name_string_id=None, hp=None, creation_string_id=
     honest default: it names the donor, which is exactly what the button does.
     """
     img = bytearray(image)
-    if len(img) < 24:
+    if len(img) < 56:
         raise NewUnitError("这份记录太短了（%d 字节），不像是完整的单位记录" % len(img))
     struct.pack_into("<h", img, 1, new_id)
     if name_string_id is not None:
@@ -158,6 +166,10 @@ def clone_image(image, new_id, name_string_id=None, hp=None, creation_string_id=
         struct.pack_into("<i", img, 7, creation_string_id)
     if hp is not None:
         struct.pack_into("<h", img, 22, hp)
+    if icon_id is not None:
+        if not 0 <= icon_id <= 32767:
+            raise NewUnitError("图标号只能是 0..32767，拿到的是 %s" % (icon_id,))
+        struct.pack_into("<h", img, ICON_OFF, icon_id)
     return bytes(img)
 
 
@@ -238,7 +250,7 @@ def free_buttons(civs, civ_index, builder_id, limit=BUTTON_SLOTS):
 
 def add_unit(stats, raw, gv, civs_start, civ_index, donor_id, new_id,
              name_string_id=None, hp=None, creation_string_id=None,
-             button=None, builder=None, civs=None, civ_zh=None):
+             button=None, builder=None, civs=None, civ_zh=None, icon_id=None):
     """Append one clone to ``civ_index``; returns ``(stats, record_dict)``.
 
     ``stats`` is mutated in place and must be a deep copy the caller owns --
@@ -257,6 +269,12 @@ def add_unit(stats, raw, gv, civs_start, civ_index, donor_id, new_id,
     shipped units carry two or more entries, every consecutive pair is exactly 9
     bytes apart, and bumping a count + splicing one 9-byte entry re-parses
     cleanly with zero other records touched, so the format was never the wall.
+
+    ``icon_id`` points the clone at an icon slot the caller has already made
+    exist (``game/iconart`` writes the picture and the two tables).  It is a
+    single i16 at ``ICON_OFF``, so this side of the change is one field; the
+    other side -- a slot that names a real material and a texture behind it --
+    is why the caller cannot just pass any number.
     """
     civ = stats["civs"][civ_index]
     have = {u["id"] for u in civ["units"]}
@@ -273,7 +291,7 @@ def add_unit(stats, raw, gv, civs_start, civ_index, donor_id, new_id,
         pass
     image = donor_image(raw, gv, civs_start, civ_index, donor_id)
     img = clone_image(image, new_id, name_string_id=name_string_id, hp=hp,
-                      creation_string_id=creation_string_id)
+                      creation_string_id=creation_string_id, icon_id=icon_id)
     moved = None
     rebuilt = None
     if button is not None or builder is not None:

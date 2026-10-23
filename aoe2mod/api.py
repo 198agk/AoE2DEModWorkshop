@@ -18,6 +18,7 @@ import contextlib
 import copy
 import io
 import os
+import struct
 
 from .dat import parser as P
 from .dat import locate as L
@@ -985,11 +986,50 @@ class Toolkit(object):
         #     materials.json.
         #
         # So the layer IS writable by a mod; this tool has not written it yet.
-        base["warnings"] = [
-            "新单位的图标就是照着做的那个单位的：这一版的工具还不写图标那层。"
-            "（游戏自己的单位图标表 0..999 已经占满，但模组可以往 1000 以上加 —— "
-            "已装的三国界面模组就加到了 2126，所以这是本工具还没做，不是做不到）",
-        ]
+        # UPDATED 2026-10-23: it writes it now when the sentence names a picture
+        # (`_probe/tmp_iconart_smoke.py` measured the round trip: slot 1000, a
+        # 262,272 B DDS, both tables merged with all 1000 shipped keys and all
+        # 4555 shipped materials intact).  So the answer depends on the request,
+        # and the preview must say which of the two it is.
+        want_icon = r.raw.get("icon")
+        base["warnings"] = []
+        if want_icon:
+            from .game import iconart as IA
+            try:
+                _icons_doc, _materials_doc = IA.shipped(self.game_root)
+                _art = IA.plan(_icons_doc, _materials_doc, want_icon,
+                               stem=r.name, slot=base.get("icon_slot"))
+            except IA.IconError as exc:
+                # The build refuses this too, so the preview has to: a preview
+                # that promises an icon and then dies on a material-name clash
+                # teaches the player to distrust a sentence that was right.
+                base["editable"] = False
+                base["reason"] = str(exc)
+                base["edit_count"] = 0
+                return base
+            base["icon_slot"] = _art["slot"]
+            base["icon_material"] = _art["material"]
+            # Three files, named without building them: the preview must be cheap
+            # (a plan is run on every keystroke in the page) and encoding a
+            # 262,272 B DDS plus merging a 2.5 MB materials table only to count
+            # them would make the sentence feel broken.  `plan()` already
+            # computed these exact paths from the same helper `emit()` uses.
+            base["icon_files"] = sorted([_art["file_rel"].replace(os.sep, "/"),
+                                        _art["icons_rel"].replace(os.sep, "/"),
+                                        _art["materials_rel"].replace(os.sep, "/")])
+            base["description"] += ("，并给它一张自己的图标（图标槽 %d，"
+                                    "外加贴图和两张图标表）" % _art["slot"])
+            base["edit_count"] += 1
+            base["warnings"].append(
+                "图标这一层要发 %d 个文件：一张 256×256 的图片，加上完整合并的"
+                "图标表和材质表（引擎读的是模组里的整份表，不是补丁）。"
+                % len(base["icon_files"]))
+        else:
+            base["warnings"].append(
+                "新单位的图标就是照着做的那个单位的：这句话没说要用哪张图。"
+                "（游戏自己的单位图标表 0..999 已经占满，但模组可以往 1000 以上"
+                "加 —— 已装的三国界面模组就加到了 2126，所以想要自己的图标，"
+                "在句子里说一句「图标用 <图片路径>」就行）")
         if _builders:
             _free = free_by_builder.get(str(_builders[0])) or []
             # The number that will actually be written: the one asked for, or the
@@ -1448,6 +1488,25 @@ class Toolkit(object):
         # the cache would add the unit to this session's model as a side effect of
         # a build that may yet fail.
         stats = copy.deepcopy(self._stats)
+        # The icon layer, when the sentence named a picture.  Built BEFORE the
+        # record because the record only carries the SLOT NUMBER, so the slot has
+        # to be allocated first -- and the slot cannot be allocated without the
+        # merged tables, since the table is what makes a number mean a picture.
+        # A patch would not do: the engine reads the mod's whole file in place of
+        # the game's (measured on a released UI mod that keeps every base key).
+        icon_files = {}
+        icon_id = None
+        if r.raw.get("icon"):
+            from .game import iconart as IA
+            _icons_doc, _materials_doc = IA.shipped(self.game_root)
+            _art = IA.plan(_icons_doc, _materials_doc, r.raw["icon"],
+                           stem=r.name, slot=r.raw.get("icon_slot"))
+            icon_id = _art["slot"]
+            _sw, _sh, _rgba = IA._rgba_from_picture(r.raw["icon"],
+                                                    side=_art["side"])
+            icon_files = IA.emit(_icons_doc, _materials_doc, _art["key"], _rgba,
+                                 side=_art["side"], slot=_art["slot"],
+                                 stem=_art["material"])
         # `civs=self._civs` is required whenever `button` is set: the training
         # slots live on the LOCATED records and are dropped by the parser on the
         # way into `stats` (measured: unit 83 has one train location located,
@@ -1462,7 +1521,8 @@ class Toolkit(object):
                                  builder=r.raw.get("builder"),
                                  civs=self._civs,
                                  civ_zh=CN.chinese(self._civs[civ_index].get("name")
-                                                   or r.civ))
+                                                   or r.civ),
+                                 icon_id=icon_id)
         data, rep = W.serialize_dat(stats, raw=self._raw)
         if rep.get("raw_consumed") != len(self._raw):
             raise C.IntentError(
@@ -1471,11 +1531,15 @@ class Toolkit(object):
         string_files = S.build_files(self.game_root,
                                      [(string_id, r.name),
                                       (creation_id, "生产" + str(r.name))])
+        # One folder, two bins: the strings live outside the DAT storage point,
+        # the icon tables inside it, and a mod is a mod folder, not a bin.
+        _extra = dict(string_files or {})
+        _extra.update(icon_files or {})
         info = E.make_info(title or ("新单位 %s" % r.name), author=author,
                            description=description)
         man = E.emit_data_mod(out_dir, data, info, thumbnail=thumbnail,
                               base_dir=self.game_root, overwrite=overwrite,
-                              json_files=string_files or None)
+                              json_files=_extra or None)
         # The emitted file must survive the game's inflate path and a re-parse,
         # and the new record must be IN it -- a reparse that succeeds on a file
         # without the record would look like the same green.
@@ -1488,6 +1552,25 @@ class Toolkit(object):
         man["reparse_ok"] = p2.r.pos == len(raw2)
         ids2 = {u["id"] for u in stats2["civs"][civ_index]["units"]}
         man["unit_added"] = new_id in ids2
+        # The icon slot must survive too, and it is checked the same way: read the
+        # field back OFF THE EMITTED FILE rather than trusting the number asked
+        # for.  It cannot come from the parsed model -- that model keeps only six
+        # keys per unit (class/hit_points/id/name/task_swap_group/type), so
+        # `u["icon_id"]` is None for every unit and a check written against it
+        # would report failure on a byte-perfect build (measured 2026-10-23).
+        icon_read = None
+        if icon_id is not None:
+            # `civs_start` comes from the ORIGINAL locate on purpose: the pointer
+            # section is fixed-size (one i32 array per civilization), so its offset
+            # is the same number in the emitted file.  What changes is the raw
+            # stream length, which `unit_spans` walks.
+            _spans2 = NU.unit_spans(raw2, self._parsed[3], self._parsed[2],
+                                    civ_index)
+            _span = _spans2.get(new_id)
+            if _span is not None:
+                icon_read = struct.unpack_from("<h", raw2, _span[0] + NU.ICON_OFF)[0]
+            man["icon_slot_written"] = icon_read
+            man["icon_slot_ok"] = (icon_read == icon_id)
         man["new_unit"] = {
             "id": new_id, "name": r.name, "string_id": string_id,
             "creation_string_id": creation_id,
@@ -1498,18 +1581,22 @@ class Toolkit(object):
             "buttons": rec.get("buttons") or [],
             "strings": sorted(string_files) if string_files else [],
         }
+        if icon_id is not None:
+            man["new_unit"]["icon_slot"] = icon_id
+            man["new_unit"]["icon_files"] = sorted(icon_files)
         man["resolved"] = r.describe()
         # Records plus flags, matching the schema's declared count: one appended
         # record and one slot flipped.  A byte count here would not compare
         # against any other intent's edit_count.
-        man["edits"] = 2
-        man["edit_count"] = 2
+        man["edits"] = 3 if icon_id is not None else 2
+        man["edit_count"] = man["edits"]
         man["civs_edited"] = 1
         man["changes_dat"] = True
         man["dat_is_carrier"] = False
         man["mod_contains_dat"] = bool(man.get("dat"))
         man["verification"] = {
-            "ok": bool(man["reparse_ok"] and man["unit_added"]),
+            "ok": bool(man["reparse_ok"] and man["unit_added"]
+                       and (icon_id is None or man["icon_slot_ok"])),
             "why_not_dat": "this intent appends a record instead of patching bytes",
             "reparse_ok": bool(man["reparse_ok"]),
             "unit_record_present": bool(man["unit_added"]),

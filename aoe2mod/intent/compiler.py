@@ -1356,6 +1356,27 @@ def resolve(intent, schema, semantic_index=None, bindings=None):
             raise IntentError("找不到这张图片：%s" % pic)
         intent = dict(intent)
         intent["picture"] = os.path.abspath(pic)
+    # `unit.create`'s optional icon is the same kind of value -- a path on disk,
+    # not an entity -- so it gets the same treatment for the same reason: checked
+    # here so a preview cannot promise a build that then dies on a missing file.
+    # It stays in `intent` (rather than on `Resolved`) because only the two
+    # build/plan methods for `unit.create` read it, and routing it through the
+    # shared object would make every other intent carry a field it has no use for.
+    if "icon" in fields:
+        icon = intent.get("icon")
+        if icon not in (None, ""):
+            if not isinstance(icon, str):
+                raise IntentError("「%s」得是一个图片文件路径，不是%s"
+                                  % (fields["icon"].get("label") or "icon",
+                                     _TYPE_ZH.get(type(icon).__name__,
+                                                  type(icon).__name__)))
+            if not os.path.isfile(icon):
+                raise IntentError("找不到这张图标图片：%s" % icon)
+            intent = dict(intent)
+            intent["icon"] = os.path.abspath(icon)
+        elif "icon" in intent:
+            intent = dict(intent)
+            intent["icon"] = None
     # The wording a user reads comes from the external schema, so adding a
     # stat or a tech intent never means editing Python.  `label` is optional;
     # describe() falls back to the raw field name when the schema has none.

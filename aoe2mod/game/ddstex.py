@@ -178,6 +178,46 @@ def to_png(path, max_side=0):
     return encode_png(w, h, rgba)
 
 
+def encode_bgra(width, height, rgba):
+    """RGBA bytes -> an uncompressed 32-bit DDS the game reads.
+
+    The shipped unit icons split 539 uncompressed / 255 DXT5, so raw BGRA is not
+    a hack around the format -- it is the majority shape.  That matters because
+    this project can compose pixels (it already decodes every icon to RGBA to
+    draw the screen) but has no DXT encoder, and a mod that only needs to draw a
+    square picture does not need one.
+
+    The header is 128 bytes and follows the four masks DDPF_RGB|DDPF_ALPHAPIXELS
+    layout the game's own uncompressed icons use; `decode` reads it back, so the
+    two functions are each other's proof.
+    """
+    if len(rgba) != width * height * 4:
+        raise ValueError("pixel buffer is %d bytes, expected %d for %dx%d"
+                         % (len(rgba), width * height * 4, width, height))
+    head = bytearray(128)
+    head[0:4] = b"DDS "
+    struct.pack_into("<I", head, 4, 124)              # dwSize
+    struct.pack_into("<I", head, 8, 0x00081007)       # caps|height|width|pitch|pf
+    struct.pack_into("<I", head, 12, height)
+    struct.pack_into("<I", head, 16, width)
+    struct.pack_into("<I", head, 20, width * 4)       # linear size
+    struct.pack_into("<I", head, 76, 32)              # pixel format size
+    struct.pack_into("<I", head, 80, 0x41)            # RGB | ALPHAPIXELS
+    struct.pack_into("<I", head, 88, 32)              # bits per pixel
+    struct.pack_into("<I", head, 92, 0x00FF0000)      # R mask
+    struct.pack_into("<I", head, 96, 0x0000FF00)      # G mask
+    struct.pack_into("<I", head, 100, 0x000000FF)     # B mask
+    struct.pack_into("<I", head, 104, 0xFF000000)     # A mask
+    struct.pack_into("<I", head, 108, 0x1000)         # DDSCAPS_TEXTURE
+    # RGBA -> BGRA for the same reason `decode` swaps them.
+    body = bytearray(len(rgba))
+    body[0::4] = rgba[2::4]
+    body[1::4] = rgba[1::4]
+    body[2::4] = rgba[0::4]
+    body[3::4] = rgba[3::4]
+    return bytes(head) + bytes(body)
+
+
 def shrink(width, height, rgba, max_side):
     """Integer box filter to at most `max_side` on the long edge."""
     factor = 1
