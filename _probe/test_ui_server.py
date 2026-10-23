@@ -43,8 +43,8 @@ def check(name, ok, detail=""):
         print("  ok %s" % name)
 
 
-def _get(base, path):
-    with urllib.request.urlopen(base + path, timeout=120) as r:
+def _get(base, path, timeout=120):
+    with urllib.request.urlopen(base + path, timeout=timeout) as r:
         return r.status, r.headers.get("Content-Type", ""), r.read()
 
 
@@ -696,6 +696,47 @@ def main():
         check("rebuilding an unrecorded mod refuses with a reason",
               st == 200 and rb.get("ok") is False and "记录" in (rb.get("error") or ""),
               str(rb)[:200])
+
+        # ---- the routes whose only caller is a button -----------------------
+        # These three had no assertion through the ROUTE at all: their nails
+        # called `App.<method>` directly, so a route that raised on every call
+        # still looked green.  `/api/repair-check` was in fact dead -- it read a
+        # `q` that was never bound in its branch, so the feature's button
+        # returned `NameError` to the screen while `test_repair.py` and
+        # `test_repair_apply.py` passed, because both go through the toolkit.
+        # A route is a different object from the method behind it; this block
+        # is the only place that can tell the difference.
+        st, _ctype, body = _get(base, "/api/ai-meta")
+        ai = json.loads(body.decode("utf-8"))
+        check("the AI entry answers over the route",
+              st == 200 and ai.get("ok") is True, str(ai)[:160])
+        check("and reports its configuration honestly, flat, not nested",
+              ai.get("available") in (True, False) and "writes" in ai,
+              sorted(ai.keys()))
+        if ai.get("available") is False:
+            st, said = _post(base, "/api/ai-sentences", {"text": "随便说一句"})
+            # Assert on the sentence, not the whole body: `_guard` attaches a
+            # `where` traceback on purpose, for whoever debugs this localhost
+            # tool, and the page never renders it.  Scanning the body for the
+            # word would fail on that decision instead of on what the player
+            # reads.
+            check("asking for sentences without a key is a sentence, not a traceback",
+                  said.get("ok") is False
+                  and "Traceback" not in (said.get("error") or "")
+                  and bool(said.get("error")),
+                  (said.get("error") or "")[:160])
+
+        # The repair sweep parses about 12 MB per installed mod -- 16 here, so
+        # tens of seconds on a busy machine.  The default 120 s client timeout
+        # is what the PAGE uses and what a player would abandon, so this asks
+        # for the longer one explicitly rather than measuring patience.
+        st, _ctype, body = _get(base, "/api/repair-check", timeout=900)
+        rep = json.loads(body.decode("utf-8"))
+        check("the repair route answers instead of raising",
+              st == 200 and rep.get("ok") is True,
+              str(rep.get("error"))[:200])
+        check("and its rows come back flat, where the page reads them",
+              isinstance(rep.get("mods"), list), sorted(rep.keys())[:6])
     finally:
         httpd.shutdown()
 

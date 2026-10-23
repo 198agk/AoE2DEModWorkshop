@@ -658,6 +658,16 @@ def make_handler(app):
             if path == "/api/repair-check":
                 # Deliberately NOT part of /api/mods: this parses about 12 MB
                 # per mod, and the mod list is drawn on every page load.
+                #
+                # `q` used to be read here without being bound in this branch --
+                # it is assigned in the sibling branches above, which makes it a
+                # cell variable of the enclosing function, so the lambda raised
+                # `NameError: cannot access free variable 'q'` on every call.
+                # The repair button was therefore dead on arrival for everybody,
+                # and no nail saw it: `test_page_route_contract` only checks the
+                # KEY NAMES the page sends, and `test_ui_server` called
+                # `App.repair_check` directly instead of going through the route.
+                q = _query(self.path)
                 return self._guard(lambda: app.repair_check(
                     profile_root=(q.get("profile_root", [None])[0] or None)))
             return _json(self, {"ok": False, "error": "no such route"}, 404)

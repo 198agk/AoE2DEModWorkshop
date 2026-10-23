@@ -1,14 +1,42 @@
 # -*- coding: utf-8 -*-
-"""Give a new unit an icon that is not the donor's.
+"""Write the bytes for a unit's own icon -- which this game version does not draw.
 
-The warning this module retires said the icon layer was "not implemented": the
-game's own `icons.json` Units section already carries keys 000..999, and a new
-unit has no key of its own.  That was true as a statement about this toolkit and
-false as a statement about the game -- measured 2026-10-23 on a shipped,
-subscribed UI mod (`[UI]7V1_Three Kingdoms`): it widens Units to 2149 keys, of
-which 127 point at real material names (`lt_soldier_unit_000` …), and every one
-of those materials is a *Texture*-type material backed by its own `.dds` under
-`widgetui/textures/ingame/units/`.
+**Read this before trusting the module.**  2026-10-24, eleven builds, each one
+opening a real match and looking at the command card:
+
+    v64  icons.json Units["015"] -> a material only the mod defines   empty box
+    v71  icons.json Units["015"] -> a SHIPPED material                draws fine
+    v69  the same slot -> a Type "Texture" material (the exact shape
+         the published UI mod uses)                                   empty box
+    v70  the same slot -> a brand-new atlas we contribute             empty box
+    v72  the material in `morematerials.json`, no materials.json      empty box
+
+v64 and v71 change the SAME string in the SAME file; the only difference is
+whether that material name exists in the install directory's `materials.json`.
+That pair is the finding: **the icon slot resolves names against the game's own
+material table only.**  A mod's `materials.json` and `morematerials.json` are not
+merged into it, so a material we contribute cannot be the thing a slot draws.
+
+Consequences, said plainly:
+
+* The three files this module emits are correct *as files* (a 256x256 BGRA DDS
+  that decodes back pixel-for-pixel, the slot in `icons.json`, a material and a
+  texture entry).  They are not sufficient, and no arrangement tried so far is.
+* The product therefore treats a requested icon as **accepted but not shown**,
+  and says so in the preview warning.  That warning is the contract, and a nail
+  pins it (`_probe/test_new_unit.py`, `_probe/test_tech_create.py`).
+* Not ruled out: that published UI mods defeat this some other way (their own
+  icons are equally unexplained by the measurements above -- we reproduced their
+  shape field for field and still got an empty button), or that the material must
+  be added to the install directory's `materials.json`.  Until one of those is
+  measured, do not describe this as a capability.
+
+Why the earlier belief was wrong, since it is instructive: the published UI mod
+(`[UI]7V1_Three Kingdoms`) does widen Units to 2149 keys with 127 real material
+names, and each of those materials is a Texture-type material backed by its own
+DDS.  Everything about it reads like the route works.  Reproducing it field for
+field still produced an empty button -- so "a shipped mod does X" was never
+evidence that X is what the engine honours.
 
 The three pieces, each measured rather than assumed:
 

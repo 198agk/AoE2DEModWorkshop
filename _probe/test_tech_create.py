@@ -378,6 +378,17 @@ def main():
     check("and names the three files it will ship",
           len(icon_plan.get("icon_files") or []) == 3,
           json.dumps(icon_plan.get("icon_files"), ensure_ascii=False))
+    # Same contract as the unit side: eleven builds on 2026-10-24 showed the
+    # bytes are right and the game draws an empty box, because an icon slot
+    # resolves material names against the install directory's table only.  The
+    # preview must not read like a promise, and the nail is what keeps a later
+    # reader from turning the warning back into an advertisement.
+    _iw = " ".join(icon_plan.get("warnings") or [])
+    check("and says the game will not draw it, instead of promising a picture",
+          "不会把它画出来" in _iw, _iw[:120])
+    check("and gives the measurement that settles it",
+          "图标用" in _iw or "空框" in _iw or "实测" in _iw, _iw[:120])
+
     check("and the description says it gets its own icon",
           "自己的图标" in (icon_plan.get("description") or ""),
           (icon_plan.get("description") or "")[:160])

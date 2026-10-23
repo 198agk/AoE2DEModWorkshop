@@ -476,6 +476,18 @@ def main():
         check(len(icon_plan.get("icon_files") or []) == 3,
               "and says three files, because the tables are cumulative",
               icon_plan.get("icon_files"))
+        # Eleven builds on 2026-10-24 settled this the hard way: the bytes are
+        # right and the game still draws an empty box, because an icon slot
+        # resolves material names against the install directory's table only.
+        # The preview must therefore never read like a promise.  A nail on the
+        # sentence is the only thing that keeps a later reader from "fixing" the
+        # warning back into an advertisement.
+        _iw = " ".join(icon_plan.get("warnings") or [])
+        check("不会把它画出来" in _iw,
+              "and says the game will not draw it, instead of promising a picture",
+              _iw[:120])
+        check("图标用" in _iw or "空框" in _iw or "实测" in _iw,
+              "and gives the measurement that settles it", _iw[:120])
 
         icon_out = tempfile.mkdtemp(prefix="newunit_icon_mod_")
         iman = tk.build(icon_intent, icon_out, author="dsh", overwrite=True)

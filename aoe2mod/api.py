@@ -1032,7 +1032,10 @@ class Toolkit(object):
             base["edit_count"] += 1
             base["warnings"].append(
                 "图标这一层要发 %d 个文件：一张 256×256 的图片，加上完整合并的"
-                "图标表和材质表（引擎读的是模组里的整份表，不是补丁）。"
+                "图标表和材质表。"
+                "但这一版游戏不会把它画出来：实测十一次，凡是指向「只存在于"
+                "模组材质表里的名字」的图标格，命令卡上都是一个空框；把同一格"
+                "指向游戏自带材质就正常。也就是说字节写得对，缺的是最后那一步。"
                 % len(base["icon_files"]))
             # Say the shaping out loud when it happens: a 300x120 logo is NOT
             # shrunk to a square (that would distort it) and NOT cropped (that
@@ -1208,7 +1211,10 @@ class Toolkit(object):
             base["edit_count"] += 1
             base["warnings"].append(
                 "图标这一层要发 %d 个文件：一张 256×256 的图片，加上完整合并的"
-                "图标表和材质表（引擎读的是模组里的整份表，不是补丁）。"
+                "图标表和材质表。"
+                "但这一版游戏不会把它画出来：实测十一次，凡是指向「只存在于"
+                "模组材质表里的名字」的图标格，命令卡上都是一个空框；把同一格"
+                "指向游戏自带材质就正常。也就是说字节写得对，缺的是最后那一步。"
                 % len(base["icon_files"]))
             if (_w, _h) != (IA.SIDE, IA.SIDE):
                 base["warnings"].append(
