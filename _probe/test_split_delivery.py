@@ -201,6 +201,52 @@ def main():
     check(E.ui_only_path(os.path.join("resources", "_common", "wpfg", "x.xaml")) is False,
           "nor wpfg, where no measurement exists either way")
 
+    print("=== E. uninstalling one half removes the other")
+    # The build output folder is `<name>_ui`, but the INSTALLED folder is named after
+    # the title, and `install()` names the interface half `<base title>（界面）`.  Both
+    # spellings exist in the wild, so the pairing must not assume one.
+    gone = tk.uninstall("dsh test split 分开投递", profile_root=prof)
+    left = [r for r in G.list_mods(prof)
+            if str(r.get("title") or "").startswith("dsh test split")]
+    check(bool((gone.get("paired") or {}).get("mod_dir")),
+          "uninstalling the data half also removed the interface half",
+          gone.get("paired"))
+    check(not left,
+          "and nothing from this build is left installed",
+          [(r.get("title"), r.get("enabled")) for r in left])
+
+    # Reinstall and try the other direction: uninstall the interface half by name.
+    inst2 = tk.install(data_mod, name="dsh test split 分开投递",
+                       title="dsh test split 分开投递", enabled=True, position=3,
+                       profile_root=prof, overwrite=True)
+    check(bool((inst2.get("ui_install") or {}).get("mod_dir")),
+          "the pair installs again for the reverse direction",
+          inst2.get("ui_install"))
+    gone2 = tk.uninstall("dsh test split 分开投递（界面）", profile_root=prof)
+    left2 = [r for r in G.list_mods(prof)
+             if str(r.get("title") or "").startswith("dsh test split")]
+    check(bool((gone2.get("paired") or {}).get("mod_dir")),
+          "uninstalling the interface half also removed the data half",
+          gone2.get("paired"))
+    check(not left2,
+          "so a half is never left overriding tables on its own",
+          [(r.get("title"), r.get("enabled")) for r in left2])
+
+    # A mod with no sibling at all must not invent one: `resolve_mod_name` returns the
+    # name unchanged when nothing matches, so `entries_removed`/`folder_removed` are the
+    # honest signal.
+    lonely = os.path.join(tempfile.mkdtemp(prefix="v86_lonely_"), "mod")
+    os.makedirs(os.path.join(lonely, "widgetui"))
+    open(os.path.join(lonely, "info.json"), "wb").write(
+        b'{"Author":"dsh","CacheStatus":0,"Description":"x","Title":"dsh test lonely"}')
+    tk.install(lonely, name="dsh test lonely", title="dsh test lonely",
+               profile_root=prof, overwrite=True)
+    gone3 = tk.uninstall("dsh test lonely", profile_root=prof)
+    check(gone3.get("paired") is None,
+          "a mod with no other half reports no pair instead of inventing one",
+          gone3.get("paired"))
+    shutil.rmtree(os.path.dirname(lonely), ignore_errors=True)
+
     for d in (pic_dir, prof):
         shutil.rmtree(d, ignore_errors=True)
     shutil.rmtree(os.path.dirname(out), ignore_errors=True)

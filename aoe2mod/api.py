@@ -5608,13 +5608,67 @@ class Toolkit(object):
                 man["ui_install"] = {"why_not": "%s: %s" % (type(exc).__name__, exc)}
         return man
 
+    @staticmethod
+    def _halves_of(folder):
+        """Every name the OTHER half of a split build can have on disk.
+
+        The build output folder is `<name>_ui` (see `E.UI_FOLDER_SUFFIX`), but
+        `install()` names the installed mod after its title, and the interface
+        title is `<base title> + "（界面）"`.  Both spellings are real, so both are
+        offered and the caller keeps whichever one the status file confirms.
+        """
+        suffix = E.UI_FOLDER_SUFFIX
+        out = []
+        if not folder:
+            return out
+        if folder.endswith(suffix) and len(folder) > len(suffix):
+            out.append(folder[:-len(suffix)])
+        else:
+            out.append(folder + suffix)
+        ui_word = "\uff08\u754c\u9762\uff09"
+        if folder.endswith(ui_word) and len(folder) > len(ui_word):
+            out.append(folder[:-len(ui_word)])
+        else:
+            out.append(folder + ui_word)
+        return out
+
     def uninstall(self, name, kind="local", profile_root=None, account=None,
                   remove_files=True):
-        """Remove an installed mod from the profile and the status file."""
+        """Remove an installed mod -- and the other half, when the build was split.
+
+        A build that ships a `.dat` installs TWO mods (`X` and `X` + "\uff08\u754c\u9762\uff09").
+        Removing one name used to leave the other behind, and the half that
+        survived was the one carrying `widgetui/icons.json` and
+        `widgetui/materials.json` -- an interface mod overriding the icon tables
+        for a build that no longer exists, with nothing on screen saying so.
+        Measured 2026-10-24: after uninstalling the data half by name, the
+        interface half was still installed with its 3 widgetui files.
+
+        Both directions are paired.  Removing the `_ui` folder alone leaves a
+        data mod with no icons, which is exactly the state the split exists to
+        avoid, so it is not "safer" to remove one.
+        """
         from .game import locations as G
         prof = profile_root or G.find_profile_root()
-        return G.uninstall_mod(prof, name, kind=kind, account=account,
-                               remove_files=remove_files)
+        first = G.uninstall_mod(prof, name, kind=kind, account=account,
+                                remove_files=remove_files)
+        folder = first.get("name") or ""
+        paired = None
+        for sibling in self._halves_of(folder):
+            try:
+                gone = G.uninstall_mod(prof, sibling, kind=kind, account=account,
+                                       remove_files=remove_files)
+                # `resolve_mod_name` returns the name unchanged when nothing
+                # matched, and then `entries_removed`/`folder_removed` are both
+                # falsy -- so a mod that simply has no other half reports
+                # nothing instead of inventing one.
+                if gone.get("entries_removed") or gone.get("folder_removed"):
+                    paired = gone
+                    break
+            except Exception as exc:                   # noqa: BLE001
+                paired = {"why_not": "%s: %s" % (type(exc).__name__, exc)}
+        first["paired"] = paired
+        return first
 
     def set_mod_enabled(self, name, enabled, kind="local",
                         profile_root=None, account=None):
