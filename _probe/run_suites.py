@@ -315,6 +315,13 @@ SUITES = [
     # files that are named test_* but are measurements -- declared, with reasons,
     # and checked for staleness.
     r"_probe\probe_suite_registry.py",
+    # The pair a split build becomes on screen.  `list_mods` returns two rows and the
+    # page drew them as unrelated entries: two switches for one decision, and
+    # switching one alone is the state measured to draw no icon while looking fine.
+    # Pure naming rule over rows, so it needs no game data -- the cases that matter
+    # are the ones a screen cannot show (an orphan half, a title that really ends in
+    # the word).
+    r"_probe\test_pair_rows.py",
 ]
 
 # Suites that are not Python.  The screen's script is JavaScript and no Python
@@ -326,6 +333,22 @@ NODE_SUITES = [
 ]
 
 fails = []
+TOTAL = len(SUITES) + len(NODE_SUITES)
+DONE = [0]
+
+
+def _tick():
+    """Print the position in the WHOLE run, not in whichever list we are in.
+
+    A bare `exit=0` line tells nobody whether the next suite takes two seconds or
+    three minutes, and this run has both kinds.  The counter is the only thing on
+    this output a human can use to decide whether to wait.
+    """
+    DONE[0] += 1
+    sys.stdout.write("[%d/%d] " % (DONE[0], TOTAL))
+    sys.stdout.flush()
+
+
 for rel in SUITES:
     path = os.path.join(ROOT, rel)
     env = dict(os.environ, PYTHONIOENCODING="utf-8")
@@ -343,6 +366,7 @@ for rel in SUITES:
     bad = p.returncode != 0 or _FAIL_RE.search(out) is not None
     if bad:
         fails.append(rel)
+    _tick()
     print("%-46s exit=%d  %s" % (os.path.basename(rel), p.returncode,
                                  verdict[:96]))
     if bad:
@@ -366,6 +390,7 @@ for rel in NODE_SUITES:
     bad = p.returncode != 0 or _FAIL_RE.search(out) is not None
     if bad:
         fails.append(rel)
+    _tick()
     print("%-46s exit=%d  %s" % (os.path.basename(rel), p.returncode,
                                  verdict[:96]))
     if bad:
