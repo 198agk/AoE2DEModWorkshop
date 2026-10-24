@@ -340,6 +340,15 @@ SUITES = [
     # installed into `_vendor`, then a real window opened -- the same sentence was
     # true, then false, which is why it is measured instead of repeated).
     r"_probe\test_window_mode.py",
+    # The arithmetic of a mirrored field.  `dat_bindings.json` describes the
+    # mirror in prose ("moves both by the same DELTA and never copies the
+    # value"); this suite is that sentence with numbers attached.  It exists
+    # because the first version of it was VACUOUS and stayed green while the
+    # mirror was broken to copy the value -- it checked cavalry, and British
+    # cavalry has 0 records whose two fields diverge, so it was asserting a
+    # property of records nothing had written.  The gap check now edits archers
+    # (3 divergent members) and first asserts those records were written at all.
+    r"_probe\test_class_mirror.py",
 ]
 
 # Suites that are not Python.  The screen's script is JavaScript and no Python
