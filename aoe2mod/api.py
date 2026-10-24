@@ -5558,6 +5558,33 @@ class Toolkit(object):
             PV.note_installed(man)
         except Exception as exc:                       # noqa: BLE001
             man["provenance"] = {"why_not": "%s: %s" % (type(exc).__name__, exc)}
+
+        # A build that ships a `.dat` gets its `widgetui` layer moved into a
+        # sibling folder, because a data folder that carries both is read as a
+        # data mod only and the icon tables are then never loaded (measured
+        # 2026-10-24: five runs empty, one split run drawing).  Installing the
+        # data half alone would make that split actively harmful, so the second
+        # half is installed here, right next to it.
+        ui_dir = mod_dir.rstrip("\\/") + E.UI_FOLDER_SUFFIX
+        if os.path.isdir(ui_dir) and os.path.isfile(os.path.join(ui_dir,
+                                                                 "info.json")):
+            try:
+                ui_info = E.read_info_json(os.path.join(ui_dir, "info.json"))
+                ui_title = (ui_info or {}).get("Title") or (title or "") + "（界面）"
+                ui_man = G.install_mod(ui_dir, prof,
+                                       name=ui_title,
+                                       title=ui_title, kind=kind,
+                                       enabled=enabled,
+                                       position=position + 1,
+                                       account=account, overwrite=overwrite)
+                man["ui_install"] = {
+                    "mod_dir": ui_dir,
+                    "name": ui_title,
+                    "priority": ui_man.get("priority"),
+                    "files": ui_man.get("files"),
+                }
+            except Exception as exc:                   # noqa: BLE001
+                man["ui_install"] = {"why_not": "%s: %s" % (type(exc).__name__, exc)}
         return man
 
     def uninstall(self, name, kind="local", profile_root=None, account=None,

@@ -585,4 +585,166 @@ def emit_data_mod(mod_dir, dat_bytes, info, thumbnail=None, base_dir=None,
                     "钉在今天的内容上：以后游戏更新它时，这个模组会把它悄悄改回去。"
                     "要改就改出真实差异，不改就别把它放进模组：%s"
                     % (len(redundant), "、".join(redundant)))
+
+    # --- the widgetui layer travels in its own folder -------------------
+    # Measured eleven times on 2026-10-24: a folder that carries a real `.dat` and
+    # `widgetui/` is loaded as a data mod and the widgetui half is ignored -- five
+    # builds drew an empty icon box that way, and the same bytes split into two
+    # folders drew the picture.  Everything else measured so far may share the
+    # folder (strings: the published `1233 For Stephen Chow` and this project's own
+    # `out_v27`; sprites: WAIFor and Red Alert 2), so only widgetui moves.
+    if manifest.get("dat"):
+        split = split_ui_layer(mod_dir, info)
+        if split:
+            moved = set(r.replace("/", os.sep) for r in split["moved"])
+            manifest["ui_mod_dir"] = split["ui_dir"]
+            manifest["ui_info"] = split["info"]
+            manifest["ui_files"] = split["moved"]
+            manifest["files"] = [f for f in manifest.get("files") or []
+                                 if f.get("rel", "").replace("/", os.sep) not in moved]
+            _rels2 = [f["rel"] for f in manifest["files"]]
+            _layers2 = []
+            if any(r.endswith(".dat") for r in _rels2):
+                _layers2.append("dat")
+            if any(r.endswith(".sld") for r in _rels2):
+                _layers2.append("sld")
+            if any("/strings/key-value/" in r for r in _rels2):
+                _layers2.append("strings")
+            if any(r.startswith("resources/_common/wpfg/") for r in _rels2):
+                _layers2.append("wpfg")
+            if any(r.endswith(".json") and r != "info.json" for r in _rels2):
+                _layers2.append("json")
+            manifest["layers"] = _layers2
+            manifest.setdefault("notes", []).append(
+                "界面层（widgetui）已经单独打成一个模组：%s。"
+                "实测：和数据模组装在同一个文件夹里时，界面层会被游戏忽略"
+                "（命令卡上是一个空框），拆成两个模组就正常。装的时候两个都要启用。"
+                % os.path.basename(split["ui_dir"]))
+            if manifest.get("warnings"):
+                manifest["warnings"].insert(0,
+                    "这个构建要发两个模组文件夹：数据半边带 .dat，界面半边带 "
+                    "widgetui。两个都必须启用，只启用数据那个的话图标不会出现。")
+            else:
+                manifest["warnings"] = [
+                    "这个构建要发两个模组文件夹：数据半边带 .dat，界面半边带 "
+                    "widgetui。两个都必须启用，只启用数据那个的话图标不会出现。"]
     return manifest
+
+
+# ---------------------------------------------------------------------------
+# The UI layer has to travel in its OWN folder.
+#
+# Measured eleven times in game on 2026-10-24: a folder that carries a real `.dat`
+# AND `widgetui/` is loaded as a data mod, and the widgetui half is ignored -- five
+# separate builds drew an empty icon box that way, and the same bytes split into two
+# folders drew the picture.  The engine's own storage table agrees about the
+# asymmetry: of the 28 storage points in `modes/Pompeii/Pompeii.json`, exactly one
+# carries `use_modes_path_for_mods: true`, and it is `resources\_common\dat`.
+#
+# What is NOT split, and why: `.sld` sprites.  WAIFor Arcade ships 662 of them and
+# Red Alert 2 ships 304, both in the SAME folder as their `.dat`, and both render in
+# game.  The SPRITES storage point tolerates sharing; widgetui and the locale string
+# tables do not.
+
+UI_FOLDER_SUFFIX = "_ui"
+
+
+def ui_only_path(rel):
+    r"""True for paths that must travel in their own mod folder when a `.dat` is present.
+
+    ONLY the `widgetui` folder.  The rule is narrower than it first looked, and both
+    corrections came from counter-examples rather than from theory:
+
+      * `resources\<locale>\strings\key-value\*` stays put -- the published
+        `1233 For Stephen Chow` ships a 12 MB `.dat` next to two 19,677 B string
+        tables in one folder and its text renders, and this project's own
+        `out_v27` has the same shape with 17 locales.
+      * `resources\_common\drs\graphics\*.sld` stays put -- WAIFor Arcade (662
+        `.sld`) and Red Alert 2 (304) both keep sprites in the same folder as their
+        `.dat` and both render in game.
+
+    `widgetui\` is the one layer that is silently dropped when the folder also
+    carries a `.dat`: five builds drew an empty icon box that way on 2026-10-24, and
+    the same bytes split into two folders drew the picture (v83).
+
+    `resources\_common\wpfg\` is deliberately NOT moved either way: no mod on this
+    machine pairs it with a `.dat` and no run has measured it, so moving it would be
+    a guess wearing the costume of a rule.
+    """
+    low = rel.replace("/", os.sep)
+    return low.startswith("widgetui" + os.sep)
+
+
+def split_ui_layer(mod_dir, info=None, suffix="（界面）"):
+    """Move the UI-only files out of ``mod_dir`` into ``mod_dir + "_ui"``.
+
+    Returns ``{"ui_dir", "moved", "kept", "info"}`` when a split happened, or
+    ``None`` when there was nothing to split (no `.dat`, or no UI files) -- because
+    a folder that only changes one layer is already correct and copying it would
+    make the player install two mods for one sentence.
+
+    Both halves get an `info.json`.  The UI half's title gets ``suffix`` appended and
+    is fitted to the engine's 100-byte ceiling, because a title that overflows is the
+    one thing that makes a mod silently do nothing.
+    """
+    if not mod_dir or not os.path.isdir(mod_dir):
+        return None
+    ui_files = []
+    kept = []
+    has_dat = False
+    for dirpath, _dirnames, filenames in os.walk(mod_dir):
+        for name in filenames:
+            full = os.path.join(dirpath, name)
+            rel = os.path.relpath(full, mod_dir)
+            if rel == "info.json" or rel == "thumbnail.png" or rel == "thumbnail.jpg":
+                continue
+            if rel.endswith(".dat") and os.sep + "_common" + os.sep in rel:
+                has_dat = True
+            if ui_only_path(rel):
+                ui_files.append(rel)
+            else:
+                kept.append(rel)
+    if not ui_files or not has_dat:
+        return None
+
+    ui_dir = mod_dir + UI_FOLDER_SUFFIX
+    if os.path.isdir(ui_dir):
+        shutil.rmtree(ui_dir, ignore_errors=True)
+    os.makedirs(ui_dir, exist_ok=True)
+    moved = []
+    for rel in ui_files:
+        src = os.path.join(mod_dir, rel)
+        dst = os.path.join(ui_dir, rel)
+        os.makedirs(os.path.dirname(dst), exist_ok=True)
+        shutil.copyfile(src, dst)
+        os.remove(src)
+        moved.append(rel.replace(os.sep, "/"))
+
+    # prune folders the move emptied, so the data folder does not ship an empty
+    # `widgetui` tree that says "this mod touches the interface" when it does not
+    for rel in moved:
+        folder = os.path.dirname(os.path.join(mod_dir, rel))
+        while folder and os.path.abspath(folder) != os.path.abspath(mod_dir):
+            try:
+                if os.listdir(folder):
+                    break
+                os.rmdir(folder)
+            except OSError:
+                break
+            folder = os.path.dirname(folder)
+
+    base_info = dict(info or {})
+    for name in ("thumbnail.png", "thumbnail.jpg"):
+        thumb = os.path.join(mod_dir, name)
+        if os.path.isfile(thumb):
+            shutil.copyfile(thumb, os.path.join(ui_dir, name))
+            break
+    title = base_info.get("Title") or os.path.basename(mod_dir)
+    ui_info = dict(base_info)
+    ui_info["Title"] = _fit_title(title + suffix)
+    if base_info.get("Description"):
+        ui_info["Description"] = base_info["Description"] + "（界面部分）"
+    with open(os.path.join(ui_dir, "info.json"), "w", encoding="utf-8",
+              newline="\n") as fh:
+        json.dump(ui_info, fh, ensure_ascii=False, separators=(",", ":"))
+    return {"ui_dir": ui_dir, "moved": moved, "kept": len(kept), "info": ui_info}
