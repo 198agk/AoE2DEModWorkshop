@@ -1479,6 +1479,32 @@ def read_clause(text, vocab, civ_names=None, civ_zh=None, pins=None,
                 cl.why = ("「对%s」要改的是攻击还是护甲？说「攻击」或「护甲」"
                           % cname)
                 return cl
+            if class_edit is not None:
+                # A class-wide bonus edit is refused HERE, with a sentence that
+                # says why, because the alternative was measured on 2026-10-25:
+                # building `{"unit": None, "class_id": 0}` made `plan()` answer
+                # 「这个版本里没有叫「None」的单位」 -- a refusal that names a key
+                # the player never typed, which is the wrong-shape answer this
+                # project has paid for repeatedly.
+                #
+                # The real obstacle is not a flag.  A bonus row is a fixed
+                # 4-byte entry and a record stores only the rows it already
+                # has, so "give every cavalry record a vs-Archer row" changes
+                # each record's length and shifts every record after it.  The
+                # coverage numbers below are from the shipped .dat (British):
+                # cavalry carry the vs-Archer row 0 of 189 times, the base
+                # attack row 6 of 189, base melee 183 of 189 -- and a class
+                # sentence that writes 183 of 189 records is exactly the
+                # half-answer this project keeps paying for.
+                cl.why = ("「%s」整类改「对%s的%s」还做不到：这一行只存在于它"
+                          "本来就有的记录上，不是所有%s都有（实测：骑兵里带"
+                          "「对弓箭手」行的 0 条，带基础攻击行的 6 条）。"
+                          "点名一个单位能改，或者说「所有%s血量加10」这类"
+                          "整类属性 —— 那个每个记录都存。"
+                          % (class_edit[1], cname,
+                             "攻击" if is_attack else "护甲",
+                             class_edit[1], class_edit[1]))
+                return cl
             cl.intent = {"intent": "unit.attack_class", "unit": eid,
                          "class_id": cid,
                          "kind": "attack" if is_attack else "armour"}

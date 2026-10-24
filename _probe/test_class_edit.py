@@ -227,6 +227,85 @@ def main():
     check("and it is not a class edit", "unit_class" not in (intent or {}),
           "got %r" % (intent,))
 
+    print("=== G. a class-wide ATTACK edit reaches every record's damage row")
+    # 「所有骑兵攻击加2」 is a class edit of `displayed_attack`, and that field has
+    # a MIRROR onto the attack entry the damage maths reads
+    # (schema/dat_bindings.json: attack_entry, class_candidates [3, 4]).  So this
+    # needs no new mechanism -- which is exactly why it must be pinned: the mirror
+    # picks "the first candidate this record carries", and measured 2026-10-25 no
+    # single row is on all 189 British cavalry records (row 4 on 183, row 3 on 6).
+    # A record that moved the displayed number and not the damage row is the
+    # "panel says 10, arrow hits for 4" record the game never ships.
+    atk_intent, atk_clause = one("所有骑兵攻击加2", vocab, tk)
+    check("a class attack sentence is read as a class edit",
+          (atk_intent or {}).get("unit_class") == 12
+          and (atk_intent or {}).get("stat") == "displayed_attack",
+          "got %r" % (atk_intent,))
+    atk_man = tk.build(dict(atk_intent), os.path.join(out_root, "attack"),
+                       title="class attack pin", author="dsh", overwrite=True)
+    check("and it builds", atk_man.get("verification", {}).get("ok") is True,
+          "ok=%r" % (atk_man.get("verification", {}).get("ok"),))
+    from aoe2mod.game import locations as G
+    atk_path = os.path.join(atk_man["mod_dir"], G.DAT_REL)
+
+    def attack_snapshot(path):
+        raw, _how = P.load_dat(path)
+        pr = P.Parser(raw)
+        with contextlib.redirect_stdout(io.StringIO()):
+            pr.parse()
+        civs, _s, _g, _t = L.locate(raw, parser=pr)
+        out = {}
+        for civ in civs:
+            for u in civ["units"]:
+                t50 = u.get("type50") or {}
+                out[(civ["index"], u["id"])] = (
+                    t50.get("displayed_attack"),
+                    dict((int(a["class"]), int(a["amount"]))
+                         for a in (t50.get("attacks") or ())))
+        return out
+
+    before_atk = attack_snapshot(tk.dat_path)
+    after_atk = attack_snapshot(atk_path)
+    brit = next(c["index"] for c in tk._civs if c.get("name") == "British")
+    cav = sorted({u["id"] for c in tk._civs if c.get("name") == "British"
+                  for u in c["units"] if tk.unit_class(u["id"]) == 12})
+    both = one_side = 0
+    first_side = None
+    for uid in cav:
+        k = (brit, uid)
+        d0, r0 = before_atk[k]
+        d1, r1 = after_atk[k]
+        dmoved = d0 is not None and d1 is not None and (d1 - d0) == 2
+        row_moved = False
+        for cand in (3, 4):
+            if cand in r0:
+                row_moved = (cand in r1) and (r1[cand] - r0[cand]) == 2
+                break
+        if dmoved and row_moved:
+            both += 1
+        else:
+            one_side += 1
+            first_side = first_side or (uid, d0, d1, r0, r1)
+    check("every cavalry record moved its displayed attack AND its damage row",
+          both == len(cav) and one_side == 0,
+          "both=%d one_side=%d of %d; first=%r"
+          % (both, one_side, len(cav), first_side))
+
+    print("=== H. a class-wide BONUS row is refused, with real numbers")
+    # 「所有骑兵对弓箭手攻击加2」 asks for a row 0 of 189 cavalry records carry.
+    # Before 2026-10-25 the reader emitted `{"unit": None, "class_id": 0}`, and
+    # `plan()` answered 「这个版本里没有叫「None」的单位」 -- a refusal that names a
+    # key the player never typed.  The refusal must name the obstacle instead.
+    for text in ("所有骑兵对弓箭手攻击加2", "所有骑兵对弓箭手护甲加1"):
+        _bi, bc = one(text, vocab, tk)
+        check("「%s」 is refused" % text, bc.intent is None, "got %r" % (bc.intent,))
+        check("and the words do not quote a key the player never typed",
+              "None" not in (bc.why or ""), bc.why)
+        check("and they say the row only exists where the record stores it",
+              "本来就有的记录" in (bc.why or ""), bc.why)
+        check("and they offer the way that works",
+              "血量" in (bc.why or ""), bc.why)
+
     shutil.rmtree(out_root, ignore_errors=True)
     print()
     if FAILS:
