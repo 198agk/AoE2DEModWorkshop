@@ -176,3 +176,8 @@ _probe/_repair_replay/
 _probe/_install_backup/
 _probe/ab_atlas.json
 _probe/noise_floor.json
+_probe/_v74_icons/
+_probe/_v85_pics/
+_probe/out_v6*/
+_probe/out_v7*/
+_probe/out_v8*/
