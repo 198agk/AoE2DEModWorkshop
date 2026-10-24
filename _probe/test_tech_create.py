@@ -386,8 +386,10 @@ def main():
     _iw = " ".join(icon_plan.get("warnings") or [])
     check("and says the game will not draw it, instead of promising a picture",
           "不会把它画出来" in _iw, _iw[:120])
-    check("and gives the measurement that settles it",
-          "图标用" in _iw or "空框" in _iw or "实测" in _iw, _iw[:120])
+    check("and names the baked table as the reason, not a blank",
+          "空框" in _iw and ("定死" in _iw or "烘焙" in _iw), _iw[:120])
+    check("and no longer says the missing piece is unidentified",
+          "缺的是最后那一步" not in _iw, _iw[:120])
 
     check("and the description says it gets its own icon",
           "自己的图标" in (icon_plan.get("description") or ""),

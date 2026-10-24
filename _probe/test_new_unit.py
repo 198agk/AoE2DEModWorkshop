@@ -486,8 +486,12 @@ def main():
         check("不会把它画出来" in _iw,
               "and says the game will not draw it, instead of promising a picture",
               _iw[:120])
-        check("图标用" in _iw or "空框" in _iw or "实测" in _iw,
-              "and gives the measurement that settles it", _iw[:120])
+        check("空框" in _iw and ("定死" in _iw or "烘焙" in _iw),
+              "and names the baked table as the reason, not a blank",
+              _iw[:120])
+        check("缺的是最后那一步" not in _iw,
+              "and no longer says the missing piece is unidentified",
+              _iw[:120])
 
         icon_out = tempfile.mkdtemp(prefix="newunit_icon_mod_")
         iman = tk.build(icon_intent, icon_out, author="dsh", overwrite=True)
