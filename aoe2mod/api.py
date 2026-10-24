@@ -3662,9 +3662,18 @@ class Toolkit(object):
         # preview cannot promise a narrower scope than the build performs.  For a
         # building that means its whole age-variant family, not just the one
         # record the name happened to resolve to.
-        fam, hits = C.unit_targets(self._civs, r.entity.id, allowed, self._stats,
-                                   self.game_root)
-        ids = sorted({u["id"] for _, _, u in hits})
+        #
+        # A CLASS edit takes the other branch: it names no record at all, and the
+        # family rule must NOT be applied on top of it -- the class IS the scope
+        # the user asked for, and expanding further would edit past it.
+        if r.unit_class is not None:
+            fam = []
+            ids, hits = C.unit_targets_for_class(self._civs, r.unit_class,
+                                                 allowed)
+        else:
+            fam, hits = C.unit_targets(self._civs, r.entity.id, allowed,
+                                       self._stats, self.game_root)
+            ids = sorted({u["id"] for _, _, u in hits})
         # Count the records that can actually carry this field, not the records
         # we looked at: a Barracks has no base attack, so "252 edits" for
         # "Barracks attack +1" would promise work the build then refuses.
@@ -3736,7 +3745,13 @@ class Toolkit(object):
             base["editable"] = True
             base["changes_dat"] = True
         # Only worth mentioning when the edit really spans more than one record.
-        if len(fam) > 1:
+        # A class edit always does, and says how wide in its own keys rather than
+        # pretending one record's variants are the story.
+        if r.unit_class is not None:
+            base["unit_class"] = r.unit_class
+            base["unit_class_name"] = C.class_label(r.unit_class)
+            base["member_count"] = len(ids)
+        elif len(fam) > 1:
             base["variants"] = [i for i in fam if i != r.entity.id]
             base["unit_ids"] = ids
             # Same reason as `describe()`: the family can span several task-swap
@@ -3953,6 +3968,19 @@ class Toolkit(object):
         # a test reading man["edit_count"] died with a KeyError).
         man["edit_count"] = len(rep["edits"])
         man["civs_edited"] = rep["civs_edited"]
+        # A CLASS edit has no entity id and a scope the preview quotes, so the
+        # build has to hand back the same keys -- a caller comparing plan
+        # against build found `member_count` missing here while the preview
+        # advertised 28 (measured 2026-10-24 on 平民).
+        #
+        # Read from `rep`, not from a `Resolved` local: this tail of the
+        # function is the in_place_patch path, which never binds `r` (the first
+        # version referenced it and died with UnboundLocalError on every class
+        # build), and `compile_intent` already carries the class through.
+        if rep.get("unit_class") is not None:
+            man["unit_class"] = rep["unit_class"]
+            man["unit_class_name"] = rep.get("unit_class_name")
+            man["member_count"] = rep.get("member_ids")
         return man
 
     def _plan_toggle_group(self, r, base):
@@ -5204,6 +5232,29 @@ class Toolkit(object):
                               base_dir=self.game_root, overwrite=overwrite,
                               json_files=json_files or None)
         man["resolved"] = [r.describe() for r in resolved_list]
+        # A bundle is the path the screen actually uses -- the page always posts
+        # a list, even for one sentence -- so the width the preview promised has
+        # to be here too.  Measured 2026-10-25: `build_bundle` of 「所有平民血量
+        # 加5」 reported `edit_count 1764` and no `member_count` at all, so a
+        # caller comparing the preview against the build saw the width vanish
+        # and could not tell a 28-record edit from a 1,764-record one.  That is
+        # the same defect the single-sentence path had before 2026-10-24.
+        _class_res = [r for r in resolved_list
+                      if getattr(r, "unit_class", None) is not None]
+        if _class_res:
+            man["unit_class"] = _class_res[0].unit_class
+            man["unit_class_name"] = C.class_label(_class_res[0].unit_class)
+            man["member_count"] = len(
+                C.class_member_ids(civs, _class_res[0].unit_class))
+            # More than one class in one bundle: name them all rather than
+            # letting the first one speak for the rest.
+            if len({r.unit_class for r in _class_res}) > 1:
+                man["unit_classes"] = [{"unit_class": r.unit_class,
+                                        "unit_class_name": C.class_label(
+                                            r.unit_class),
+                                        "member_count": len(
+                                            C.class_member_ids(civs, r.unit_class))}
+                                       for r in _class_res]
         # Both halves, summed: the byte patcher's edits plus the `.dat` recipe
         # every availability grant ran.  Reporting only the first is how a bundle
         # promised 0 changed bytes and shipped 5.

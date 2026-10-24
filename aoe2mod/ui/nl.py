@@ -81,6 +81,13 @@ REVOKE_WORDS = ("不能造", "禁用", "禁止", "取消", "去掉", "移除", "
 
 TECH_HINTS = ("科技", "研究", "研发", "技术")
 
+# "所有骑兵血量加10" vs "骑兵的血量加10": the first one means the whole class, the
+# second one mistook a category for a unit.  Only these words turn a class name
+# into a deliberate scope -- and they must not overlap GRANT_WORDS/REVOKE_WORDS,
+# because 全部 appearing in "全部解锁骑兵" is a grant, not a class edit.
+ALL_CLASS_WORDS = ("所有", "全部", "每个", "每一", "整类", "这一类", "这类",
+                   "全体", "统统", "都改")
+
 # The intent ids THIS module can emit.  A plugin can add an intent to the
 # schema (2026-10-23) and the page lists everything in the schema under
 # "能做的事" -- so without this set the screen advertises a capability no
@@ -1233,33 +1240,81 @@ def read_clause(text, vocab, civ_names=None, civ_zh=None, pins=None,
     # 弓箭手 (the most natural sentence in Chinese, and not a unit name at all)
     # because we cannot look up its class would be worse than the old reading.
     cw = _class_word(raw, class_names(), sps) if unit_class is not None else None
+    # A class edit is the OTHER half of this gate: 骑兵 alone is a category and
+    # must be refused, but 「所有骑兵血量加10」 names the whole category ON
+    # PURPOSE and is a perfectly writable sentence.  What separates them is a
+    # word that says "all of them"; without one the player meant one unit and
+    # said the class name by mistake.
+    #
+    # Measured 2026-10-24: 步兵 is 217 ids / 13,671 records and one pass writes
+    # the whole thing in 30 s, so refusing these was a limit of the tool, not of
+    # the game.
+    class_edit = None
     if cw is not None:
         cid, cname = cw
         exact = any(_norm(t) == cname for _e, t, _k, _g in spans)
         same_class = (kind == "unit" and ent is not None and unit_class is not None
                       and unit_class(_eid(ent)) == cid)
         if not (exact or same_class):
-            more, total = _class_members(vocab, cid, unit_class)
-            cl.kind = "unit"
-            cl.entity = None
-            cl.candidates = more
-            cl.class_word = cname
-            cl.why = "「%s」是一类单位，不是某一个" % cname
-            if total:
-                cl.why += ("（这一类里有 %d 个单位）。说具体名字，"
-                           "或者从下面点一个" % total)
+            wants_all = any(w in low for w in ALL_CLASS_WORDS)
+            if wants_all and not any(w in low for w in GRANT_WORDS + REVOKE_WORDS):
+                # Two amounts in one clause means two edits joined by 和, which
+                # this reader has never split ("村民血量加10和弓箭手攻击力加5"
+                # comes back as one clause too).  Without this guard the class
+                # path would APPLY THE FIRST ONE and drop the second -- a
+                # confident half-answer, which is the worst shape here.
+                if len(_NUM_RE.findall(_strip_names(raw, ent) if ent is not None
+                                       else raw)) > 1:
+                    cl.kind = "unit"
+                    cl.entity = None
+                    cl.candidates = []
+                    cl.class_word = cname
+                    cl.why = ("这句话里有两个数字，一次说一句：整类改动请用逗号"
+                              "或句号分开写（例如「所有步兵血量加10，所有骑兵"
+                              "攻击力加5」）")
+                    return cl
+                class_edit = (cid, cname)
+                cl.class_word = cname
+                cl.notes.append("这一句改的是「%s」整类，不是某一个单位" % cname)
             else:
-                cl.why += "，这个版本里它一个单位都没有。"
-            return cl
+                more, total = _class_members(vocab, cid, unit_class)
+                cl.kind = "unit"
+                cl.entity = None
+                cl.candidates = more
+                cl.class_word = cname
+                if wants_all:
+                    # It DID say "all of them" -- the category is scoped on
+                    # purpose and the missing piece is elsewhere.  Saying "name a
+                    # concrete unit" here would ask the player to undo the thing
+                    # they just got right.
+                    cl.why = ("「能不能造」是逐文明逐单位记的，「%s」整类不能"
+                              "一句话改：要么点名一个单位，要么先说清是哪个文明"
+                              "的哪一类（例如「不列颠的骑兵…」）" % cname)
+                    return cl
+                cl.why = "「%s」是一类单位，不是某一个" % cname
+                if total:
+                    cl.why += ("（这一类里有 %d 个单位）。说具体名字，或者从下面"
+                               "点一个；要改整类就写「所有%s…」" % (total, cname))
+                else:
+                    cl.why += "，这个版本里它一个单位都没有。"
+                return cl
 
-    if ent is None:
+    if ent is None and class_edit is None:
         cl.candidates = []
         cl.why = "没听出你要改哪个东西"
         return cl
 
-    cl.kind = kind
-    cl.entity = ent
-    eid = _eid(ent)
+    if class_edit is not None:
+        # The category IS the target, so the branch below must be the unit one:
+        # with the sentence's OTHER resolved entity left in place ("不列颠" can
+        # also be a technology name) the tech branch answered "科技能改的是研究
+        # 时间、成本、效果" -- a sentence about 骑兵 refused as a tech question.
+        kind = "unit"
+        ent = None
+    else:
+        cl.kind = kind
+        cl.entity = ent
+    eid = _eid(ent) if ent is not None else None
 
     civ = _civ_in(raw, low, civ_names, civ_zh)
     # Every civilization the sentence names, in the order it named them.  A
@@ -1394,7 +1449,7 @@ def read_clause(text, vocab, civ_names=None, civ_zh=None, pins=None,
     # Read the amount off the sentence WITHOUT the entity's own name: names can
     # carry digits and resource words ("25% 的木材、75% 的黄金"), and taking those
     # as the amount produces a confident wrong answer.
-    bare = _strip_names(raw, ent)
+    bare = _strip_names(raw, ent) if ent is not None else raw
     bare_low = _norm(bare)
     value, _is_float = _number(bare)
     if value is None:
@@ -1503,8 +1558,26 @@ def read_clause(text, vocab, civ_names=None, civ_zh=None, pins=None,
         else:
             cl.why = "科技能改的是研究时间、成本、效果；没说清是哪一项"
             return cl
+    elif class_edit is not None and not stat:
+        # A class COST edit is a different mechanism: the binding addresses a cost
+        # slot per record, and nothing has measured that fan-out yet.  Say so
+        # rather than quietly writing the cost of one record.  Reached whether or
+        # not the sentence names a resource ("成本" alone has no resource word, so
+        # falling through to "没听出要改哪个属性" would be a refusal the player
+        # cannot act on -- the rest of the sentence was already right).
+        cl.why = ("「%s」整类的成本还不能一次改；先说一个具体单位，"
+                  "或者把「%s」改成攻击、血量、护甲这类属性"
+                  % (class_edit[1], class_edit[1]))
+        return cl
     elif res and not stat:
         cl.intent = {"intent": "unit.cost", "unit": eid, "resource": res[0]}
+    elif stat and class_edit is not None:
+        # The class is the target; `unit_class` selects the records and there is
+        # no `unit` key at all.  Omitting it is load-bearing: `resolve()` refuses
+        # both keys on one intent, and a leftover `unit: None` would read as
+        # "the user named a unit" to any caller that only checked for the key.
+        cl.intent = {"intent": "unit.stat", "unit_class": class_edit[0],
+                     "stat": stat[0]}
     elif stat:
         cl.intent = {"intent": "unit.stat", "unit": eid, "stat": stat[0]}
     else:

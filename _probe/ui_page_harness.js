@@ -235,6 +235,24 @@ const FIXTURES = {
           free_buttons: {}, warnings: [] } } },
     ],
   },
+  // A class edit: one sentence, 28 records, the same value written into every
+  // civilization's copy.  The preview says "1,764 处改动" either way, so without
+  // the member count the screen cannot tell a 28-record edit from a 1,764-record
+  // one -- and those are different promises.
+  classEdit: {
+    ok: true,
+    clauses: [
+      { text: "所有步兵血量加10", kind: "unit", entity: null, entity_id: null,
+        why: null, notes: ["这一句改的是「步兵」整类，不是某一个单位"],
+        class_word: "步兵", candidates: [],
+        intent: { intent: "unit.stat", unit_class: 6, stat: "hit_points",
+          delta: 10 },
+        buildable: true,
+        preview: { ok: true, plan: { description: "所有步兵 生命值 +10",
+          kind: "unit", civ_count: 63, edit_count: 13671, member_count: 217,
+          changes_dat: true, editable: true, entity_id: null } } },
+    ],
+  },
 };
 
 // Two real /api/describe answers, captured from the live server: one unit (this
@@ -626,8 +644,20 @@ try {
   }
   page.setLast(FIXTURES.mixed);
 
+  // ---- a class edit says how many units it reaches ----------------------
+  // The byte count alone is not enough: 1,764 处改动 over 28 records and over
+  // 1,764 records read identically on screen, and they are different promises.
+  page.renderClauses(FIXTURES.classEdit.clauses);
+  const clsEditText = text(ids.preview);
+  check("a class edit says how many units it reaches",
+        clsEditText.indexOf("217 个单位") >= 0, clsEditText);
+  check("...next to the byte count, not instead of it",
+        clsEditText.indexOf("13671 处改动") >= 0, clsEditText);
+  page.renderClauses(FIXTURES.mixed.clauses);
+  check("a single-unit edit does not claim a unit count in the plural",
+        text(ids.preview).indexOf("个单位") < 0, text(ids.preview));
   page.setLast(FIXTURES.mixed);
-  // Render it again: the two checks above rendered the OTHER payloads, and the
+  // Render it again: the checks above rendered the OTHER payloads, and the
   // preview box holds only the last one.  (Reading it without re-rendering found
   // 0 pictures -- a real answer to the wrong question, not a page defect.)
   page.renderClauses(FIXTURES.mixed.clauses);

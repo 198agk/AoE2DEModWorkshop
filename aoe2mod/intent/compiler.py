@@ -254,6 +254,92 @@ def class_label(class_id):
 _RESOURCE_LABELS = {}
 
 
+def _class_table():
+    """``{class id: readable name}`` from the two shipped tables.
+
+    Both entries are read for the same reason `class_label` reads both: the
+    Chinese table is what a player recognises and AGE's list is what exists, and
+    a tool that only knew the Chinese one would refuse a legal id the game ships.
+    Returns ``{}`` when the tables cannot be read, which makes every class
+    refusal say "no such class" rather than inventing one -- the safe direction,
+    because the alternative is editing 217 records the user did not name.
+    """
+    out = {}
+    try:
+        tables = load_effect_tables()
+        zh = (tables.get("zh") or {}).get("classes") or {}
+        en = (tables.get("classes") or {}).get("classes") or {}
+        for key in sorted(set(zh) | set(en), key=lambda k: int(k)):
+            got = _vocab((en.get(key) or {}).get("label")
+                         if isinstance(en.get(key), dict) else en.get(key),
+                         zh.get(key))
+            if got:
+                out[int(key)] = got
+    except Exception:
+        return {}
+    return out
+
+
+def _class_exists(class_id):
+    """Is this a class id the shipped data actually uses?"""
+    table = _class_table()
+    if not table:
+        # No table: refuse nothing we cannot check, but say so through the
+        # caller's message.  Returning True would let an id through unchecked.
+        return True
+    return int(class_id) in table
+
+
+def _class_examples(limit=8):
+    """The class ids worth naming in a refusal, biggest first.
+
+    A refusal that says only "no such class" leaves the player with no move.  The
+    ones listed are the classes that actually contain hundreds of units, because
+    those are the edits worth doing; a bare list of 57 ids would not be read.
+    """
+    table = _class_table()
+    big = ((6, "步兵"), (12, "骑兵"), (4, "平民"), (3, "建筑"),
+           (0, "弓箭手"), (13, "攻城武器"))
+    seen = ["%s=%d" % (zh, cid) for cid, zh in big if cid in table]
+    for cid in sorted(table)[:limit]:
+        item = "%s=%d" % (table[cid], cid)
+        if item not in seen:
+            seen.append(item)
+        if len(seen) >= limit:
+            break
+    return "、".join(seen[:limit]) or "6=步兵、12=骑兵"
+
+
+class _ClassSubject(object):
+    """What stands in for ``entity`` when an intent names a whole class.
+
+    ``unit.stat`` normally resolves one unit record and every downstream step
+    holds its id.  A class edit has no such record: 步兵 is 217 ids across 63
+    civilizations.  This object carries only the two things the existing code
+    reads -- a name to print, and a kind -- and answers ``id`` with ``None``.
+
+    ``None`` is deliberate.  A fake id would let a caller that never branched on
+    ``resolved.unit_class`` write to one record and report success for an edit
+    the user asked to apply to 13,671.  Every consumer must ask "is this a class
+    edit?" instead, and the wrong answer is a crash here rather than a silent
+    narrow write.
+    """
+
+    __slots__ = ("kind", "class_id")
+
+    def __init__(self, class_id):
+        self.kind = "unit"
+        self.class_id = class_id
+
+    @property
+    def display(self):
+        return class_label(self.class_id)
+
+    @property
+    def id(self):
+        return None
+
+
 def load_resource_labels():
     """civilization resource id -> a name a player can read.
 
@@ -934,12 +1020,13 @@ class Resolved(object):
 
     __slots__ = ("kind", "entity", "op", "stat", "amount",
                  "civ_scope", "resource", "class_id", "raw", "label",
-                 "civ", "action", "donor", "name", "button", "members")
+                 "civ", "action", "donor", "name", "button", "members",
+                 "unit_class")
 
     def __init__(self, kind, entity, stat, op, amount, civ_scope, raw,
                  resource=None, class_id=None, label=None, civ=None,
                  action=None, donor=None, name=None, button=None,
-                 members=None):
+                 members=None, unit_class=None):
         self.kind = kind            # 'unit' | 'tech'
         self.entity = entity        # semantic.Entity
         self.stat = stat            # binding key
@@ -975,6 +1062,17 @@ class Resolved(object):
         # subject the sentence is about and `members` is the set the mechanism
         # acts on -- a distinction the write needs and the description does not.
         self.members = members or ()
+        # A WHOLE CLASS of units instead of one named record (`unit.stat` with
+        # `unit_class`).  `entity` is then the class's own representative -- a
+        # real unit record, so every existing code path still has something to
+        # hold -- while this is the id that actually selects what to touch.
+        #
+        # Measured 2026-10-24: 步兵 is 217 unit ids across 63 civilizations,
+        # which is 13,671 physical records.  Held here rather than folded into
+        # `class_id` because they are different questions (an attack/armour
+        # class vs "which records do I address"), and confusing the two is how
+        # a类 edit would silently become an armour-class edit.
+        self.unit_class = unit_class
 
     def describe_target(self):
         """Just the "what" half of the sentence ("成本 gold", "hit_points").
@@ -1085,6 +1183,14 @@ class Resolved(object):
             return "%s %d 项做成%s" % (names, len(self.members),
                                       _GROUP_ZH.get(self.raw.get("type"),
                                                     self.raw.get("type")))
+        if self.unit_class is not None:
+            # A whole class is not one unit, and the three-part shape below would
+            # print the REPRESENTATIVE record's name -- "剑士 生命值 +10" for an
+            # edit that touches 217 different units.  That is the worst kind of
+            # wrong: a narrow-looking sentence over a wide write.
+            cname = class_label(self.unit_class)
+            return "所有%s %s %s" % (cname, self.describe_target(),
+                                     self.describe_amount())
         return " ".join(x for x in (self.entity.display, self.describe_target(),
                                     self.describe_amount()) if x)
 
@@ -1110,6 +1216,39 @@ def resolve(intent, schema, semantic_index=None, bindings=None):
     # --- which entity -----------------------------------------------------
     kind = spec.get("applies_to", "unit")
     ref_field = it.split(".")[0]          # 'unit' or 'tech'
+
+    # A WHOLE CLASS instead of one record.  `unit_class` addresses every record
+    # whose class id matches, so there is no single entity to resolve -- and
+    # inventing one would be the exact defect this file keeps paying for: a
+    # representative's name on screen over a fan-out of 217 records.
+    #
+    # The class id is validated against the same table `class_label` reads, at
+    # resolve time, so an unknown id is refused before any write.  What is NOT
+    # done here is expanding the class into unit ids: that needs the 93 MB .dat,
+    # and `resolve()` is deliberately cheap (the reader runs sentences without a
+    # game installed).  The expansion happens in `unit_targets` and `plan`,
+    # which both hold `civs`.
+    unit_class = None
+    if "unit_class" in fields and intent.get("unit_class") not in (None, ""):
+        raw_class = intent["unit_class"]
+        if isinstance(raw_class, bool) or not isinstance(raw_class, (int, str)):
+            raise IntentError("「一整类单位」得是一个类别编号，收到的是%s"
+                              % _TYPE_ZH.get(type(raw_class).__name__,
+                                             type(raw_class).__name__))
+        try:
+            unit_class = int(str(raw_class).strip())
+        except (TypeError, ValueError):
+            raise IntentError("「一整类单位」得是一个类别编号，收到的是 %r"
+                              % (raw_class,))
+        if not _class_exists(unit_class):
+            raise IntentError("没有第 %d 类单位。常用的是：%s"
+                              % (unit_class, _class_examples()))
+        if intent.get(ref_field) not in (None, ""):
+            raise IntentError("这句话要么点名一个单位，要么点一整类，"
+                              "不能两个都写（写成两个意图更清楚）")
+        intent = dict(intent)
+        intent.pop(ref_field, None)
+
     # A LIST-shaped intent (`tech.toggle_group`) has no single subject: it names
     # two or more technologies and the entity is only what the sentence is
     # about, not what gets addressed.  Resolving them all here rather than in
@@ -1161,14 +1300,20 @@ def resolve(intent, schema, semantic_index=None, bindings=None):
         # `tech` key, and demanding one would make the sentence unwritable.
         intent = dict(intent)
         intent[ref_field] = members[0].id
-    if ref_field not in intent:
+    if ref_field not in intent and unit_class is None:
         raise IntentError("intent %r needs a %r field" % (it, ref_field))
-    try:
-        entity = ix.resolve_one(kind, intent[ref_field])
-    except LookupError as exc:
-        # The semantic layer knows the candidates; the UI needs them, and the
-        # user must never see a traceback.  Suggest the exact alternatives.
-        raise IntentError(str(exc))
+    if unit_class is not None:
+        # A class edit has no record to resolve; see `_ClassSubject`.  Nothing
+        # downstream may write through `entity.id`, and passing None is how that
+        # stays a crash instead of a one-record edit reported as 13,671.
+        entity = _ClassSubject(unit_class)
+    else:
+        try:
+            entity = ix.resolve_one(kind, intent[ref_field])
+        except LookupError as exc:
+            # The semantic layer knows the candidates; the UI needs them, and the
+            # user must never see a traceback.  Suggest the exact alternatives.
+            raise IntentError(str(exc))
 
     # --- the number -------------------------------------------------------
     # Only required when the SCHEMA declares a number.  Not every intent is a
@@ -1396,7 +1541,8 @@ def resolve(intent, schema, semantic_index=None, bindings=None):
                     resource=intent.get("resource"),
                     class_id=intent.get("class_id"),
                     label=label, civ=civ, action=action, donor=donor,
-                    name=made_name, button=made_button, members=members)
+                    name=made_name, button=made_button, members=members,
+                    unit_class=unit_class)
 
 
 def resolve_bundle(intents, schema, bindings=None):
@@ -2286,20 +2432,31 @@ def compile_edits(data, civs, resolved, bindings, schema, tail=None, gv=None,
         b = dict(b)
         b["class_id"] = resolved.class_id
     allowed = _allowed_civs(civs, resolved.civ_scope)
-    hits = L.find_units(civs, resolved.entity.id)
-    if not hits:
-        raise IntentError("no records for %s in any civilization" % resolved.entity.display)
+    if resolved.unit_class is not None:
+        # 217 records instead of 63: the class is expanded here, once, so the
+        # write loop below sees one flat list either way.
+        ids, hits = unit_targets_for_class(civs, resolved.unit_class, allowed)
+        if not hits:
+            raise IntentError("第 %d 类（%s）里没有能改的记录"
+                              % (resolved.unit_class,
+                                 class_label(resolved.unit_class)))
+    else:
+        hits = L.find_units(civs, resolved.entity.id)
+        if not hits:
+            raise IntentError("no records for %s in any civilization"
+                              % resolved.entity.display)
 
-    # VARIANTS.  "Barracks" is four records (12 Dark, 498 Feudal, 132 Castle,
-    # 20 Imperial) and the engine SWAPS the whole record when the player advances
-    # an age (effect command type 3); "Villager" is two task-swap baskets joined
-    # by a declared 50% sex swap (objreplacement.json).  Writing only the record
-    # the name resolved to leaves a mod that works briefly and then silently
-    # stops applying -- the worst kind of failure, because it looks like it
-    # worked.
-    if stats is None:
-        stats = _stats_of(data)
-    ids, hits = unit_targets(civs, resolved.entity.id, allowed, stats, game_root)
+        # VARIANTS.  "Barracks" is four records (12 Dark, 498 Feudal, 132 Castle,
+        # 20 Imperial) and the engine SWAPS the whole record when the player
+        # advances an age (effect command type 3); "Villager" is two task-swap
+        # baskets joined by a declared 50% sex swap (objreplacement.json).
+        # Writing only the record the name resolved to leaves a mod that works
+        # briefly and then silently stops applying -- the worst kind of failure,
+        # because it looks like it worked.
+        if stats is None:
+            stats = _stats_of(data)
+        ids, hits = unit_targets(civs, resolved.entity.id, allowed, stats,
+                                 game_root)
 
     buf = bytearray(data)
     edits = []
@@ -2462,6 +2619,59 @@ def kind_label(kind):
     and printing it is more useful to whoever reads the bug than printing "".
     """
     return _KIND_ZH.get(kind, kind)
+
+
+def class_member_ids(civs, class_id, allowed=None):
+    """Every unit id whose class is ``class_id``, across the civilizations asked.
+
+    The union is over ids, not records: the 63 copies of one unit share an id, so
+    the id set is the same list for any civilization that holds it, and asking
+    per-civ once is enough.  Returned sorted so an edit touches records in a
+    stable order -- `.dat` byte order is by civilization then record, and an
+    unstable id order made a re-run's `edits` list read as different work while
+    producing identical bytes.
+
+    Measured 2026-10-24: 步兵 (class 6) is 217 ids / 13,671 physical records,
+    骑兵 (12) 189, 平民 (4) 28, 建筑 (3) 215.
+    """
+    want = int(class_id)
+    ids = set()
+    for c in civs:
+        if allowed is not None and c["index"] not in allowed:
+            continue
+        for u in c["units"]:
+            if u.get("class") == want and u.get("id"):
+                ids.add(u["id"])
+    return sorted(ids)
+
+
+def unit_targets_for_class(civs, class_id, allowed):
+    """``(ids, hits)`` for a class edit: every physical record of every member.
+
+    A deliberately separate function from :func:`unit_targets`, because the two
+    answer different questions and folding them together would make a class edit
+    silently pick up the variant-family rule of whichever single id happened to
+    be first.  A family rule is about "the engine swaps this record for another
+    when an age advances"; a class is about "the user pointed at 217 things".
+    Applying the family rule on top would expand past the class the user named.
+
+    No family expansion happens here on purpose.  A building inside 建筑 whose
+    four age variants are separate records will be edited at each variant only
+    if each variant's own record carries the same class id -- which it does,
+    since the age variants of one building all keep its class.
+    """
+    ids = class_member_ids(civs, class_id, allowed)
+    if not ids:
+        return [], []
+    wanted = set(ids)
+    hits = []
+    for c in civs:
+        if allowed is not None and c["index"] not in allowed:
+            continue
+        for u in c["units"]:
+            if u.get("id") in wanted:
+                hits.append((c["index"], c["name"], u))
+    return ids, hits
 
 
 def unit_targets(civs, unit_id, allowed, stats, game_root=None):
@@ -2772,6 +2982,9 @@ def compile_intent(dat_path, intent, out_path=None, parsed=None, stats=None,
     result = {
         "intent": intent,
         "resolved": resolved.describe(),
+        # A class edit addresses no single record, so this is None rather than
+        # whichever 步兵 happened to sort first.  Reporting an id here would let
+        # a caller that shows "editing unit 74" be wrong about 13,671 records.
         "entity_id": resolved.entity.id,
         # A tech is global -- there is no per-civ fan-out -- so reporting a civ
         # count would be a lie.  Report the shape the caller actually got.
@@ -2783,6 +2996,15 @@ def compile_intent(dat_path, intent, out_path=None, parsed=None, stats=None,
         "source_bytes": len(data),
         "patched_bytes": len(patched),
     }
+    if resolved.unit_class is not None:
+        # How wide this was, in the two units a caller can act on: how many
+        # distinct records the class named, and how many bytes were written.
+        result["unit_class"] = resolved.unit_class
+        result["unit_class_name"] = class_label(resolved.unit_class)
+        result["member_ids"] = len({u["id"] for _c, _n, u in
+                                    unit_targets_for_class(
+                                        civs, resolved.unit_class,
+                                        _allowed_civs(civs, resolved.civ_scope))[1]})
 
     if out_path and rep["ok"]:
         comp = zlib.compressobj(6, zlib.DEFLATED, -15)

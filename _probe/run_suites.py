@@ -322,6 +322,15 @@ SUITES = [
     # are the ones a screen cannot show (an orphan half, a title that really ends in
     # the word).
     r"_probe\test_pair_rows.py",
+    # One sentence, a whole class of units.  骑兵 is a category (188 visible
+    # units, no record of its own) and used to be refused -- correctly, because
+    # the substring fallback landed on 科技「骑兵钢甲」.  With a scope word it is
+    # a deliberate edit of 13,671 records in half a minute, so both halves are
+    # pinned: the scoped reading WORKS, and the unscoped one is still refused.
+    # The byte assertions are the point -- the build re-reads the emitted .dat
+    # and requires every member to have moved by exactly the amount while no
+    # record outside the class moved at all (1,764 moved, 0 wrong, measured).
+    r"_probe\test_class_edit.py",
 ]
 
 # Suites that are not Python.  The screen's script is JavaScript and no Python

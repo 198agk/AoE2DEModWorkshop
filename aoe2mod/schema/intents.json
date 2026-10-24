@@ -15,7 +15,7 @@
         "unit": {
           "type": "entity_ref",
           "kind": "unit",
-          "required": true,
+          "required": false,
           "label": "单位",
           "help": "Name or id. Ambiguity is reported, never guessed."
         },
@@ -63,12 +63,18 @@
           "default": "all",
           "label": "文明",
           "help": "Default 'all'. Editing one civ only is almost never what a user means."
+        },
+        "unit_class": {
+          "type": "armor_class",
+          "required": false,
+          "label": "一整类单位",
+          "help": "给一个类别编号（和 schema/armor_classes.json 同一张表），就改这一类里的每一条记录。和 unit 二选一：unit 是点名一条，unit_class 是点一整类。实测 2026-10-24：步兵 217 条记录、骑兵 189、平民 28、建筑 215，一次铺完不到半分钟。"
         }
       },
       "compile": {
         "strategy": "in_place_patch",
         "writes_per_unit_per_civ": 1,
-        "note": "Each civilization holds an INDEPENDENT physical record, so one logical edit fans out to N civs."
+        "note": "Each civilization holds an INDEPENDENT physical record, so one logical edit fans out to N civs. With `unit_class` instead of `unit` it fans out over every member of the class as well -- 步兵 is 217 ids x 63 civs = 13,671 records."
       },
       "safety": {
         "field_width_bits": 16,

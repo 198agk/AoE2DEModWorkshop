@@ -962,6 +962,11 @@ function renderClauses(clauses) {
           meta.appendChild(el("span", "stat", "范围 " + shown + more));
         } else if (p.civ_count) meta.appendChild(el("span", "stat", "范围 " + p.civ_count + " 个文明"));
         if (p.edit_count != null) meta.appendChild(el("span", "stat", p.edit_count + " 处改动"));
+        // A class edit ("所有步兵血量加10") reaches 217 ids at once and the preview
+        // knows how many.  The byte count alone reads as "a big edit" without
+        // saying what it is a big edit OF: 1,764 处改动 over 28 records and over
+        // 1,764 records look identical on screen, and those are different promises.
+        if (p.member_count) meta.appendChild(el("span", "stat", p.member_count + " 个单位"));
         if (p.changes_dat) meta.appendChild(el("span", "stat ok", "会改游戏数据"));
         if (p.editable === false) meta.appendChild(el("span", "stat bad", "做不了"));
       } else if (c.preview && !c.preview.ok) {
