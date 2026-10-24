@@ -500,22 +500,35 @@ def main():
         icon_out = tempfile.mkdtemp(prefix="newunit_icon_mod_")
         iman = tk.build(icon_intent, icon_out, author="dsh", overwrite=True)
         rels = [f["rel"].replace("\\", "/") for f in iman["files"]]
-        check(any(r.endswith(".dds") for r in rels),
-              "the build ships the picture itself", rels)
-        check("widgetui/icons.json" in rels and "widgetui/materials.json" in rels,
-              "and both whole tables", rels)
+        # The icon tables travel in their own mod folder (see `ui_mod_dir`).  A
+        # `widgetui` folder sharing a directory with the `.dat` is never read for
+        # icons -- five runs measured that -- so the build deliberately moves it
+        # out, and this asserts on where the files are now, not where they were.
+        ui_root = iman.get("ui_mod_dir") or icon_out
+        ui_rels = []
+        for _dp, _dn, _fn in os.walk(ui_root):
+            for _n in _fn:
+                ui_rels.append(os.path.relpath(os.path.join(_dp, _n), ui_root)
+                               .replace("\\", "/"))
+        check(bool(iman.get("ui_mod_dir")),
+              "the build reports a folder of its own for the interface layer",
+              iman.get("ui_mod_dir"))
+        check(any(r.endswith(".dds") for r in ui_rels),
+              "the interface folder ships the picture itself", ui_rels)
+        check("widgetui/icons.json" in ui_rels and "widgetui/materials.json" in ui_rels,
+              "and both whole tables", ui_rels)
 
-        dds_rel = [r for r in rels if r.endswith(".dds")][0]
-        w, h, back = DD.decode(os.path.join(icon_out, dds_rel))
+        dds_rel = [r for r in ui_rels if r.endswith(".dds")][0]
+        w, h, back = DD.decode(os.path.join(ui_root, dds_rel))
         check((w, h) == (side, side), "the DDS is the size it claims", (w, h))
         check(bytes(back) == bytes(rgba),
               "and decodes back pixel for pixel, not merely 'without error'")
-        check(os.path.getsize(os.path.join(icon_out, dds_rel)) == 128 + side * side * 4,
+        check(os.path.getsize(os.path.join(ui_root, dds_rel)) == 128 + side * side * 4,
               "the file is an uncompressed BGRA DDS, which is what the shipped ones are")
 
-        built_icons = json.load(open(os.path.join(icon_out, "widgetui", "icons.json"),
+        built_icons = json.load(open(os.path.join(ui_root, "widgetui", "icons.json"),
                                      encoding="utf-8-sig"))
-        built_mats = json.load(open(os.path.join(icon_out, "widgetui", "materials.json"),
+        built_mats = json.load(open(os.path.join(ui_root, "widgetui", "materials.json"),
                                     encoding="utf-8-sig"))
         # Follow the CHAIN rather than a name this file guessed at: the build
         # derives the material name from the unit's name, and a Chinese name has
@@ -664,7 +677,10 @@ def main():
         # are cumulative inside the loop, and each icon re-adopts the merged
         # document, so a second one that started from the shipped copy would
         # drop the first one's material while still reporting success.
-        _mod = three["mod_dir"]
+        _mod = three.get("ui_mod_dir") or three["mod_dir"]
+        check(bool(three.get("ui_mod_dir")),
+              "the bundle puts the interface layer in its own folder",
+              three.get("ui_mod_dir"))
         check(os.path.isfile(os.path.join(_mod, "widgetui", "icons.json"))
               and os.path.isfile(os.path.join(_mod, "widgetui", "materials.json")),
               "the bundle ships the icon tables", _mod)
@@ -725,8 +741,19 @@ def main():
                 if m.get("title") == "dsh install icons"]
         check(bool(rows) and rows[0]["exists"],
               "the built folder is installed into the profile", got.get("name"))
-        if rows:
-            root = rows[0]["path"]
+        # The icon half is a SEPARATE installed mod (one build, two folders).  The
+        # data half is the one `tk.install` was handed; the icon tables live in the
+        # folder it installed alongside.  Reading `rows[0]["path"]` for `widgetui`
+        # would be reading the data half, where those files deliberately are not.
+        ui_rows = [m for m in _LOC.list_mods(prof)
+                   if "界面" in str(m.get("title") or "")]
+        check(len(ui_rows) == 1,
+              "the icon half is installed as its own enabled mod",
+              [(m.get("title"), m.get("enabled")) for m in _LOC.list_mods(prof)])
+        check(all(m.get("enabled") for m in ui_rows),
+              "and it is enabled, so the tables are actually loaded")
+        if ui_rows:
+            root = ui_rows[0]["path"]
             icons_doc = json.loads(io.open(
                 os.path.join(root, "widgetui", "icons.json"),
                 encoding="utf-8").read())
@@ -753,11 +780,15 @@ def main():
                                     (rel or "").replace("/", os.sep))
                 check(os.path.isfile(path),
                       "which exists in the installed folder", path)
-            # The record the game reads must agree with the table.
+            # The record the game reads must agree with the table -- and the record
+            # lives in the DATA half, which is the folder `tk.install` was handed.
+            # The tables are in the icon half; the `.dat` is not.  Reading it from
+            # `root` (the icon half) is the mistake this comment exists to prevent.
             import aoe2mod.dat.locate as _L
             import aoe2mod.dat.parser as _P
             _raw, _how = _P.load_dat(os.path.join(
-                root, "resources", "_common", "dat", "empires2_x2_p1.dat"))
+                rows[0]["path"], "resources", "_common", "dat",
+                "empires2_x2_p1.dat"))
             _pr = _P.Parser(_raw)
             _pr.parse()
             _civs, _cs, _gv, _tail = _L.locate(_raw, parser=_pr)

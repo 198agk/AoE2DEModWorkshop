@@ -423,9 +423,14 @@ def main():
           "%r vs %r" % ((icon_man.get("new_tech") or {}).get("icon_slot"),
                         icon_plan.get("icon_slot")))
 
-    _icons1 = json.load(io.open(os.path.join(OUT_ICON, "widgetui", "icons.json"),
+    # The icon tables are shipped in their own mod folder; a `widgetui` directory
+    # that shares a folder with the `.dat` is never consulted for icons.
+    UI_ICON = icon_man.get("ui_mod_dir") or OUT_ICON
+    check("the icon build puts the interface layer in its own folder",
+          bool(icon_man.get("ui_mod_dir")), icon_man.get("ui_mod_dir"))
+    _icons1 = json.load(io.open(os.path.join(UI_ICON, "widgetui", "icons.json"),
                                 encoding="utf-8"))
-    _mats1 = json.load(io.open(os.path.join(OUT_ICON, "widgetui", "materials.json"),
+    _mats1 = json.load(io.open(os.path.join(UI_ICON, "widgetui", "materials.json"),
                                encoding="utf-8"))
     _techs1 = _icons1.get("Techs") or {}
     _key = str(icon_plan["icon_slot"])
@@ -467,7 +472,7 @@ def main():
     check("under the tech icon folder, as a picture",
           _tex_rel.startswith("textures/ingame/tech/") and _tex_rel.endswith(".png"),
           _tex_rel)
-    _on_disk = os.path.join(OUT_ICON, "widgetui", *_tex_rel.split("/"))
+    _on_disk = os.path.join(UI_ICON, "widgetui", *_tex_rel.split("/"))
     check("the file the engine would ask for exists", os.path.isfile(_on_disk), _on_disk)
     if os.path.isfile(_on_disk):
         _back = Image.open(_on_disk)

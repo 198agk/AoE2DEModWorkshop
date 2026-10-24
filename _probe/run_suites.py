@@ -294,6 +294,13 @@ SUITES = [
     # covers the two states of the button (no configuration means no box at all)
     # and the HTTP shape, against a local server so no key and no network exist.
     r"_probe\test_ai_entry.py",
+    # The one shape that makes an icon appear: two folders.  A mod folder that
+    # carries both the .dat and widgetui is read as a data mod only, so the icon
+    # tables never load (measured 2026-10-24: five runs empty, one split run
+    # drawing).  This nail asserts on the PROFILE rather than the build output,
+    # so it fails on either half of the rule breaking: the emitter no longer
+    # splitting the layer, and install no longer following it in.
+    r"_probe\test_split_delivery.py",
     # What a newcomer reads.  Six defects shared one shape: the bytes were right
     # and the SENTENCE was wrong (a raw "wood" in a Chinese preview, a reader's
     # assumption dropped on the floor, no way to tell which of twenty mods the
