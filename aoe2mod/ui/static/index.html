@@ -589,6 +589,17 @@ function renderMods(mods) {
         if (r.running_warning) toast(r.running_warning, "bad");
       } catch (e) { toast("改不动：" + e.message, "bad"); }
     };
+    // A split build is two folders but one decision.  Mark the pair so the row
+    // says so -- the player who switched off only the data half ended up with an
+    // orphan applying the icon tables, which looks like nothing at all.
+    if (m.role === "ui") {
+      nm.classList.add("half");
+      const tag = el("span", "stat");
+      tag.textContent = "界面半边";
+      tag.title = "这个构建的数据那一半是「" + (m.paired_with || "?") +
+                   "」。两个要一起启用：只要数据那一半时，图标一层不生效。";
+      nm.appendChild(tag);
+    }
     row.appendChild(nm);
     row.appendChild(sw);
     box.appendChild(row);

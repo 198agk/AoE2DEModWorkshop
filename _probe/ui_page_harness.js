@@ -39,6 +39,10 @@ function node(tag) {
       return c;
     },
     focus() { this.focused = true; },
+    // The mods list marks the interface half of a split build with a class.  Real
+    // `classList` is what the page calls, so the fake DOM has to have it too --
+    // otherwise the harness would be testing a page nobody can ship.
+    classList: { add() {}, remove() {}, contains() { return false; } },
     addEventListener() {},
     setAttribute(k, v) { this[k] = v; },
     // Enough of the real DOM for the page's own "replace, do not stack" logic:
@@ -389,10 +393,14 @@ const aiAsked = [];
 // would let the page print that badge on the wrong row.
 let MODS = [
   { name: "dsh mine", title: "dsh 我的数据模组", enabled: true, kind: "local",
-    priority: 3, ships_dat: true, dat_rank: 1, dat_competing: 1 },
+    priority: 3, ships_dat: true, dat_rank: 1, dat_competing: 1,
+    role: "data", paired_with: "dsh 我的数据模组（界面）" },
+  { name: "dsh mine（界面）", title: "dsh 我的数据模组（界面）", enabled: true,
+    kind: "local", priority: 4, ships_dat: false, dat_rank: null,
+    dat_competing: 1, role: "ui", paired_with: "dsh 我的数据模组" },
   { name: "someone else", title: "别人做的 UI 模组", enabled: true,
     kind: "subscribed", priority: 9, ships_dat: false, dat_rank: null,
-    dat_competing: 1 },
+    dat_competing: 1, role: null, paired_with: null },
 ];
 
 // What /api/meta answers for the 能做的事 box.  One shipped intent (reachable by
@@ -890,7 +898,7 @@ function pickChecks() {
 function modsChecks() {
   page.renderMods(MODS);
   const rows = (ids.mods.children || []).filter((n) => n.className === "mod");
-  check("one row per installed mod", rows.length === 2, String(rows.length));
+  check("one row per installed mod", rows.length === 3, String(rows.length));
   const all = walk(ids.mods, []);
   const labels = all.map((n) => n.textContent || "").join(" | ");
   check("the data mod says it wins the slot, and by what rank",
@@ -900,6 +908,15 @@ function modsChecks() {
   check("a mod that is not a data mod gets no such badge",
         labels.indexOf("别人做的 UI 模组") >= 0
         && labels.indexOf("数据模组 · 别的") < 0);
+  // A split build is two folders and ONE decision.  The interface half must say
+  // which build it belongs to; two unnamed rows invite switching off half of a
+  // build, which is the state measured to draw no icon at all while looking fine.
+  check("the interface half says which build it belongs to",
+        labels.indexOf("界面半边") >= 0, labels);
+  check("and a mod with no other half is not marked as one",
+        labels.indexOf("界面半边") === labels.lastIndexOf("界面半边")
+        || rows.filter((n) => text(n).indexOf("界面半边") >= 0).length === 1,
+        String(rows.filter((n) => text(n).indexOf("界面半边") >= 0).length));
   // A DISABLED data mod matters: it is in the folder, it looks installed, and the
   // game will not use it.  Saying "排第 0" would be worse than saying nothing.
   const off = [{ name: "dsh mine", title: "dsh 我的数据模组", enabled: false,

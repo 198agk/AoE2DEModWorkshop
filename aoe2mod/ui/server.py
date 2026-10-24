@@ -514,7 +514,44 @@ def _mods_brief(tk):
     for r in out:
         r.setdefault("dat_rank", None)
         r["dat_competing"] = len(live)
+    _pair_rows(out)
     return out
+
+
+# The interface half of a split build is titled `<base>（界面）`.  That is the only
+# thing on disk that ties the two folders together, so it is also what the screen
+# has to read: the player made ONE decision ("use this build"), and a list that
+# shows two unrelated switches invites turning off half of it -- a state measured
+# to draw nothing on the icon layer while looking perfectly normal.
+UI_HALF_WORD = "\uff08\u754c\u9762\uff09"
+
+
+def _pair_rows(rows):
+    """Mark the two folders of a split build so a screen can show them as one.
+
+    Adds `role` ("data" / "ui") and `paired_with` (the sibling's title) to both
+    halves.  Rows whose sibling is not installed keep `role: None` -- an interface
+    mod installed on its own is a real state (an old build's leftovers), and
+    pretending otherwise would hide it.
+    """
+    by_title = {}
+    for r in rows:
+        t = str(r.get("title") or "")
+        if t:
+            by_title[t] = r
+    for r in rows:
+        title = str(r.get("title") or "")
+        if title.endswith(UI_HALF_WORD) and len(title) > len(UI_HALF_WORD):
+            base = by_title.get(title[: -len(UI_HALF_WORD)])
+            if base is not None and base is not r:
+                r["role"] = "ui"
+                r["paired_with"] = base.get("title")
+                base["role"] = "data"
+                base["paired_with"] = title
+    for r in rows:
+        r.setdefault("role", None)
+        r.setdefault("paired_with", None)
+    return rows
 
 
 # Status words the update guard reports, in the language this screen is written
