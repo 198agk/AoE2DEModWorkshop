@@ -313,6 +313,8 @@ const rebuilt = [];
 // say something when the game is open and NOTHING when it is closed (a warning
 // shown always is a warning nobody reads).
 let RUNNING = true;
+// The second folder a split build installs (null = this build is one mod).
+let UI_HALF = null;
 const RUNNING_TEXT = "游戏正开着。它退出时会用自己记得的模组列表覆盖 mod-status.json，"
   + "所以这次写进去的改动可能被盖掉（文件还在，列表里没有）。装完回游戏里看一眼，"
   + "或者关掉游戏再写一次。";
@@ -510,6 +512,9 @@ const sandbox = {
         name: "x", title: "x", installed: true,
         game_running: RUNNING,
         running_warning: RUNNING ? RUNNING_TEXT : null,
+        // `install()` puts the interface half here when the build was split.  The
+        // shape below is what `install_mod` returns for the second folder.
+        ui_install: UI_HALF,
       } }) };
     }
     // The mods route: the switch POSTs here, and the answer carries the
@@ -705,6 +710,23 @@ function buildChecks() {
   }).then(() => {
     check("no warning when the game is closed",
           text(ids.buildnote).indexOf("游戏正开着") < 0, text(ids.buildnote));
+    // A build that ships a `.dat` puts its `widgetui` layer in a second folder.
+    // The screen has to say so: enabling only the data half is the state measured
+    // not to draw a single icon, and nothing about it looks broken.
+    check("a one-mod build does not talk about two",
+          text(ids.buildnote).indexOf("两个模组") < 0, text(ids.buildnote));
+    UI_HALF = { name: "村民血量（界面）", priority: 1,
+                files: ["widgetui/icons.json"] };
+    return page.doBuild();
+  }).then(() => {
+    UI_HALF = null;
+    const two = text(ids.buildnote);
+    check("a split build says there are two mods", two.indexOf("两个模组") >= 0, two);
+    check("and it names the interface half", two.indexOf("（界面）") >= 0, two);
+    check("and it tells the player both must be enabled",
+          two.indexOf("两个都要") >= 0, two);
+    check("and it still names the data mod in the dropdown",
+          two.indexOf("数据模组") >= 0, two);
     // The page's own title is marked as such, so the server may trim it.  Three
     // Chinese characters cost nine bytes, so a few sentences pass the engine's
     // 100-byte cap with nobody typing a long title -- and the build used to fail
@@ -783,6 +805,7 @@ function buildChecks() {
           JSON.stringify(walk(ids.buildnote, []).map((n) => n.className)));
     BUILD_WARNINGS = [];
     return pickChecks();
+    return null;
   }).catch((e) => { fails.push("doBuild threw: " + e.message);
                     console.log("FAIL doBuild threw :: " + e.stack); finish(); });
 }

@@ -1058,9 +1058,21 @@ async function doBuild() {
     toast("已生成并安装：" + (man.info && man.info.Title ? man.info.Title : dir), "ok");
     const r = await api("/api/mods");
     renderMods(r.mods);
+    // A build that ships a `.dat` gets its `widgetui` layer split into a second
+    // mod (measured 2026-10-24: a folder holding both is read as a data mod and
+    // the icon tables are never loaded, so every new icon came out as an empty
+    // box).  The server reports the second install under `ui_install`; saying
+    // only "装好了" here would leave the player with the data half enabled and a
+    // feature that silently does nothing.
+    const uiHalf = (inst.installed || {}).ui_install || null;
     const note = el("div", "hint",
-      "装好了。开局前在「创建游戏」界面的「数据模组：」下拉框里选它 —— "
-      + "注意不是「模组」界面，那个界面没有这个下拉框。进入对局才真正加载。");
+      uiHalf && uiHalf.name
+        ? ("装好了，这次是两个模组：「" + (man.info && man.info.Title
+            ? man.info.Title : dir) + "」和「" + uiHalf.name + "」。"
+            + "两个都要在模组界面里勾上 —— 数据模组只带数据，图标那一半在另一个里。"
+            + "开局前在「创建游戏」界面的「数据模组：」下拉框里选数据那个。")
+        : ("装好了。开局前在「创建游戏」界面的「数据模组：」下拉框里选它 —— "
+            + "注意不是「模组」界面，那个界面没有这个下拉框。进入对局才真正加载。"));
     $("#buildnote").innerHTML = "";
     $("#buildnote").appendChild(note);
     // A build can finish and still fail its own verification (`verification.ok`
