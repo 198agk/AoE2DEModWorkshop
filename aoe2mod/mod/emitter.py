@@ -370,6 +370,14 @@ def emit_data_mod(mod_dir, dat_bytes, info, thumbnail=None, base_dir=None,
             # files are also the only thing that can make "which build is
             # installed" ambiguous.
             shutil.rmtree(mod_dir, ignore_errors=True)
+            # The `_ui` brother is written by `split_ui_layer` AFTER this point, so a
+            # rebuild that no longer splits would leave the previous build's icon
+            # tables sitting there.  `install()` decides by looking at that folder on
+            # disk, not at the manifest, so the stale half gets shipped under the new
+            # title with the old build's `icons.json` -- measured 2026-10-24: build A
+            # with an icon, then build B without one, and `mod_ui/` still held A's
+            # four files while the manifest correctly said `ui_mod_dir: None`.
+            shutil.rmtree(mod_dir.rstrip("\\/") + "_ui", ignore_errors=True)
 
     dat_abs = None
     blob = None

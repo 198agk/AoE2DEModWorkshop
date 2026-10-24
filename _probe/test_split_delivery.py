@@ -247,6 +247,30 @@ def main():
           gone3.get("paired"))
     shutil.rmtree(os.path.dirname(lonely), ignore_errors=True)
 
+    print("=== F. a rebuild does not inherit the previous interface half")
+    rebuild_out = os.path.join(tempfile.mkdtemp(prefix="v87_rebuild_"), "mod")
+    first = tk.build_bundle([
+        {"intent": "unit.stat", "unit": 109, "stat": "hit_points", "value": 4000},
+        {"intent": "unit.create", "donor": 83, "civ": "British",
+         "name": "旧图标", "icon": pic},
+    ], rebuild_out, title="dsh test rebuild", author="dsh", overwrite=True)
+    check(bool(first.get("ui_mod_dir")),
+          "the first build splits and names an interface folder", first.get("ui_mod_dir"))
+    sibling = rebuild_out.rstrip("\\/") + "_ui"
+    check(os.path.isdir(sibling), "and that folder really came into being", sibling)
+
+    # Same output folder, no icon at all.  A correct rebuild must not ship the old tables.
+    second = tk.build_bundle([
+        {"intent": "unit.stat", "unit": 109, "stat": "hit_points", "value": 4100},
+    ], rebuild_out, title="dsh test rebuild", author="dsh", overwrite=True)
+    check(second.get("ui_mod_dir") is None,
+          "the second build does not split, because it has no icon layer",
+          second.get("ui_mod_dir"))
+    check(not os.path.isdir(sibling),
+          "and the first build's interface folder was removed, not left on disk",
+          sibling)
+    shutil.rmtree(os.path.dirname(rebuild_out), ignore_errors=True)
+
     for d in (pic_dir, prof):
         shutil.rmtree(d, ignore_errors=True)
     shutil.rmtree(os.path.dirname(out), ignore_errors=True)
