@@ -229,6 +229,28 @@ def main():
         check("it looks for the known interpreter before PATH",
               lt.index("dsh-runtimes") < lt.index("where python"))
         check("and it keeps the window open after a crash", "pause" in lt)
+        # ...but only after a crash.  Measured 2026-10-25: with an unconditional
+        # `pause`, closing the workshop (a clean exit) left a black console saying
+        # "Press any key" behind, which reads as "the program is still running".
+        #
+        # There are legitimately two `pause` lines: one in the "no python found"
+        # block (before anything runs) and one after the run.  The claim is about
+        # the one AFTER: it has to sit inside the failure conditional.
+        _tail = lt[lt.index('set "RC=%ERRORLEVEL%"'):]
+        check("and it does NOT hold the console open after a clean exit",
+              'if not "%RC%"=="0" (' in _tail
+              and _tail.index("pause") > _tail.index('if not "%RC%"=="0" ('),
+              "the pause after the run is not inside the failure branch")
+
+    # The window.  2026-10-25: `tools/run_ui.py` opens a native window when
+    # pywebview is importable, and falls back to a browser tab otherwise.  Two
+    # things must be true of the front door: the README says a window appears,
+    # and it says what happens when one cannot.
+    if os.path.isfile(readme):
+        check("the README says the workshop opens in a window",
+              "一个窗口里" in txt)
+        check("and it says the fallback out loud",
+              "退回浏览器" in txt and "--window" in txt and "--browser" in txt)
 
     print()
     print("=== H. the 能做的事 list does not promise what no sentence can ask")

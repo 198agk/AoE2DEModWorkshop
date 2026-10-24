@@ -795,18 +795,47 @@ def _query(path):
     return parse_qs(path.split("?", 1)[1] if "?" in path else "")
 
 
-def serve(port=0, game_root=None, host="127.0.0.1"):
-    """Start the server; returns (httpd, app, url).  Caller calls `serve_forever`."""
+def _quiet_connection_errors():
+    """A server class whose `handle_error` ignores a client that went away.
+
+    Measured 2026-10-25 (first run of `tools/run_ui.py --window`): closing the
+    window kills the in-flight requests, and the socket write then raises
+    `ConnectionAbortedError: [WinError 10053]` inside the handler thread.  The
+    stock `socketserver` prints a full traceback for it, so the last thing a
+    player sees when they close the workshop is a stack trace -- which reads as
+    "the program crashed on exit".  Nothing crashed: the reader is gone.
+
+    Anything that is NOT the client leaving still prints, because that is the
+    case where the traceback is the only clue.
+    """
     try:
-        from http.server import ThreadingHTTPServer
+        from http.server import ThreadingHTTPServer as _Base
     except ImportError:                                # pragma: no cover
         from socketserver import ThreadingMixIn
-        from http.server import HTTPServer
+        from http.server import HTTPServer as _Base
 
-        class ThreadingHTTPServer(ThreadingMixIn, HTTPServer):
+        class _Mix(ThreadingMixIn, _Base):
             daemon_threads = True
 
+        _Base = _Mix
+
+    class _Server(_Base):
+        daemon_threads = True
+
+        def handle_error(self, request, client_address):
+            import sys as _sys
+            exc = _sys.exc_info()[1]
+            if isinstance(exc, (ConnectionError, BrokenPipeError)):
+                return
+            _Base.handle_error(self, request, client_address)
+
+    return _Server
+
+
+def serve(port=0, game_root=None, host="127.0.0.1"):
+    """Start the server; returns (httpd, app, url).  Caller calls `serve_forever`."""
     app = App(game_root=game_root)
-    httpd = ThreadingHTTPServer((host, port), make_handler(app))
+    httpd = _quiet_connection_errors()((host, port), make_handler(app))
     url = "http://%s:%d" % (host, httpd.server_address[1])
     return httpd, app, url
+

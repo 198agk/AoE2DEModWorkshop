@@ -43,11 +43,17 @@ if not defined PY (
 )
 
 rem Keep the console open after a crash: the reason is printed by run_ui.py,
-rem and a window that vanishes takes the reason with it.
+rem and a window that vanishes takes the reason with it.  On a clean exit there
+rem is nothing to read, so the console closes with the window (measured
+rem 2026-10-25: with an unconditional pause, closing the workshop left a black
+rem console behind that said "Press any key" -- which reads as "it is still
+rem running").
 %PY% -X utf8 -u "tools\run_ui.py" %*
 set "RC=%ERRORLEVEL%"
 
 echo.
-if not "%RC%"=="0" echo The workshop stopped with code %RC% - the lines above say why.
-pause
+if not "%RC%"=="0" (
+  echo The workshop stopped with code %RC% - the lines above say why.
+  pause
+)
 endlocal

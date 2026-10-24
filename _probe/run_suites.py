@@ -331,6 +331,15 @@ SUITES = [
     # and requires every member to have moved by exactly the amount while no
     # record outside the class moved at all (1,764 moved, 0 wrong, measured).
     r"_probe\test_class_edit.py",
+    # The window mode of the one entry point.  This is the only suite that starts
+    # `tools/run_ui.py` as a real process and looks for a real top-level window,
+    # because every cheaper version of this test passes while the launcher is
+    # broken: an in-process call to `_run_window` says nothing about the
+    # `__main__` wiring, and importing pywebview says nothing about whether the
+    # machine can render (measured 2026-10-25: import failed until the package was
+    # installed into `_vendor`, then a real window opened -- the same sentence was
+    # true, then false, which is why it is measured instead of repeated).
+    r"_probe\test_window_mode.py",
 ]
 
 # Suites that are not Python.  The screen's script is JavaScript and no Python

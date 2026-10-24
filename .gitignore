@@ -183,3 +183,8 @@ _probe/out_v7*/
 _probe/out_v8*/
 _probe/_repair_merge/
 .dsh-progress/
+
+# pywebview and its dependencies, installed into the repo so `tools/run_ui.py`
+# can open a native window without touching the runtime's site-packages.
+# Regenerate with: <python> -m pip install --target _vendor pywebview
+_vendor/
