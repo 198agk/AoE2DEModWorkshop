@@ -213,3 +213,85 @@ raw BGRA / DXT1 / DXT5 / DX10-BGRA，**不支持 BC7**，所以这条必须先�
 按钮能出现、能被造出来）与图标层（v73*：mod 材质能在出厂槽上画出来）分别都验过了，
 两件事合在同一局里的那一次还没跑。在跑过之前，产品里那句预览只能写「还没量过」，
 不能写「已验证」。
+
+## 2026-10-24 收尾（二）：图标画不出来还有第二个原因 —— 同一个文件夹里的 `widgetui` 会被跳过后
+
+上一节把空框归因到 DDS 头（`0x00081007` 声明了 mip 层数却写 0 层），那条修好之后
+`v73b/v73/v73c/v73d` 四个变体都能画出棋盘。但**新产品路径仍然空框**：`v74` 用一个
+真正的新建单位（`unit.create` + `icon` 字段）构建，`.dat` 里 `unit 30000 icon_id=1000`、
+`icons.json` 里 `Units['1000']='unit_icon_1000'`、DDS 头也已经是修好的形状，屏幕上
+第 6 格（button 6）是空框，而城镇中心血量 canary 读 4000 ⇒ 数据模组确实挂载了。
+
+### 一步步把嫌疑缩到「文件夹」
+
+| 版本 | 唯一改动 | 屏幕 |
+|---|---|---|
+| v74 | `.dat` + `widgetui` 同文件夹，新单位记录指自己的槽 | 空框 |
+| v77 | 把材质从槽 1000 挪到**空闲出厂槽** 174（两张表都自己写） | 空框 |
+| v78 | 同上，但让**出厂**村民 83/1810 指 174 | 空框 |
+| v79 | 只改记录（15→16），两张表完全不碰 | **画出 16 号女村民** |
+| v80 | 只改记录（15→174），两张表完全不碰 | **画出 174 号出厂法师** |
+| v81 | 同 174，但那张表那个名字换成我们自己的材质 + 自己的 DDS | 空框 |
+| v82 | 同 174，换成**三国模组自己的**材质名与原装 DDS | 空框 |
+
+- v79 与 v80 合起来证明：`aoe2mod/dat/newunit.py` 的 `ICON_OFF = 51` 就是卡片读的那个
+  `icon_id`，写入位置正确；**没有任何记录引用的出厂槽也照样能画**。
+- v80 与 v81 是同号同字节长度、唯一差别是表里那个名字 ⇒ 键空间与字段都被排除。
+- v82 用了「已验证能画的材质 + 它的原装 DDS」也不画 ⇒ 材质与贴图也被排除。
+- `icons.json` 重写没丢键（14 个 section 全在、`Units` 1000 vs 1000、`missing=0 extra=0`，
+  体积小 2,194 B 只是 `indent=2` 的格式化）。
+
+⇒ 只剩一个变量：**同一个 mod 文件夹里 `.dat` 与 `widgetui` 并存**。
+
+### 决定性：拆成两个 mod 就画出来了（v83）
+
+`_probe/tmp_build_v83.py` 建两个文件夹：
+- `out_v83_data`（`dsh test v83 数据半边`）：只有 canary 的 `.dat`，`has widgetui: False`；
+  村民 83/1810 的 `icon_id` 15→174。
+- `out_v83_ui`（`dsh test v83 图标半边`）：`info.json 126 B` + `widgetui/icons.json 72,922 B`
+  + `widgetui/materials.json 2,415,487 B` + `widgetui/textures/ingame/units/unit_v83_check_174.dds 262,272 B`；
+  `Units['174']='unit_v83_check_174'`。
+
+两个都 `enabled=True`，实机：下拉选中数据半边、`4000/4000`，**命令卡第 1 格画出洋红/青棋盘**。
+
+| 版本 | 内容 | 结果 |
+|---|---|---|
+| v73d | 只有 `widgetui`（无 `.dat`） | 画出棋盘 |
+| v76 | 只有 `widgetui`（无 `.dat`） | 画出三国头像 |
+| v80 | 只有 `.dat`（无 `widgetui`） | 画出出厂图 |
+| v74/v77/v78/v81/v82 | `.dat` + `widgetui` 同一文件夹 | **空框（5 次）** |
+| **v83** | 两者拆成两个 mod | **画出棋盘** |
+
+### 这个「一概忽视」只对 `widgetui` 成立（两条反例必须先摆出来）
+
+我第一版把规则写成「有 `.dat` 的 mod，别的层一概不读」，被下面两条反例推翻：
+
+- `398106_WAIFor Arcade`：单文件夹，**662 个 `.sld` 与它的 `.dat` 同目录**，游戏里正常生效。
+  `167396_Red Alert 2 MOD` 同形（304 个 `.sld`）。
+  ⇒ SPRITES 层不受这条规则约束。
+- `310130_1233 For Stephen Chow`：单文件夹，`12,137,837 B` 的 `.dat` +
+  `resources\en\strings\key-value\key-value-modded-strings-utf8.txt`（`19,677 B`）+
+  `resources\zh\...`（同大小），**没有 `widgetui`**，文本在游戏里生效。
+  本项目自己的 `out_v27` 也是 `.dat` + 17 个 locale 文本表同文件夹，字符串表读得出来。
+  ⇒ `strings` 层也不受约束。
+
+引擎自己的模式表给了这条差别一个落点：`modes\Pompeii\Pompeii.json` 的
+`storage_point_list` 有 **28 个存储点**，其中**只有 `resources\_common\dat` 带
+`use_modes_path_for_mods: true`**；`widgetui` 是独立存储点（`WIDGETUI`），
+`resources\_common\drs\graphics` 是 `SPRITES`，`resources\<locale>\strings` 是 `STRINGS`。
+这条表只是**落点**，不是证明 —— 它说的是「dat 有自己的路径规则」，没有说「widgetui 因此不来」。
+
+### 产品改动（`e4efb4d`）
+
+- `aoe2mod/mod/emitter.py` 新增 `UI_FOLDER_SUFFIX = "_ui"`、`ui_only_path(rel)`（**只搬
+  `widgetui\`**，docstring 逐条记下上面两条反例与 `wpfg` 未测）与 `split_ui_layer(mod_dir, info, suffix="（界面）")`；
+  `emit_data_mod` 在有 `.dat` 时把它拆成第二个文件夹，并在 `warnings` 头部写「只启用数据那个的话图标不会出现」。
+- `aoe2mod/api.py` 的 `install` 一次装两半（`ui_mod_dir` 先装、`position` 相邻），只装一半会写
+  `why_not`。
+- `_probe/test_split_delivery.py`（常驻钉子，117 条）断言在 **profile** 上而不是构建输出上。
+
+### 仍然不知道的
+
+- **机制**：只知道现象（5 次空框 vs 4 次画出），不知道引擎为什么跳过同文件夹的 `widgetui`。
+  未排除的替代解释：有 `.dat` 时整个文件夹按数据模组处理，UI 层完全不参与。
+- `resources\_common\wpfg` 与 `.dat` 同文件夹会不会被读：**没有任何 mod 这样发**，没有对照。
