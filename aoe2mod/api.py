@@ -5672,10 +5672,33 @@ class Toolkit(object):
 
     def set_mod_enabled(self, name, enabled, kind="local",
                         profile_root=None, account=None):
-        """Turn an already-installed mod on or off without moving it."""
+        """Turn an already-installed mod on or off -- and the other half with it.
+
+        A split build is two mods, so switching one of them off leaves the other
+        applying itself.  Measured 2026-10-24: the data half reported `enabled:
+        False` while `X（界面）` stayed on with `widgetui/icons.json` live, i.e. the
+        screen said "off" and the icon tables were still being overridden.  The
+        pairing is the same one `uninstall` uses, in both directions, and a name
+        with no sibling reports `paired: None` instead of inventing one.
+        """
         from .game import locations as G
         prof = profile_root or G.find_profile_root()
-        return G.set_mod_enabled(prof, name, enabled, kind=kind, account=account)
+        first = G.set_mod_enabled(prof, name, enabled, kind=kind, account=account)
+        folder, _how = G.resolve_mod_name(prof, name, kind=kind)
+        paired = None
+        for sibling in self._halves_of(folder):
+            try:
+                got = G.set_mod_enabled(prof, sibling, enabled, kind=kind,
+                                        account=account)
+            except (FileNotFoundError, OSError):
+                # No such mod: that is the ordinary case for a build that was
+                # never split, so it must stay silent rather than look like an
+                # error the caller has to handle.
+                continue
+            paired = got
+            break
+        first["paired"] = paired
+        return first
 
 
 def open_toolkit(game_root=None):

@@ -271,6 +271,44 @@ def main():
           sibling)
     shutil.rmtree(os.path.dirname(rebuild_out), ignore_errors=True)
 
+    print("=== G. switching one half off switches the other off")
+    inst3 = tk.install(data_mod, name="dsh test split 分开投递",
+                       title="dsh test split 分开投递", enabled=True, position=3,
+                       profile_root=prof, overwrite=True)
+    check(bool((inst3.get("ui_install") or {}).get("mod_dir")),
+          "the pair installs again for the switch", inst3.get("ui_install"))
+    got = tk.set_mod_enabled("dsh test split 分开投递", False, profile_root=prof)
+    rows3 = [(r.get("title"), r.get("enabled")) for r in G.list_mods(prof)
+             if str(r.get("title") or "").startswith("dsh test split")]
+    check(got.get("enabled") is False, "the data half reports off", got)
+    check(bool(got.get("paired")), "and a second half was switched with it",
+          got.get("paired"))
+    check(all(e is False for _t, e in rows3) and len(rows3) == 2,
+          "no half is left on while the screen says off", rows3)
+
+    # ...and turning it back on brings both back.
+    back = tk.set_mod_enabled("dsh test split 分开投递", True, profile_root=prof)
+    rows4 = [(r.get("title"), r.get("enabled")) for r in G.list_mods(prof)
+             if str(r.get("title") or "").startswith("dsh test split")]
+    check(back.get("enabled") is True, "switching back on works", back)
+    check(all(e is True for _t, e in rows4) and len(rows4) == 2,
+          "and both halves come back on together", rows4)
+
+    # A mod with no sibling must not raise: `set_mod_enabled` refuses unknown
+    # names instead of creating them, and the pairing probe has to treat that as
+    # "no other half" rather than as a failure of the switch itself.
+    lonely_dir = os.path.join(tempfile.mkdtemp(prefix="v88_lonely_"), "mod")
+    os.makedirs(os.path.join(lonely_dir, "widgetui"))
+    open(os.path.join(lonely_dir, "info.json"), "wb").write(
+        b'{"Author":"dsh","CacheStatus":0,"Description":"x","Title":"dsh test lonely2"}')
+    tk.install(lonely_dir, name="dsh test lonely2", title="dsh test lonely2",
+               profile_root=prof, overwrite=True)
+    solo = tk.set_mod_enabled("dsh test lonely2", False, profile_root=prof)
+    check(solo.get("enabled") is False and solo.get("paired") is None,
+          "a mod with no other half switches fine and reports no pair", solo)
+    tk.uninstall("dsh test lonely2", profile_root=prof)
+    shutil.rmtree(os.path.dirname(lonely_dir), ignore_errors=True)
+
     for d in (pic_dir, prof):
         shutil.rmtree(d, ignore_errors=True)
     shutil.rmtree(os.path.dirname(out), ignore_errors=True)
