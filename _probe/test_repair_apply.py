@@ -24,6 +24,10 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import aoe2mod.api as A
 import aoe2mod.repair as R
+from aoe2mod.game import locations as G
+from aoe2mod.mod import emitter as E2
+
+HERE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 FAILS = []
 
@@ -144,6 +148,64 @@ def main():
               "and it is refused in Chinese", msg)
 
         print()
+        print("=== D. a repair does not rebuild the shape that draws nothing")
+        # An author's folder can hold a `widgetui` layer next to its `.dat`.  Copying it
+        # verbatim would put the tables back into the data half, the one arrangement
+        # measured not to draw (2026-10-24: five blank boxes inside one folder, one
+        # drawn checkerboard after splitting).  So build that shape, repair it, and read
+        # where the tables ended up on disk.
+        ui_src = os.path.join(HERE_DIR, "out_v85_ui")
+        if not os.path.isdir(ui_src):
+            check(False, "the icon half to merge is still on disk", ui_src)
+        else:
+            shaped = os.path.join(tmp, "both_layers")
+            tk.build({"intent": "unit.stat", "unit": 109, "stat": "hit_points",
+                      "value": 4000}, shaped, title="dsh repair both layers",
+                     author="dsh", description="", overwrite=True)
+            for src_root in (ui_src, shaped + E2.UI_FOLDER_SUFFIX):
+                if not os.path.isdir(src_root):
+                    continue
+                for base, _dirs, files in os.walk(src_root):
+                    rel = os.path.relpath(base, src_root)
+                    for name in files:
+                        if name == "info.json" or name.startswith("thumbnail"):
+                            continue
+                        dst_dir = shaped if rel == "." else os.path.join(shaped, rel)
+                        if not os.path.isdir(dst_dir):
+                            os.makedirs(dst_dir)
+                        shutil.copyfile(os.path.join(base, name),
+                                        os.path.join(dst_dir, name))
+                if src_root != ui_src:
+                    shutil.rmtree(src_root, ignore_errors=True)
+            check(_widget_count(shaped) > 0,
+                  "the fixture really carries both layers in one folder",
+                  _widget_count(shaped))
+            tk.install(shaped, name="dsh repair both layers",
+                       title="dsh repair both layers", profile_root=prof,
+                       overwrite=True)
+            got3 = None
+            try:
+                got3 = tk.repair_apply("dsh repair both layers", profile_root=prof)
+            except Exception as exc:                   # noqa: BLE001
+                check(False, "a mod with both layers is repaired without raising",
+                      "%s: %s" % (type(exc).__name__, exc))
+            if got3 is not None:
+                man3 = got3.get("manifest") or {}
+                check(_widget_count(man3.get("mod_dir")) == 0,
+                      "the rebuilt data half carries no widgetui",
+                      _widget_count(man3.get("mod_dir")))
+                check(_widget_count(man3.get("ui_mod_dir")) > 0,
+                      "and the tables went to a second mod instead",
+                      (man3.get("ui_mod_dir"),
+                       _widget_count(man3.get("ui_mod_dir"))))
+                rows3 = [r for r in G.list_mods(prof)
+                         if str(r.get("title") or "").startswith("dsh repair both layers")]
+                counts = sorted(_widget_count(r.get("path")) for r in rows3)
+                check(len(counts) == 2 and counts[0] == 0,
+                      "both halves are installed, one with the tables and one without",
+                      counts)
+
+        print()
         if FAILS:
             print("REPAIR APPLY: %d CHECK(S) FAILED -> %s" % (len(FAILS), FAILS))
             return 1
@@ -152,6 +214,19 @@ def main():
         return 0
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
+
+
+def _widget_count(path):
+    """How many `widgetui/` files a folder holds (-1 when it is not there)."""
+    if not path or not os.path.isdir(path):
+        return -1
+    n = 0
+    for base, _dirs, files in os.walk(path):
+        for name in files:
+            rel = os.path.relpath(os.path.join(base, name), path)
+            if rel.replace(os.sep, "/").startswith("widgetui/"):
+                n += 1
+    return n
 
 
 if __name__ == "__main__":

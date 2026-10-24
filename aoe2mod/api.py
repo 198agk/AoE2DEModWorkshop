@@ -5491,12 +5491,33 @@ class Toolkit(object):
                     "replayed": 0, "notes": notes, "carried": None,
                     "installed": None}
 
-        out_dir = out_dir or os.path.join(self.game_root, "_dsh_repair", row["name"])
+        if not out_dir:
+            # NOT under game_root: that folder is the one the engine reads and
+            # whose CRCs get checked, so writing rebuild output there leaves the
+            # player with stray mods beside their game data.  A temp directory is
+            # cleaned up when the process ends, and the install step copies out of
+            # it anyway.
+            import tempfile as _tempfile
+            out_dir = os.path.join(_tempfile.mkdtemp(prefix="dsh_repair_"),
+                                   row["name"])
         man = self.build_bundle(plan["intents"], out_dir, title=title,
                                 author=author or info.get("Author") or "dsh",
                                 description=info.get("Description") or "",
                                 overwrite=True)
         carried = R.carry_over(old_dir, man["mod_dir"], log=notes)
+        # The author's folder may have carried a `widgetui` layer next to its
+        # `.dat` -- the shape measured on 2026-10-24 to draw nothing (five blank
+        # boxes inside one folder, one drawn checkerboard after splitting).  A
+        # verbatim copy would put those tables straight back into the data half and
+        # rebuild the broken arrangement, so run the same splitter a build uses.
+        _split = E.split_ui_layer(man["mod_dir"], man.get("info"))
+        if _split:
+            man["ui_mod_dir"] = _split["ui_dir"]
+            man["ui_info"] = _split["info"]
+            man["ui_files"] = _split["moved"]
+            notes.append(
+                "作者的界面文件（widgetui）也一起搬过来了；按这条规则单独打成一个"
+                "模组：%s" % _split["info"].get("Title"))
         installed = self.install(man["mod_dir"], name=name, title=title,
                                  enabled=True, position=row.get("priority") or 0,
                                  profile_root=prof, overwrite=True)
