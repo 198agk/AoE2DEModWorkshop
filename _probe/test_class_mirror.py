@@ -229,6 +229,78 @@ def main():
           "edits=%s expected=%d (members x 2 fields x 63 civs)"
           % (all_civs.get("edit_count"), expect))
 
+    # ---- E. every mirrored field, not just the one this file started with --
+    # Measured 2026-10-25: five fields declare a `mirror`, and the first version
+    # of this nail exercised exactly one of them (displayed_range).  A refactor
+    # that dropped the mirror branch for the ENTRY-based ones (attack/armour
+    # rows, which reach the raw slot through `_primary_targets_for_unit` rather
+    # than a scalar offset) would leave every suite green while the panel number
+    # for melee/pierce armour stopped following the number the maths reads.
+    #
+    # Plan-level on purpose: `edit_count` is the count of FIELD writes (proved in
+    # section A), so a mirror that stopped being applied halves the number.  Each
+    # of these is one plan() call -- no build, no reparse.
+    MIRRORED = ("displayed_range", "reload_time", "displayed_attack",
+                "displayed_melee_armour", "displayed_pierce_armour")
+    for stat in MIRRORED:
+        got = tk.plan({"intent": "unit.stat", "unit_class": CAVALRY, "stat": stat,
+                       "delta": 1, "civs": [CIV]})
+        check("%s writes both halves on a whole class" % stat,
+              got.get("edit_count") == len(class_members(tk, CAVALRY)) * 2,
+              "edits=%s members=%d (%s)"
+              % (got.get("edit_count"), len(class_members(tk, CAVALRY)),
+                 got.get("description") or got.get("reason")))
+
+    # The second scalar mirror, on bytes rather than a count.  displayed_range is
+    # audited above with a build; reload_time is the other one that mirrors a
+    # plain offset, and it had no byte-level check anywhere.
+    reload_intent = {"intent": "unit.stat", "unit_class": CAVALRY,
+                     "stat": "reload_time", "value": 3, "civs": [CIV]}
+    reload_out = tempfile.mkdtemp(prefix="dsh_mirror_reload_")
+    reload_man = tk.build(reload_intent, reload_out, title="probe mirror reload",
+                          author="dsh", overwrite=True)
+    r_before = read_fields(tk.dat_path, ("reload_time", "displayed_reload_time"))
+    r_after = read_fields(reload_man["dat"], ("reload_time", "displayed_reload_time"))
+    both = half = stuck_ok = stuck_wrong = 0
+    stuck_ids = []
+    for uid in sorted(class_members(tk, CAVALRY)):
+        key = (CIV_INDEX, uid)
+        old_raw = r_before["reload_time"].get(key)
+        old_shown = r_before["displayed_reload_time"].get(key)
+        new_raw = r_after["reload_time"].get(key)
+        new_shown = r_after["displayed_reload_time"].get(key)
+        if None in (old_raw, old_shown, new_raw, new_shown):
+            continue
+        raw_moved = abs(new_raw - old_raw) > 1e-6
+        shown_moved = abs(new_shown - old_shown) > 1e-6
+        if raw_moved and shown_moved:
+            both += 1
+        elif raw_moved or shown_moved:
+            half += 1
+        elif abs(old_raw - 3.0) <= 1e-6:
+            # Legitimate: the record already sat at the target and the product
+            # skips no-ops on purpose (measured 2026-10-25: units 1744 / 1746,
+            # 披甲战象 and its elite, both already 3.0).  Asking for one of them
+            # by name is refused with "已经是这个值了" rather than silently
+            # writing nothing -- section C pins that behaviour.
+            stuck_ok += 1
+            stuck_ids.append(uid)
+        else:
+            stuck_wrong += 1
+            stuck_ids.append(uid)
+    check("reload_time: the panel number follows the engine number on bytes",
+          both + stuck_ok == len(class_members(tk, CAVALRY))
+          and half == 0 and stuck_wrong == 0,
+          "both=%d half=%d already-there=%d wrong=%d of %d %s"
+          % (both, half, stuck_ok, stuck_wrong,
+             len(class_members(tk, CAVALRY)), stuck_ids[:6]))
+    # "already there" must not be an excuse for a record that had somewhere to go.
+    for uid in stuck_ids:
+        old = r_before["reload_time"].get((CIV_INDEX, uid))
+        check("stuck record %d really had nowhere to go" % uid,
+              old is not None and abs(old - 3.0) <= 1e-6,
+              "before=%r target=3.0" % (old,))
+
     print()
     if FAILS:
         print("CLASS MIRROR: %d CHECK(S) FAILED -> %s"
