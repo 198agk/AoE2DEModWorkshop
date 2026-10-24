@@ -206,6 +206,29 @@ def main():
               "新建单位没有自己的图标" not in txt)
         check("...and it says the icon layer is written but never yet drawn",
               "图标层能写" in txt and "还没被一局游戏画出来过" in txt)
+        check("it tells the newcomer to double-click the launcher",
+              "启动模组工坊.cmd" in txt)
+
+    # The double-click launcher.  Measured 2026-10-24: a .cmd whose own text
+    # contained Chinese, written as UTF-8 and started under "chcp 65001", had
+    # cmd.exe split comment lines in half and try to EXECUTE the fragments --
+    # the launch worked but a brand-new user's first run ended with three lines
+    # of "'--' is not recognized as an internal or external command".  So the
+    # file has to stay ASCII: that property is the whole reason it is safe.
+    launcher = os.path.join(ROOT, "启动模组工坊.cmd")
+    check("a double-click launcher exists at the root", os.path.isfile(launcher))
+    if os.path.isfile(launcher):
+        raw = io.open(launcher, "rb").read()
+        check("the launcher is ASCII only (cmd.exe cannot split it)",
+              all(b < 0x80 for b in raw),
+              "%d non-ascii bytes" % sum(1 for b in raw if b >= 0x80))
+        lt = raw.decode("ascii", "replace")
+        check("it runs the one entry point", "tools\\run_ui.py" in lt)
+        # The store stub is the failure this shim exists for, so the search
+        # order must put a known interpreter first.
+        check("it looks for the known interpreter before PATH",
+              lt.index("dsh-runtimes") < lt.index("where python"))
+        check("and it keeps the window open after a crash", "pause" in lt)
 
     print()
     print("=== H. the 能做的事 list does not promise what no sentence can ask")
