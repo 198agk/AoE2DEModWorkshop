@@ -190,6 +190,23 @@ def encode_bgra(width, height, rgba):
     The header is 128 bytes and follows the four masks DDPF_RGB|DDPF_ALPHAPIXELS
     layout the game's own uncompressed icons use; `decode` reads it back, so the
     two functions are each other's proof.
+
+    **The flag word has to agree with the mip count.**  The first version of this
+    function wrote ``0x00081007`` -- which includes ``DDSD_MIPMAPCOUNT`` -- and
+    then left the mip field at zero.  Every icon built that way drew as an empty
+    box in game, while the same pixels with ``0x0000100F`` (the word both shipped
+    families use) drew correctly.  Measured 2026-10-24 in four runs:
+
+        flags 0x00081007, mips 0  -> empty box   (v63..v72, and v62's icons)
+        flags 0x00081007, mips 1  -> drawn
+        flags 0x0000100F, mips 0  -> drawn
+        flags 0x0000100F, mips 1  -> drawn
+
+    So it is not "mips are required" and not "that flag is wrong": declaring a
+    count and shipping zero levels is the contradiction the engine refuses.  This
+    now writes the shape the shipped icons write.  `decode` cannot catch a mistake
+    of this class -- it reads whatever the header claims -- which is why it took a
+    match to find.
     """
     if len(rgba) != width * height * 4:
         raise ValueError("pixel buffer is %d bytes, expected %d for %dx%d"
@@ -197,10 +214,11 @@ def encode_bgra(width, height, rgba):
     head = bytearray(128)
     head[0:4] = b"DDS "
     struct.pack_into("<I", head, 4, 124)              # dwSize
-    struct.pack_into("<I", head, 8, 0x00081007)       # caps|height|width|pitch|pf
+    struct.pack_into("<I", head, 8, 0x0000100F)       # caps|height|width|pitch|pf
     struct.pack_into("<I", head, 12, height)
     struct.pack_into("<I", head, 16, width)
     struct.pack_into("<I", head, 20, width * 4)       # linear size
+    struct.pack_into("<I", head, 28, 1)               # one mip level
     struct.pack_into("<I", head, 76, 32)              # pixel format size
     struct.pack_into("<I", head, 80, 0x41)            # RGB | ALPHAPIXELS
     struct.pack_into("<I", head, 88, 32)              # bits per pixel

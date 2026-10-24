@@ -378,18 +378,20 @@ def main():
     check("and names the three files it will ship",
           len(icon_plan.get("icon_files") or []) == 3,
           json.dumps(icon_plan.get("icon_files"), ensure_ascii=False))
-    # Same contract as the unit side: eleven builds on 2026-10-24 showed the
-    # bytes are right and the game draws an empty box, because an icon slot
-    # resolves material names against the install directory's table only.  The
-    # preview must not read like a promise, and the nail is what keeps a later
-    # reader from turning the warning back into an advertisement.
+    # Same contract as the unit side, and the same reversal: the twenty-odd builds
+    # on 2026-10-24 ended with the fault on THIS side of the line -- `encode_bgra`
+    # declared a mip-map count and wrote zero levels, and the engine refused the
+    # contradictory file.  The preview must say the game draws it, name the header
+    # fault that made the earlier runs blank, and keep the unmeasured half.
     _iw = " ".join(icon_plan.get("warnings") or [])
-    check("and says the game will not draw it, instead of promising a picture",
-          "不会把它画出来" in _iw, _iw[:120])
-    check("and names the baked table as the reason, not a blank",
-          "空框" in _iw and ("定死" in _iw or "烘焙" in _iw), _iw[:120])
-    check("and no longer says the missing piece is unidentified",
-          "缺的是最后那一步" not in _iw, _iw[:120])
+    check("and says the game draws it, instead of denying the layer",
+          "游戏会画它" in _iw, _iw[:120])
+    check("and names the header fault as what made the earlier runs blank",
+          "0 层" in _iw and ("自相矛盾" in _iw or "文件头" in _iw), _iw[:120])
+    check("and keeps the one unmeasured half written down",
+          "还没量过" in _iw, _iw[:120])
+    check("and no longer blames the engine for not drawing added materials",
+          "不会把它画出来" not in _iw and "分配像素" not in _iw, _iw[:120])
 
     check("and the description says it gets its own icon",
           "自己的图标" in (icon_plan.get("description") or ""),

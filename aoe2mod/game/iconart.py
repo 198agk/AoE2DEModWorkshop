@@ -1,42 +1,48 @@
 # -*- coding: utf-8 -*-
-"""Write the bytes for a unit's own icon -- which this game version does not draw.
+"""Write the bytes for a unit's own icon, in the shape the game actually draws.
 
-**Read this before trusting the module.**  2026-10-24, eleven builds, each one
-opening a real match and looking at the command card:
+**Read this before trusting the module, including the correction at the end.**
+2026-10-24, twenty-odd builds, each one opening a real match and looking at the
+command card.  What they looked like at the time:
 
     v64  icons.json Units["015"] -> a material only the mod defines   empty box
     v71  icons.json Units["015"] -> a SHIPPED material                draws fine
-    v69  the same slot -> a Type "Texture" material (the exact shape
-         the published UI mod uses)                                   empty box
-    v70  the same slot -> a brand-new atlas we contribute             empty box
-    v72  the material in `morematerials.json`, no materials.json      empty box
+    v69  the same slot -> a Type "Texture" material (the published
+         UI mod's exact shape)                                        empty box
+    v70  the same slot -> a brand-new atlas we contribute              empty box
+    v72  the material in `morematerials.json`                          empty box
 
-v64 and v71 change the SAME string in the SAME file; the only difference is
-whether that material name exists in the install directory's `materials.json`.
-That pair is the finding: **the icon slot resolves names against the game's own
-material table only.**  A mod's `materials.json` and `morematerials.json` are not
-merged into it, so a material we contribute cannot be the thing a slot draws.
+That looked like "the engine resolves slot names against the install directory's
+material table only, so a material a mod contributes can never be drawn".  **It
+was wrong, and the fault was mine.**  Every one of those builds shipped a DDS
+whose header set `DDSD_MIPMAPCOUNT` and then wrote a mip count of zero.  Four
+single-variable runs on 2026-10-24 separated the two halves:
 
-Consequences, said plainly:
+    flags 0x00081007 (MIPMAPCOUNT set), mip count 0  -> empty box
+    flags 0x00081007,                   mip count 1   -> drawn
+    flags 0x0000100F (the shipped word), mip count 0  -> drawn
+    flags 0x0000100F,                   mip count 1   -> drawn
 
-* The three files this module emits are correct *as files* (a 256x256 BGRA DDS
-  that decodes back pixel-for-pixel, the slot in `icons.json`, a material and a
-  texture entry).  They are not sufficient, and no arrangement tried so far is.
-* The product therefore treats a requested icon as **accepted but not shown**,
-  and says so in the preview warning.  That warning is the contract, and a nail
-  pins it (`_probe/test_new_unit.py`, `_probe/test_tech_create.py`).
-* Not ruled out: that published UI mods defeat this some other way (their own
-  icons are equally unexplained by the measurements above -- we reproduced their
-  shape field for field and still got an empty button), or that the material must
-  be added to the install directory's `materials.json`.  Until one of those is
-  measured, do not describe this as a capability.
+So it is not "mips are required" and not "that one flag bit is wrong": declaring a
+level count and shipping none is the contradiction the engine refuses.  The mod's
+own material name **is** resolved and drawn.  `aoe2mod.game.ddstex.encode_bgra`
+now writes `0x0000100F` with one level, and the caveat lives there.
 
-Why the earlier belief was wrong, since it is instructive: the published UI mod
-(`[UI]7V1_Three Kingdoms`) does widen Units to 2149 keys with 127 real material
-names, and each of those materials is a Texture-type material backed by its own
-DDS.  Everything about it reads like the route works.  Reproducing it field for
-field still produced an empty button -- so "a shipped mod does X" was never
-evidence that X is what the engine honours.
+The lesson is worth more than the fix: ten identical failures are one experiment
+repeated, not ten pieces of evidence.  Every one of them shared the header, so the
+header was never a variable until it was made one.
+
+Still unmeasured, and it must stay written down: a new unit carrying its own icon
+has never been looked at in a running match.  The data layer (v26..v33) and the
+icon layer (v73/v73b/v73c/v73d, which drew a checkerboard on the shipped villager
+slot) were each verified on their own; the run that does both has not happened.
+
+Why the earlier belief felt supported, since it is instructive: the published UI
+mod (`[UI]7V1_Three Kingdoms`) widens Units to 2149 keys with 127 real material
+names, each a Texture-type material backed by its own DDS.  Everything about it
+reads like the route works -- and it does.  What it could not tell us is whether
+*our* files were well-formed, because "a shipped mod does X" says nothing about
+whether *our* X is byte-correct.
 
 The three pieces, each measured rather than assumed:
 

@@ -476,21 +476,25 @@ def main():
         check(len(icon_plan.get("icon_files") or []) == 3,
               "and says three files, because the tables are cumulative",
               icon_plan.get("icon_files"))
-        # Eleven builds on 2026-10-24 settled this the hard way: the bytes are
-        # right and the game still draws an empty box, because an icon slot
-        # resolves material names against the install directory's table only.
-        # The preview must therefore never read like a promise.  A nail on the
-        # sentence is the only thing that keeps a later reader from "fixing" the
-        # warning back into an advertisement.
+        # Twenty-odd builds on 2026-10-24 ended with the fault on THIS side of the
+        # line, not the engine's: `encode_bgra` declared a mip-map count and wrote
+        # zero levels, and the engine refused the contradictory file.  The warning
+        # has to say the game draws it AND say which mistake made ten earlier runs
+        # come back empty -- otherwise the next reader re-derives the wrong story
+        # from the same eleven screenshots.  What is still unmeasured (one match
+        # with a new unit carrying its own icon) must stay written down.
         _iw = " ".join(icon_plan.get("warnings") or [])
-        check("不会把它画出来" in _iw,
-              "and says the game will not draw it, instead of promising a picture",
+        check("游戏会画它" in _iw,
+              "and says the game draws it, instead of denying the layer",
               _iw[:120])
-        check("空框" in _iw and ("定死" in _iw or "烘焙" in _iw),
-              "and names the baked table as the reason, not a blank",
+        check("0 层" in _iw and ("自相矛盾" in _iw or "文件头" in _iw),
+              "and names the header fault as what made the earlier runs blank",
               _iw[:120])
-        check("缺的是最后那一步" not in _iw,
-              "and no longer says the missing piece is unidentified",
+        check("还没量过" in _iw,
+              "and keeps the one unmeasured half written down",
+              _iw[:120])
+        check("不会把它画出来" not in _iw and "分配像素" not in _iw,
+              "and no longer blames the engine for not drawing added materials",
               _iw[:120])
 
         icon_out = tempfile.mkdtemp(prefix="newunit_icon_mod_")

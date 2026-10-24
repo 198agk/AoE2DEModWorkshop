@@ -174,3 +174,5 @@ _probe/out_tech_create_icon/
 _probe/_techicon_out/
 _probe/_repair_replay/
 _probe/_install_backup/
+_probe/ab_atlas.json
+_probe/noise_floor.json
