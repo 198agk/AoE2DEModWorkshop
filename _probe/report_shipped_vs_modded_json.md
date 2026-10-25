@@ -98,3 +98,98 @@ C 与 D 的差异只能由这个文件解释。**但 C 的判据依赖 chibi 之
 - `_probe\tmp_play.py` / `tmp_play_resume.py` / `tmp_play_nomod.py`：开局与读数工具。
 - `_probe\shipped_objreplacement_backup.json`：出厂文件原样备份（2533 B，sha16 `ee2f1f5a5b3a1591`）。
   现场已还原，游戏目录里只剩 `objreplacement.json`（2533 B）。
+
+---
+
+## 七、2026-10-25 追加：三处只读取证，把开放项收窄了
+
+这一节不改上面任何读数，它补的是「这个文件自己的词汇」和「它坐在哪个存储点」。
+
+### 7.1 引擎里有一张字段表，紧跟文件名之后
+
+`AoE2DE_s.exe` 偏移 **53213376** 起是连续的一组字符串：
+
+| 偏移 | 字符串 |
+|---|---|
+| +0 | `objreplacement.json` |
+| +24 | `objects` |
+| +32 | `object_id` |
+| +48 | `object_override` |
+| +64 | `replacement_object` |
+| +84 | `chance` |
+| +96 | `replacement_attribute` |
+| +120 | `required_attribute` |
+| +144 | `excluded_computer_players` |
+| +176 | `technology` |
+| +192 | `technology_state` |
+| +216 | `replacement_rate` |
+
+它们是**有序连续**的，不是散落在别处的同名片段；紧跟着的一段是
+`F:\Agents\PhoenixBuilders-08\...\RandomMap\Modules\ObjectGenerator.cpp`
+和若干 `(RandomMapSync) ...` 日志格式串 —— 也就是这个文件的解析器在这个模块里。
+
+- 出厂数据用到 11 个字段里的 **10 个**；`replacement_rate` 在整个 2,533 字节里**一次都没有**。
+- 所以「这个文件有哪几种键」不再是猜的。仍然不能由此推出「引擎读 mod 的副本」。
+
+### 7.2 `chance` 是百分比，不是布尔开关
+
+出厂文件里 `chance` 只出现 **两次**，值都是 **50**，且都在同一对上：
+
+```
+[0] Villager         -> Villager (Female)   chance=50
+[1] Villager (Female)-> Villager            chance=50
+```
+
+村民与女村民互换，正是游戏里唯一「随机换一个单位」的地方。所以 50 = 一半概率，
+这是文件自己的用法，不是从画面上反推的。
+
+**这条对实验设计的直接后果**：以后测 `objreplacement` 必须把 `chance` 写成 100，
+否则「一半概率不换」会被读成「没生效」——2026-10-24 的 B 轮就有这个歧义。
+
+### 7.3 存储点表：`resources\_common\dat` 是唯一带 `use_modes_path_for_mods` 的
+
+`modes\Pompeii\Pompeii.json` 的 `storage_point_list` 共 **28** 个存储点，
+其中 `use_modes_path_for_mods` 为真的只有 **1** 个：
+
+```
+resources\_common\dat    type=DAT    use_modes_path_for_mods=True
+```
+
+`objreplacement.json` 与 `linkedTechs.json` 都在这个目录下。
+
+### 7.4 于是那条「mod 副本不生效」的说法站不住
+
+同目录的 `civilizations.json` **已经用 v45 证明过 mod 副本会被采纳**（63 个文明
+`name_string_id` 全改成 10281，面板把非维京读成「维京」）。它与 `objreplacement.json`
+是兄弟文件、同一个存储点。
+
+⇒ 收窄后的诚实状态是两句，而不是一句：
+
+1. **这个目录里的松散 JSON 会被读**（v45，双 canary 同局成立）；
+2. **`objreplacement.json` 本身仍没有一次干净的读数** —— 2026-10-24 那几轮同时开着
+   换皮、主题、场景三个模组，任何外观判据都被它们污染。
+
+所以开放项从「这个文件读不读」变成「**用一局干净的游戏确认它**」，而这一局的
+设计约束已经被 §7.1–7.3 定下来了：`chance=100`（不引随机）、掉换对要**看得见差别**
+（村民→斥候，而不是村民→女村民）、同文件夹带一个 `.dat` canary（面板可读的血值）
+证明挂载、且**第三方模组全部关掉**。
+
+### 7.5 这一节新增的工具（只读）
+
+- `_probe\tmp_objrepl_chance.py`：文件形状、键名普查、`chance` 取值的分布、EXE 里
+  这几个名字的命中数。
+- `_probe\tmp_objrepl_fields.py`：把 EXE 偏移 53213376 前后的可打印串全部打出来，
+  以及 8 条出厂条目逐条原样打印。
+- `_probe\tmp_objrepl_nested.py`：**第一版读错层级的记录** —— 它问
+  `entry.get("chance")`，而数据嵌在 `object_override` 里，于是印出「没有任何条目带
+  chance」而文件里明明有两处。同一天第 N 次「在方便读的层级读字段」。改正后 10/11
+  字段被出厂数据使用、`chance` 2/8 条目。
+- `_probe\tmp_objrepl_storage.py`：28 个存储点全表 + 两个 JSON 文件落在哪一格。
+- `_probe\tmp_objrepl_logs.py`：EXE 里与 `replace` 相关的 33 条可打印串、以及 26 个
+  日志目录 258 个文件里**没有任何一条**替换相关的日志行 ⇒ 没有日志旁证，只能靠屏幕。
+- `_probe\tmp_mod_listing.py`：当前安装 19 个 mod、启用 5 个，其中**第三方启用 4 个**
+  （换皮、主题、文明联盟文本、军团长文本）—— 干净的一局必须先把这 4 个关掉。
+- `_probe\tmp_build_objrepl.py`：已构建 `_probe\out_objrepl_mod`（`info.json` 92 B +
+  `.dat` 11,982,495 B + `objreplacement.json` 1,656 B，7 条条目，`chance=100` 的
+  村民→斥候）。**尚未安装、尚未开局**，因为全量套件正在跑，装模组会让那一轮描述
+  两个状态。

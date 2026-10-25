@@ -368,6 +368,14 @@ SUITES = [
     # 2026-10-25).  Clearing the cache inside the test would be the test instructing
     # the code; the player cannot clear a cache.
     r"_probe\test_nl_live_vocab.py",
+    # This one nails the CHEAP facts behind an expensive open question: the loader's
+    # field list in the EXE, what `chance` means, and the family edges the product
+    # reads.  Those facts rot silently -- a report number drifts, a Steam update
+    # rewrites the shipped file, or `declared_edges()` stops returning the villager
+    # pair (the worst case: the two halves are no longer one family, so every villager
+    # edit silently halves).  It deliberately does NOT nail "does the game honour a
+    # mod's copy", which is still open, so the boundary is printed at the end.
+    r"_probe\test_objreplace_facts.py",
 ]
 
 # Suites that are not Python.  The screen's script is JavaScript and no Python
