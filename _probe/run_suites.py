@@ -390,6 +390,11 @@ SUITES = [
     # sides, so it stayed green while every plugin intent became unreachable.  This
     # suite is a source-level guard against that shape coming back.
     r"_probe\test_nail_hygiene.py",
+    # The ledgers' counts must equal the tree's.  Two properties make this worth
+    # running: an undated claim that disagrees reds it, and the dated-record rule
+    # still matching something -- without the second it would demand that six
+    # dated rows be rewritten to today's number.
+    r"_probe\test_doc_drift.py",
     # The picker that answers "what does this change touch".  It is a suite for the
     # same reason the registry check is one: its failure mode is a SMALL number, not
     # an error.  Measured while building it -- matching the changed path answered

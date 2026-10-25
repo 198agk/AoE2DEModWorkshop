@@ -204,8 +204,15 @@ def main():
         # now does.
         check("it no longer says a new unit cannot have an icon",
               "新建单位没有自己的图标" not in txt)
-        check("...and it says the icon layer is written but never yet drawn",
-              "图标层能写" in txt and "还没被一局游戏画出来过" in txt)
+        # And the mirror image of that mistake, which this file made the moment it
+        # was first written: it demanded the README keep saying the icon was never
+        # drawn, so improving the front door failed the suite.  v85 (2026-10-24)
+        # drew it from the product path on an auto-assigned slot.  Assert the true
+        # sentence AND that the stale one is gone, so drift either way is caught.
+        check("it no longer says the icon was never drawn",
+              "还没被一局游戏画出来过" not in txt)
+        check("...and it says the icon was drawn in a real game, on a split build",
+              "已经在一局真游戏里画出来过" in txt and "两个 mod" in txt)
         check("it tells the newcomer to double-click the launcher",
               "启动模组工坊.cmd" in txt)
 
