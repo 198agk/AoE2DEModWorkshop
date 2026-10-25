@@ -167,6 +167,23 @@
   #pick { display: none; margin-top: 12px; border-top: 1px solid var(--line);
           padding-top: 12px; }
   #pick.open { display: block; }
+  /* The form panel: one intent, one shape, one line of slots.  It exists because
+     "用中文说就行" is only friendly if you already know what the reader accepts.
+     Every sentence it builds comes from a template the reader is tested against
+     (_probe/test_compose_roundtrip.py), so this cannot drift into producing
+     sentences the tool refuses. */
+  #form { display: none; margin-top: 12px; border-top: 1px solid var(--line);
+          padding-top: 12px; }
+  #form.open { display: block; }
+  .fslots { display: flex; gap: 8px; flex-wrap: wrap; align-items: flex-end;
+            margin-top: 8px; }
+  .fslot { display: flex; flex-direction: column; gap: 3px; min-width: 96px; }
+  .fslot label { font-size: 11px; color: var(--dim); }
+  .fslot input, .fslot select { padding: 4px 8px; font-size: 12px;
+                                background: #11151a; color: inherit;
+                                border: 1px solid var(--line); border-radius: 4px; }
+  #fpreview { margin-top: 10px; font-size: 13px; color: var(--gold);
+              word-break: break-all; }
   .pickscroll { max-height: 320px; overflow-y: auto; padding-right: 4px; }
   /* Dragging is the second half of "point instead of type": the cell has to
      advertise that it can be picked up. */
@@ -212,6 +229,7 @@
           <code>加/减</code> 是增量。识别不了的句子会告诉你为什么，不会瞎猜。
         </div>
         <div class="row end" style="margin-top:12px">
+          <button id="btn-form" class="chip">✎ 填表</button>
           <button id="btn-pick" class="chip">▦ 看着选</button>
           <button id="btn-ai" class="chip" style="display:none">✦ 让 AI 写成句子</button>
           <span class="spacer"></span>
@@ -223,6 +241,24 @@
             仍然由下面那些同一条规则判断 —— 它不会直接改任何数据。
           </div>
           <div id="aigot"></div>
+        </div>
+
+        <div id="form">
+          <div class="tabs">
+            <select id="fintent" style="flex:1;padding:4px 8px;font-size:12px;
+                    background:#11151a;color:inherit;border:1px solid var(--line);
+                    border-radius:4px"></select>
+            <select id="fshape" style="flex:1;padding:4px 8px;font-size:12px;
+                    background:#11151a;color:inherit;border:1px solid var(--line);
+                    border-radius:4px"></select>
+          </div>
+          <div class="hint">填好下面几格，这句话会写进上面的框里 —— 它和你自己打的那句
+            走的是同一条判断，工具不认识的说法它照样会拒。</div>
+          <div class="fslots" id="fslots"></div>
+          <div id="fpreview"></div>
+          <div class="row end" style="margin-top:8px">
+            <button id="fuse" class="chip">写进上面的框</button>
+          </div>
         </div>
 
         <div id="pick">
@@ -745,6 +781,186 @@ $("#pickq").addEventListener("input", () => {
   // into feeling laggy; but a half-typed word is still a valid query here.
   loadPick(false);
 });
+
+// ---- form -------------------------------------------------------------
+// The panel is a view of `schema/sentences.json`, fetched from /api/forms so a
+// plugin added while the tool runs shows up here too.  It never builds an intent
+// itself: it writes a SENTENCE into the box, and the reader decides.  That is
+// the whole design -- a form that could bypass the reader would be a second,
+// untested way to change game data.
+let FORMS = null;
+let FSHAPE = null;
+// The rendered slot controls, in template order.  Reading them back from this
+// list instead of asking the DOM (`querySelectorAll`) keeps one source of truth
+// for "what is on the panel" and means the value reader cannot disagree with the
+// renderer about which slots exist.
+let FSLOT_NODES = [];
+// The op words come from the same table as the templates, not from META: they
+// are part of a sentence ("加/减/改成"), and a table that ships the sentence
+// should ship the words inside it.
+let OP_CHOICES = ["改成", "加", "减"];
+
+async function loadForms() {
+  if (FORMS) return FORMS;
+  const b = await api("/api/forms");
+  FORMS = b.forms || [];
+  if (b.op_choices && b.op_choices.length) OP_CHOICES = b.op_choices;
+  return FORMS;
+}
+
+function formIntents() {
+  const seen = [];
+  for (const f of FORMS || []) {
+    if (!seen.some((x) => x.intent === f.intent)) {
+      seen.push({intent: f.intent, label: f.intent_label || f.intent});
+    }
+  }
+  return seen;
+}
+
+function renderShapes() {
+  const intent = $("#fintent").value;
+  const shapes = (FORMS || []).filter((f) => f.intent === intent);
+  const sel = $("#fshape");
+  sel.innerHTML = "";
+  for (const f of shapes) {
+    const o = el("option", null, f.label || f.id);
+    o.value = f.id;
+    sel.appendChild(o);
+  }
+  FSHAPE = shapes[0] || null;
+  sel.onchange = () => {
+    FSHAPE = shapes.find((f) => f.id === sel.value) || null;
+    renderSlots();
+  };
+  renderSlots();
+}
+
+function slotInput(slot) {
+  const wrap = el("div", "fslot");
+  wrap.appendChild(el("label", null, slot.label || slot.name));
+  // A civ is a closed list and a picture is a file, so those two get a control
+  // that cannot be mistyped; everything else is a name or a number the player
+  // types, and the reader judges it.
+  if (slot.kind === "civ" && META && META.civs) {
+    const sel = el("select");
+    for (const c of META.civs) {
+      const o = el("option", null, c);
+      o.value = c;
+      sel.appendChild(o);
+    }
+    sel.dataset.slot = slot.name;
+    sel.onchange = renderFormPreview;
+    wrap.appendChild(sel);
+    return wrap;
+  }
+  if (slot.kind === "op" || slot.kind === "ordinal") {
+    const sel = el("select");
+    const opts = slot.kind === "ordinal"
+      ? ["1", "2", "3", "4", "5"]
+      : OP_CHOICES;
+    for (const o of opts) {
+      const opt = el("option", null, o);
+      opt.value = o;
+      sel.appendChild(opt);
+    }
+    if (slot["default"]) sel.value = slot["default"];
+    sel.dataset.slot = slot.name;
+    sel.onchange = renderFormPreview;
+    wrap.appendChild(sel);
+    return wrap;
+  }
+  const inp = el("input");
+  inp.type = "text";
+  inp.dataset.slot = slot.name;
+  inp.placeholder = slot.sample == null ? "" : String(slot.sample);
+  inp.oninput = renderFormPreview;
+  wrap.appendChild(inp);
+  return wrap;
+}
+
+function renderSlots() {
+  const box = $("#fslots");
+  box.innerHTML = "";
+  FSLOT_NODES = [];
+  if (!FSHAPE) { $("#fpreview").textContent = ""; return; }
+  for (const slot of FSHAPE.slots || []) {
+    const n = slotInput(slot);
+    FSLOT_NODES.push(n);
+    box.appendChild(n);
+  }
+  renderFormPreview();
+}
+
+function formValues() {
+  const vals = {};
+  for (const wrap of FSLOT_NODES) {
+    // The row is [label, control]; take the child that carries the slot name
+    // rather than a fixed index, so adding a hint under the label cannot make
+    // every slot read back as "" and the preview say "还差" forever.
+    const n = (wrap.children || []).filter((c) => c.dataset && c.dataset.slot)[0];
+    if (!n) continue;
+    const v = (n.value || "").trim();
+    if (v) vals[n.dataset.slot] = v;
+  }
+  return vals;
+}
+
+// Composing here rather than on the server keeps the box editable: the player
+// can fix one word by hand after filling the form, and the pin/parse path then
+// treats it as any other typed sentence.
+function renderFormPreview() {
+  const out = $("#fpreview");
+  if (!FSHAPE) { out.textContent = ""; return; }
+  const vals = formValues();
+  let text = FSHAPE.template;
+  for (const slot of FSHAPE.slots || []) {
+    const v = vals[slot.name];
+    if (v === undefined) {
+      out.textContent = "还差：" + (slot.label || slot.name);
+      return;
+    }
+    text = text.split("{" + slot.name + "}").join(v);
+  }
+  out.textContent = text;
+}
+
+$("#btn-form").onclick = async () => {
+  const p = $("#form");
+  p.className = p.className === "open" ? "" : "open";
+  if (p.className !== "open") return;
+  try {
+    await loadForms();
+  } catch (e) {
+    $("#fslots").textContent = "读不到表单：" + e.message;
+    return;
+  }
+  const sel = $("#fintent");
+  if (!sel.children.length) {
+    for (const it of formIntents()) {
+      const o = el("option", null, it.label);
+      o.value = it.intent;
+      sel.appendChild(o);
+    }
+    sel.onchange = renderShapes;
+    // Set the selection explicitly instead of relying on the browser to pick the
+    // first option.  The browser does pick it, but the panel reads `sel.value`
+    // back to decide which shapes to draw, and a control whose state is only
+    // implied by the user agent is a control nothing can test.
+    if (sel.children.length) sel.value = sel.children[0].value;
+  }
+  renderShapes();
+};
+
+$("#fuse").onclick = () => {
+  const text = $("#fpreview").textContent;
+  if (!text || text.indexOf("还差：") === 0) return;
+  const ta = $("#say");
+  ta.value = (ta.value.trim() ? ta.value.replace(/\s*$/, "") + "\n" : "") + text;
+  ta.focus();
+  ta.selectionStart = ta.selectionEnd = ta.value.length;
+  toast("已填进上面的框，接着点「读一下」", "ok");
+};
 
 // ---- parse ------------------------------------------------------------
 async function doParse() {

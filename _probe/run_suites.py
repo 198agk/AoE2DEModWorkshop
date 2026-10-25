@@ -471,6 +471,15 @@ SUITES = [
     # covers a hole a 20-minute sweep leaves: nothing else ran that guard's
     # rules without paying for the whole run.
     r"_probe\test_sweep_exemptions.py",
+    # The form panel composes sentences the player never typed.  A template
+    # that drifts from the reader still "works" on screen -- the click fills
+    # the box and the sentence underneath is one the tool cannot read -- so
+    # the only place that drift can be seen is a round trip.
+    r"_probe\test_compose_roundtrip.py",
+    # The route the page actually reads must hand out the same forms the
+    # round trip measured; a filter or a re-sort in between would offer a
+    # form the reader refuses, and nothing would say so until a click.
+    r"_probe\test_forms_route.py",
 ]
 
 # Suites that are not Python.  The screen's script is JavaScript and no Python

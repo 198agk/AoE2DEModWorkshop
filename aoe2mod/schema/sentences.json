@@ -1,0 +1,621 @@
+{
+  "$comment": "How each intent is SAID in Chinese. This is the inverse of aoe2mod/ui/nl.py: the reader turns a sentence into an intent, this table turns a form into the same sentence. It lives in the schema directory, next to intents.json, because it is declaration, not code -- a plugin that ships a sentence shape ships a template here rather than editing the reader. The round-trip test (_probe/test_compose_roundtrip.py) composes every form below and runs it back through the reader; an entry whose sentence the reader does not accept is a broken entry, not a broken test.",
+  "version": 1,
+  "op_choices": [
+    "改成",
+    "加",
+    "减"
+  ],
+  "intents": {
+    "unit.stat": {
+      "label": "改单位属性",
+      "forms": [
+        {
+          "id": "value",
+          "label": "把某一项设成某个数",
+          "template": "{unit} {stat} 改成 {n}",
+          "slots": [
+            {
+              "name": "unit",
+              "kind": "unit",
+              "label": "单位",
+              "sample": "村民"
+            },
+            {
+              "name": "stat",
+              "kind": "stat",
+              "label": "属性",
+              "required": true,
+              "sample": "血量"
+            },
+            {
+              "name": "n",
+              "kind": "number",
+              "label": "改成",
+              "sample": "1000"
+            }
+          ]
+        },
+        {
+          "id": "delta",
+          "label": "加减一点",
+          "template": "{unit} {stat} {op}{n}",
+          "slots": [
+            {
+              "name": "unit",
+              "kind": "unit",
+              "label": "单位",
+              "sample": "村民"
+            },
+            {
+              "name": "stat",
+              "kind": "stat",
+              "label": "属性",
+              "required": true,
+              "sample": "血量"
+            },
+            {
+              "name": "op",
+              "kind": "op",
+              "label": "怎么改",
+              "required": true,
+              "default": "加"
+            },
+            {
+              "name": "n",
+              "kind": "number",
+              "label": "数值",
+              "sample": "10"
+            }
+          ]
+        },
+        {
+          "id": "class",
+          "label": "一整类单位一起改",
+          "template": "所有{class}{stat} {op}{n}",
+          "slots": [
+            {
+              "name": "class",
+              "kind": "class",
+              "label": "哪一类",
+              "required": true,
+              "sample": "骑兵"
+            },
+            {
+              "name": "stat",
+              "kind": "stat",
+              "label": "属性",
+              "required": true,
+              "sample": "血量"
+            },
+            {
+              "name": "op",
+              "kind": "op",
+              "label": "怎么改",
+              "required": true,
+              "default": "加"
+            },
+            {
+              "name": "n",
+              "kind": "number",
+              "label": "数值",
+              "sample": "10"
+            }
+          ]
+        }
+      ]
+    },
+    "unit.cost": {
+      "label": "改单位造价",
+      "forms": [
+        {
+          "id": "delta",
+          "label": "加价或减价",
+          "template": "{unit}{resource}成本{op}{n}",
+          "slots": [
+            {
+              "name": "unit",
+              "kind": "unit",
+              "label": "单位",
+              "sample": "弓箭手"
+            },
+            {
+              "name": "resource",
+              "kind": "resource",
+              "label": "哪种资源",
+              "required": true,
+              "sample": "木材"
+            },
+            {
+              "name": "op",
+              "kind": "op",
+              "label": "怎么改",
+              "required": true,
+              "default": "加"
+            },
+            {
+              "name": "n",
+              "kind": "number",
+              "label": "数值",
+              "sample": "10"
+            }
+          ]
+        }
+      ]
+    },
+    "unit.attack_class": {
+      "label": "改单位对某一类的攻防",
+      "forms": [
+        {
+          "id": "attack",
+          "label": "对某一类加攻击",
+          "template": "{unit}对{class}攻击{op}{n}",
+          "slots": [
+            {
+              "name": "unit",
+              "kind": "unit",
+              "label": "单位",
+              "sample": "步弓手"
+            },
+            {
+              "name": "class",
+              "kind": "class",
+              "label": "针对哪一类",
+              "required": true,
+              "sample": "骑兵"
+            },
+            {
+              "name": "op",
+              "kind": "op",
+              "label": "怎么改",
+              "required": true,
+              "default": "加"
+            },
+            {
+              "name": "n",
+              "kind": "number",
+              "label": "数值",
+              "sample": "2"
+            }
+          ]
+        },
+        {
+          "id": "armour",
+          "label": "对某一类加护甲",
+          "template": "{unit}对{class}防御{op}{n}",
+          "slots": [
+            {
+              "name": "unit",
+              "kind": "unit",
+              "label": "单位",
+              "sample": "步弓手"
+            },
+            {
+              "name": "class",
+              "kind": "class",
+              "label": "针对哪一类",
+              "required": true,
+              "sample": "骑兵"
+            },
+            {
+              "name": "op",
+              "kind": "op",
+              "label": "怎么改",
+              "required": true,
+              "default": "加"
+            },
+            {
+              "name": "n",
+              "kind": "number",
+              "label": "数值",
+              "sample": "1"
+            }
+          ]
+        }
+      ]
+    },
+    "tech.research_time": {
+      "label": "改科技研究时间",
+      "forms": [
+        {
+          "id": "delta",
+          "label": "快一点或慢一点",
+          "template": "{tech}研究时间{op}{n}",
+          "slots": [
+            {
+              "name": "tech",
+              "kind": "tech",
+              "label": "科技",
+              "sample": "织布机"
+            },
+            {
+              "name": "op",
+              "kind": "op",
+              "label": "怎么改",
+              "required": true,
+              "default": "减"
+            },
+            {
+              "name": "n",
+              "kind": "number",
+              "label": "秒数",
+              "sample": "5"
+            }
+          ]
+        }
+      ]
+    },
+    "tech.cost": {
+      "label": "改科技造价",
+      "forms": [
+        {
+          "id": "delta",
+          "label": "加价或减价",
+          "template": "{tech}{resource}成本{op}{n}",
+          "slots": [
+            {
+              "name": "tech",
+              "kind": "tech",
+              "label": "科技",
+              "sample": "织布机"
+            },
+            {
+              "name": "resource",
+              "kind": "resource",
+              "label": "哪种资源",
+              "required": true,
+              "sample": "木材"
+            },
+            {
+              "name": "op",
+              "kind": "op",
+              "label": "怎么改",
+              "required": true,
+              "default": "加"
+            },
+            {
+              "name": "n",
+              "kind": "number",
+              "label": "数值",
+              "sample": "10"
+            }
+          ]
+        }
+      ]
+    },
+    "tech.effect": {
+      "label": "改科技效果",
+      "forms": [
+        {
+          "id": "indexed",
+          "label": "改第几条效果",
+          "template": "{tech}第{index}条效果{op}{n}",
+          "slots": [
+            {
+              "name": "tech",
+              "kind": "tech",
+              "label": "科技",
+              "sample": "织布机"
+            },
+            {
+              "name": "index",
+              "kind": "ordinal",
+              "label": "第几条效果",
+              "required": true,
+              "sample": "1"
+            },
+            {
+              "name": "op",
+              "kind": "op",
+              "label": "怎么改",
+              "required": true,
+              "default": "加"
+            },
+            {
+              "name": "n",
+              "kind": "number",
+              "label": "数值",
+              "sample": "5"
+            }
+          ]
+        }
+      ]
+    },
+    "unit.availability": {
+      "label": "改某文明能否造某单位",
+      "forms": [
+        {
+          "id": "revoke",
+          "label": "让某文明造不了",
+          "template": "{civ}不能造{entity}",
+          "slots": [
+            {
+              "name": "civ",
+              "kind": "civ",
+              "label": "文明",
+              "required": true
+            },
+            {
+              "name": "entity",
+              "kind": "unit",
+              "label": "单位",
+              "sample": "蔷琵侦察兵"
+            }
+          ]
+        },
+        {
+          "id": "grant",
+          "label": "让某文明能造",
+          "template": "{civ}能造{entity}",
+          "slots": [
+            {
+              "name": "civ",
+              "kind": "civ",
+              "label": "文明",
+              "required": true
+            },
+            {
+              "name": "entity",
+              "kind": "unit",
+              "label": "单位",
+              "sample": "蔷琵侦察兵"
+            }
+          ]
+        }
+      ]
+    },
+    "tech.availability": {
+      "label": "改某文明能否研究某科技",
+      "forms": [
+        {
+          "id": "revoke",
+          "label": "让某文明研究不了",
+          "template": "{civ}不能研究{entity}",
+          "slots": [
+            {
+              "name": "civ",
+              "kind": "civ",
+              "label": "文明",
+              "required": true
+            },
+            {
+              "name": "entity",
+              "kind": "tech",
+              "label": "科技",
+              "sample": "织布机"
+            }
+          ]
+        },
+        {
+          "id": "grant",
+          "label": "让某文明能研究",
+          "template": "{civ}能研究{entity}",
+          "slots": [
+            {
+              "name": "civ",
+              "kind": "civ",
+              "label": "文明",
+              "required": true
+            },
+            {
+              "name": "entity",
+              "kind": "tech",
+              "label": "科技",
+              "sample": "织布机"
+            }
+          ]
+        }
+      ]
+    },
+    "unit.sprite": {
+      "label": "换单位造型",
+      "forms": [
+        {
+          "id": "swap",
+          "label": "把 A 的样子换成 B",
+          "template": "把{unit}的样子换成{donor}",
+          "slots": [
+            {
+              "name": "unit",
+              "kind": "unit",
+              "label": "要改的单位",
+              "sample": "村民"
+            },
+            {
+              "name": "donor",
+              "kind": "unit",
+              "label": "借用谁的样子",
+              "sample": "步弓手"
+            }
+          ]
+        }
+      ]
+    },
+    "unit.art": {
+      "label": "给单位换一张图",
+      "forms": [
+        {
+          "id": "picture",
+          "label": "指定一张图片",
+          "template": "给{unit}换张图 {picture}",
+          "slots": [
+            {
+              "name": "unit",
+              "kind": "unit",
+              "label": "单位",
+              "sample": "村民"
+            },
+            {
+              "name": "picture",
+              "kind": "path",
+              "label": "图片文件",
+              "required": true
+            }
+          ]
+        }
+      ]
+    },
+    "unit.create": {
+      "label": "做一个新单位",
+      "forms": [
+        {
+          "id": "clone",
+          "label": "照着现成的单位做一个",
+          "template": "{civ}照{donor}做一个新单位，叫{name}",
+          "slots": [
+            {
+              "name": "civ",
+              "kind": "civ",
+              "label": "给哪个文明",
+              "required": true
+            },
+            {
+              "name": "donor",
+              "kind": "unit",
+              "label": "照着谁做",
+              "sample": "村民"
+            },
+            {
+              "name": "name",
+              "kind": "text",
+              "label": "新单位叫什么",
+              "required": true,
+              "sample": "铁匠学徒"
+            }
+          ]
+        },
+        {
+          "id": "clone_box",
+          "label": "并指定出现在第几格",
+          "template": "{civ}照{donor}做一个新单位，叫{name}，放在第{box}格",
+          "slots": [
+            {
+              "name": "civ",
+              "kind": "civ",
+              "label": "给哪个文明",
+              "required": true
+            },
+            {
+              "name": "donor",
+              "kind": "unit",
+              "label": "照着谁做",
+              "sample": "村民"
+            },
+            {
+              "name": "name",
+              "kind": "text",
+              "label": "新单位叫什么",
+              "required": true,
+              "sample": "铁匠学徒"
+            },
+            {
+              "name": "box",
+              "kind": "number",
+              "label": "第几格",
+              "required": true,
+              "sample": "5"
+            }
+          ]
+        }
+      ]
+    },
+    "tech.create": {
+      "label": "做一项新科技",
+      "forms": [
+        {
+          "id": "clone",
+          "label": "照着现成的科技做一项",
+          "template": "{civ}照{tech}做一项新科技，叫{name}",
+          "slots": [
+            {
+              "name": "civ",
+              "kind": "civ",
+              "label": "给哪个文明",
+              "required": true
+            },
+            {
+              "name": "tech",
+              "kind": "tech",
+              "label": "照着哪项科技",
+              "sample": "织布机"
+            },
+            {
+              "name": "name",
+              "kind": "text",
+              "label": "新科技叫什么",
+              "required": true,
+              "sample": "细麻布"
+            }
+          ]
+        }
+      ]
+    },
+    "tech.toggle_group": {
+      "label": "把几项科技做成一组",
+      "forms": [
+        {
+          "id": "pair",
+          "label": "两项只能选一个",
+          "template": "把{t1}和{t2}做成只能选一个",
+          "slots": [
+            {
+              "name": "t1",
+              "kind": "tech",
+              "label": "第一项科技",
+              "sample": "锻造"
+            },
+            {
+              "name": "t2",
+              "kind": "tech",
+              "label": "第二项科技",
+              "sample": "步兵鳞甲"
+            }
+          ]
+        },
+        {
+          "id": "toggle",
+          "label": "两项可以互相开关",
+          "template": "把{t1}和{t2}做成可以互相开关",
+          "slots": [
+            {
+              "name": "t1",
+              "kind": "tech",
+              "label": "第一项科技",
+              "sample": "锻造"
+            },
+            {
+              "name": "t2",
+              "kind": "tech",
+              "label": "第二项科技",
+              "sample": "步兵鳞甲"
+            }
+          ]
+        }
+      ]
+    },
+    "unit.replace_on_map": {
+      "label": "开局时把单位换成另一个",
+      "forms": [
+        {
+          "id": "swap",
+          "label": "按概率随机换",
+          "template": "开局时把{unit}换成{replacement}",
+          "slots": [
+            {
+              "name": "unit",
+              "kind": "unit",
+              "label": "被换掉的单位",
+              "sample": "村民"
+            },
+            {
+              "name": "replacement",
+              "kind": "unit",
+              "label": "换成哪个",
+              "sample": "斥候骑兵"
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

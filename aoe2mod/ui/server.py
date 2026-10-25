@@ -37,6 +37,7 @@ import traceback
 from aoe2mod import api as A
 from aoe2mod.game import civnames as CN
 from aoe2mod.mod import emitter as E
+from aoe2mod.ui import compose as CP
 from aoe2mod.ui import nl
 
 STATIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
@@ -122,6 +123,25 @@ class App(object):
                         for k, v in intents["intents"].items()],
             "mods": _mods_brief(tk),
         }
+
+    def forms(self, intent=None):
+        """The sentence templates a form can be built from.
+
+        Why this is a route rather than a key baked into `meta`: a plugin dropped
+        in while the tool runs changes the table, and `meta` is fetched once at
+        page load.  Measured 2026-10-25: a vocabulary cache keyed on a constant
+        made a live plugin's words appear everywhere except the reader; the same
+        file-backed table is read fresh here for the same reason.
+
+        The important invariant is not in this function but in
+        `_probe/test_compose_roundtrip.py`: every form listed here composes a
+        sentence the reader accepts.  A form this route offers and the reader
+        refuses would be the worst shape a screen can take -- the click works and
+        the sentence underneath is one the tool cannot read.
+        """
+        table = CP.load()
+        return {"ok": True, "forms": CP.forms(intent, table),
+                "op_choices": table.get("op_choices") or []}
 
     def search(self, q, kind="unit", limit=25):
         return {"ok": True, "hits": self.tk.search(q, kind=kind, limit=limit)}
@@ -658,6 +678,9 @@ def make_handler(app):
                 return _json(self, {"ok": False, "error": "no such file"}, 404)
             if path == "/api/meta":
                 return self._guard(lambda: app.meta())
+            if path == "/api/forms":
+                return self._guard(lambda: app.forms(
+                    _query(self.path).get("intent", [None])[0]))
             if path == "/api/mods":
                 return self._guard(lambda: app.mods())
             if path == "/api/search":

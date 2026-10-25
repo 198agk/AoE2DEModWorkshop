@@ -27,7 +27,21 @@ function node(tag) {
     className: "", textContent: "", innerHTML: "", style: {},
     children: [], value: "", disabled: false, onclick: null, title: "",
     parentNode: null,
-    appendChild(c) { c.parentNode = this; this.children.push(c); return c; },
+    // The form panel labels each control with the slot it fills (`data-slot`),
+    // which is how the value reader and the renderer agree on what is on screen.
+    dataset: {},
+    appendChild(c) {
+      c.parentNode = this;
+      this.children.push(c);
+      // A real <select> picks its first <option> by itself, so `select.value`
+      // is readable right after the options are added.  A stub that left it ""
+      // would make the page look broken in the harness only -- the page is
+      // allowed to rely on the browser here, because every browser does this.
+      if (this.tagName === "SELECT" && c.tagName === "OPTION" && !this.value) {
+        this.value = c.value;
+      }
+      return c;
+    },
     // The pick-a-picture grid inserts a placeholder at the FRONT of a cell when a
     // declared icon turns out to have no file, and moves focus into the textarea
     // after a pick.  Both are ordinary DOM calls the page really makes.
@@ -307,6 +321,38 @@ const BROWSE = {
 // A real /api/update-check answer, captured from a live server with an installed
 // mod whose build record says the game's .dat has changed since.  Unknown rows
 // are in the same payload on purpose: the banner must count ONLY stale ones.
+const FORMS = {
+  ok: true,
+  forms: [
+    { intent: "unit.stat", intent_label: "改单位属性", id: "value",
+      label: "把某一项设成某个数", template: "{unit} {stat} 改成 {n}",
+      slots: [
+        { name: "unit", kind: "unit", label: "单位", sample: "村民" },
+        { name: "stat", kind: "stat", label: "属性", required: true, sample: "血量" },
+        { name: "n", kind: "number", label: "改成", sample: "1000" },
+      ] },
+    { intent: "unit.stat", intent_label: "改单位属性", id: "delta",
+      label: "加减一点", template: "{unit} {stat} {op}{n}",
+      slots: [
+        { name: "unit", kind: "unit", label: "单位", sample: "村民" },
+        { name: "stat", kind: "stat", label: "属性", required: true, sample: "血量" },
+        { name: "op", kind: "op", label: "怎么改", required: true, default: "加" },
+        { name: "n", kind: "number", label: "数值", sample: "10" },
+      ] },
+    { intent: "unit.create", intent_label: "做一个新单位", id: "clone",
+      label: "照着现成的单位做一个",
+      template: "{civ}照{donor}做一个新单位，叫{name}",
+      slots: [
+        // No `sample` on the civ on purpose: that is how the real table ships it,
+        // and the page must put a closed list there rather than a text box.
+        { name: "civ", kind: "civ", label: "给哪个文明", required: true },
+        { name: "donor", kind: "unit", label: "照着谁做", sample: "村民" },
+        { name: "name", kind: "text", label: "新单位叫什么", required: true,
+          sample: "铁匠学徒" },
+      ] },
+  ],
+  op_choices: ["改成", "加", "减"],
+};
 const UPDATE = {
   stale: {
     ok: true, state_dir: "C:\\Users\\x\\AppData\\Local\\aoe2de-mod-workshop",
@@ -455,6 +501,11 @@ const sandbox = {
       const kind = (url.match(/kind=([a-z]+)/) || [])[1];
       return { json: async () => BROWSE[kind] };
     }
+    // The form panel's table.  Captured from the live route, so a page that
+    // guesses at the slot list is caught here rather than on screen.
+    if (url.indexOf("/api/forms") === 0) {
+      return { json: async () => FORMS };
+    }
     // A parse answer is also forwarded to renderClauses, so the stub has to
     // hand back a real one rather than the generic meta-shaped object.
     if (url.indexOf("/api/parse") === 0) {
@@ -571,6 +622,9 @@ const fn = new Function(
   "aiBoot: aiBoot, doAI: doAI, " +
   "renderMods: renderMods, " +
   "renderIntentList: renderIntentList, " +
+  "loadForms: loadForms, renderShapes: renderShapes, " +
+  "formValues: formValues, renderFormPreview: renderFormPreview, " +
+  "FSHAPE: () => FSHAPE, FORM_NODES: () => FSLOT_NODES, " +
   "boot: boot, " +
   "setLast: (v) => { LAST = v; }};");
 const page = fn(sandbox.document, sandbox.fetch, sandbox.setTimeout,
@@ -986,6 +1040,132 @@ function modsChecks() {
   });
 }
 
+// ---- the form panel -------------------------------------------------------
+// The panel is the answer to "用中文说就行" being unfriendly if you do not
+// already know the syntax.  Two things can go wrong and neither throws:
+//   (1) the panel builds a sentence the reader would refuse -- a second,
+//       untested way to change bytes;
+//   (2) a slot with no `sample` renders as an empty box and the preview says
+//       nothing, so the player has no idea what is missing.
+// It also must not invent values: a form that prefills its placeholders would
+// send a sentence the player never asked for.
+// A slot row is [label, control]; the control is the child carrying `data-slot`.
+// Reading it that way (rather than by index) means a change in the label markup
+// cannot silently point every assertion at a `<label>`.
+function controlOf(wrap) {
+  const kids = (wrap && wrap.children) || [];
+  for (const c of kids) {
+    if (c.dataset && c.dataset.slot) return c;
+  }
+  return kids[kids.length - 1] || null;
+}
+
+function fillShape(shapeId, values) {
+  ids.fshape.value = shapeId;
+  ids.fshape.onchange();
+  const nodes = page.FORM_NODES();
+  page.FSHAPE().slots.forEach((slot, i) => {
+    const ctl = controlOf(nodes[i]);
+    if (ctl && Object.prototype.hasOwnProperty.call(values, slot.name)) {
+      ctl.value = values[slot.name];
+    }
+  });
+  page.renderFormPreview();
+}
+
+function formChecks() {
+  ids.say.value = "";
+  // Touch the panel through the same selector the page uses: `ids.form` only
+  // exists once something has called `$("#form")`, and asserting on a node the
+  // page never asked for would test nothing.
+  document.querySelector("#form").className = "";
+  // The toggle is async -- it fetches the table the first time it opens -- so the
+  // harness has to await it, exactly as the browser does before the panel exists.
+  return Promise.resolve(ids["btn-form"].onclick()).then(() => {
+    check("the panel asks the forms route instead of hard-coding a table",
+          posted.some((p) => p.url.indexOf("/api/forms") === 0),
+          JSON.stringify(posted.map((p) => p.url).slice(-3)));
+    check("the panel is open after the first click",
+          document.querySelector("#form").className === "open",
+          document.querySelector("#form").className);
+    check("every intent in the table gets one entry in the intent picker",
+          (ids.fintent.children || []).length === 2,
+          JSON.stringify((ids.fintent.children || []).map((n) => n.value)));
+    check("selecting an intent offers its shapes",
+          (ids.fshape.children || []).length === 2,
+          JSON.stringify((ids.fshape.children || []).map((n) => n.value)));
+    // Every slot must get a control; a shape whose slots are dropped would
+    // compose a sentence with braces still in it.
+    check("each slot of the chosen shape gets a control",
+          (ids.fslots.children || []).length === 3,
+          String((ids.fslots.children || []).length));
+    // An empty form is not a sentence: placeholders are hints, not values.
+    check("an empty form previews nothing rather than a prefilled guess",
+          text(ids.fpreview).indexOf("还差") === 0, text(ids.fpreview));
+    check("...and the button refuses to write an incomplete sentence",
+          (ids.say.value || "") === "", ids.say.value);
+
+    const fill = (shapeId, values) => fillShape(shapeId, values);
+
+    fillShape("value", { unit: "村民", stat: "血量", n: "1000" });
+    check("a filled form composes exactly the sentence the reader accepts",
+          text(ids.fpreview) === "村民 血量 改成 1000", text(ids.fpreview));
+    ids.fuse.onclick();
+    check("writing it into the box appends, keeping what was already there",
+          (ids.say.value || "").indexOf("村民 血量 改成 1000") >= 0,
+          ids.say.value);
+    // And the composed sentence goes through the ORDINARY reader -- the harness
+    // proves the request, the round-trip nail proves the reader accepts it.
+    ids.say.value = "村民 血量 改成 1000";
+    PARSE_ANSWER = FIXTURES.mixed;
+    return page.doParse();
+  }).then(() => {
+    check("the composed sentence is read like any typed one",
+          posted.filter((p) => p.url.indexOf("/api/parse") === 0).length >= 1,
+          JSON.stringify(posted.map((p) => p.url).slice(-3)));
+
+    // A civ slot is a closed list: typing a civilization by hand is how you get
+    // "不列颠" vs "不列颠人" and a refusal that reads like a tool bug.
+    ids.fintent.value = "unit.create";
+    ids.fintent.onchange();
+    const nodes = page.FORM_NODES();
+    const civWrap = nodes[0];
+    const civCtl = controlOf(civWrap);
+    check("a civilization slot is a closed list, not a text box",
+          civCtl.tagName === "SELECT", String(civCtl.tagName));
+    check("...and the list is the game's civilizations",
+          (civCtl.children || []).length === 63,
+          String((civCtl.children || []).length));
+    fillShape("clone", { civ: "不列颠", donor: "村民", name: "铁匠学徒" });
+    check("the creating form composes a creating sentence",
+          text(ids.fpreview) === "不列颠照村民做一个新单位，叫铁匠学徒",
+          text(ids.fpreview));
+
+    // Switching shape must rebuild the controls, not keep the previous ones: a
+    // leftover control writes a slot the new template does not have, and the
+    // preview silently loses it.  Go back to the unit.stat intent first -- its
+    // shapes are the pair a player is most likely to flip between.
+    ids.fintent.value = "unit.stat";
+    ids.fintent.onchange();
+    ids.fshape.value = "delta";
+    ids.fshape.onchange();
+    check("switching shape rebuilds the controls instead of stacking them",
+          (ids.fslots.children || []).length === 4
+          && (ids.fslots.children || []).length === page.FORM_NODES().length,
+          String((ids.fslots.children || []).length));
+    const opWrap = page.FORM_NODES()[2];
+    const opCtl = controlOf(opWrap);
+    check("an op slot is a fixed list of the words the reader knows",
+          opCtl.tagName === "SELECT"
+          && (opCtl.children || []).map((o) => o.value).join("/") === "改成/加/减",
+          String((opCtl.children || []).map((o) => o.value)));
+    ids.say.value = "";
+    return boxChecks();
+  }).catch((e) => { fails.push("the form panel threw: " + e.message);
+                    console.log("FAIL the form panel threw :: " + e.stack);
+                    finish(); });
+}
+
 // ---- drag a picture onto the sentence box ---------------------------------
 // Clicking and dragging must be the SAME pick.  The pin is what keeps a name
 // that matches 29 records from editing the wrong one, so a drag path that forgot
@@ -1044,7 +1224,7 @@ function dragChecks() {
     page.dropOnSay({ preventDefault: () => { foreignPrevented = true; } });
     check("a drop that did not start on a cell keeps the browser default",
           foreignPrevented === false, String(foreignPrevented));
-    return boxChecks();
+    return formChecks();
   }).catch((e) => { fails.push("the drag threw: " + e.message);
                     console.log("FAIL the drag threw :: " + e.stack); });
 }
