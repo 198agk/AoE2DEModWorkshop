@@ -40,7 +40,9 @@ SUITES = [
     r"_probe\test_dat_carrier.py",
     r"_probe\test_mod_name_resolution.py",
     r"_probe\test_subject_instantiable.py",
-    r"_probe\test_mod_load_timing.py",
+    # test_mod_load_timing.py -- retired 2026-10-25 (Recycle Bin).  It recorded
+    # that every in-game availability test up to 2026-10-19 failed for TIMING
+    # reasons; v17 answered it, so the file is a closed question's minutes.
     r"_probe\test_smoke6_result.py",
     r"_probe\test_test_validity.py",
     r"_probe\test_dat_grant_route.py",
@@ -92,7 +94,9 @@ SUITES = [
     r"_probe\test_civ_unit_gate.py",
     r"_probe\test_overlay_depth.py",
     r"_probe\test_tree_form.py",
-    r"_probe\test_dat_json_override.py",
+    # test_dat_json_override.py -- retired 2026-10-25 (Recycle Bin).  It asked
+    # whether any mod ever demonstrated a .dat-layer JSON override; v45
+    # (2026-10-22) answered it with two canaries in one match.
     r"_probe\test_linkedtechs_semantics.py",
     r"_probe\test_json_is_engine_data.py",
     r"_probe\probe_panel_provenance.py",
@@ -376,6 +380,11 @@ SUITES = [
     # edit silently halves).  It deliberately does NOT nail "does the game honour a
     # mod's copy", which is still open, so the boundary is printed at the end.
     r"_probe\test_objreplace_facts.py",
+    # Two independent halves: every editable plan must name the file it rewrites
+    # (the four byte-patcher intents said nothing until 2026-10-25), and the page
+    # must print that field -- a plan key nobody renders is half a fix.  Both
+    # halves fail separately, which is why the sweep alone would have missed it.
+    r"_probe\test_plan_writes.py",
     # The picker that answers "what does this change touch".  It is a suite for the
     # same reason the registry check is one: its failure mode is a SMALL number, not
     # an error.  Measured while building it -- matching the changed path answered

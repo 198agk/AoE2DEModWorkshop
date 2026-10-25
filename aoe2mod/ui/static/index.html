@@ -962,6 +962,13 @@ function renderClauses(clauses) {
           meta.appendChild(el("span", "stat", "范围 " + shown + more));
         } else if (p.civ_count) meta.appendChild(el("span", "stat", "范围 " + p.civ_count + " 个文明"));
         if (p.edit_count != null) meta.appendChild(el("span", "stat", p.edit_count + " 处改动"));
+        // What lands on disk.  The four byte-patcher intents rewrite the whole
+        // .dat inside a new mod and their plans did not say so until
+        // 2026-10-25 -- measured: `writes` was absent for unit.stat / unit.cost /
+        // tech.research_time / tech.effect while every newer strategy had it.
+        // "1,701 处改动" and "1,701 处改动，重写 93 MB 的 .dat" are different
+        // promises, and only one of them is checked before pressing the button.
+        if (p.writes) meta.appendChild(el("span", "stat", "写入 " + p.writes));
         // A class edit ("所有步兵血量加10") reaches 217 ids at once and the preview
         // knows how many.  The byte count alone reads as "a big edit" without
         // saying what it is a big edit OF: 1,764 处改动 over 28 records and over

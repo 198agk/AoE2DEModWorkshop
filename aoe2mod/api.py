@@ -3533,6 +3533,17 @@ class Toolkit(object):
             raise C.IntentError(
                 "「%s」声明了编译策略 %r，这个版本既不预览也不构建它。"
                 % (r.raw.get("intent"), _strategy))
+        # The four byte-patcher intents (unit.stat, unit.cost,
+        # tech.research_time, tech.effect) returned plans with NO `writes` key
+        # at all -- measured 2026-10-25, while every newer strategy had one.
+        # So those four said "this works, N edits" and never said that it
+        # rewrites the 93 MB .dat inside a new mod.  What changes on disk is the
+        # one thing a player needs before pressing the button.  (The page did not
+        # PRINT the field either -- it started doing that in the same commit that
+        # added these keys; a comment claiming otherwise would have been the
+        # same lie in a new place.)  `E.DAT_REL` is the same constant the emitter
+        # builds a mod folder around, so the two cannot drift apart.
+        base["writes"] = E.DAT_REL.replace(os.sep, "/")
         if r.raw.get("intent", "").endswith(".availability"):
             return self._plan_availability(r, base)
         if r.kind == "tech":
