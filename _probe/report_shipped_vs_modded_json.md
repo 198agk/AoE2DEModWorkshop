@@ -193,3 +193,84 @@ resources\_common\dat    type=DAT    use_modes_path_for_mods=True
   `.dat` 11,982,495 B + `objreplacement.json` 1,656 B，7 条条目，`chance=100` 的
   村民→斥候）。**尚未安装、尚未开局**，因为全量套件正在跑，装模组会让那一轮描述
   两个状态。
+
+## 八、读它的不是对局代码，是随机地图模块（2026-10-25 11:4x）
+
+这一节回答了「这层什么时候生效」—— 而时机决定了实验怎么做，所以它比再多跑一局更值钱。
+
+### 证据：字段表后面紧跟的是地图生成器的日志
+
+`objreplacement.json` 的偏移是 53213376，字段表占 240 字节，**紧跟着的字符串是**
+
+```
+F:\Agents\PhoenixBuilders-08\p4\portland_group\Aoc\Source\Game\RandomMap\Modules\ObjectGenerator.cpp
+```
+
+再往后全部是地图生成期的日志格式串，逐条都在说「往地图上放一个对象」：
+
+```
++352  (RandomMapSync) create objects: obj-id: %d, group-flag: %d, num-of-groups: %d, land-id: %d
++592  (RandomMapSync) place_land_objects(info_line, info.lands[index].x=%d, ...
++840  (RandomMapSync) ANYWHERE - place_objects(info_line)
++1136 (RandSync) Placing single object: obj-id:%d, pos:<%f,%f>, player:%d
++1664 place_land_objects
++1832 place_group
++2016 place_cluster
++2384 GetActualObject
++2400 ResolveMasterID
++2496 RGE_RMM_Shallows_Generator
++2584 RGE_RMM_Terrain_Generator
++2664 RGE_RMM_Script_Controller
++3112 (RandomMapSync) Initiating random map script (rms) generation.
+```
+
+`RGE_RMM_*` 是 Ensemble 引擎里 Random Map Module 的前缀，`GetActualObject` / `ResolveMasterID` 就是「这个对象真正要放成什么」的那个解析函数。整份文件里 `objreplacement.json` 只出现一次。
+
+### 它意味着什么
+
+`objreplacement.json` 在**地图生成时**决定「脚本要放的这个对象，实际放成哪个对象」。它不是对局中的规则，也不是面板上的东西。
+
+三条直接后果：
+
+1. **出厂数据里唯一用 `chance` 的那一对是村民 ↔ 女村民**（各 50），而开局那几个村民**正是地图脚本放的** —— 这是出厂数据为什么只在这一对上用随机的解释，也和「别处没有随机换单位」一致。
+2. **判据必须看「地图放了什么」**，也就是开局就站在地上的单位。用「造出来的兵」「打到一半的状态」去判，永远读不到这层。
+3. **必须是新开的一局**：文件在地图生成前读，事后改它对这一局没有任何作用。
+
+### 这同时解释了 2026-10-24 四轮实验里唯一那次正结果
+
+`A/B/C/D` 四轮里 run C（把出厂文件改成村民 → 斥候、`chance=100`）看到「四个全部骑马、没有站着的村民」，run D（逐字节还原）看到「村民回到地上」。当时我只敢说「这个文件的改动能被看见」，现在知道**为什么**：开局村民是地图放的，替换在生成期发生，所以换的正是开局的单位。
+
+### 于是「mod 副本读不读」这一问现在是可测的，而且只差一局
+
+实验设计（四条同时成立，缺一条读数就不可归因）：
+
+1. mod 里发 `resources\_common\dat\objreplacement.json`，`chance=100`，村民 → 斥候（不要村民 → 女村民，那对在美术模组下看不出差别）；
+2. 同一个 mod 里带一个 `.dat` canary（改城镇中心血量，面板可读）证明 mod 挂上了；
+3. **关掉所有第三方模组**（2026-10-24 那几轮开着换皮、主题、场景三个，读数不可归因）；
+4. 装完**新开一局**，看开局那几个单位是村民还是骑兵 —— 不是看造出来的兵。
+
+构建脚本 `_probe/tmp_build_objrepl.py` 已按这四条产出 `_probe/out_objrepl_mod`（`info.json` 92 B + `.dat` 11,982,495 B + `objreplacement.json` 1,656 B，7 条、`chance=100` 的村民 → 斥候 448）。**尚未安装**：当前正在跑全量套件，而 `test_zero_mod_experiment.py` 会数已启用的模组 —— 装一个实验 mod 会让那一轮套件失去意义。
+
+## 九、这条发现对产品本身意味着什么
+
+「读它的是随机地图模块」不只是实验设计的输入，它改变了产品该怎么说话。
+
+### 1. `declared_edges()` 是**地图生成期**的替换，不是编辑期的别名
+产品里 `aoe2mod/game/families.py` 的 `declared_edges()` 读的就是这个文件，把村民 ↔ 女村民当成一族（`(83, 293)`）。以前这个关系读起来像「这两个 id 是同一个东西的两种记录」。现在有了证据支持的是更窄的说法：**地图脚本放村民时，百分之五十会放成女村民**。两者仍然是两条独立记录，各有各的血值、成本、图标槽 —— 这正是 `unit.stat` 对 83 单独改不会自动改 293 的原因（`edit_count 63` 而不是 `126`）。
+
+### 2. 任何「换皮」类改动都分两半
+`unit.sprite` 走的是 `.sld` 松散文件覆盖，玩家在**对局里**看到的是文件；而 `objreplacement` 走的是**地图生成期**的单位选择。两半在不同阶段生效，所以：
+
+- 对局中把村民换成别的样子 —— 可能被地图生成期的替换再改一次（如果那一对还在表里）；
+- 反过来，改 `objreplacement` 不会让已经站在地上的单位变样子，它只影响**这一局开始时**被放下的那些。
+
+产品里目前只有前半（`unit.sprite`），后半（`objreplacement`）**一个意图都没有**，而这条发现说明它是个**独立的、有价值的意图**：`unit.replace_on_map`（「地图上放的村民有一半换成斥候」）——出厂数据自己在用，`chance` 是现成字段，判据是开局那几个单位。
+
+### 3. 诚实边界的措辞要改
+报告 §七 收尾那句「mod 副本读不读仍没有干净读数」现在可以更准确：**判据已经明确，缺的只是一局**（四条约束见 §八）。这比「不知道」强，也比「已证不生效」诚实 —— 后者是我 2026-10-24 写下的错误结论，靠兄弟文件 `civilizations.json` 被 v45 证伪。
+
+### 4. 下一步的顺序（写在这里，免得再靠记忆）
+1. 现在这一轮全量套件跑完（`_probe/out_suites_objrepl.txt`，125 条 py + 1 条 node）；
+2. 装 `_probe/out_objrepl_mod`（已按四条约束构建好，**尚未安装**），**关掉全部第三方模组**，新开一局，看开局那几个单位；
+3. 读数无论正反都写进 §七/§八；
+4. 只有读数为「读」时，才值得把 `unit.replace_on_map` 做成第 14 个意图；读数为「不读」就把 `declared_edges()` 的用途重新审一遍 —— 因为那意味着出厂那一对也是死的。

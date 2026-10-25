@@ -376,6 +376,12 @@ SUITES = [
     # edit silently halves).  It deliberately does NOT nail "does the game honour a
     # mod's copy", which is still open, so the boundary is printed at the end.
     r"_probe\test_objreplace_facts.py",
+    # The picker that answers "what does this change touch".  It is a suite for the
+    # same reason the registry check is one: its failure mode is a SMALL number, not
+    # an error.  Measured while building it -- matching the changed path answered
+    # "4 of 125" for `aoe2mod/api.py` where 84 suites reach it, and a 3-character
+    # floor on the module stem silently dropped `nl.` and two suites with it.
+    r"_probe\test_suite_picker.py",
 ]
 
 # Suites that are not Python.  The screen's script is JavaScript and no Python
