@@ -11,6 +11,8 @@
 | `v83-split-delivery-icon.png` | 2026-10-24 v83 | 同一份数据、同一个槽、同一张图：`widgetui` 与 `.dat` 放**两个 mod** 才画出图标（同文件夹失败五次） |
 | `v74-new-unit-icon-missing.png` | 2026-10-24 v74 | 反面证据：数据层已挂载（城镇中心 4000/4000），但那一格是空框 |
 | `baseline-no-mod.png` | 2026-10-22 | 不装任何 mod 的基线截图，用来证明画面上本来是什么样 |
+| `objrepl-map-start-scouts.png` | 2026-10-25 16:3x | 干净一局（第三方模组全关）：城镇中心 **4000/4000** ⇒ 那份 `.dat` 挂载了；地上四个单位全是**骑马**的，开局一个村民都没有 ⇒ `objreplacement.json` 在**地图生成期**被采纳 |
+| `objrepl-scout-45hp.png` | 同一局 | 点其中一个骑马单位，面板 `斥候骑兵 45/45`：出厂 `unit 448 SCOUT` 就是 45 血，而规则点名的 `unit 83 VMBAS` 是 25 血 ⇒ 45 只能来自 448，不是「看起来像骑兵」 |
 
 要重新生成：`_probe/gamescreen.ps1 -Cmd shot -Out <路径>`（游戏必须在前台，客户区
 1900×1000）；这些图的原始文件曾放在 `_probe/shots/`，2026-10-25 清理时删掉了 8.0 GB

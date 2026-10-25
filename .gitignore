@@ -61,6 +61,13 @@ _probe/tmp_*.txt
 # Recon probes dump their findings as JSON next to themselves (tmp_recon3.json,
 # tmp_wall.json, ...).  The same convention: a scratch answer, not a source.
 _probe/tmp_*.json
+#
+# A snapshot of the player's own mod list, taken before an experiment touches it, and
+# a log of what went to the recycle bin.  Both are records -- `tmp_objrepl_restore.py`
+# reads the first to put the profile back -- and both are about this machine, not the
+# project.
+_probe/objrepl_snapshot.json
+_probe/recycle_list.txt
 _probe/_newlog.md
 # Written every run by _probe/schema/test_branch_extract.py: a human-readable
 # PREVIEW of what the branch extractor saw.  The artifacts that matter are the

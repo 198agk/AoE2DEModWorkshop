@@ -201,23 +201,29 @@ def main():
           "448 carries replacement_attribute, not replacement_object")
     check("no edge is a self-loop", all(a != b for a, b in edges), repr(list(edges)))
 
-    print("\n=== F. the boundary this nail cannot cross")
-    print("  the open item is whether a MOD's copy of this file is honoured.")
-    print("  everything above is about the SHIPPED copy.  2026-10-24 patched the shipped")
-    print("  copy in place and watched the villager's model change, then restored it and")
-    print("  watched it change back -- that is a fact about the installed file, not about")
-    print("  a mod.  The mod rounds had a chibi art mod, a theme and a scenario mod")
-    print("  enabled, so their verdict was unreadable.  A clean round needs: chance=100,")
-    print("  a replacement you can see through any art pack (villager -> scout, not")
-    print("  villager -> villager(female)), one dat canary in the same mod to prove")
-    print("  mounting, and zero third-party mods enabled.")
+    print("\n=== F. what this nail does NOT do, and what answered the question")
+    print("  everything above is about the SHIPPED copy -- these are the facts that rot.")
+    print("  The mod-copy question was ANSWERED 2026-10-25 16:3x, by a match in which")
+    print("  the probe mod shipped objreplacement.json plus a .dat canary in one folder")
+    print("  and NO third-party mod was enabled:")
+    print("     town centre panel  4000/4000   -> the .dat in that folder mounted")
+    print("     a unit at 0:00     45/45       -> scout 448, and the rule named")
+    print("                                      villager 83 (25 HP)")
+    print("  Frames: _evidence/objrepl-map-start-scouts.png, objrepl-scout-45hp.png.")
+    print("  So the file's mod copy IS honoured, at map generation.  The 2026-10-24")
+    print("  verdict 'mod copies are ignored' is withdrawn in the report (it came from a")
+    print("  match where three other mods were also enabled).")
+    print("  A nail cannot re-run that match, so nothing here asserts it: the boundary")
+    print("  is that this file keeps the cheap facts, and the answer lives in the report")
+    print("  with two frames and a record id.")
 
     print("\nOBJREPLACE FACTS: %d checks, %d failed" % (CHECKS[0], len(FAILS)))
     if FAILS:
         print("FAILURES: %r" % FAILS)
         return 1
     print("OBJREPLACE FACTS: THE LOADER'S FIELD LIST, THE CHANCE MEANING AND THE "
-          "FAMILY EDGES ARE ALL AS DOCUMENTED -- AND THE MOD-COPY QUESTION STAYS OPEN")
+          "FAMILY EDGES ARE ALL AS DOCUMENTED -- AND A MOD'S COPY IS HONOURED "
+          "(ANSWERED 2026-10-25)")
     return 0
 
 
