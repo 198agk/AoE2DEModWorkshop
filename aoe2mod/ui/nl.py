@@ -70,12 +70,24 @@ def stat_words():
     Never raises: the schema is an optional layer here exactly as it is in
     `class_names()` -- without it the reader is the shipped vocabulary and a
     plugin field is refused as unclear, which is the safe direction.
+
+    The cache key is the schema's own key, not a constant.  `load_schema()` keys on
+    the set of schema directories precisely so that a plugin dropped in while the
+    tool runs takes effect without a restart; a vocabulary built FROM that schema and
+    cached under `"table"` undid it -- measured 2026-10-25: with a plugin added at
+    runtime the schema listed `unit.sort_order`, the page offered it, and every
+    sentence for it was still refused until the process restarted.
     """
-    if "table" in _STAT_EXTRA_CACHE:
-        return _STAT_EXTRA_CACHE["table"]
+    try:
+        from aoe2mod.intent.compiler import load_schema, schema_key
+        key = schema_key()
+    except Exception:
+        from aoe2mod.intent.compiler import load_schema
+        key = "table"
+    if key in _STAT_EXTRA_CACHE:
+        return _STAT_EXTRA_CACHE[key]
     table = {k: tuple(v) for k, v in STAT_WORDS.items()}
     try:
-        from aoe2mod.intent.compiler import load_schema
         _intents, bindings = load_schema()
         for field, spec in (bindings.get("unit_fields") or {}).items():
             label = (spec or {}).get("label")
@@ -87,7 +99,7 @@ def stat_words():
             table[field] = tuple(words)
     except Exception:
         pass
-    _STAT_EXTRA_CACHE["table"] = table
+    _STAT_EXTRA_CACHE[key] = table
     return table
 
 

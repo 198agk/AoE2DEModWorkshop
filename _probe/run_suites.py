@@ -359,6 +359,15 @@ SUITES = [
     # that merely repeats shipped options and can never be reached because
     # `intent_for_stat()` hands each word to exactly one intent.
     r"_probe\test_nl_schema_words.py",
+    # The ones above ask the schema on a cold start.  This one adds a plugin while
+    # the process runs and asks again WITHOUT clearing anything -- which is what a
+    # player actually does.  It exists because `load_schema()` already keys its cache
+    # on the schema directories while the vocabulary built from it was keyed on the
+    # literal "table": the plugin showed up in `meta.intents`, the page offered it,
+    # and every sentence for it was still refused until a restart (measured
+    # 2026-10-25).  Clearing the cache inside the test would be the test instructing
+    # the code; the player cannot clear a cache.
+    r"_probe\test_nl_live_vocab.py",
 ]
 
 # Suites that are not Python.  The screen's script is JavaScript and no Python
