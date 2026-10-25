@@ -34,6 +34,26 @@ _shots/
 *.zip
 *.7z
 
+# --- what the 2026-10-25 cleanup deleted (10.7 GB -> 476 MB) -----------------
+# Sweep frames from live-game rounds: 356 entries, 8.0 GB.  The verdicts live in
+# `_probe/report_*.md` and `_交接说明.md`; the six frames worth looking at are copied to
+# `_evidence/`, whose README says what each one proves.
+_probe/shots/
+
+# Build outputs: 120 dirs, 1.6 GB.  `_probe/out_*/` above covers the `out_` spelling;
+# these are the `_box_out` / `_group_out` / `*_out` ones.  Nothing tracked lives inside and
+# each is rewritten by the suite that names it, so deleting them costs one re-run.
+_probe/*_out/
+
+# A stray directory written by a python that is not this project's runtime.
+_probe/ident/
+
+# --- kept evidence ----------------------------------------------------------
+# `_evidence/README.md` is tracked and says what each picture proves; the pictures are
+# 5 MB full-screen grabs, so they stay out of the repository.
+_evidence/*.png
+_evidence/*.jpg
+
 # --- scratch --------------------------------------------------------------
 _probe/tmp_*.py
 _probe/tmp_*.ps1
