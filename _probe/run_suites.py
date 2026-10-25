@@ -464,6 +464,13 @@ SUITES = [
     # Reading their string literals found `_probe/test_effect_append.py`'s
     # `[FAIL] name :: detail` -- a real report the loosening had let through.
     r"_probe\test_fail_shapes.py",
+    # And the coverage claim next door.  `_probe/test_full_sweep.py` reports
+    # DECLARED BUT UNSWEPT for any intent it cannot build a case for; the
+    # exemption table answers that, and this nail checks the answers are
+    # checkable (file exists AND carries the token the table names).  It also
+    # covers a hole a 20-minute sweep leaves: nothing else ran that guard's
+    # rules without paying for the whole run.
+    r"_probe\test_sweep_exemptions.py",
 ]
 
 # Suites that are not Python.  The screen's script is JavaScript and no Python

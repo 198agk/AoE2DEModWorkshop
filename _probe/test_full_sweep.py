@@ -7,7 +7,7 @@ or wrongly typed without anyone noticing -- exactly how max_range/reload_time
 sat unbound for months.  This sweeps the ENTIRE declared option space, so a
 newly added stat is covered the moment it enters the schema.
 """
-import os, sys, itertools, re, json
+import os, sys, io, itertools, re, json
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
@@ -287,19 +287,59 @@ _covered_intents = {i for i in DECLARED_INTENTS
 # a new strategy now fails here until someone says, in one place, who measures
 # it.  These are coverage claims, and the file check is what keeps a claim from
 # outliving the file it points at (the same failure as a test no runner calls).
+# Each entry is (file, token, why).  The token is what the guard looks for in
+# that file, so a claim carries its own evidence instead of asserting that
+# somebody somewhere covers this.  Almost always the intent id appears verbatim
+# in the nail; the exception is `unit.art`, whose nail drives
+# `aoe2mod/intent/repaint.py` end to end and never spells the intent id -- so it
+# is checked by the import that proves which strategy module it exercises.
 _VERIFIED_ELSEWHERE = {
     "unit.art":
-        ("_probe/test_reskin.py",
-         "repaint_sld: encodes .sld blocks itself; verified for the byte chain "
-         "only -- schema `not_verified_reason` still says no running game has "
-         "drawn a hand-encoded block"),
+        # Pointed at `_probe/test_reskin.py` until 2026-10-25; that file drives
+        # the `unit.sprite` strategy and never names unit.art.  The reason beside
+        # it was true of repaint_sld and of nothing in that file -- which is how a
+        # wrong pointer survives: the prose was right about the label and wrong
+        # about the file.
+        ("_probe/test_repaint.py", "aoe2mod.intent import repaint",
+         "repaint_sld: a user picture goes in at canvas coordinates and comes out "
+         "as encoded .sld blocks in a mod folder; B proves the repainted art "
+         "differs, E proves the emitter accepts a graphics path -- still verified "
+         "for the byte chain only, since no running game has drawn a "
+         "hand-encoded block"),
     "unit.sprite":
-        ("_probe/test_retarget.py",
+        ("_probe/test_retarget.py", "unit.sprite",
          "loose_files: the loose override is proven in game (2026-10-17, "
          "`dsh test v10`); this test pins the family scope that the first "
          "version got wrong"),
+    # The four below were missing until 2026-10-25, so this file reported them
+    # as DECLARED BUT UNSWEPT -- correctly, and the report was right that nobody
+    # had said who covers them.  None of the four produces a `.dat` patch this
+    # loop can diff, so no case here could ever be honest about them:
+    #   tech.toggle_group   writes linkedTechs.json and caches one shared effect
+    #   tech.create         appends a whole tech record
+    #   unit.create         appends a whole unit record
+    #   unit.replace_on_map writes objreplacement.json and ships a carrier .dat
+    "tech.toggle_group":
+        ("_probe/test_linked_group.py", "tech.toggle_group",
+         "linked_techs_json: builds the group, re-reads the file, and pins that "
+         "a shared effect is CLONED rather than written in place (the defect that "
+         "would have banned another civilization's bonus tech)"),
+    "tech.create":
+        ("_probe/test_tech_create.py", "tech.create",
+         "new_tech: builds a record the game does not have, reparses it, and "
+         "checks the name/creation strings and the icon chain land where the "
+         "tooltip reads them"),
+    "unit.create":
+        ("_probe/test_new_unit.py", "unit.create",
+         "new_unit: builds a record, reparses, checks the button slot, the "
+         "creation string the tooltip shows, and the icon plumbing"),
+    "unit.replace_on_map":
+        ("_probe/test_replace_on_map.py", "unit.replace_on_map",
+         "objreplacement_json: the only intent here whose JSON lives under the "
+         "DAT storage point, so it must ship a carrier .dat; that half is driven "
+         "through build_bundle and read back from disk"),
 }
-for _i, (_f, _why) in sorted(_VERIFIED_ELSEWHERE.items()):
+for _i, (_f, _token, _why) in sorted(_VERIFIED_ELSEWHERE.items()):
     if _i not in intents_schema["intents"]:
         bad.append((_i, "exempted from this sweep but no longer declared in the "
                         "schema; drop the entry"))
@@ -307,6 +347,19 @@ for _i, (_f, _why) in sorted(_VERIFIED_ELSEWHERE.items()):
     if not os.path.isfile(os.path.join(ROOT, _f)):
         bad.append((_i, "declared as verified outside this sweep by %s, which "
                         "does not exist" % _f))
+        continue
+    # Existing is not the same as measuring, and neither is mentioning: what the
+    # claim needs is a token the named file really carries.  The first version of
+    # this clause demanded the intent id and was wrong for the one nail that
+    # drives a strategy module directly -- so the table names the token itself.
+    _body = io.open(os.path.join(ROOT, _f), encoding="utf-8",
+                    errors="replace").read()
+    if _token not in _body:
+        # `_probe/test_repaint.py` has to say something, so make the message
+        # point at the table rather than at the reader's memory.
+        bad.append((_i, "declared as verified outside this sweep by %s, which "
+                        "does not contain %r -- fix the token or the pointer"
+                        % (_f, _token)))
         continue
     if _i in _covered_intents:
         # It got a built case after all -- then the exemption is stale and the
@@ -318,8 +371,8 @@ for _i, (_f, _why) in sorted(_VERIFIED_ELSEWHERE.items()):
 _missing_intents = [i for i in DECLARED_INTENTS if i not in _covered_intents]
 print("verified outside this sweep: %s"
       % (sorted(_VERIFIED_ELSEWHERE) or "none"))
-for _i, (_f, _why) in sorted(_VERIFIED_ELSEWHERE.items()):
-    print("  %-14s by %s -- %s" % (_i, _f, _why))
+for _i, (_f, _token, _why) in sorted(_VERIFIED_ELSEWHERE.items()):
+    print("  %-20s by %s (%r) -- %s" % (_i, _f, _token, _why))
 print()
 print("declared intents            : %d %s" % (len(DECLARED_INTENTS),
                                               DECLARED_INTENTS))
