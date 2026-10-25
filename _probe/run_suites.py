@@ -395,6 +395,14 @@ SUITES = [
     # still matching something -- without the second it would demand that six
     # dated rows be rewritten to today's number.
     r"_probe\test_doc_drift.py",
+    # "插件化" has two halves and only one of them was measured.  A plugin can teach
+    # the reader a FIELD (that is `test_nl_schema_words.py`); it cannot add a sentence
+    # SHAPE, because `nl.py` decides meaning in thirteen hand-written branches.  This
+    # one builds two plugins -- one with a `stat` field, one without -- and asserts the
+    # screen advertises only the first, plus that a sentence shaped like the second is
+    # refused instead of quietly becoming something else.  The failure it guards is a
+    # green tick on a promise nobody can keep.
+    r"_probe\test_sentence_shapes.py",
     # The picker that answers "what does this change touch".  It is a suite for the
     # same reason the registry check is one: its failure mode is a SMALL number, not
     # an error.  Measured while building it -- matching the changed path answered
