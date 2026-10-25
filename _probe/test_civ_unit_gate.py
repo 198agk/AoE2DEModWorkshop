@@ -253,6 +253,7 @@ deep = 0
 deep_names = []
 third_party_deep = 0
 third_party = []
+inert = []
 # Walk the DISK, not just `tk.mods()`.  `tk.mods()` reads `mod-status.json`, and a
 # local mod folder can sit in `mods/local/` with NO status entry at all -- the game
 # discovers those (per the user's instruction m22351: 「你只需要放入对应文件夹就可以
@@ -296,6 +297,19 @@ for m in mods:
                 # starts calling my own artifact "third-party" -- which happened when
                 # the naming scheme changed to `dsh test vN`
                 # (`_probe/testmod_name.py`: PREFIX = "dsh test").
+                # REACHABLE, not merely "below dat/".  A mod author's own backup
+                # folder two levels down cannot confound a CivTechTrees write, and
+                # 15373_Multiple Buffs Mod v1 ships exactly that
+                # (`json bkup/civilizations b4 viking dlc.json`).  Counting every
+                # nested file made this pin assert a fact about the player's mod
+                # library on 2026-10-25 -- the same failure class as
+                # test_zero_mod_experiment.py and test_overlay_depth.py.  What can
+                # actually collide with our writes is a file directly in dat/ or
+                # anything under CivTechTrees/.
+                _parts = rel.split(os.sep)
+                if not (len(_parts) == 1 or _parts[0] == "CivTechTrees"):
+                    inert.append((m["name"], rel))
+                    continue
                 if not (m["name"].startswith("aoe2mod")
                         or m["name"].startswith("dsh test")
                         or m["name"] == "Smoke Test Villager HP"):
@@ -307,10 +321,12 @@ print()
 print("    mod files living BELOW the dat folder: %d  %s" % (deep, deep_names))
 print("    ...of which from a THIRD-PARTY mod     : %d  %s"
       % (third_party_deep, third_party))
+print("    ...and inert (a backup folder, not a path the engine reads): %d  %s"
+      % (len(inert), inert))
 check(third_party_deep == 0,
-      "no third-party mod ships a file inside a dat subdirectory -- the only "
-      "such files are MY OWN smoke tests, whose in-game result was that the "
-      "CivTechTrees write did NOT take effect")
+      "no third-party mod ships a file on a path THIS TOOL WRITES (dat/ top level "
+      "or CivTechTrees/) -- the only CivTechTrees files are MY OWN smoke tests, "
+      "whose in-game result was that the write did NOT take effect")
 # The nested-file COUNT depends on which of my smoke mods is installed right now:
 # smoke6 wrote `CivTechTrees/BRITONS.json` (deep=1), while smoke7 is dat-only
 # (deep=0).  Asserting a literal 1 made this pin fail for a reason unrelated to
@@ -320,9 +336,10 @@ check(third_party_deep == 0,
 _mine_deep = [t for t in deep_names
               if not (t[0].startswith("aoe2mod")
                       or t[0].startswith("dsh test")
-                      or t[0] == "Smoke Test Villager HP")]
+                      or t[0] == "Smoke Test Villager HP")
+              and t not in inert]
 check(len(_mine_deep) == 0,
-      "every nested dat file belongs to a mod of MINE (found %d foreign: %s)"
+      "every file on a path we write belongs to a mod of MINE (found %d foreign: %s)"
       % (len(_mine_deep), _mine_deep))
 check(deep == len(deep_names),
       "the counted total agrees with the enumerated list (%d vs %d)"
