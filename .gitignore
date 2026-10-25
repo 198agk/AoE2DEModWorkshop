@@ -215,3 +215,6 @@ _probe/_repair_merge/
 # can open a native window without touching the runtime's site-packages.
 # Regenerate with: <python> -m pip install --target _vendor pywebview
 _vendor/
+# PyInstaller, installed into the repo only to answer can this ship as an exe.
+# Regenerate with: <python> -m pip install --target _vendor_pyinstaller pyinstaller
+_vendor_pyinstaller/
