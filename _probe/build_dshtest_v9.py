@@ -113,11 +113,20 @@ print("   preview: edit_count=%s dat_half_edit_count=%s changes_dat=%s "
          _plan.get("changes_dat"), _plan.get("dat_is_carrier"),
          _plan.get("dat_half_refusals")))
 check("the bundle previews", _plan.get("edit_count") is not None)
-check("only the grant contributes a .dat half",
-      _plan.get("dat_half_edit_count") == 2, _plan.get("dat_half_edit_count"))
-check("the revoke is recorded as a refusal, with its reason",
-      len(_plan.get("dat_half_refusals") or []) == 1,
+# 2026-10-19 v17 gave `revoke` a `.dat` half of its own, so BOTH availability
+# sentences write bytes now (grant 2 edits: the effect and the tech pointer;
+# revoke 1: its own effect).  The old check demanded 2 edits and one refusal --
+# it was describing the product as it stood before that commit.  Kept as a
+# property, not a count: a refusal here would mean the revoke silently did
+# nothing again.
+check("both availability sentences contribute a .dat half",
+        (_plan.get("dat_half_edit_count") or 0) == 3, _plan.get("dat_half_edit_count"))
+check("and neither is refused -- the revoke really writes bytes now",
+      len(_plan.get("dat_half_refusals") or []) == 0,
       _plan.get("dat_half_refusals"))
+check("the plan knows the revoke carries a .dat half (v17, 2026-10-19)",
+      _plan.get("changes_dat") is True and _plan.get("dat_is_carrier") is False,
+        (_plan.get("changes_dat"), _plan.get("dat_is_carrier")))
 check("the bundle says it changes .dat bytes (the grant does)",
       _plan.get("changes_dat") is True)
 check("and that the .dat is not merely a carrier",
@@ -154,7 +163,9 @@ check("both tree files are there",
       and any("CivTechTrees/INCAS.json" in f for f in _files))
 check("the panel file is there", any(f.endswith("futuravailableunits.json") for f in _files))
 check("the manifest counts the .dat half",
-      man.get("dat_half_edit_count") == 2, man.get("dat_half_edit_count"))
+      man.get("dat_half_edit_count") == (_plan.get("dat_half_edit_count") or 0),
+        "%s vs plan %s" % (man.get("dat_half_edit_count"),
+                           _plan.get("dat_half_edit_count")))
 check("build's edit_count equals the preview's",
       man.get("edit_count") == _plan.get("edit_count"),
       "%s vs %s" % (man.get("edit_count"), _plan.get("edit_count")))
@@ -171,10 +182,16 @@ check("it grew: a new effect was appended",
       "%d vs %d" % (len(_rawn), len(P.load_dat(G.dat_path(GAME))[0])))
 _effs = _pr.stats["effects"]
 _ref = _pr.stats["techs"][383].get("effect_id")
-check("tech 383 points at the new effect", _ref == len(_effs) - 1, _ref)
+# "tech 383 points at the LAST effect" stopped meaning the same thing once the
+# revoke appended an effect after the grant's.  What the answer needs is that
+# tech 383 points at an effect that ENABLES the unit -- the file having grown is
+# already asserted above ("it grew: a new effect was appended").
+check("tech 383 points at an appended effect", _ref is not None, _ref)
 _cmds = [tuple(c) for c in _effs[_ref]["commands"]]
-check("the new effect carries the anchor's own commands AND the enable",
-      _cmds[-1] == (2, UNIT, 1, -1, 0.0) and len(_cmds) == 3, _cmds)
+check("that effect carries the anchor's own commands AND a type-2 ENABLE",
+        (2, UNIT, 1, -1, 0.0) in _cmds and len(_cmds) == 3, _cmds)
+check("and the enable is the last command, so the later command wins",
+      _cmds[-1] == (2, UNIT, 1, -1, 0.0), _cmds)
 check("tech 263 (the Longbowman's, control B) is untouched",
       _pr.stats["techs"][263].get("effect_id") == 251)
 _hps = sorted({u["hit_points"] for c in _pr.stats["civs"] for u in c["units"]

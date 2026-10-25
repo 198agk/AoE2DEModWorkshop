@@ -23,6 +23,13 @@ import os
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+# The artifact this file reads is built, not checked in, and on 2026-10-25 a
+# workspace cleanup deleted it -- the suite then failed with KeyError/FileNotFound,
+# which reads like a data bug.  Rebuild it instead of depending on a directory
+# that happens to be there.
+sys.path.insert(0, HERE)
+from ensure_artifact import ensure as _ensure  # noqa: E402
+_ensure("out_smoke8", "build_smoke8.py", required=None)
 ROOT = os.path.dirname(HERE)
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
@@ -32,7 +39,7 @@ import aoe2mod.dat.locate as L                             # noqa: E402
 import aoe2mod.dat.parser as P                             # noqa: E402
 
 GAME = r"D:\Games\Steam\steamapps\common\AoE2DE"
-ART = os.path.join(HERE, "out_smoke8", "resources", "_common", "dat",
+ART = os.path.join(_ensure("out_smoke8", "build_smoke8.py"), "resources", "_common", "dat",
                    "empires2_x2_p1.dat")
 TECH = 263
 OLD_EFFECT = 251

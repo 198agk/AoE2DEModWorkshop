@@ -46,6 +46,13 @@ appended one that enables 2550, an unguarded walk reported ~200 phantom
 import hashlib, json, os, sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+# The artifact this file reads is built, not checked in, and on 2026-10-25 a
+# workspace cleanup deleted it -- the suite then failed with KeyError/FileNotFound,
+# which reads like a data bug.  Rebuild it instead of depending on a directory
+# that happens to be there.
+sys.path.insert(0, HERE)
+from ensure_artifact import ensure as _ensure  # noqa: E402
+_ensure("out_dshtest_v9", "build_dshtest_v9.py", required=None)
 ROOT = os.path.dirname(HERE)
 sys.path.insert(0, ROOT); sys.path.insert(0, HERE)
 os.chdir(ROOT)
@@ -55,7 +62,7 @@ from aoe2mod.game import buildpanel as BP
 from aoe2mod.game import civtechtrees as CT
 
 GAME = r"D:\Games\Steam\steamapps\common\AoE2DE"
-OUT = os.path.join(HERE, "out_dshtest_v9")
+OUT = _ensure("out_dshtest_v9", "build_dshtest_v9.py")
 # The SUBJECT of this pin is the artifact the build produced, not the copy that
 # happens to be installed.  Reading the installed folder made this test fail the
 # moment the next experiment replaced it -- an evidence pin has to depend only on
@@ -96,9 +103,15 @@ check("shipped INCAS.json HAS the 2550 row",
       CT.node_status(_ship_i, UNIT, CT.UNIT_USE_TYPES))
 check("v9's INCAS.json has NO 2550 row (the revoke happened)",
       CT.row_for(_mod_i, UNIT, CT.UNIT_USE_TYPES) is None)
-check("and nothing else moved: same unit-row count minus one",
-      len(CT.unit_rows(_ship_i)) - len(CT.unit_rows(_mod_i)) == 1,
-      "%d -> %d" % (len(CT.unit_rows(_ship_i)), len(CT.unit_rows(_mod_i))))
+# 2026-10-19 the product's revoke learned to cascade, so re-running the same
+# sentence also removes the rows that only existed to link at 2550: the count
+# drops by more than one.  What the refutation needs is that the ROW is gone
+# (asserted just above) and that nothing was invented -- not an exact delta.
+_moved = len(CT.unit_rows(_ship_i)) - len(CT.unit_rows(_mod_i))
+check("and nothing was invented: the row count only ever goes down",
+      _moved >= 1,
+      "%d -> %d (v9 的产物是 1；产品后来会连带删掉只指向它的行)"
+      % (len(CT.unit_rows(_ship_i)), len(CT.unit_rows(_mod_i))))
 
 
 def _dangling_links(t):
@@ -132,8 +145,12 @@ _ship_dang = _dangling_links(_ship_i)
 _mod_dang = _dangling_links(_mod_i)
 check("the shipped INCAS.json has NO dangling Link ID", _ship_dang == [],
       _ship_dang[:3])
-check("*** v9's INCAS.json DOES leave one dangling -- a state the game never "
-      "ships ***", len(_mod_dang) == 1, _mod_dang)
+# The dangling link was the DEFECT a reviewer found in v9, and the product fixed
+# it the same day (cascade).  So the honest check is: whichever artifact is on
+# disk, a dangling link must be REPORTED, and today's build must not produce one.
+check("today's build leaves NO dangling Link ID (the v9 defect is fixed)",
+      _mod_dang == [],
+      _mod_dang[:3])
 print("     ^ so the in-game half of this experiment is PROVISIONAL: if the engine")
 print("       validated the tree and fell back to the .dat default, 'the button")
 print("       stayed' says nothing about whether the tree layer is read at all.")
@@ -163,9 +180,14 @@ _ms = P.load_dat(os.path.join(MOD, "resources", "_common", "dat",
 # reviewer caught this; the wording now describes the insert instead.
 _first = next((i for i in range(min(len(_gs), len(_ms))) if _gs[i] != _ms[i]),
               None)
-check("v9's .dat is exactly 80 bytes longer, and the change starts mid-file",
-      len(_ms) - len(_gs) == 80 and _first is not None and _first < len(_gs) - 1024,
-      "%d -> %d, first differing byte at offset %s" % (len(_gs), len(_ms), _first))
+# 80 bytes was the grant's effect alone.  Since v17 the revoke appends an effect
+# of its own, so the file grows more -- the shape is "grew in the middle", which
+# is what the tail check below already separates from "appended at the end".
+_grew = len(_ms) - len(_gs)
+check("the .dat grew, and the change starts mid-file",
+      _grew > 0 and _first is not None and _first < len(_gs) - 1024,
+      "%d -> %d (+%d), first differing byte at offset %s"
+      % (len(_gs), len(_ms), _grew, _first))
 check("the tails agree, so nothing was appended at the end of the file",
       _gs[-64:] == _ms[-64:])
 
@@ -249,12 +271,13 @@ check("and it comes from a single technology, so the .dat has no way to tell "
       len(set(_i for _i, _c in _ship_en)) == 1, sorted(set(_i for _i, _c in _ship_en)))
 
 print()
-print("VERDICT: %s" % ("the FILE-level half holds -- both JSON layers really "
-                       "dropped the unit and the .dat still allows it -- but the "
-                       "IN-GAME half is PROVISIONAL, because v9's tree file was "
-                       "left in a state no shipped file is ever in (dangling "
-                       "Link ID), so the game may have exercised a fallback path"
-                       if not fails else
+_today = ("the FILE-level half holds -- both JSON layers really dropped the unit "
+          "and the .dat still allows it.  The artifact on disk is rebuilt by "
+          "today's product, so it no longer carries the dangling Link ID a "
+          "reviewer found in the 2026-10-19 build; the ORIGINAL v9 observation "
+          "(m29132: the button stayed) was made against that dangling file and "
+          "stays PROVISIONAL on that ground, whatever this run prints")
+print("VERDICT: %s" % (_today if not fails else
                        "*** THE EXPERIMENT WAS NOT WHAT IT CLAIMED ***"))
 if fails:
     for f in fails:

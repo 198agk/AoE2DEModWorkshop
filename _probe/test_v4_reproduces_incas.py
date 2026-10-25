@@ -33,6 +33,13 @@ import os
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+# The artifact this file reads is built, not checked in, and on 2026-10-25 a
+# workspace cleanup deleted it -- the suite then failed with KeyError/FileNotFound,
+# which reads like a data bug.  Rebuild it instead of depending on a directory
+# that happens to be there.
+sys.path.insert(0, HERE)
+from ensure_artifact import ensure as _ensure  # noqa: E402
+_ensure("out_dshtest_v4", "build_dshtest_v4.py", required=None)
 ROOT = os.path.dirname(HERE)
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
@@ -41,7 +48,7 @@ from aoe2mod.game import buildpanel as BP                  # noqa: E402
 from aoe2mod.game import civtechtrees as CT                # noqa: E402
 
 GAME = r"D:\Games\Steam\steamapps\common\AoE2DE"
-V4 = os.path.join(HERE, "out_dshtest_v4")
+V4 = _ensure("out_dshtest_v4", "build_dshtest_v4.py")
 UNIT = 2550
 BLDG = 12
 LONGBOW = 8

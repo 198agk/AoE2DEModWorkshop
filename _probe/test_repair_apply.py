@@ -16,6 +16,7 @@ player's real mod list is a test that reports whatever that player happens to
 have installed.
 """
 import os
+import io
 import shutil
 import sys
 import tempfile
@@ -26,6 +27,7 @@ import aoe2mod.api as A
 import aoe2mod.repair as R
 from aoe2mod.game import locations as G
 from aoe2mod.mod import emitter as E2
+from aoe2mod.game import ddstex as DD
 
 HERE_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -154,9 +156,29 @@ def main():
         # measured not to draw (2026-10-24: five blank boxes inside one folder, one
         # drawn checkerboard after splitting).  So build that shape, repair it, and read
         # where the tables ended up on disk.
-        ui_src = os.path.join(HERE_DIR, "out_v85_ui")
-        if not os.path.isdir(ui_src):
-            check(False, "the icon half to merge is still on disk", ui_src)
+        # The UI half is BUILT here rather than borrowed from an earlier round's
+        # output directory: a fixture that lives in `_probe/out_*` disappears the
+        # moment someone cleans the workspace, and the failure then reads like a
+        # product bug.  One unit.create with an icon goes through the same emitter
+        # the player's own build uses, so the layer is genuine.
+        _fixture_icon = os.path.join(tmp, "fixture_icon.png")
+        _iw = _ih = 64
+        _pix = bytearray()
+        for _y in range(_ih):
+            for _x in range(_iw):
+                _odd = ((_x // 8) + (_y // 8)) % 2
+                _pix += bytearray((255, 0, 255, 255) if _odd
+                                  else (0, 255, 255, 255))
+        with io.open(_fixture_icon, "wb") as _fh:
+            _fh.write(DD.encode_png(_iw, _ih, bytes(_pix)))
+        _fixture = os.path.join(tmp, "fixture_ui_half")
+        _man = tk.build({"intent": "unit.create", "donor": 83, "civ": "British",
+                         "name": "repair fixture", "icon": _fixture_icon},
+                        _fixture, title="dsh repair fixture", author="dsh",
+                        description="", overwrite=True)
+        ui_src = _man.get("ui_mod_dir")
+        if not ui_src or not os.path.isdir(ui_src):
+            check(False, "the product can produce a UI half to merge", ui_src)
         else:
             shaped = os.path.join(tmp, "both_layers")
             tk.build({"intent": "unit.stat", "unit": 109, "stat": "hit_points",
