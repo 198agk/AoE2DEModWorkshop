@@ -164,6 +164,25 @@ def main():
              P.BROAD_SHARE))
 
     print("")
+    print("=== E. the tools that watch a run take the run's own log, not a constant")
+    # Measured 2026-10-25: `tmp_watch_suites.py` had `LOG = "_probe/out_suites_clean.txt"`
+    # hard-coded, so after I started a run writing `out_suites_dc6490f.txt` the
+    # watcher dutifully replayed an OLD log and the panel showed a stale 8/124 while
+    # the real run was on suite 3.  A watcher pointed at yesterday's file is not
+    # "not working" -- it is reporting the past as the present.
+    watcher = os.path.join(ROOT, "_probe", "tmp_watch_suites.py")
+    if os.path.isfile(watcher):
+        with io.open(watcher, "r", encoding="utf-8", errors="replace",
+                     newline="") as fh:
+            wsrc = fh.read()
+        check("the watcher takes its log path from argv",
+              "sys.argv[1]" in wsrc,
+              "no sys.argv[1] in tmp_watch_suites.py")
+        check("and fall back to a name rather than only a name",
+              "else \"_probe/" in wsrc or 'else "_probe/' in wsrc,
+              "no fallback visible")
+
+    print("")
     if FAILS:
         print("SUITE PICKER: %d CHECK(S) FAILED -> %r" % (len(FAILS), FAILS))
         return 1
