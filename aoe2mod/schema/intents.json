@@ -713,6 +713,65 @@
           "The tech-tree research counter is a u8 with 14 rows of headroom. This intent does not add a tree row, so it does not spend any of it."
         ]
       }
+    },
+    "unit.replace_on_map": {
+      "title": "让某个单位在地图上换成另一个",
+      "title_en": "Make one unit stand in for another when the map is generated",
+      "applies_to": "unit",
+      "description": "Writes a row into `resources/_common/dat/objreplacement.json` so that when a map is generated, place B wherever A would have gone. Measured 2026-10-25 on a real match: the only data mod was this file plus a `.dat` canary in the same folder, the town centre panel read 4000/4000 (so the folder mounted), and every unit standing on the ground at 0:00 was scout 448 while the rule named villager 83 -- the panel said 45/45, which is 448's hit points. It acts at MAP GENERATION: units trained after the match starts are ordinary units. The file has no per-civilization key, so this cannot be scoped to one civilization.",
+      "fields": {
+        "unit": {
+          "type": "entity_ref",
+          "kind": "unit",
+          "required": true,
+          "label": "被替换的单位",
+          "help": "The unit the map would normally place. If it already has a row in the shipped file (villager 83 has one: a 50% sex swap), the intent refuses unless `replace_existing` is set."
+        },
+        "replacement": {
+          "type": "entity_ref",
+          "kind": "unit",
+          "required": true,
+          "label": "换成哪个单位",
+          "help": "The unit that appears instead. Both ids are printed in the preview, because a row naming a unit a civilization does not have does nothing there and says nothing about it."
+        },
+        "chance": {
+          "type": "int",
+          "required": false,
+          "default": 100,
+          "min": 1,
+          "max": 100,
+          "label": "替换概率",
+          "help": "A percentage. Always 100 here unless you ask for less: the shipped file uses 50 only for the villager sex swap, and a player who sees a coin flip reads it as 'sometimes it does not work'."
+        },
+        "replace_existing": {
+          "type": "bool",
+          "required": false,
+          "default": false,
+          "label": "改掉现有的规则",
+          "help": "Needed when the source unit already has a row. Replacing it deletes the shipped behaviour, so it is opt-in and the preview says which row it is replacing."
+        },
+        "comment": {
+          "type": "string",
+          "required": false,
+          "label": "备注",
+          "help": "Written nowhere: the file has no comment field. Kept out of the record so a player does not think it did something."
+        }
+      },
+      "compile": {
+        "strategy": "objreplacement_json",
+        "why_not_dat": "This layer is not expressible as an in-place .dat patch. `effect command type 3` does replace a unit by id, but at runtime and for every map; this file is the engine's own 'when generating this map, place B instead of A'. They are different moments, and the map-generation one is the only way to change what a player starts with.",
+        "what_it_does_not_prove": "That a row added by a MOD is honoured for civilizations whose copy of the source record differs (only British was measured), and that the shipped `technology` / `required_attribute` conditions can be combined with a new row -- this intent writes only `replacement_object` and `chance`.",
+        "mod_contains_dat": false
+      },
+      "safety": {
+        "scope": "global",
+        "scope_note": "The file's eleven loader fields (verified in the EXE, report §7.1) include no civilization key, so a per-civ edit is impossible rather than unimplemented.",
+        "when": "map generation"
+      },
+      "notes": [
+        "Byte-for-byte reproducible: the shipped 2,533-byte file round-trips through json.dumps(indent=4) with CRLF and a trailing newline, so any diff in a built mod is the row this intent added.",
+        "The file lives in `resources/_common/dat`, the only one of the 28 storage points whose `use_modes_path_for_mods` is true -- so a mod's copy is the copy the engine reads."
+      ]
     }
   },
   "mod": {

@@ -228,6 +228,7 @@ SENTENCE_INTENTS = (
     "tech.research_time", "tech.cost", "tech.effect",
     "unit.availability", "tech.availability",
     "unit.sprite", "unit.art", "unit.create",
+    "unit.replace_on_map",
     "tech.toggle_group", "tech.create",
 )
 
@@ -237,6 +238,16 @@ SENTENCE_INTENTS = (
 # donor swap.  The verb alone is not enough because 换成/改成 also introduce a
 # plain value.
 SPRITE_HINTS = ("样子", "造型", "外观", "模样", "长相", "皮肤", "换皮", "外壳")
+
+
+# "开局时让村民换成斥候骑兵" -- a row in objreplacement.json changes which unit
+# STANDS ON THE MAP, not how one looks.  It needs a placement word as well as a
+# swap verb: the verb alone is shared with the reskin sentence ("把村民的样子换成
+# 步弓手") and with plain values ("村民换成1000"), so the placement word is the
+# only part that cannot mean something else.
+REPLACE_WHERE = ("开局时", "开局", "刚开局", "地图上", "一开始", "出生时",
+                 "出生就", "生成时", "在场上")
+REPLACE_VERBS = ("换成", "变成", "替换成", "替换为", "换作", "改为")
 
 # "给不列颠新建一个和村民一样的单位，叫铁匠学徒" -- nothing on disk is the
 # subject, so the sentence has to say it is MAKING something.  Checked before the
@@ -1455,8 +1466,26 @@ def read_clause(text, vocab, civ_names=None, civ_zh=None, pins=None,
     # into one about all 63 civilizations without saying so.  Refuse and name the
     # word, because "which civilization did you mean" is a question only the
     # player can answer.  Class words are exempt: they have their own sentence.
+    # A replacement sentence puts a where-word in front of 的 (`把地图上的村民`),
+    # and it is not standing in for a civilization -- 地图上 is the phrase that
+    # tells 换成 apart from 改数值.  The exemption must not be general: the same
+    # word in `地图上的村民血量改成1000` IS standing in for a civilization, so it
+    # is only exempt when the sentence is shaped like a replacement.
+    # A where-word is never a civilization qualifier; what makes it ambiguous is
+    # the absence of a verb saying what happens ("地图上的村民血量改成1000" could
+    # mean one civilization or all of them).  So the exemption keys on the verb,
+    # not on which verb -- the reskin reading needs it too: measured 2026-10-25,
+    # `把地图上的村民的样子换成步弓手` was refused as an unknown word.
+    _repl_shaped = (any(w in low for w in REPLACE_WHERE)
+                    and any(v in low for v in REPLACE_VERBS))
+
+    def _known_scope_word(w):
+        if _class_word(w, class_names()) is not None:
+            return True
+        return bool(_repl_shaped and w in REPLACE_WHERE)
+
     stray = _scope_word(raw, low, vocab, civ_names, civ_zh, spans,
-                        is_known=lambda w: _class_word(w, class_names()) is not None)
+                        is_known=_known_scope_word)
     if stray is not None:
         cl.candidates = []
         cl.why = ("「%s」这个说法我不认识——它不是文明名，也不是单位或科技的"
@@ -1520,6 +1549,48 @@ def read_clause(text, vocab, civ_names=None, civ_zh=None, pins=None,
         cl.intent = {"intent": "unit.art", "unit": eid, "picture": pic}
         if civ:
             _scope(cl.intent)
+        return cl
+
+    # --- unit.replace_on_map: "开局时让村民换成斥候骑兵" ------------------
+    # Placed BEFORE the number section: this sentence carries no number at all,
+    # and the number section's refusal ("这句话里没有数字") is a true observation
+    # about the wrong question.
+    _where = next((w for w in REPLACE_WHERE if w in low), None)
+    _verb = next((w for w in REPLACE_VERBS if w in low), None)
+    if _where is not None and _verb is not None and _sprite_hint_at(low) is None:
+        _vpos = low.find(_verb)
+        _before = [s for s in sps if s[1] <= _vpos and s[4] == "unit"]
+        _after = [s for s in sps if s[0] >= _vpos and s[4] == "unit"]
+        if not _before or not _after:
+            cl.why = ("要换的是哪个单位、换成哪个？这句里只看出 %d 个单位"
+                      % (len(_before) + len(_after)))
+            return cl
+        _src = _before[-1][2]
+        _dst = _after[0][2]
+        if _src.id == _dst.id:
+            cl.why = "「%s」换成它自己没有意义" % _src.display
+            return cl
+        if civ:
+            cl.why = ("这个文件没有逐文明字段，所以「%s」不能只对一个文明生效；"
+                      "去掉文明名就是对所有文明生效" % civ)
+            return cl
+        cl.kind = "unit"
+        cl.entity = _src
+        cl.intent = {"intent": "unit.replace_on_map", "unit": _src.id,
+                     "replacement": _dst.id}
+        cl.notes.append("只在开局生成地图时生效：进入对局之后再造的单位是普通单位")
+        cl.notes.append("这个文件没有逐文明字段，所以对所有文明一起生效")
+        return cl
+    if _verb is not None and _sprite_hint_at(low) is None \
+            and len([s for s in sps if s[4] == "unit"]) >= 2:
+        # Two units and a swap verb, but nothing that says WHEN.  The three
+        # readings of a bare 换成 are: swap which unit stands on the map (needs
+        # 开局时), change the look (needs 样子), or set a value (needs a number).
+        # Answering with "this sentence has no number" tells the player about the
+        # third reading only, and they asked for one of the other two.
+        cl.why = ("「%s」有很多种意思：说「开局时…换成…」是换掉地图上的单位，"
+                  "说「…的样子换成…」是换外观，说「…换成1000」是改数值。"
+                  % _verb)
         return cl
 
     # --- unit.sprite: "把A的样子换成B" -----------------------------------

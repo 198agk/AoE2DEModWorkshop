@@ -1015,6 +1015,22 @@ def load_schema():
 # ---------------------------------------------------------------------------
 # 1. RESOLVE
 # ---------------------------------------------------------------------------
+_IX_INSTANCE = [None]
+
+
+def _ix_inst():
+    """The process-wide semantic index, fetched lazily.
+
+    `describe()` is the only place in this module that needs a NAME for an id it
+    did not resolve itself, and importing the index at module scope would make
+    every import of the compiler parse 2.3 MB of JSON.
+    """
+    if _IX_INSTANCE[0] is None:
+        from ..semantic import index as _SI
+        _IX_INSTANCE[0] = _SI.index()
+    return _IX_INSTANCE[0]
+
+
 class Resolved(object):
     """A validated intent, ready to compile."""
 
@@ -1174,6 +1190,20 @@ class Resolved(object):
             # A relationship, not a number: the three-part shape below would
             # render "弓箭手 长弓兵" and leave the user to guess which end moves.
             return "%s 改用 %s 的造型" % (self.entity.display, self.donor.display)
+        if self.raw.get("replacement") is not None:
+            # `unit.replace_on_map` names two units and has no `donor`, so without
+            # this branch the three-part shape below renders the bare intent key
+            # ("replace_on_map").  Measured 2026-10-25: that string reached the
+            # bundle manifest, which the page prints sentence by sentence.  The
+            # replacement is looked up in the semantic index because the raw value
+            # is an id.
+            _dst = self.raw.get("replacement")
+            try:
+                _dst_name = _ix_inst().get(self.kind or "unit", int(_dst)).display
+            except Exception:
+                _dst_name = str(_dst)
+            return "地图开局时，把「%s」换成「%s」" % (self.entity.display,
+                                                  _dst_name)
         if self.members:
             # A group is not an edit of one thing, so the three-part shape below
             # would render "织布机 采邑" and leave the user guessing what happens
@@ -1482,6 +1512,28 @@ def resolve(intent, schema, semantic_index=None, bindings=None):
                 raise IntentError(str(exc))
         intent = dict(intent)
         intent["builder"] = (made_builder.id if made_builder is not None else None)
+    # --- the unit that stands in for the subject, on a generated map --------
+    # Resolved through the same index as everything else so a misspelt name fails
+    # HERE with the candidate list, rather than at build time as "no such unit
+    # 999999" -- the preview-promises-what-build-refuses family this file keeps
+    # paying for.  The id lands in `intent` (like `builder`) because only the two
+    # `unit.replace_on_map` methods read it, and putting it on Resolved would make
+    # every other intent carry a field it has no use for.
+    if "replacement" in fields:
+        raw_replacement = intent.get("replacement")
+        if raw_replacement in (None, ""):
+            raise IntentError(
+                "这句话要说清换成哪个单位（例如「把村民换成斥候骑兵」）")
+        r_field = fields["replacement"].get("kind") or kind
+        try:
+            replaced_by = ix.resolve_one(r_field, raw_replacement)
+        except LookupError as exc:
+            raise IntentError(str(exc))
+        if replaced_by.id == intent.get(ref_field):
+            raise IntentError("「%s」换成它自己没有意义：文件里会多一行点名自己"
+                              "的规则，而画面上什么都不会变" % (entity.display,))
+        intent = dict(intent)
+        intent["replacement"] = replaced_by.id
     civ_scope = intent.get("civs", "all")
     # A picture is a path on the user's disk, not an entity, so it never goes
     # through the semantic index -- but it must be checked HERE rather than at

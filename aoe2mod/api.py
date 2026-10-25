@@ -30,6 +30,7 @@ from .game import civnames as CN
 from .game import buildpanel as BP
 from .game import icons as IC
 from .game import linkedtechs as LT
+from .game import objreplace as OR
 from .intent import availability as AV
 from .intent import compiler as C
 from .mod import emitter as E
@@ -3519,6 +3520,8 @@ class Toolkit(object):
             return self._plan_paint(r, base)
         if self._strategy(r.raw) == "linked_techs_json":
             return self._plan_toggle_group(r, base)
+        if self._strategy(r.raw) == "objreplacement_json":
+            return self._plan_objreplace(r, base)
         # The arms above handle five strategies; the two below handle the byte
         # patcher and the tech-tree writer.  Anything ELSE used to fall straight
         # into the byte-preview body and answer "will change the game data, 1701
@@ -3935,6 +3938,14 @@ class Toolkit(object):
                                             description=description,
                                             thumbnail=thumbnail,
                                             overwrite=overwrite)
+        if strategy == "objreplacement_json":
+            intents_schema, bindings = C.load_schema()
+            r = C.resolve(intent, intents_schema, bindings=bindings)
+            return self._build_objreplace(r, out_dir, title=title,
+                                          author=author,
+                                          description=description,
+                                          thumbnail=thumbnail,
+                                          overwrite=overwrite)
         if strategy != "in_place_patch":
             raise C.IntentError(
                 "「%s」声明了编译策略 %r，这个版本不构建它。"
@@ -4103,6 +4114,171 @@ class Toolkit(object):
                    LT.LINKED_TECHS_REL.replace(os.sep, "/")))
         return base
 
+    # --- objreplacement.json: a row the engine reads at MAP GENERATION ------
+    DEFAULT_CHANCE = 100
+
+    def _unit_names(self):
+        """``{unit id: the name a player reads}`` from the semantic index.
+
+        Built here rather than stored on the toolkit: an id printed raw reads like
+        a locator dump instead of the sentence the preview is supposed to be.
+        """
+        names = {}
+        try:
+            ix = semantic.index()
+            for uid in list(ix.units):
+                e = ix.get("unit", uid)
+                if e is not None and e.display:
+                    names[int(uid)] = e.display
+        except Exception:
+            return {}
+        return names
+
+    def _objreplace_args(self, r):
+        raw = r.raw
+        chance = raw.get("chance")
+        chance = self.DEFAULT_CHANCE if chance in (None, "") else int(chance)
+        return (int(raw["unit"]), int(raw["replacement"]), chance,
+                bool(raw.get("replace_existing")))
+
+    def _plan_objreplace(self, r, base):
+        """Answer "will this work, and what does it change" without writing.
+
+        The three limits this layer imposes are printed as notes rather than kept
+        in `not_proven`: they are properties of the file, and a player deciding
+        whether to press the button needs them BEFORE the build.
+        """
+        names = self._unit_names()
+        src, dst, chance, replace_existing = self._objreplace_args(r)
+        src_name = names.get(src) or str(src)
+        dst_name = names.get(dst) or str(dst)
+        base["shape"] = "replace_on_map"
+        base["writes"] = OR.OBJREPLACEMENT_REL.replace(os.sep, "/")
+        base["changes_dat"] = False
+        # The carrier is mandatory and unavoidable: `objreplacement.json` lives
+        # under the DAT storage point, and the game refuses to start when a mod
+        # overrides that folder without shipping the `.dat`.  Saying False here
+        # was a preview/build disagreement of exactly the shape the toggle group
+        # had on 2026-10-22 -- measured 2026-10-25: plan said no `.dat`, the mod
+        # folder held an 11,982,480 B one.
+        base["mod_contains_dat"] = True
+        base["dat_is_carrier"] = True
+        base["entity_id"] = src
+        base["entity_name"] = src_name
+        base["source"] = {"id": src, "name": src_name}
+        base["replacement"] = {"id": dst, "name": dst_name}
+        base["chance"] = chance
+        base["when"] = "开局生成地图时"
+        base["scope"] = "所有文明"
+        base["notes"] = [
+            "只在开局生成地图时生效：进入对局之后再造的单位是普通单位",
+            "这个文件没有逐文明字段，所以对所有文明一起生效",
+        ]
+        try:
+            doc = OR.load(self.game_root)
+            rows_before = len(OR.rows(doc))
+            OR.add_replacement(doc, src, dst, source_name=src_name,
+                               target_name=dst_name, chance=chance,
+                               replace_existing=replace_existing,
+                               name_for=lambda u: names.get(int(u)))
+        except OR.ObjReplaceError as exc:
+            base["editable"] = False
+            base["edit_count"] = 0
+            base["reason"] = str(exc)
+            base["description"] = str(exc)
+            return base
+        rows_after = len(OR.rows(doc))
+        base["editable"] = True
+        base["edit_count"] = 1
+        base["rows_before"] = rows_before
+        base["rows_after"] = rows_after
+        base["replaces_existing_row"] = bool(replace_existing
+                                             and rows_after == rows_before)
+        base["description"] = OR.describe(src_name, dst_name)
+        if chance != self.DEFAULT_CHANCE:
+            base["description"] += "（%d%% 的概率）" % chance
+        if base["replaces_existing_row"]:
+            base["notes"].append("这会替换掉文件里原有的那一行规则")
+        return base
+
+    def _build_objreplace(self, r, out_dir, title=None, author="",
+                          description="", thumbnail=None, overwrite=False):
+        """Write the row, then READ IT BACK from the mod folder.
+
+        The re-read is the point: every defect in this project that cost a round
+        looked like a successful build in memory.  The numbers in
+        `replace_on_map` come from the bytes that are actually on disk.
+        """
+        names = self._unit_names()
+        src, dst, chance, replace_existing = self._objreplace_args(r)
+        src_name = names.get(src) or str(src)
+        dst_name = names.get(dst) or str(dst)
+        style = OR.detect_style(OR.shipped_bytes(self.game_root))
+        doc = OR.load(self.game_root)
+        rows_before = len(OR.rows(doc))
+        try:
+            OR.add_replacement(doc, src, dst, source_name=src_name,
+                               target_name=dst_name, chance=chance,
+                               replace_existing=replace_existing,
+                               name_for=lambda u: names.get(int(u)))
+        except OR.ObjReplaceError as exc:
+            raise C.IntentError(str(exc))
+        files = OR.emit_files(doc, style)
+        info = E.make_info(title or OR.describe(src_name, dst_name),
+                           author=author, description=description)
+        man = E.emit_json_mod(out_dir, files, info, thumbnail=thumbnail,
+                              base_dir=self.game_root, overwrite=overwrite)
+        rel = OR.OBJREPLACEMENT_REL
+        path = os.path.join(man["mod_dir"], rel)
+        raw_on_disk = io.open(path, "rb").read()
+        back = json.loads(raw_on_disk.decode("utf-8-sig"))
+        rows_after = len(OR.rows(back))
+        got = [row for row in OR.rows(back) if int(row["source"]) == src]
+        man["shape"] = "replace_on_map"
+        man["writes"] = rel.replace(os.sep, "/")
+        man["changes_dat"] = False
+        man["mod_contains_dat"] = bool(man.get("dat"))
+        man["change_count"] = 1
+        # The page reads `edit_count` on the object it gets per sentence, and in
+        # a bundle that object is this manifest entry rather than the plan.  Every
+        # other intent's manifest already carries it; leaving it out here made a
+        # one-row edit render as "0 处改动" next to a preview that said 1.
+        man["edit_count"] = 1
+        man["replace_on_map"] = {
+            "source": {"id": src, "name": src_name},
+            "replacement": {"id": dst, "name": dst_name},
+            "chance": chance,
+            "rows_before": rows_before,
+            "rows_after": rows_after,
+            "replaces_existing_row": bool(replace_existing
+                                          and rows_after == rows_before),
+            "file": rel.replace(os.sep, "/"),
+            "file_bytes": len(raw_on_disk),
+            "read_back": [{"source": int(row["source"]),
+                           "replacement": int(row["target"]),
+                           "chance": row.get("chance")} for row in got],
+        }
+        man["verification"] = {
+            "ok": bool(got) and int(got[0]["target"]) == dst
+                  and rows_after in (rows_before, rows_before + 1),
+            "proven": [
+                "the row is on disk and reads back with the ids asked for",
+                "every other row in the shipped file is still there",
+                "the file parses and keeps the shipped line endings",
+            ],
+            "proven_by": ["_probe/test_replace_on_map.py"],
+            "not_proven": [
+                "that a row added by a mod is honoured for civilizations whose "
+                "copy of the source record differs (only British was measured)",
+            ],
+            "limits": [],
+        }
+        man["notes"] = [
+            "只在开局生成地图时生效：进入对局之后再造的单位是普通单位",
+            "这个文件没有逐文明字段，所以对所有文明一起生效",
+        ]
+        return man
+
     def _split_by_strategy(self, resolved_list):
         """One resolved list -> ``(in_place_patch, civtechtrees_json, loose_files)``.
 
@@ -4121,8 +4297,8 @@ class Toolkit(object):
         An undeclared strategy still raises: quietly dropping a sentence would
         produce a mod that does less than it says.
         """
-        dat, js, sld, paint, new, linked, tech = \
-            [], [], [], [], [], [], []
+        dat, js, sld, paint, new, linked, tech, repl = \
+            [], [], [], [], [], [], [], []
         for r in resolved_list:
             s = self._strategy(r.raw)
             if s == "in_place_patch":
@@ -4151,6 +4327,14 @@ class Toolkit(object):
                 # `availability.plan`, which would refuse a sentence with no
                 # civilization -- correctly, for a different question.
                 linked.append(r)
+            elif s == "objreplacement_json":
+                # Its own bucket: a replacement is a row in a JSON file the
+                # engine reads at MAP GENERATION, not a byte at an offset and
+                # not a tech-tree entry.  Sharing `js` would hand it to
+                # `availability.plan`, which refuses any sentence without a
+                # civilization -- right for its own question, wrong here, and
+                # this layer has no civilization key at all.
+                repl.append(r)
             elif s == "repaint_sld":
                 # A repaint also ships loose files, but it ENCODES a picture
                 # rather than moving one that already exists, so it needs its own
@@ -4162,7 +4346,7 @@ class Toolkit(object):
                 raise C.IntentError(
                     "「%s」声明了编译策略 %r，这个版本的 bundle 路径不构建它。"
                     % (r.raw.get("intent"), s))
-        return dat, js, sld, paint, new, linked, tech
+        return dat, js, sld, paint, new, linked, tech, repl
 
     def _split_reskin_modes(self, sld_list):
         """Split reskin sentences by DELIVERY MODEL: ``(copy, rename)``.
@@ -4658,7 +4842,7 @@ class Toolkit(object):
         # build Huskarls" be one request instead of two mods where the engine
         # loads only the higher-priority one.
         dat_list, js_list, sld_list, paint_list, new_list, linked_list, \
-            tech_list = self._split_by_strategy(resolved_list)
+            tech_list, repl_list = self._split_by_strategy(resolved_list)
 
         # The group sentences get the same dry run the other buckets get, through
         # the SAME accumulating function the build calls -- so "the preview said
@@ -4824,6 +5008,29 @@ class Toolkit(object):
         # keystroke.  `_new_tech_bundle` is the write path and runs the same
         # arithmetic, so a preview that says 1,511 cannot become a build that
         # ships 1,510.
+        # The replacement sentences get the same dry run as everything else, and
+        # through `_plan_objreplace` -- the function the single-sentence preview
+        # calls.  Reading the file twice with two different functions is how a
+        # preview ends up promising a row the build cannot write.
+        repl_notes = []
+        repl_refusals = []
+        for r in repl_list:
+            _base = {"description": r.describe()}
+            try:
+                _base = self._plan_objreplace(r, _base)
+            except (C.IntentError, OR.ObjReplaceError) as exc:
+                repl_refusals.append({"description": r.describe(),
+                                      "reason": str(exc)})
+                continue
+            if _base.get("editable") is False:
+                # `_plan_objreplace` already decided, with a reason.  It belongs
+                # in the refusal list, not in the shipped entries: a sentence the
+                # preview says is impossible must not travel as if it would.
+                repl_refusals.append({"description": r.describe(),
+                                      "reason": _base.get("reason") or ""})
+                continue
+            repl_notes.append(_base)
+
         new_tech_notes = []
         if tech_list:
             from .dat import newtech as NT
@@ -4871,7 +5078,7 @@ class Toolkit(object):
             # files a model the user did not ask for would have copied.
             "edit_count": (len(edits) + _dat_half_edits + sprite_files
                            + rename_edits + paint_files + len(linked)
-                           + len(new_tech_notes)),
+                           + len(new_tech_notes) + len(repl_notes)),
             "dat_half_edit_count": _dat_half_edits,
             "sprite_file_count": sprite_files,
             "sprite_rename_count": rename_edits,
@@ -4895,6 +5102,11 @@ class Toolkit(object):
             # empty, for the same reason as `linked_groups`: a caller must be able
             # to tell "no creation sentence" from "the key is missing".
             "new_techs": new_tech_notes,
+            # One entry per replacement sentence.  Reported even when empty so a
+            # caller can tell "no replacement sentence" from "the key is missing"
+            # -- the same contract as `linked_groups` and `new_techs`.
+            "replace_on_map": repl_notes,
+            "replace_on_map_refusals": repl_refusals,
             # A reskin sentence that declared itself buildable and is not.  Same
             # contract as `dat_half_refusals`: the preview names it, the build
             # names it, and neither drops it in silence.
@@ -4921,6 +5133,10 @@ class Toolkit(object):
             # bundle rewrites the 93 MB stream and the `.dat` in the mod is an
             # EDIT, not a carrier.  A Cycle group really is label-only, which is
             # why this is a per-group question and not `bool(linked_list)`.
+            # A replacement writes one row of `objreplacement.json`: no `.dat`
+            # byte changes, and nothing under `resources/_common/dat/` is left
+            # untouched either -- the file the emitter must carry lives in that
+            # folder, so `mod_contains_dat` is true below.
             "changes_dat": (bool(dat_list) or bool(_halves) or bool(rename_edits)
                             or bool(_group_dat_groups)),
             "dat_is_carrier": ((bool(js_list) or bool(linked_list))
@@ -4934,7 +5150,7 @@ class Toolkit(object):
             # mod contain a `.dat`, and leaving it out here would report a mod
             # without the one file it cannot work without.
             "mod_contains_dat": bool(dat_list or js_list or rename_edits
-                                     or linked_list),
+                                     or linked_list or repl_list),
             # A sentence that declared a `.dat` half and could not have one.  The
             # build reports the same list, so the preview cannot promise a
             # three-layer write and deliver two (`_declared_dat_halves`).
@@ -4979,7 +5195,7 @@ class Toolkit(object):
         intents_schema, bindings = C.load_schema()
         resolved_list = C.resolve_bundle(intents, intents_schema, bindings=bindings)
         dat_list, js_list, sld_list, paint_list, new_list, linked_list, \
-            tech_list = self._split_by_strategy(resolved_list)
+            tech_list, repl_list = self._split_by_strategy(resolved_list)
 
         data, civs, _cs, gv, tail, how = self._parsed
         json_files = {}
@@ -5145,6 +5361,53 @@ class Toolkit(object):
             if tech_bytes is not None:
                 dat_bytes = tech_bytes
 
+        # The replacement sentences write `objreplacement.json`, which lives in
+        # the SAME folder the tree files live in, so they land in the same
+        # mapping and travel in the same mod folder.  Folding them through one
+        # document (rather than one file per sentence) is what stops a second
+        # sentence from replacing the first one's file -- and a different
+        # strategy naming the same path is refused LOUDLY, because one file
+        # cannot hold two contents and picking one silently would ship a mod
+        # that does less than the manifest says.
+        repl_notes = []
+        if repl_list:
+            _doc = OR.load(self.game_root)
+            _style = OR.detect_style(OR.shipped_bytes(self.game_root))
+            _names = self._unit_names()
+            _before = len(OR.rows(_doc))
+            for r in repl_list:
+                _src, _dst, _chance, _repl_existing = self._objreplace_args(r)
+                try:
+                    OR.add_replacement(
+                        _doc, _src, _dst,
+                        source_name=_names.get(_src) or str(_src),
+                        target_name=_names.get(_dst) or str(_dst),
+                        chance=_chance, replace_existing=_repl_existing,
+                        name_for=lambda u: _names.get(int(u)))
+                except OR.ObjReplaceError as exc:
+                    sprite_refusals = sprite_refusals + [
+                        {"description": r.describe(), "reason": str(exc)}]
+                    continue
+                repl_notes.append({
+                    "description": OR.describe(_names.get(_src) or str(_src),
+                                               _names.get(_dst) or str(_dst)),
+                    "source": {"id": _src, "name": _names.get(_src) or str(_src)},
+                    "replacement": {"id": _dst,
+                                    "name": _names.get(_dst) or str(_dst)},
+                    "chance": _chance,
+                })
+            if repl_notes:
+                _files = OR.emit_files(_doc, _style)
+                _rel = OR.OBJREPLACEMENT_REL
+                for _k, _blob in _files.items():
+                    if _k in json_files and json_files[_k] != _blob:
+                        raise C.IntentError(
+                            "有一句要写 %s，另一个做法也要写同一个文件，"
+                            "一个文件装不下两种内容" % os.path.basename(_k))
+                    json_files[_k] = _blob
+                man_rows_after = len(OR.rows(_doc))
+                repl_rows = _before, man_rows_after
+
         # ONE string file, built from BOTH kinds of creation.  Emitting each
         # bundle's table and concatenating them repeats the file's header block
         # -- measured 2026-10-22: a bundle with two tech creations shipped a table
@@ -5289,6 +5552,55 @@ class Toolkit(object):
         man["linked_refusals"] = [{"description": n["resolved"],
                                    "reason": n["reason"]}
                                   for n in linked_notes if not n.get("ok")]
+        # The replacement rows, reported the way the single-sentence path reports
+        # them.  Two things a caller must be able to check: that every sentence
+        # that went in came out (there is no partial delivery), and that the row
+        # really landed in the file on disk -- so the count is the rows the FILE
+        # has, not the rows this function intended to add.
+        man["replace_on_map"] = repl_notes
+        man["replace_on_map_refusals"] = [
+            {"description": x.get("description"), "reason": x.get("reason")}
+            for x in sprite_refusals
+            if x.get("reason") and x.get("description") not in
+            {n.get("description") for n in repl_notes}]
+        if repl_list:
+            _rel = OR.OBJREPLACEMENT_REL
+            _p = os.path.join(man["mod_dir"], _rel)
+            # `replace_on_map` is the LIST of sentences; the facts about the FILE
+            # live beside it.  Assigning into the list by name raises
+            # `TypeError: list indices must be integers` -- and it would raise it
+            # at the end of a successful build, with the mod already on disk.
+            _on_disk = []
+            if os.path.isfile(_p):
+                _blob = io.open(_p, "rb").read()
+                _back = json.loads(_blob.decode("utf-8-sig"))
+                _want = {(int(n["source"]["id"]), int(n["replacement"]["id"]))
+                         for n in repl_notes}
+                # `OR.rows()` keeps attribute-only rows (the shipped file has
+                # one: Scout -> "Scout ID" 263) with `target=None` on purpose, so
+                # a reader can see that row too.  Comparing it needs a `None`
+                # guard: `int(None)` raised here, at the end of a build whose mod
+                # folder was already written.
+                _on_disk = [
+                    {"source": int(row["source"]),
+                     "replacement": int(row["target"]),
+                     "chance": row.get("chance")}
+                    for row in OR.rows(_back)
+                    if row.get("target") is not None
+                    and (int(row["source"]), int(row["target"])) in _want]
+                man["replace_on_map_file"] = {
+                    "file": _rel.replace(os.sep, "/"),
+                    "file_bytes": len(_blob),
+                    "rows_in_file": len(OR.rows(_back)),
+                    "rows_on_disk": _on_disk,
+                    "verification_ok": len(_on_disk) == len(repl_notes),
+                }
+            else:
+                man["replace_on_map_file"] = {
+                    "file": _rel.replace(os.sep, "/"),
+                    "verification_ok": False,
+                    "why_not": "the file is not in the mod folder",
+                }
         # The groups' own `.dat` half, reported the way the single-sentence path
         # reports it.  Before 2026-10-23 a bundle group shipped a label with no
         # bans and said nothing: `commands_added` was absent, and `dat_half` held
@@ -5303,7 +5615,7 @@ class Toolkit(object):
         man["edits"] = (len(edits) + man["dat_half_edit_count"]
                         + len(sprite_files) + _rename_changed + paint_files
                         + 2 * len(new_notes) + len(tech_notes)
-                        + man["commands_added"])
+                        + man["commands_added"] + len(repl_notes))
         man["edit_count"] = man["edits"]
         man["dat_half"] = dat_half_reps
         man["civs_edited"] = civs_edited

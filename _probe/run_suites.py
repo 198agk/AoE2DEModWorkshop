@@ -409,6 +409,23 @@ SUITES = [
     # "4 of 125" for `aoe2mod/api.py` where 84 suites reach it, and a 3-character
     # floor on the module stem silently dropped `nl.` and two suites with it.
     r"_probe\test_suite_picker.py",
+    # The fourteenth intent: a row in `objreplacement.json` that the engine reads
+    # when it GENERATES the map, so it changes what stands on the ground at 0:00
+    # rather than what a barracks can produce.  Measured 2026-10-25 on a real
+    # match (report §十一).  Two shapes here are the ones that go wrong quietly:
+    # a row added beside the shipped ones (must not disturb the villager sex
+    # swap) and a row that REPLACES one (must be refused unless asked for).
+    r"_probe\test_replace_on_map.py",
+    # The sentence layer for the same intent.  The file above asks whether the
+    # ROW is written; this one asks whether a player can ASK for it -- and the
+    # two fail independently: the branch landed with every phrasing refused as
+    # "this sentence has no number", and the file-writing nail was green.
+    r"_probe\test_replace_sentence.py",
+    # Structural rather than behavioural: it walks every nail in this folder and
+    # fails if any of them records a failure after its last `if FAILS:` block.
+    # Written because I did exactly that on 2026-10-25 -- the section printed two
+    # FAIL lines and the suite still exited 0 -- and no other nail can see it.
+    r"_probe\test_gate_order.py",
 ]
 
 # Suites that are not Python.  The screen's script is JavaScript and no Python
