@@ -156,7 +156,12 @@ def install_plugin(root):
                                    "label": "排序号"},
                    "blast_width": {"source": "mark", "name": "blast_width",
                                    "bytes": 2, "kind": "float",
-                                   "signed": False}}})
+                                   "signed": False},
+                   # Bound and labelled, claimed by no intent: the reader must not
+                   # learn this word (section D).
+                   "ghost_width": {"source": "mark", "name": "ghost_width",
+                                   "bytes": 2, "kind": "int", "signed": True,
+                                   "label": "幽灵宽度"}}})
 
 
 def main():
@@ -167,6 +172,10 @@ def main():
     def read(text):
         return nl.read(text, vocab, civ_names=None, civ_zh=nl.CIV_ZH,
                        effect_count=tk.effect_count, unit_class=tk.unit_class)
+
+    # `ghost_width` is bound and labelled by the fixture plugin and named by NO
+    # fixture intent -- that is the shape under test in section D.
+    got_ghost, _clauses_ghost = read("村民幽灵宽度加5")
 
     # ---- A. shipped sentences do not move -------------------------------
     print("=== A. fifteen shipped sentences still land where they did")
@@ -277,6 +286,28 @@ def main():
         check("and about the shadowed one",
               rows.get("unit.stat_probe", {}).get("by_sentence") is False,
               str(rows.get("unit.stat_probe", {}).get("by_sentence")))
+
+        # ---- D. a label nobody can route is not a word ------------------
+        # Measured 2026-10-25: a plugin may bind a field and label it without any
+        # intent naming that field.  The reader used to learn the word and then hand
+        # the sentence to `unit.stat`, whose enum does not hold it -- so the screen
+        # displayed a sentence it could read and then refused to build it.  A word is
+        # only worth teaching when some intent can keep it.
+        # (`ghost_width` / 幽灵宽度 is bound and labelled by the fixture plugin and
+        # named by no intent -- that is exactly the shape; `blast_width` is claimed by
+        # `unit.unlabelled`, so it is the wrong witness and was the first mistake here.)
+        learned_ghost = list(nl.stat_words().get("ghost_width", ()))
+        check("a labelled field no intent claims teaches no word",
+              not learned_ghost,
+              "stat_words learned %r for a field no intent claims"
+              % (learned_ghost,))
+        check("so intent_for_stat has nobody to hand it to",
+              nl.intent_for_stat("ghost_width") == "unit.stat",
+              nl.intent_for_stat("ghost_width"))
+        check("and the sentence that would need it is refused, not parsed",
+              not got_ghost,
+              "parsed into %r -- the reader taught a word, then could not build it"
+              % (got_ghost,))
     finally:
         if saved is None:
             os.environ.pop(C._PLUGINS_ENV, None)

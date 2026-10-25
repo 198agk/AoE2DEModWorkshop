@@ -89,9 +89,22 @@ def stat_words():
     table = {k: tuple(v) for k, v in STAT_WORDS.items()}
     try:
         _intents, bindings = load_schema()
+        # Only teach a word some intent can route.  A plugin may bind a field and
+        # give it a label without declaring an intent that names it, and then
+        # `intent_for_stat()` answers `unit.stat` whose enum does not hold the
+        # field -- so the reader parses `村民爆炸宽度加5` and `plan()` refuses with
+        # `unknown stat 'blast_width'`.  Teaching the word and then refusing it is
+        # the same defect as advertising a sentence nobody can type (2026-10-25),
+        # one step earlier in the chain.  `intent_for_stat()` is this question the
+        # other way round, so both now ask the schema who claims the field.
+        claimed = set()
+        for _name, _spec in (_intents.get("intents") or {}).items():
+            _opts = (((_spec or {}).get("fields") or {}).get("stat") or {}).get("options")
+            for _o in (_opts or ()):
+                claimed.add(_o)
         for field, spec in (bindings.get("unit_fields") or {}).items():
             label = (spec or {}).get("label")
-            if not label:
+            if not label or field not in claimed:
                 continue
             words = list(table.get(field, ()))
             if label not in words:

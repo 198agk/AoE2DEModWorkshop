@@ -312,8 +312,20 @@ def main():
     # word `by_sentence` appears in server.py is a check no wrong value can fail
     # -- proven by breaking `k in nl.SENTENCE_INTENTS` into `True` and watching
     # this file stay green (2026-10-23).
+    # 2026-10-25: the question changed from "is this id in the hand-written list"
+    # to "can the reader reach it" (`nl.sentence_reachable`), because a plugin intent
+    # that declares a `stat` field now IS reachable.  Pinning the old expression meant
+    # this file went red the moment the route got better and then stayed red until
+    # someone re-ran it -- a nail that punishes a fix is as bad as one that misses a
+    # defect, so this pins the CALL and not the old spelling.
     check("the route computes the flag from the sentence layer",
-          "k in nl.SENTENCE_INTENTS" in _route_src())
+          "nl.sentence_reachable(k, v)" in _route_src())
+    check("and that is the only source of the flag",
+          _route_src().count("by_sentence") == _route_src().count(
+              "nl.sentence_reachable(k, v)"),
+          "by_sentence appears %d times, the call %d times"
+          % (_route_src().count("by_sentence"),
+             _route_src().count("nl.sentence_reachable(k, v)")))
     # And the only honest way to know it is wired: ask the route, twice, with a
     # plugin present and absent.  A plugin intent must come back False, a
     # shipped one True; a route that hardcoded either would fail one of the two.
