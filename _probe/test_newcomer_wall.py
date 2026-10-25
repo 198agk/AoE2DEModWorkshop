@@ -180,7 +180,11 @@ def main():
         check("it names the entry point", "tools\\run_ui.py" in txt)
         check("it names the dropdown that actually exists", "创建游戏" in txt)
         check("it warns the mods screen is not that place", "不是「模组」界面" in txt)
-        check("it lists all thirteen intents",
+        # The count in this name has been wrong for one intent already (13 when the
+        # schema shipped 14).  It is read as a name, so nobody re-derives it; the
+        # assertion itself looks up ids, which is why the stale number cost nothing
+        # and misinformed anyone reading the output.  Named after the property now.
+        check("it lists every intent the schema ships",
               all(k in txt for k in ("unit.stat", "unit.attack_class", "unit.cost",
                                      "tech.research_time", "tech.cost", "tech.effect",
                                      "unit.availability", "tech.availability",

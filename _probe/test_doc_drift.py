@@ -6,11 +6,14 @@ The suite count has been written down as 23, 31, 43, 88, 93, 95, 96, 97, 99, 100
 104, 105, 108, 110, 111, 112, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125 in
 this repo, and at least three of those numbers were wrong when written.
 
-Two things are asserted, and the second is the one that makes the first worth anything:
+Three things are asserted, and the second is what makes the first worth anything:
 
   1. every `N 条 py` / `N 条 node` claim presented as the CURRENT count equals the tree;
   2. a claim is only exempt as history when the line is actually dated -- and at least
-     one such line exists.
+     one such line exists;
+  3. README -- the page a stranger reads first -- names every intent the schema ships.
+     No exemption: the schema is today's schema, and a page that lists thirteen of
+     fourteen intents is a stranger's only look at what the tool can do.
 
 Without (2) the file could report a clean 0 because the dated-record rule stopped
 matching (reporting every record as drift) or because the files stopped being read at
@@ -25,6 +28,7 @@ import ast
 import io
 import os
 import re
+import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
@@ -128,13 +132,59 @@ def main():
     check("...and the exemption is narrower than the whole set", dated < len(rows),
           "%d of %d" % (dated, len(rows)))
 
+    print("\n=== E. README names every intent the schema ships")
+    # The schema is today's schema, so this check takes no exemption.  A page that
+    # lists thirteen of fourteen intents is not a historical record -- it is a
+    # stranger's first (and possibly only) look at what the tool can do.
+    import subprocess
+
+    _probe_src = os.path.join(HERE, "tmp_schema_ids.py")
+    io.open(_probe_src, "w", encoding="utf-8", newline="").write(SCHEMA_SCRIPT)
+    try:
+        _out = subprocess.run(
+            [sys.executable, "-X", "utf8", "-u", _probe_src],
+            cwd=ROOT, capture_output=True, text=True, timeout=180,
+        )
+    finally:
+        try:
+            os.remove(_probe_src)
+        except OSError:
+            pass
+    if _out.returncode != 0:
+        check("the schema could be read in a child process", False,
+              (_out.stderr or "")[-200:])
+    else:
+        _ids = [ln.strip() for ln in _out.stdout.splitlines() if ln.strip()]
+        check("the schema names its intents", len(_ids) >= 10, len(_ids))
+        _readme = io.open(os.path.join(ROOT, "README.md"), encoding="utf-8").read()
+        _missing = [i for i in _ids if i not in _readme]
+        check("README mentions every one of them", not _missing, _missing)
+
     print()
     if FAILED:
         print("DOC DRIFT: %d CHECK(S) FAILED -> %s" % (len(FAILED), FAILED))
         return 1
     print("DOC DRIFT: %d CHECKS PASSED -- THE LEDGERS' COUNTS ARE THE TREE'S COUNTS, "
-          "AND A DATED RECORD IS STILL RECOGNISED AS ONE" % OK[0])
+          "A DATED RECORD IS STILL RECOGNISED AS ONE, AND THE README NAMES EVERY "
+          "INTENT THE SCHEMA SHIPS" % OK[0])
     return 0
+
+
+# Printed by the E section in a child process: the intent ids the schema ships
+# today.  It runs out of process because reading the schema pulls in the whole
+# compiler, and this file must stay cheap enough to run in a suite.
+SCHEMA_SCRIPT = """# -*- coding: utf-8 -*-
+import os
+import sys
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, os.path.dirname(HERE))
+import aoe2mod.intent.compiler as C
+
+schema, _bindings = C.load_schema()
+for _name in sorted(schema["intents"]):
+    print(_name)
+"""
 
 
 if __name__ == "__main__":
