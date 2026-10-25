@@ -10,9 +10,28 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 PY = sys.executable
 
-# A word-boundary match, so an identifier like IDS_FAILED_TO_OPEN_FILE does not
-# count as a failure report.
-_FAIL_RE = re.compile(r"\bFAIL(?:ED|URE)?\b")
+# A FAILURE REPORT, not the word.  The first version was
+# `\bFAIL(?:ED|URE)?\b`, and on 2026-10-25 it called two green suites red:
+# `test_nail_hygiene.py` prints `ok   a FAIL at any column is recognised` (it is
+# checking the detector) and `test_gate_order.py` prints `37 have a failure
+# gate`.  Both exited 0 with their own PASS line and were still counted as
+# failures -- the runner's own worst shape, a red that is not about the code.
+#
+# The shapes the tree actually prints (see `_probe/test_nail_hygiene.py:73-75`
+# for the first three):
+#       `  FAIL a :: b`   `FAIL a :: b`   `a :: FAIL`
+#       `FAILURES: 1 -> [...]`              (_probe/test_tech_effect.py)
+#       `NAIL HYGIENE: 2 CHECK(S) FAILED -> [...]`
+# An identifier like IDS_FAILED_TO_OPEN_FILE is not a report, and neither is a
+# sentence that mentions the word.
+_FAIL_RE = re.compile(
+    r"(?m)^\s*FAIL(?:ED|URE|URES)?\b"        # report starts the line
+    r"|\bFAIL\s+[^\s]+\s*::"               # `FAIL name :: detail`
+    r"|\bFAIL(?:ED|URE|URES)?\s*$"           # report ends the line
+    # A summary line, unless it is the `ok` line of a check that merely
+    # TALKS about such a summary -- `test_runner_contract.py` has one.
+    r"|^(?!\s*ok\b).*\bCHECK\(S\)\s+FAILED\b"
+)
 
 SUITES = [
     r"aoe2mod\tests\test_compiler.py",
@@ -426,6 +445,11 @@ SUITES = [
     # Written because I did exactly that on 2026-10-25 -- the section printed two
     # FAIL lines and the suite still exited 0 -- and no other nail can see it.
     r"_probe\test_gate_order.py",
+    # The runner's own two contracts, because both broke on 2026-10-25 and
+    # nothing else could see it: a word-match on FAIL called two GREEN suites
+    # red (`ok   a FAIL at any column is recognised`), and importing this file
+    # ran all 131 suites because the loop sat at module level.
+    r"_probe\test_runner_contract.py",
 ]
 
 # Suites that are not Python.  The screen's script is JavaScript and no Python
@@ -453,54 +477,65 @@ def _tick():
     sys.stdout.flush()
 
 
-for rel in SUITES:
-    path = os.path.join(ROOT, rel)
-    env = dict(os.environ, PYTHONIOENCODING="utf-8")
-    p = subprocess.run([PY, path], cwd=ROOT, env=env,
-                       stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-    out = p.stdout.decode("utf-8", "replace")
-    tail = [ln for ln in out.strip().splitlines() if ln.strip()]
-    verdict = tail[-1] if tail else "(no output)"
-    # The exit code is the real signal.  The text scan is only a backstop for a
-    # suite that prints a failure yet forgets to exit nonzero -- and it must not
-    # fire on an identifier that merely CONTAINS "FAIL", e.g. the label
-    # "IDS_FAILED_TO_OPEN_FILE" in probe_install_safety.py (the `_` before it
-    # means no word boundary).  A crude `"FAIL" in out` flagged that suite as
-    # broken while it was passing every check.
-    bad = p.returncode != 0 or _FAIL_RE.search(out) is not None
-    if bad:
-        fails.append(rel)
-    _tick()
-    print("%-46s exit=%d  %s" % (os.path.basename(rel), p.returncode,
-                                 verdict[:96]))
-    if bad:
-        for ln in tail[-25:]:
-            print("        %s" % ln)
+def main():
+    """Run every suite and return the exit status.
 
-# Node is a hard requirement rather than an optional extra: the page is part of
-# the product, and a suite that cannot run its subject must not report green.
-NODE = shutil.which("node")
-for rel in NODE_SUITES:
-    path = os.path.join(ROOT, rel)
-    if not NODE:
-        fails.append(rel)
-        print("%-46s SKIPPED  node was not found on PATH" % os.path.basename(rel))
-        continue
-    p = subprocess.run([NODE, path], cwd=ROOT,
-                       stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-    out = p.stdout.decode("utf-8", "replace")
-    tail = [ln for ln in out.strip().splitlines() if ln.strip()]
-    verdict = tail[-1] if tail else "(no output)"
-    bad = p.returncode != 0 or _FAIL_RE.search(out) is not None
-    if bad:
-        fails.append(rel)
-    _tick()
-    print("%-46s exit=%d  %s" % (os.path.basename(rel), p.returncode,
-                                 verdict[:96]))
-    if bad:
-        for ln in tail[-25:]:
-            print("        %s" % ln)
+    Kept behind the guard below so this file can be imported: a probe
+    that only wants `_FAIL_RE` or `SUITES` must not start a 131-suite
+    run.  Learned on 2026-10-25 by doing exactly that.
+    """
+    for rel in SUITES:
+        path = os.path.join(ROOT, rel)
+        env = dict(os.environ, PYTHONIOENCODING="utf-8")
+        p = subprocess.run([PY, path], cwd=ROOT, env=env,
+                           stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        out = p.stdout.decode("utf-8", "replace")
+        tail = [ln for ln in out.strip().splitlines() if ln.strip()]
+        verdict = tail[-1] if tail else "(no output)"
+        # The exit code is the real signal.  The text scan is only a backstop for a
+        # suite that prints a failure yet forgets to exit nonzero -- and it must not
+        # fire on an identifier that merely CONTAINS "FAIL", e.g. the label
+        # "IDS_FAILED_TO_OPEN_FILE" in probe_install_safety.py (the `_` before it
+        # means no word boundary).  A crude `"FAIL" in out` flagged that suite as
+        # broken while it was passing every check.
+        bad = p.returncode != 0 or _FAIL_RE.search(out) is not None
+        if bad:
+            fails.append(rel)
+        _tick()
+        print("%-46s exit=%d  %s" % (os.path.basename(rel), p.returncode,
+                                     verdict[:96]))
+        if bad:
+            for ln in tail[-25:]:
+                print("        %s" % ln)
 
-print()
-print("SUITES: %s" % ("ALL PASSED" if not fails else "FAILED -> %s" % fails))
-sys.exit(1 if fails else 0)
+    # Node is a hard requirement rather than an optional extra: the page is part of
+    # the product, and a suite that cannot run its subject must not report green.
+    NODE = shutil.which("node")
+    for rel in NODE_SUITES:
+        path = os.path.join(ROOT, rel)
+        if not NODE:
+            fails.append(rel)
+            print("%-46s SKIPPED  node was not found on PATH" % os.path.basename(rel))
+            continue
+        p = subprocess.run([NODE, path], cwd=ROOT,
+                           stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        out = p.stdout.decode("utf-8", "replace")
+        tail = [ln for ln in out.strip().splitlines() if ln.strip()]
+        verdict = tail[-1] if tail else "(no output)"
+        bad = p.returncode != 0 or _FAIL_RE.search(out) is not None
+        if bad:
+            fails.append(rel)
+        _tick()
+        print("%-46s exit=%d  %s" % (os.path.basename(rel), p.returncode,
+                                     verdict[:96]))
+        if bad:
+            for ln in tail[-25:]:
+                print("        %s" % ln)
+
+    print()
+    print("SUITES: %s" % ("ALL PASSED" if not fails else "FAILED -> %s" % fails))
+    return 1 if fails else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
