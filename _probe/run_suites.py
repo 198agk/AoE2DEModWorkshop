@@ -31,6 +31,14 @@ _FAIL_RE = re.compile(
     # A summary line, unless it is the `ok` line of a check that merely
     # TALKS about such a summary -- `test_runner_contract.py` has one.
     r"|^(?!\s*ok\b).*\bCHECK\(S\)\s+FAILED\b"
+    # A bracketed report: `_probe/test_effect_append.py` prints
+    # `[FAIL] name :: detail`, which the arms above miss because the line
+    # starts with `[`.  Found by reading the string literals of every
+    # registered suite (`_probe/tmp_audit_fail_shapes.py`) instead of guessing
+    # what the loosening might have let through.
+    # Same `ok` exclusion as the summary arm: a passing check may NAME a shape
+    # without being one.
+    r"|^(?!\s*ok\b).*\[\s*FAIL(?:ED|URE|URES)?\s*\]"
 )
 
 SUITES = [
@@ -450,6 +458,12 @@ SUITES = [
     # red (`ok   a FAIL at any column is recognised`), and importing this file
     # ran all 131 suites because the loop sat at module level.
     r"_probe\test_runner_contract.py",
+    # The other half of that contract, and the reason the first half is safe to
+    # loosen: the rule now ignores a SENTENCE about FAIL, so something has to
+    # check that every shape the suites actually print is still recognised.
+    # Reading their string literals found `_probe/test_effect_append.py`'s
+    # `[FAIL] name :: detail` -- a real report the loosening had let through.
+    r"_probe\test_fail_shapes.py",
 ]
 
 # Suites that are not Python.  The screen's script is JavaScript and no Python

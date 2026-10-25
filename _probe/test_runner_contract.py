@@ -123,6 +123,10 @@ def main():
         ("a count summary", "NAIL HYGIENE: 2 CHECK(S) FAILED -> ['x']"),
         ("the tech.effect summary",
          "FAILURES: 1 -> ['packed value not whole is refused']"),
+        # From `_probe/test_effect_append.py`.  This arm was missing until an
+        # audit of every registered suite's printed literals found it -- the
+        # loosening had let one real report shape through.
+        ("a bracketed report", "  [FAIL] the cursor is not advanced :: 0 vs 11"),
     )
     for name, text in reports:
         check("%s is still caught" % name, R._FAIL_RE.search(text) is not None, text)
