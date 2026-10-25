@@ -12,6 +12,7 @@ opposite story" shape this project spent a round removing.  They are declared
 below WITH the reason, and the reason is required: a newly orphaned test still
 fails this probe, so the exemption list cannot quietly absorb the next one.
 """
+import ast
 import io
 import os
 import re
@@ -46,6 +47,26 @@ _NOT_A_SUITE = {
 }
 
 
+def _list_body(text, opener):
+    """Return the entries of a module-level list literal, via the parser.
+
+    Earlier versions split on `]` (wrong: a `]` inside a comment truncated the list,
+    2026-10-25) and then scanned quotes by hand (also wrong: comments are not quoted,
+    so an apostrophe in prose opened a string that never closed).  The file is Python;
+    parse it.
+    """
+    name = opener.replace(" = [", "").strip()
+    tree = ast.parse(text)
+    for node in tree.body:
+        if isinstance(node, ast.Assign):
+            for target in node.targets:
+                if isinstance(target, ast.Name) and target.id == name:
+                    names = [elt.value for elt in node.value.elts
+                             if isinstance(elt, ast.Constant) and isinstance(elt.value, str)]
+                    return "\n".join(names)
+    raise ValueError("no module-level %s = [...] found" % name)
+
+
 def named_in(path):
     try:
         text = io.open(path, encoding="utf-8").read()
@@ -58,8 +79,7 @@ def main():
     fast = os.path.join(HERE, "run_suites.py")
     slow = os.path.join(HERE, "run_long.py")
     fast_text = io.open(fast, encoding="utf-8").read()
-    body = fast_text.split("SUITES = [", 1)[1].split("]", 1)[0]
-    entries = re.findall(r'r"([^"]+)"', body)
+    entries = [e for e in _list_body(fast_text, "SUITES = [").splitlines() if e]
     print("run_suites.py registers %d suites" % len(entries))
 
     # The page's script is exercised from Node, not from Python -- a Python test
@@ -68,8 +88,8 @@ def main():
     # registry would under-report what a full run actually covers.
     node_body = ""
     if "NODE_SUITES = [" in fast_text:
-        node_body = fast_text.split("NODE_SUITES = [", 1)[1].split("]", 1)[0]
-    node_entries = re.findall(r'r"([^"]+)"', node_body)
+        node_body = _list_body(fast_text, "NODE_SUITES = [")
+    node_entries = [e for e in node_body.splitlines() if e]
     print("run_suites.py additionally registers %d node suites" % len(node_entries))
 
     dupes = [e for e in set(entries) if entries.count(e) > 1]

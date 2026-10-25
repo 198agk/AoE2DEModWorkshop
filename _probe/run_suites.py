@@ -385,6 +385,11 @@ SUITES = [
     # must print that field -- a plan key nobody renders is half a fix.  Both
     # halves fail separately, which is why the sweep alone would have missed it.
     r"_probe\test_plan_writes.py",
+    # 2026-10-25: a nail asserted `got["intent"] == intent_for_stat(...)`, and the
+    # reader computes that id with the same call -- pinning the function moved BOTH
+    # sides, so it stayed green while every plugin intent became unreachable.  This
+    # suite is a source-level guard against that shape coming back.
+    r"_probe\test_nail_hygiene.py",
     # The picker that answers "what does this change touch".  It is a suite for the
     # same reason the registry check is one: its failure mode is a SMALL number, not
     # an error.  Measured while building it -- matching the changed path answered

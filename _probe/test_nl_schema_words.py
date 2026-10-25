@@ -234,8 +234,14 @@ def main():
         check("a sentence in the plugin's vocabulary parses",
               bool(got) and got[0].get("stat") == "sort_number",
               str(got))
-        check("and it goes to the intent that owns that field",
-              bool(got) and got[0].get("intent") == nl.intent_for_stat("sort_number"),
+        # NOT `== nl.intent_for_stat("sort_number")`: the reader decides this id
+        # by calling that same function, so pinning it to "unit.stat" moves both
+        # sides together and the check stays green while the plugin becomes
+        # unreachable (measured 2026-10-25; the neighbour below caught it, this
+        # line did not).  Spell the expected id out -- it is data, not a'
+        # derivation.
+        check("and it goes to the intent the plugin declared",
+              bool(got) and got[0].get("intent") == "unit.sort_order",
               str(got))
         try:
             plan = tk.plan(got[0]) if got else {}
