@@ -6,7 +6,7 @@ The suite count has been written down as 23, 31, 43, 88, 93, 95, 96, 97, 99, 100
 104, 105, 108, 110, 111, 112, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125 in
 this repo, and at least three of those numbers were wrong when written.
 
-Three things are asserted, and the second is what makes the first worth anything:
+Four things are asserted, and the second is what makes the first worth anything:
 
   1. every `N 条 py` / `N 条 node` claim presented as the CURRENT count equals the tree;
   2. a claim is only exempt as history when the line is actually dated -- and at least
@@ -14,6 +14,11 @@ Three things are asserted, and the second is what makes the first worth anything
   3. README -- the page a stranger reads first -- names every intent the schema ships.
      No exemption: the schema is today's schema, and a page that lists thirteen of
      fourteen intents is a stranger's only look at what the tool can do.
+  4. the schema's own `compile` prose never says a thing was never done without naming a
+     date, a `_probe` file or a run in the SAME leaf.  Those keys are read by whoever
+     opens `intents.json` (nothing in Python reads them -- measured with grep), and three
+     of them still claimed "not measured" after the runs that measured it: the new-unit
+     icon, the hand-encoded SLD block, and the tech half of availability.
 
 Without (2) the file could report a clean 0 because the dated-record rule stopped
 matching (reporting every record as drift) or because the files stopped being read at
@@ -160,13 +165,71 @@ def main():
         _missing = [i for i in _ids if i not in _readme]
         check("README mentions every one of them", not _missing, _missing)
 
+    print("\n=== F. schema prose does not assert a thing was never done without"
+          " naming the evidence")
+    # A tenth-surface version of the same drift: `intents.json`'s `compile` prose is
+    # read by whoever opens the file (nothing in Python reads those keys -- measured
+    # with `grep`), and three of them still claimed "not measured" / "never confirmed"
+    # after the runs that measured it.  The rule is the one the ledgers already use:
+    # a claim about absence must sit next to something checkable.
+    #
+    # Read with `json`, not through `compiler.load_schema()`: this file has to stay
+    # cheap enough to run in a suite, and the schema path is a plain file.
+    import json
+
+    NEVER = ("no run has", "no run was", "never been confirmed", "never been measured",
+             "NOT measured:", "has never been seen")
+    EVIDENCE = re.compile(r"20\d\d-\d\d-\d\d|_probe[/\\]|dsh test v\d+")
+    _doc = json.load(io.open(os.path.join(ROOT, "aoe2mod", "schema", "intents.json"),
+                             encoding="utf-8"))
+    _intents = _doc["intents"]
+    _bare = []
+    _scanned = 0
+    for _name in sorted(_intents):
+        _block = (_intents[_name] or {}).get("compile") or {}
+        for _key, _val in _block.items():
+            if not isinstance(_val, str):
+                continue
+            _low = _val.lower()
+            if not any(p.lower() in _low for p in NEVER):
+                continue
+            _scanned += 1
+            if not EVIDENCE.search(_val):
+                _bare.append("%s.%s" % (_name, _key))
+    check("the schema has compile prose at all", len(_intents) >= 10, len(_intents))
+    for _b in _bare:
+        print("       bare: %s -- says something was never done, names no date or test"
+              % _b)
+    check("every never-done claim names a date, a _probe file or a run", not _bare,
+          "%d of %d" % (len(_bare), _scanned))
+
+    # The three that were wrong are pinned by the evidence they now cite, so a later
+    # rewrite cannot quietly take the proof back out.
+    _create = ((_intents["unit.create"] or {}).get("compile") or {}).get(
+        "what_it_cannot_do", "")
+    _art = ((_intents["unit.art"] or {}).get("compile") or {}).get("why_not_copy", "")
+    _tech = ((_intents["tech.availability"] or {}).get("compile") or {}).get(
+        "why_no_dat_half", "")
+    check("the new-unit icon sentence cites the run that drew it", "v85" in _create,
+          _create[:80])
+    check("...and no longer says the drawing was never measured",
+          "no run has yet" not in _create.lower(), _create[:80])
+    check("the hand-encoded art sentence cites the runs that drew it",
+          "v71" in _art and "v73" in _art, _art[:80])
+    check("...and still says which layer has no encoder", "unknown2" in _art, _art[:80])
+    check("the tech-availability sentence cites the unit runs it is contrasted with",
+          "v7" in _tech and "v17" in _tech, _tech[:80])
+    check("...and no longer claims no recipe was ever confirmed",
+          "no recipe here has ever been confirmed" not in _tech.lower(), _tech[:80])
+
     print()
     if FAILED:
         print("DOC DRIFT: %d CHECK(S) FAILED -> %s" % (len(FAILED), FAILED))
         return 1
     print("DOC DRIFT: %d CHECKS PASSED -- THE LEDGERS' COUNTS ARE THE TREE'S COUNTS, "
-          "A DATED RECORD IS STILL RECOGNISED AS ONE, AND THE README NAMES EVERY "
-          "INTENT THE SCHEMA SHIPS" % OK[0])
+          "A DATED RECORD IS STILL RECOGNISED AS ONE, THE README NAMES EVERY "
+          "INTENT THE SCHEMA SHIPS, AND AN ABSENCE-CLAIM CARRIES ITS EVIDENCE"
+          % OK[0])
     return 0
 
 
