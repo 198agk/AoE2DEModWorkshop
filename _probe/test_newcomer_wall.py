@@ -299,6 +299,11 @@ def main():
         ("不列颠照村民做一个新单位，叫铁匠学徒", "unit.create"),
         ("把锻造和步兵鳞甲做成只能选一个", "tech.toggle_group"),
         ("照织布机做一个新科技叫铁匠学徒的手艺", "tech.create"),
+        # The fourteenth intent.  Added the same turn it landed, because the
+        # assertion below compares this list against `SENTENCE_INTENTS`: growing
+        # one without the other turns this file red, which is how the omission
+        # was caught (declared 14, reached 13, the difference being this row).
+        ("开局时让村民换成斥候骑兵", "unit.replace_on_map"),
     ]
     _seen = set()
     for _txt, _want in _CASES:

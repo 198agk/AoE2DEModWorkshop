@@ -46,7 +46,7 @@ $py = 'C:\Users\26913\.dsh\dsh-runtimes\dsh-primary-runtime\dependencies\python\
 
 ---
 
-## 能做什么（13 个意图）
+## 能做什么（14 个意图）
 
 | 说人话 | 意图 | 写哪里 |
 |---|---|---|
@@ -128,7 +128,7 @@ aoe2mod/            产品代码
   repair.py         读回一个社区模组：改了什么、还能不能救（四档判决 + 重放）
   ai.py            AI 接入口：只把愿望换成句子，绝不产出 intent（见下）
   semantic/         名字索引、prose（科技描述；单位「没有描述」的诚实拒绝）
-  schema/           intents.json（13 个意图）、dat_bindings.json、中文标签表
+  schema/           intents.json（14 个意图）、dat_bindings.json、中文标签表
   ui/               server.py（本地 HTTP）、nl.py（中文句子 → intent）、static/
 plugins/            <名字>/schema/intents.json 就多一个意图，不用写 Python
 tools/              run_ui.py（唯一入口）、sync_engine.py（把 _probe 的源同步进 aoe2mod/dat/）
