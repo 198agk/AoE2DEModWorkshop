@@ -54,6 +54,109 @@ STAT_WORDS = {
     "garrison_capacity": ("驻扎容量", "驻扎", "容量"),
 }
 
+# ---- the part of the vocabulary that comes from the SCHEMA -------------
+# `STAT_WORDS` above is what a player types for the fourteen shipped fields.  A
+# plugin can add a field binding, and `dat_bindings.json` carries a `label` per
+# field, but this reader never consulted it -- so a plugin field was unreachable
+# from a sentence no matter what it was called.  For the shipped fourteen the
+# label IS already one of the words above (14/14, measured 2026-10-25), which is
+# why the gap was invisible.
+_STAT_EXTRA_CACHE = {}
+
+
+def stat_words():
+    """`STAT_WORDS` plus the label of every field the schema binds.
+
+    Never raises: the schema is an optional layer here exactly as it is in
+    `class_names()` -- without it the reader is the shipped vocabulary and a
+    plugin field is refused as unclear, which is the safe direction.
+    """
+    if "table" in _STAT_EXTRA_CACHE:
+        return _STAT_EXTRA_CACHE["table"]
+    table = {k: tuple(v) for k, v in STAT_WORDS.items()}
+    try:
+        from aoe2mod.intent.compiler import load_schema
+        _intents, bindings = load_schema()
+        for field, spec in (bindings.get("unit_fields") or {}).items():
+            label = (spec or {}).get("label")
+            if not label:
+                continue
+            words = list(table.get(field, ()))
+            if label not in words:
+                words.append(label)
+            table[field] = tuple(words)
+    except Exception:
+        pass
+    _STAT_EXTRA_CACHE["table"] = table
+    return table
+
+
+def intent_for_stat(stat):
+    """Which intent owns this `stat` option -- `unit.stat` unless a plugin says otherwise.
+
+    The shipped `unit.stat` lists its fourteen options in its schema, and so does a
+    plugin's own intent that patches a different field.  Writing `unit.stat` as a
+    literal meant a derived word resolved to an intent that then rejected the very
+    stat the same schema had just taught us (`unknown stat 'sort_number' for
+    unit.stat`).  Asked, not assumed: the schema that names the option also names
+    the intent.
+    """
+    if not stat:
+        return "unit.stat"
+    try:
+        from aoe2mod.intent.compiler import load_schema
+        intents, _bindings = load_schema()
+        for name, spec in sorted((intents.get("intents") or {}).items()):
+            fields = spec.get("fields") or {}
+            opts = (fields.get("stat") or {}).get("options")
+            if opts and stat in opts:
+                return name
+    except Exception:
+        pass
+    return "unit.stat"
+
+
+def sentence_reachable(intent_id, spec=None):
+    """Can a Chinese sentence produce this intent?  Answered from the schema.
+
+    Two ways in, and nothing else:
+
+      * the intent is one of `SENTENCE_INTENTS` -- the thirteen hand-written branches;
+      * the intent declares a `stat` field whose options include a field the schema
+        binds AND that binding carries a label, because `stat_words()` learns the
+        label.  That is what makes a plugin field reachable without a line of
+        Python, and it is why this cannot be a membership test against a tuple.
+
+    A spec that is not passed is looked up; a spec that cannot be found answers
+    False, because "I could not prove the screen can say this" has to read the same
+    as "the screen cannot say this" rather than as a green tick.
+    """
+    if intent_id in SENTENCE_INTENTS:
+        return True
+    if not isinstance(spec, dict):
+        try:
+            from aoe2mod.intent.compiler import load_schema
+            intents, _bindings = load_schema()
+            spec = (intents.get("intents") or {}).get(intent_id)
+        except Exception:
+            return False
+    if not isinstance(spec, dict):
+        return False
+    fields = spec.get("fields") or {}
+    stat_field = fields.get("stat")
+    if not isinstance(stat_field, dict):
+        return False
+    options = stat_field.get("options") or ()
+    words = stat_words()
+    # A word is not enough: `intent_for_stat()` hands the word to ONE intent
+    # (the first that claims it), so a plugin intent that merely repeats a
+    # shipped option is shadowed -- it is in the schema, the page lists it, and
+    # no sentence can ever reach it.  Ask the reader's own question instead of
+    # a neighbour of it.
+    return any(opt in words and intent_for_stat(opt) == intent_id
+               for opt in options)
+
+
 # Resource words for the cost intents.  `resource_labels_zh.json` names 150
 # slots with the game's own vocabulary, but a player types "食物/木头/黄金",
 # not "食物储备".
@@ -754,7 +857,7 @@ def _residual(raw, vocab, civ_names=None, civ_zh=None):
     """
     low = _norm(raw)
     cuts = []
-    for table in (STAT_WORDS, RESOURCE_WORDS):
+    for table in (stat_words(), RESOURCE_WORDS):
         for words in table.values():
             cuts.extend(words)
     cuts.extend(SET_WORDS)
@@ -1462,7 +1565,7 @@ def read_clause(text, vocab, civ_names=None, civ_zh=None, pins=None,
         cl.notes.append("没写改动方式，按「设为」读")
 
     res = _first_word(bare_low, RESOURCE_WORDS)
-    stat = _first_word(bare_low, STAT_WORDS)
+    stat = _first_word(bare_low, stat_words())
 
     # --- unit.attack_class: "步弓手对骑兵攻击加2" ------------------------
     # Checked BEFORE the plain stat branch, because "攻击" alone would otherwise
@@ -1602,10 +1705,11 @@ def read_clause(text, vocab, civ_names=None, civ_zh=None, pins=None,
         # no `unit` key at all.  Omitting it is load-bearing: `resolve()` refuses
         # both keys on one intent, and a leftover `unit: None` would read as
         # "the user named a unit" to any caller that only checked for the key.
-        cl.intent = {"intent": "unit.stat", "unit_class": class_edit[0],
-                     "stat": stat[0]}
+        cl.intent = {"intent": intent_for_stat(stat[0]),
+                     "unit_class": class_edit[0], "stat": stat[0]}
     elif stat:
-        cl.intent = {"intent": "unit.stat", "unit": eid, "stat": stat[0]}
+        cl.intent = {"intent": intent_for_stat(stat[0]),
+                     "unit": eid, "stat": stat[0]}
     else:
         cl.why = "没听出要改哪个属性"
         return cl

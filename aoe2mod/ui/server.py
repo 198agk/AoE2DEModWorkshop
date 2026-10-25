@@ -118,7 +118,7 @@ class App(object):
                          # `unit.stat`.  Advertising a capability no sentence can
                          # reach is the same defect as a build that does less
                          # than it says, one screen earlier.
-                         "by_sentence": k in nl.SENTENCE_INTENTS}
+                         "by_sentence": nl.sentence_reachable(k, v)}
                         for k, v in intents["intents"].items()],
             "mods": _mods_brief(tk),
         }
@@ -259,7 +259,7 @@ class App(object):
         brief = [{"id": k,
                   "title": v.get("title") or v.get("title_en") or k,
                   "fields": list((v.get("fields") or {})),
-                  "by_sentence": k in nl.SENTENCE_INTENTS}
+                  "by_sentence": nl.sentence_reachable(k, v)}
                  for k, v in intents["intents"].items()]
         cfg = _ai.config()
         return {"ok": True,
@@ -279,7 +279,7 @@ class App(object):
         brief = [{"id": k,
                   "title": v.get("title") or v.get("title_en") or k,
                   "fields": list((v.get("fields") or {})),
-                  "by_sentence": k in nl.SENTENCE_INTENTS}
+                  "by_sentence": nl.sentence_reachable(k, v)}
                  for k, v in intents["intents"].items()]
         got = _ai.ask(text, brief)
         return {"ok": True, "ai": got}

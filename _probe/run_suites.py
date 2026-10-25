@@ -349,6 +349,16 @@ SUITES = [
     # property of records nothing had written.  The gap check now edits archers
     # (3 divergent members) and first asserts those records were written at all.
     r"_probe\test_class_mirror.py",
+    # The reader's vocabulary is derived from `dat_bindings.json` since
+    # 2026-10-25.  Two failures are possible and they point opposite ways: a
+    # learned word can re-route a sentence that used to be right (a WRONG ANSWER,
+    # not a refusal), and `sentence_reachable()` can advertise an intent no
+    # sentence produces (a claim nobody can cash).  This file measures both, and
+    # its first version only measured the first -- the reachability half was
+    # "does this intent name a bound field?", which is true for a plugin intent
+    # that merely repeats shipped options and can never be reached because
+    # `intent_for_stat()` hands each word to exactly one intent.
+    r"_probe\test_nl_schema_words.py",
 ]
 
 # Suites that are not Python.  The screen's script is JavaScript and no Python
