@@ -62,6 +62,7 @@ $py = 'C:\Users\26913\.dsh\dsh-runtimes\dsh-primary-runtime\dependencies\python\
 | 照现成的单位做一个新单位，选格子 | `unit.create` | `.dat` + 文本 mod |
 | 把几项科技做成只能研究其中一个 | `tech.toggle_group` | JSON + `.dat` |
 | 做一项游戏里没有的科技 | `tech.create` | `.dat` + 文本 mod |
+| 让某个单位在地图开局时换成另一个（含概率） | `unit.replace_on_map` | `objreplacement.json` + `.dat`（载体） |
 
 一句话可以是几条改动（`村民血量改成 1000。弓箭手攻击力加 2`），会打进同一个 mod。
 
@@ -174,7 +175,7 @@ _probe/             研究层：110+ 条钉子、一次性探针、报告
 ## 怎么验证它还好的
 
 ```powershell
-& $py -X utf8 -u '_probe\run_suites.py'    # 116 条快套件，约 1 小时
+& $py -X utf8 -u '_probe\run_suites.py'    # 138 条快套件，约 80 分钟
 & $py -X utf8 -u '_probe\run_long.py'      # 8 条长套件，约 2 小时
 ```
 

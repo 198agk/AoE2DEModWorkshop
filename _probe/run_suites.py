@@ -495,6 +495,11 @@ SUITES = [
     # crashed on a corrupt file instead of reporting it, and the reverse check
     # could not see the indented `  FAIL` lines it prints -- both fixed here.
     r"_probe\test_recipes.py",
+    # The front page's intent TABLE.  Section E of test_doc_drift asks whether the
+    # README names every intent, and it stayed green while the table was a row
+    # short -- because that intent was mentioned lower down.  A mention is what a
+    # search finds; a row is what a stranger reads.
+    r"_probe\test_readme_table.py",
 ]
 
 # Suites that are not Python.  The screen's script is JavaScript and no Python
