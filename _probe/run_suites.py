@@ -512,6 +512,13 @@ SUITES = [
     # its header instead of naming line numbers -- those move whenever a section
     # is added above, and a gate that demands the wrong range cries wolf.
     r"_probe\test_handoff_table.py",
+    # The player-facing page and the schema are two artifacts describing the same
+    # features, and on 2026-10-26 they disagreed: `unit.create`'s honesty note
+    # still said the bundle path had never been loaded while a sibling field in
+    # the same object cited the run that loaded it (v85).  This checks membership
+    # AND dates -- a page that says a feature was seen but moves its date is the
+    # half a membership-only check would miss.
+    r"_probe\test_release_notes.py",
 ]
 
 # Suites that are not Python.  The screen's script is JavaScript and no Python

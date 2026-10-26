@@ -141,6 +141,9 @@ $env:AOE2MOD_AI_MODEL = 'gpt-4o-mini'
 诚实边界写在每个 manifest 的 `verification.not_proven` 里 —— 那几条是**故意**留着
 的，不是漏做。
 
+只想用、不想读台账的人看 **[`RELEASE.md`](RELEASE.md)**：一页、两张表 ——哪些真的在游戏里
+看见过（带日期）、哪些只写对了字节、哪些做不到以及为什么。
+
 ---
 
 ## 项目结构
@@ -175,7 +178,7 @@ _probe/             研究层：110+ 条钉子、一次性探针、报告
 ## 怎么验证它还好的
 
 ```powershell
-& $py -X utf8 -u '_probe\run_suites.py'    # 140 条快套件，约 80 分钟
+& $py -X utf8 -u '_probe\run_suites.py'    # 141 条快套件，约 80 分钟
 & $py -X utf8 -u '_probe\run_long.py'      # 8 条长套件，约 2 小时
 ```
 

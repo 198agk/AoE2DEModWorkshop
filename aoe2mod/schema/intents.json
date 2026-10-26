@@ -74,7 +74,8 @@
       "compile": {
         "strategy": "in_place_patch",
         "writes_per_unit_per_civ": 1,
-        "note": "Each civilization holds an INDEPENDENT physical record, so one logical edit fans out to N civs. With `unit_class` instead of `unit` it fans out over every member of the class as well -- 步兵 is 217 ids x 63 civs = 13,671 records."
+        "note": "Each civilization holds an INDEPENDENT physical record, so one logical edit fans out to N civs. With `unit_class` instead of `unit` it fans out over every member of the class as well -- 步兵 is 217 ids x 63 civs = 13,671 records.",
+        "verified_in_game": "2026-10-19, `dsh test v15` control group: villager hit points 25 -> 1000, the panel read 1000/1000, and the user reported it stayed 1000 after being sent to work (so the change reaches the record the game actually plays, not just the tooltip)."
       },
       "safety": {
         "field_width_bits": 16,
@@ -340,7 +341,8 @@
           "verified_in_game": "GRANT: 2026-10-16, `dsh test v7` -- villagers stayed at 1000 hp, the Castle Longbowman was unaffected, and the Dark Age Barracks showed the Champi Scout. REVOKE: 2026-10-19, `dsh test v17` -- the Incas still had the Champi Scout in the Dark Age and had LOST it in the Castle Age, because the same disable was hung on two carriers that fire at different times. Both carriers were byte-verified present in the shipped .dat, so firing time is the only thing that differed between the two readings -- the ordering rule is part of the result, not an assumption."
         },
         "writes_per_civ": 1,
-        "mod_contains_dat": true
+        "mod_contains_dat": true,
+        "verified_in_game": "2026-10-19, `dsh test v17`: Incas had no Champions Scout button in the Castle Age and still had it in the Dark Age, with the same disable command on two carriers -- which also settled that the LAST triggered command wins."
       },
       "safety": {
         "field_width_bits": 0,
@@ -583,8 +585,8 @@
         "mod_contains_dat": true,
         "in_bundle": true,
         "bundle_edit_count_note": "edit_count is RECORDS plus FLAGS: one appended record and one flag slot, so 2 -- not the byte count, which a caller cannot compare against other intents.",
-        "verified_in_game": null,
-        "not_verified_reason": "A unit built by THIS method -- the bundle path -- has not been installed and loaded: `_probe/tmp_product_check.py` built v35 and never installed it.  What IS measured: the same `newunit` append+clone code produced `dsh test v26`..`v33`, which the user loaded and read in game (the unit appeared on the town centre's fourth button and could be trained), and the stream re-parses here with the unmodified parser, the clone reads back with the donor's fields and the re-pointed building, and the resulting file re-serialises byte-stably.  The icon path adds a second unmeasured half: its three shipped files are checked byte for byte and the record reads back the new slot, but no run has watched the game draw that icon."
+        "verified_in_game": "2026-10-21, `dsh test v26`: the clone appeared on the British town centre's fourth button and could be trained. Re-measured 2026-10-24 through the product path (`dsh test v85`, built with `build_bundle` + `install`): unit on the card, its own icon drawn, and the icon slot was the one this intent allocated (1000).",
+        "not_verified_reason": "What is NOT proven about a created unit: two things, both narrower than the old note said.  (a) The clone draws the DONOR's icon unless the `icon` field names a picture -- and even with a picture, the failure mode worth checking is a folder holding BOTH the `.dat` and `widgetui`: measured five times to draw nothing, and four times to draw once the two halves shipped as two mods.  (b) The clone's place in a build menu follows the donor unless the `builder` field names another building, which rewrites two bytes on the clone's own record and never touches the building.  Both are measured limits, not unknowns."
       },
       "safety": {
         "field_width_bits": 16,
@@ -628,7 +630,8 @@
         "strategy": "linked_techs_json",
         "why_not_dat": "type 102 does express 'disable a technology', and the shipped Toggleable groups use it (tech 1202 effect 1192 carries one command per sibling). Writing it that way needs an effect id, a required-tech list and a button slot per technology -- three couplings that can each be wrong separately. This layer states the same thing in one record.",
         "what_it_does_not_prove": "That a group ADDED by a mod is honoured on the very first turn after install (v47 researched after a fresh launch, 2026-10-23), and that a CYCLE group does anything: v47 measured MutuallyExclusive (the sibling disappears) but no run has been made with Type=Cycle, and the shipped Cycle groups carry no `type 102` at all.",
-        "mod_contains_dat": true
+        "mod_contains_dat": true,
+        "verified_in_game": "2026-10-22, `dsh test v47`: after researching one member the other member's button showed a red cross AND could not be researched. The half that actually blocks is the `.dat` one (`type 102`); the JSON half only draws the cross."
       },
       "safety": {
         "field_width_bits": 0,
@@ -704,7 +707,8 @@
         "strategy": "new_tech",
         "mod_contains_dat": true,
         "why_not_dat": "The record HAS to be in the .dat: a technology is an array position, so there is no file in the dat directory that can add one. What the other layers can do is name it (the modded string table) and place it on a card (the record's own research_locations), and both are shipped with it.",
-        "what_it_does_not_prove": "That a created technology survives a GAME UPDATE. A technology is an array position, so its id is only the first free one against TODAY's shipped count -- a patch that adds technologies can move it. Whether the engine shows it on a card is no longer in doubt: dsh test v49 (2026-10-22) put it on the town centre's 8th research box and the user read it there."
+        "what_it_does_not_prove": "That a created technology survives a GAME UPDATE. A technology is an array position, so its id is only the first free one against TODAY's shipped count -- a patch that adds technologies can move it. Whether the engine shows it on a card is no longer in doubt: dsh test v49 (2026-10-22) put it on the town centre's 8th research box and the user read it there.",
+        "verified_in_game": "2026-10-22, `dsh test v49`: the new technology appeared on the town centre's research card and could be researched."
       },
       "safety": {
         "field_width_bits": 16,
@@ -761,7 +765,8 @@
         "strategy": "objreplacement_json",
         "why_not_dat": "This layer is not expressible as an in-place .dat patch. `effect command type 3` does replace a unit by id, but at runtime and for every map; this file is the engine's own 'when generating this map, place B instead of A'. They are different moments, and the map-generation one is the only way to change what a player starts with.",
         "what_it_does_not_prove": "That a row added by a MOD is honoured for civilizations whose copy of the source record differs (only British was measured), and that the shipped `technology` / `required_attribute` conditions can be combined with a new row -- this intent writes only `replacement_object` and `chance`.",
-        "mod_contains_dat": false
+        "mod_contains_dat": false,
+        "verified_in_game": "2026-10-25, `dsh test objrepl`: in one run the `.dat` canary read 4000/4000 (so the mod was loaded) AND the unit standing on the map at start was a Scout Cavalry 45/45 instead of the shipped villager (25 hp). `chance=100` was written, because the shipped data only ever uses 50 and a half-chance would read as doing nothing."
       },
       "safety": {
         "scope": "global",
