@@ -6006,6 +6006,25 @@ class Toolkit(object):
             out.append(folder + ui_word)
         return out
 
+    def move_mod(self, name, delta, kind="local", profile_root=None, account=None):
+        """Move an installed mod one step up or down, and say where it landed.
+
+        Ordering is the conflict order: the engine walks `mod-status.json` in
+        array order, so the entry above wins a shared path.  The screen needs to
+        change that without opening the game, which is the whole point of a
+        manager; `delta=-1` is "up" (higher priority), `+1` is "down".
+        """
+        from .game import locations as G
+        prof = profile_root or G.find_profile_root()
+        folder, _how = G.resolve_mod_name(prof, name, kind=kind, account=account)
+        doc, acc, _p = G.read_status_doc(prof, account=account)
+        _running = G.running_note()
+        pos = G.move_mod_entry(doc, folder, delta, kind=kind)
+        G.write_status_doc(acc, doc, backup=True)
+        return {"account": acc, "name": name, "kind": kind, "priority": pos,
+                "game_running": _running["game_running"],
+                "running_warning": _running["running_warning"]}
+
     def uninstall(self, name, kind="local", profile_root=None, account=None,
                   remove_files=True):
         """Remove an installed mod -- and the other half, when the build was split.

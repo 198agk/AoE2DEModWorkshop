@@ -562,6 +562,36 @@ def upsert_mod_entry(doc, name, kind="local", title=None, enabled=True,
     return found
 
 
+def move_mod_entry(doc, name, delta, kind="local"):
+    """Move one entry up or down in load order; returns its new 1-based Priority.
+
+    Array order is load order, and ``Priority`` is kept equal to position (see
+    :func:`renumber_priorities`), so "move up" is a swap of two neighbours
+    followed by a renumber -- not a rewrite of every number the user set.
+
+    Out-of-range moves clamp instead of raising: a player pressing 上移 on the
+    first row wants "it stayed first", not an error dialog.  The returned number
+    is the position it actually ended at, which is what the screen redraws from.
+    """
+    rel = "%s//%s" % (kind, name)
+    entries = doc.setdefault("Mods", [])
+    at = None
+    for i, e in enumerate(entries):
+        if e.get("Path") == rel:
+            at = i
+            break
+    if at is None:
+        raise KeyError(name)
+    want = at + (1 if int(delta) > 0 else -1)
+    if 0 <= want < len(entries):
+        entries[at], entries[want] = entries[want], entries[at]
+    renumber_priorities(entries)
+    for i, e in enumerate(entries):
+        if e.get("Path") == rel:
+            return i + 1
+    return at + 1
+
+
 def remove_mod_entry(doc, name, kind="local"):
     """Drop one entry; returns how many were removed (0 or 1)."""
     rel = "%s//%s" % (kind, name)

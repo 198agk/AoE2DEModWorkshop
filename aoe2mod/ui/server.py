@@ -159,6 +159,32 @@ class App(object):
         return {"ok": True, "forms": CP.forms(intent, table),
                 "op_choices": table.get("op_choices") or []}
 
+    def note_diag(self, values):
+        """Remember the last viewport the page reported.
+
+        Kept on the app rather than written anywhere: it is a measurement of
+        one running window, and it must not survive as state a later run reads
+        as its own.  Merged instead of replaced because the page sends `vw`
+        first and `cols` a moment later.
+        """
+        with self._lock:
+            merged = getattr(self, "_diag", {}) or {}
+            merged.update({str(k): str(v) for k, v in (values or {}).items()})
+            self._diag = merged
+
+    def diag(self):
+        """The numbers the page last reported, plus what the server knows.
+
+        `scale` is the piece the page cannot see: `devicePixelRatio` tells the
+        page how many device pixels a CSS pixel covers, but the shell needs to
+        know whether the window it asked for was interpreted as logical or
+        physical pixels -- that is the difference between a 1280 px window and
+        an 850 CSS px layout.
+        """
+        got = dict(getattr(self, "_diag", {}) or {})
+        got["page"] = "/"
+        return got
+
     def recipes(self):
         """The sentences this player saved under names.
 
@@ -407,6 +433,17 @@ class App(object):
         return {"ok": True, "mods": _mods_brief(self.tk),
                 "running_warning": r.get("running_warning"),
                 "game_running": r.get("game_running")}
+
+    def move_mod(self, name, delta, profile_root=None):
+        """Move an installed mod one step in load order.
+
+        `delta=-1` is up (higher priority = wins a shared path), `+1` is down.
+        The answer carries the redrawn list so the page never has to guess what
+        the new order is.
+        """
+        got = self.tk.move_mod(name, int(delta), profile_root=profile_root)
+        return {"ok": True, "move": got, "mods": _mods_brief(self.tk),
+                "running_warning": got.get("running_warning")}
 
     def uninstall(self, name, profile_root=None):
         r = self.tk.uninstall(name, profile_root=profile_root)
@@ -745,6 +782,17 @@ def make_handler(app):
                 loc = _query(self.path).get("locale", [LO.DEFAULT_LOCALE])[0]
                 return self._guard(lambda: {
                     "ok": True, "locale": loc, "strings": LO.load(loc)})
+            if path == "/api/diag":
+                # The page reports its own viewport here so a shell can read it
+                # from outside.  A screenshot shows the symptom (the side panel
+                # is missing); these numbers show the cause, and they are the
+                # only way to tell "the layout got 850 CSS px" from "the layout
+                # got 1700 and got clipped".  `document.title` was the first
+                # channel and it cannot work: `WebviewWindow::title()` returns
+                # the title the SHELL set, so the page can never write there.
+                _d = _query(self.path)
+                app.note_diag({k: v[0] for k, v in _d.items()})
+                return self._guard(lambda: {"ok": True, "diag": app.diag()})
             if path == "/api/forms":
                 return self._guard(lambda: app.forms(
                     _query(self.path).get("intent", [None])[0]))
@@ -827,6 +875,12 @@ def make_handler(app):
                     payload["mod_dir"], name=payload.get("name"),
                     enabled=payload.get("enabled", True),
                     position=int(payload.get("position") or 0)))
+            if path == "/api/mod-move":
+                payload = self._body()
+                return self._guard(lambda: app.move_mod(
+                    payload["name"], payload["delta"],
+                    profile_root=payload.get("profile_root")))
+
             if path == "/api/mod":
                 return self._guard(lambda: app.set_mod(
                     payload["name"], bool(payload.get("enabled"))))

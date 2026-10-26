@@ -266,7 +266,19 @@
     padding: 8px 0; border-top: 1px solid var(--line); font-size: 13px;
   }
   .mod:first-child { border-top: 0; }
-  .mod .nm {
+  .mod .move {
+  flex: none;
+  width: 22px;
+  padding: 1px 0;
+  font-size: 9px;
+  line-height: 1;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  color: var(--dim);
+  cursor: pointer;
+}
+.mod .move:hover { border-color: var(--accent); color: var(--accent); }
+.mod .nm {
     flex: 1; min-width: 0; overflow: hidden;
     text-overflow: ellipsis; white-space: nowrap;
   }
@@ -735,7 +747,20 @@ async function boot() {
         " cols=" + (m ? getComputedStyle(m).gridTemplateColumns : "?");
       const info = $("#datinfo");
       if (info) info.textContent = "diag: " + line;
-      document.title = "DIAG " + line;
+      // Report it to the server as well.  `document.title` cannot be read back
+      // (the shell owns that), and a screenshot only shows the symptom, and
+      // `#datinfo` sits at the far right of the header -- exactly the part that
+      // gets clipped when the layout is too wide to fit.  A GET with the
+      // numbers in the query string works from any page origin and needs no
+      // CORS preflight.
+      const q = "/api/diag?vw=" + encodeURIComponent(innerWidth) +
+        "&vh=" + encodeURIComponent(innerHeight) +
+        "&dpr=" + encodeURIComponent(devicePixelRatio) +
+        "&doc=" + encodeURIComponent(document.documentElement.clientWidth) +
+        "&scroll=" + encodeURIComponent(document.documentElement.scrollWidth) +
+        "&main=" + encodeURIComponent(box ? Math.round(box.width) : "") +
+        "&cols=" + encodeURIComponent(m ? getComputedStyle(m).gridTemplateColumns : "");
+      fetch(q).catch(() => {});
     };
     diag();
     setInterval(diag, 2000);
@@ -974,6 +999,14 @@ function renderIntentList() {
   }
 }
 
+async function moveRow(m, delta) {
+  try {
+    const r = await api("/api/mod-move", {name: m.name, delta: delta});
+    renderMods(r.mods || []);
+    if (r.running_warning) toast(r.running_warning, "bad");
+  } catch (e) { toast("移不动：" + e.message, "bad"); }
+}
+
 function renderMods(mods) {
   const box = $("#mods");
   box.innerHTML = "";
@@ -1003,9 +1036,13 @@ function renderMods(mods) {
       line.appendChild(badge);
       nm.appendChild(line);
     }
-    const sw = el("button", "switch" + (m.enabled ? " on" : ""));
-    sw.title = m.enabled ? "已启用（点击停用）" : "未启用（点击启用）";
-    sw.onclick = async () => {
+    // A data mod gets NO switch.  The player's own words (2026-10-26): "数据模组
+    // 不需要去启用的" -- it is picked in the game's 数据模组 dropdown when the
+    // match is created, and a checkbox here says otherwise.  Its rank badge
+    // above already answers the only question that matters.
+    const sw = m.ships_dat ? null : el("button", "switch" + (m.enabled ? " on" : ""));
+    if (sw) sw.title = m.enabled ? "已启用（点击停用）" : "未启用（点击启用）";
+    if (sw) sw.onclick = async () => {
       try {
         const r = await api("/api/mod", {name: m.name, enabled: !m.enabled});
         renderMods(r.mods);
@@ -1029,7 +1066,21 @@ function renderMods(mods) {
       nm.appendChild(tag);
     }
     row.appendChild(nm);
-    row.appendChild(sw);
+    if (sw) {
+      row.appendChild(sw);
+    } else {
+      // Load order IS the conflict order, so a data mod needs "move" rather than
+      // "on/off".  Two arrows are the smallest way to say that, and the rank
+      // badge above redraws from the answer so the number cannot drift.
+      const up = el("button", "move", "\u25b2");
+      up.title = "往上移一位（越靠上越先加载，覆盖冲突时它赢）";
+      up.onclick = () => moveRow(m, -1);
+      const down = el("button", "move", "\u25bc");
+      down.title = "往下移一位";
+      down.onclick = () => moveRow(m, 1);
+      row.appendChild(up);
+      row.appendChild(down);
+    }
     // Removing is the one action here that deletes folders, so it arms first and
     // acts on the second click.  For a split build the server removes both halves
     // (that is nailed), which is why the armed label names the sibling: a player

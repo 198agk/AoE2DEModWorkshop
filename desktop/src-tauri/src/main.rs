@@ -15,6 +15,12 @@
 //! `/api/meta`, then *create a second window* pointed at the local server and
 //! close the loading one.  Nothing is ever navigated.
 
+// A windowed app, not a console app.  Without this the exe gets a console
+// window of its own on Windows, which is the "cmd window" that appears
+// behind the app and does nothing.  It has to be at the crate root, before
+// any `use`, and it only takes effect in a release build.
+#![windows_subsystem = "windows"]
+
 use std::fs::OpenOptions;
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -157,7 +163,8 @@ fn spawn_server(root: &Path, port: u16) -> Result<std::process::Child, String> {
             tried.push(format!("{} (missing)", py.display()));
             continue;
         }
-        let child = std::process::Command::new(&py)
+        let mut cmd = std::process::Command::new(&py);
+        cmd
             .args([
                 "-X",
                 "utf8",
@@ -169,8 +176,19 @@ fn spawn_server(root: &Path, port: u16) -> Result<std::process::Child, String> {
             ])
             .current_dir(root)
             .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::piped())
-            .spawn();
+            .stderr(std::process::Stdio::piped());
+        // Windows gives every child process a console unless it is told not
+        // to.  The Python server needs none: its output goes to a log file and
+        // its stderr is read back through the pipe below.  Without this flag a
+        // black cmd window sits behind the app for the whole session.
+        #[cfg(windows)]
+        let child = {
+            use std::os::windows::process::CommandExt;
+            const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+            cmd.creation_flags(CREATE_NO_WINDOW).spawn()
+        };
+        #[cfg(not(windows))]
+        let child = cmd.spawn();
         match child {
             Ok(c) => {
                 log(&format!("started {} on port {}", py.display(), port));
