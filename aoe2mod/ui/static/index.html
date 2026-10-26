@@ -63,6 +63,10 @@
   header .status { color: var(--text-2); font-size: 12px; }
 
   /* ---- layout ------------------------------------------------------------ */
+  /* No rule existed for this element, so it fell back to its automatic
+     minimum size -- the widest child -- and overflowed its grid track
+     without a scrollbar to say so. */
+  aside { min-width: 0; }
   main {
     display: grid;
     grid-template-columns: minmax(0, 1fr) 384px;
@@ -72,7 +76,14 @@
     margin: 0 auto;
     padding: 20px 24px 56px;
   }
-  @media (max-width: 1080px) {
+  /* 1237 px is what the real window gets (measured 2026-10-26); at that
+     width a 384 px column has the module rows' own width taken out of it
+     and the buttons fall off the edge.  Narrow the column first, then
+     collapse. */
+  @media (max-width: 1320px) {
+    main { grid-template-columns: minmax(0, 1fr) 340px; gap: 16px; }
+  }
+  @media (max-width: 1120px) {
     main { grid-template-columns: minmax(0, 1fr); }
   }
 
