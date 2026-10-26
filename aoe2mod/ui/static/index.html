@@ -106,6 +106,12 @@
   .mod:last-child { border-bottom: none; }
   .mod .nm { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .mod .nm.own { color: var(--gold); }
+/* Quiet by default: removing is not the thing a player does often, and a red
+   button on every row reads as a warning about the whole list. */
+.remove { background: none; border: 1px solid var(--line); color: var(--dim);
+  border-radius: 4px; padding: 2px 6px; font-size: 11px; cursor: pointer; flex: none; }
+.remove:hover { color: var(--bad); border-color: var(--bad); }
+.remove.armed { color: #fff; background: var(--bad); border-color: var(--bad); }
   .switch { width: 34px; height: 18px; border-radius: 9px; background: #3a4048;
             position: relative; cursor: pointer; flex: none; border: none; padding: 0; }
   .switch::after { content: ""; position: absolute; top: 2px; left: 2px; width: 14px;
@@ -754,6 +760,38 @@ function renderMods(mods) {
     }
     row.appendChild(nm);
     row.appendChild(sw);
+    // Removing is the one action here that deletes folders, so it arms first and
+    // acts on the second click.  For a split build the server removes both halves
+    // (that is nailed), which is why the armed label names the sibling: a player
+    // looking at one row cannot otherwise know the other one goes too.
+    const rm = el("button", "remove", "移除");
+    rm.title = m.role && m.paired_with
+      ? "删掉这个构建的两个文件夹（含「" + m.paired_with + "」）"
+      : "删掉这个模组的文件夹";
+    let armed = false;
+    rm.onclick = async () => {
+      if (!armed) {
+        armed = true;
+        rm.classList.add("armed");
+        rm.textContent = "确定删掉？";
+        if (m.role && m.paired_with) {
+          rm.textContent = "确定删掉两个？";
+        }
+        return;
+      }
+      try {
+        const r = await api("/api/uninstall", {name: m.name});
+        renderMods(r.mods || []);
+        toast("已删掉 " + (m.title || m.name), "ok");
+        if (r.running_warning) toast(r.running_warning, "bad");
+      } catch (e) {
+        armed = false;
+        rm.classList.remove("armed");
+        rm.textContent = "移除";
+        toast("删不掉：" + e.message, "bad");
+      }
+    };
+    row.appendChild(rm);
     box.appendChild(row);
   }
 }

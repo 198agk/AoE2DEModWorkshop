@@ -522,6 +522,8 @@ const aiAsked = [];
 // other of which does not, because the badge the page draws is "this one competes
 // for the single data-mod slot" -- and a stub where every mod looked the same
 // would let the page print that badge on the wrong row.
+const removed = [];
+
 let MODS = [
   { name: "dsh mine", title: "dsh 我的数据模组", enabled: true, kind: "local",
     priority: 3, ships_dat: true, dat_rank: 1, dat_competing: 1,
@@ -709,6 +711,18 @@ const sandbox = {
     // `running_warning` would make "toggling while the game runs says so"
     // untestable -- the page would read `undefined` and look fine.
     if (url.indexOf("/api/mod") === 0) {
+      return { json: async () => ({ ok: true, mods: MODS,
+        game_running: RUNNING,
+        running_warning: RUNNING ? RUNNING_TEXT : null }) };
+    }
+    // The remove button.  The answer carries the remaining list (the page
+    // re-renders from it rather than splicing locally) and the same
+    // game-running warning the switch gets.
+    if (url.indexOf("/api/uninstall") === 0) {
+      // `posted` records the PARSED body, so it must not be parsed again.
+      const gone = posted[posted.length - 1].body || {};
+      removed.push(gone.name);
+      MODS = MODS.filter((m) => m.name !== gone.name);
       return { json: async () => ({ ok: true, mods: MODS,
         game_running: RUNNING,
         running_warning: RUNNING ? RUNNING_TEXT : null }) };
@@ -1148,7 +1162,7 @@ function modsChecks() {
   }).then(() => {
     check("and says nothing extra when the game is closed",
           text(ids.toast).indexOf("游戏正开着") < 0, text(ids.toast));
-    return updateChecks();
+    return removeChecks();
   });
 }
 
@@ -1420,6 +1434,51 @@ function boxChecks() {
 // A mod we build ships a whole .dat, so a game patch is silently overwritten by
 // the installed copy.  The screen has to say so -- and has to say nothing when
 // the only rows it does not recognize are ones it could never know about.
+// ---- the remove button ----------------------------------------------------
+// Removing is the only action on this page that deletes folders, and the list is
+// the only place a player can reach it.  Three ways it can be wrong without
+// throwing: it fires on one click, it promises to take one row and takes two, or
+// it swallows the game-running warning (the game rewrites mod-status.json on exit,
+// so a delete made while it runs is undone -- measures, not a guess).
+function removeChecks() {
+  page.renderMods(MODS);
+  const row = (ids.mods.children || []).filter((n) => n.className === "mod")[0];
+  const rm = (row.children || []).filter((c) => c.className
+    && c.className.indexOf("remove") === 0)[0];
+  check("each row carries a remove button", !!rm,
+        JSON.stringify((row.children || []).map((c) => c.className)));
+  check("it does not delete anything on the first click",
+        removed.length === 0, JSON.stringify(removed));
+  const before = (ids.mods.children || []).length;
+  RUNNING = true;
+  return Promise.resolve(rm && rm.onclick ? rm.onclick() : null).then(() => {
+    check("the first click only arms it", removed.length === 0,
+          JSON.stringify(removed));
+    check("and the label asks before deleting", text(rm).indexOf("确定删掉") >= 0,
+          text(rm));
+    check("a split build says both halves go", text(rm).indexOf("两个") >= 0,
+          text(rm));
+    check("nothing was removed from the list yet",
+          (ids.mods.children || []).length === before,
+          String((ids.mods.children || []).length));
+    return rm.onclick();
+  }).then(() => {
+    check("the second click removes the row it names", removed.length === 1
+          && removed[0] === "dsh mine", JSON.stringify(removed));
+    check("it re-renders from the answer rather than splicing locally",
+          (ids.mods.children || []).length === before - 1,
+          String((ids.mods.children || []).length));
+    check("and repeats the warning about the running game",
+          text(ids.toast).indexOf("游戏正开着") >= 0, text(ids.toast));
+    RUNNING = false;
+    MODS = MODS.concat([{ name: "dsh mine", title: "dsh 我的数据模组", enabled: true,
+                          kind: "local", priority: 3, ships_dat: true, dat_rank: 1,
+                          dat_competing: 1, role: "data",
+                          paired_with: "dsh 我的数据模组（界面）" }]);
+    return updateChecks();
+  });
+}
+
 function updateChecks() {
   return page.checkUpdates().then(() => {
     check("a stale mod puts a banner on the screen",

@@ -519,6 +519,12 @@ SUITES = [
     # AND dates -- a page that says a feature was seen but moves its date is the
     # half a membership-only check would miss.
     r"_probe\test_release_notes.py",
+    # Every URL the page fetches must exist, every panel must be loaded by
+    # something, and every route must reach a producer.  The neighbouring
+    # `test_page_route_contract.py` compares the KEYS inside bodies; a panel whose
+    # URL was never implemented stays silently empty and its rejection is swallowed
+    # by the same catch that handles "no recipes yet".
+    r"_probe\test_url_coverage.py",
 ]
 
 # Suites that are not Python.  The screen's script is JavaScript and no Python

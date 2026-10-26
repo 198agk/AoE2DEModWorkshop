@@ -178,7 +178,7 @@ _probe/             研究层：110+ 条钉子、一次性探针、报告
 ## 怎么验证它还好的
 
 ```powershell
-& $py -X utf8 -u '_probe\run_suites.py'    # 141 条快套件，约 80 分钟
+& $py -X utf8 -u '_probe\run_suites.py'    # 142 条快套件，约 80 分钟
 & $py -X utf8 -u '_probe\run_long.py'      # 8 条长套件，约 2 小时
 ```
 
