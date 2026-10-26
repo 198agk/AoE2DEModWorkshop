@@ -842,7 +842,13 @@ try {
   // 0 pictures -- a real answer to the wrong question, not a page defect.)
   page.renderClauses(FIXTURES.mixed.clauses);
   const boxes = walk(ids.preview, []);
-  const icos = boxes.filter((n) => n.tagName === "IMG");
+  // Count only the pictures inside clause ROWS.  The game card draws its own
+  // tiles from the same route, so a page-wide IMG count now answers a different
+  // question -- it went from 2 to 4 the day the card landed, and the card is the
+  // subject of its own check below.
+  const clauseRows = boxes.filter((n) => String(n.className || "").indexOf("clause") === 0);
+  const icos = clauseRows.reduce((acc, r) => acc.concat(
+    walk(r, []).filter((n) => n.tagName === "IMG")), []);
   check("each understood clause asks for its own picture",
         icos.length === 2, String(icos.length));
   check("the picture is requested from the real route with the entity id",
@@ -851,6 +857,47 @@ try {
   const dets = boxes.filter((n) => n.className === "detailrow");
   check("an understood clause offers the game's own words", dets.length === 2,
         String(dets.length));
+
+  // ---- the game's command card ------------------------------------------
+  // The goal asks for a 假游戏界面.  What a player recognises is the bottom card:
+  // one square per unit, the box number in the corner, a bar underneath.  A form
+  // is not that, and until 2026-10-26 this page had none of it (a full-text
+  // search for `hud`, `command-card`, `resource-bar` found nothing).
+  //
+  // Two things this must NOT become: a tile for a clause whose plan refuses
+  // (that would be the "ticked something impossible" bug in picture form), and a
+  // corner number on a clause whose plan names no box (inventing a position).
+  const tiles = boxes.filter((n) => String(n.className || "").indexOf("tile") === 0);
+  check("the screen draws a game-shaped card", tiles.length > 0, String(tiles.length));
+  check("the card only holds what can actually be built",
+        tiles.length === FIXTURES.mixed.clauses.filter((c) => c.buildable).length,
+        tiles.length + " tiles vs " + FIXTURES.mixed.clauses.filter((c) => c.buildable).length + " buildable");
+  const slots = boxes.filter((n) => String(n.className || "") === "slot");
+  check("a tile shows the box number only when the plan names one",
+        slots.length === 0,
+        slots.length ? "claimed a box: " + slots.map(text).join(",") : "none claimed");
+  const cardImgs = tiles.reduce((acc, t) => acc.concat(
+    walk(t, []).filter((n) => n.tagName === "IMG")), []);
+  check("each tile draws the game's own picture",
+        cardImgs.length === tiles.length, cardImgs.length + " of " + tiles.length);
+
+  // A plan that DOES name a box must show it, or the card is decorative.
+  const boxed = { text: "照村民做一个新单位，叫铁匠学徒，放在第5格",
+    intent: { intent: "unit.create" }, kind: "unit", entity: "村民",
+    entity_id: 83, buildable: true,
+    preview: { ok: true, plan: { description: "照 村民 做一个新单位「铁匠学徒」",
+                                 builder_names: ["修道院"], button: 5, editable: true } } };
+  page.renderClauses([boxed]);
+  const b2 = walk(ids.preview, []);
+  const s2 = b2.filter((n) => String(n.className || "") === "slot");
+  check("a plan that names a box draws its number", s2.length === 1,
+        s2.length ? text(s2[0]) : "(none)");
+  check("...and the number is the plan's own", s2.length === 1 && text(s2[0]) === "5",
+        s2.length ? text(s2[0]) : "(none)");
+  const cap = b2.filter((n) => String(n.className || "") === "cap");
+  check("...and the caption names the building the box is on",
+        cap.length === 1 && text(cap[0]) === "修道院",
+        cap.length ? text(cap[0]) : "(none)");
 
   // ---- the detail panel, both shapes -----------------------------------
   // A unit: the product refuses, and the screen must print the REASON.  An empty

@@ -147,6 +147,30 @@
   #banner .who { color: var(--warn); }
   #banner .note { color: var(--dim); font-size: 12px; margin-top: 6px; }
 
+  /* ---- the game's own command card --------------------------------------
+     The goal asks for a 假游戏界面.  A form is not one: the thing a player
+     recognises is the bottom card -- one square per unit, the number in the
+     corner, a stat bar underneath.  Everything drawn here is a field the plan
+     actually carries (builder_names / button / edit_count / civ_count); a clause
+     with no position simply shows no number, which is the honest shape of the
+     11 of 14 intents that edit a record already on a card. */
+  .card { display: flex; gap: 10px; flex-wrap: wrap; margin: 10px 0 2px; }
+  .tile { width: 76px; text-align: center; position: relative; }
+  .tile .frame { width: 62px; height: 62px; margin: 0 auto; border-radius: 5px;
+    border: 1px solid var(--line); background: #0f1318; display: flex;
+    align-items: center; justify-content: center; overflow: hidden; }
+  .tile.good .frame { border-color: var(--gold); }
+  .tile img { width: 56px; height: 56px; image-rendering: pixelated; }
+  .tile .noimg { font-size: 22px; color: var(--dim); }
+  .tile .slot { position: absolute; top: 0; right: 7px; font-size: 10px;
+    line-height: 1; padding: 1px 3px; border-radius: 3px; background: var(--gold);
+    color: #1a1a1a; font-weight: 600; }
+  .tile .bar { height: 4px; margin: 3px 7px 0; border-radius: 2px;
+    background: #2a3038; overflow: hidden; }
+  .tile .bar i { display: block; height: 100%; background: var(--ok); }
+  .tile.bad .bar i { background: var(--bad); }
+  .tile .cap { font-size: 10px; color: var(--dim); margin-top: 3px;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   /* The pick-a-picture grid.  A name is only usable if you already know it, and
      the game's Chinese names are not the ones people use, so this exists to let
      a player point instead of type. */
@@ -1346,9 +1370,70 @@ function renderDetail(d) {
   return box;
 }
 
+// ---- the game's command card ---------------------------------------------
+// A picture tile per accepted clause, laid out the way the game lays out its own
+// bottom card.  The position badge only appears when the plan names one -- for
+// `unit.create` that is `button` on `builder_names[0]`, and for the eleven intents
+// that edit an existing record there is no position to claim, so claiming one
+// would be inventing a fact.
+//
+// Measured 2026-10-26: `不列颠照村民做一个新单位，叫铁匠学徒，放在第5格` carries
+// `builder_names ["修道院"]`, `button 5`, `free_buttons {"104": [0,2,3,...]}`,
+// `new_id 30000`; `村民血量改成1000` carries `civ_count 63`, `edit_count 1701`.
+function cardTile(c, can) {
+  const p = c.preview && c.preview.ok ? c.preview.plan : null;
+  const tile = el("div", "tile " + (can ? "good" : "bad"));
+  const frame = el("div", "frame");
+  if (c.entity_id != null && c.kind) {
+    const img = document.createElement("img");
+    img.src = "/api/icon?kind=" + encodeURIComponent(c.kind) +
+              "&id=" + encodeURIComponent(c.entity_id) + "&size=56";
+    img.alt = c.entity || "";
+    img.onerror = () => {
+      img.remove();
+      frame.appendChild(el("span", "noimg", "?"));
+    };
+    frame.appendChild(img);
+  } else {
+    frame.appendChild(el("span", "noimg", "?"));
+  }
+  tile.appendChild(frame);
+
+  // The corner number is the box on the building's card.  `button` is 0-based in
+  // the record and 1-based on screen, which is why the plan's own sentence says
+  // 「第 5 格」 for `button: 5`.
+  if (p && p.button != null) tile.appendChild(el("span", "slot", String(p.button)));
+
+  // The bar is a pulse, not a measurement: it says "this landed" without claiming
+  // a health value the plan never carries.
+  const bar = el("div", "bar");
+  bar.appendChild(el("i", "", ""));
+  tile.appendChild(bar);
+
+  const cap = p && p.builder_names && p.builder_names.length
+    ? p.builder_names[0]
+    : (c.entity || (c.kind === "tech" ? "科技" : "单位"));
+  tile.appendChild(el("div", "cap", cap));
+  return tile;
+}
+
+function renderCard(clauses) {
+  const buildableOnes = clauses.filter((c) => c.intent && buildable(c));
+  if (!buildableOnes.length) return null;
+  const card = el("div", "card");
+  // Six is how many the game fits on one row of its own card; more than that
+  // would be a wall, not a card.
+  for (const c of buildableOnes.slice(0, 6)) card.appendChild(cardTile(c, true));
+  return card;
+}
+
 function renderClauses(clauses) {
   const box = $("#preview");
   box.innerHTML = "";
+  // The game-shaped card sits above the sentence rows: a player recognises the
+  // picture row before they read anything.
+  const _card = renderCard(clauses);
+  if (_card) box.appendChild(_card);
   let good = 0;
   for (const c of clauses) {
     const can = buildable(c);
