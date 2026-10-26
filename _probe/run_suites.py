@@ -25,20 +25,25 @@ PY = sys.executable
 # An identifier like IDS_FAILED_TO_OPEN_FILE is not a report, and neither is a
 # sentence that mentions the word.
 _FAIL_RE = re.compile(
-    r"(?m)^\s*FAIL(?:ED|URE|URES)?\b"        # report starts the line
+    # A passing check can SAY anything -- including quoting a failure shape it just
+    # proved the rule catches (`_probe/test_fail_shapes.py` does exactly that, and
+    # on 2026-10-26 three of its `ok` lines were read as failures by a 143-suite
+    # run).  So the `ok` exclusion is applied once, to the whole pattern, instead
+    # of being re-stated on the arms that happened to need it first.
+    #
+    # The anchor is a zero-width lookahead so the arms below may match anywhere in
+    # the line: `a :: FAIL` and `[FAIL] name :: detail` are reports whose marker is
+    # not at column 0.
+    r"(?m)^(?!\s*ok\b)(?=[^\n]*(?:"
+    r"^\s*FAILED:\s"                       # `FAILED: both halves stay in step`
+    r"|^\s*FAILED\s+\S"                     # `FAILED %d check(s)` / `FAILED 3 CHECKS:`
+    r"|\bFAILURES:\s*(?:\d|%[sdr])"          # `FAILURES: 1 -> [...]` / `FAILURES: %s`
+    r"|^\s*FAIL(?:\s|:)(?!\s*[A-Z][A-Z0-9 _()/.-]{2,}:)"  # report, not a verdict
     r"|\bFAIL\s+[^\s]+\s*::"               # `FAIL name :: detail`
     r"|\bFAIL(?:ED|URE|URES)?\s*$"           # report ends the line
-    # A summary line, unless it is the `ok` line of a check that merely
-    # TALKS about such a summary -- `test_runner_contract.py` has one.
-    r"|^(?!\s*ok\b).*\bCHECK\(S\)\s+FAILED\b"
-    # A bracketed report: `_probe/test_effect_append.py` prints
-    # `[FAIL] name :: detail`, which the arms above miss because the line
-    # starts with `[`.  Found by reading the string literals of every
-    # registered suite (`_probe/tmp_audit_fail_shapes.py`) instead of guessing
-    # what the loosening might have let through.
-    # Same `ok` exclusion as the summary arm: a passing check may NAME a shape
-    # without being one.
-    r"|^(?!\s*ok\b).*\[\s*FAIL(?:ED|URE|URES)?\s*\]"
+    r"|\bCHECK\(S\)\s+FAILED\b"            # `N CHECK(S) FAILED -> [...]`
+    r"|\[\s*FAIL(?:ED|URE|URES)?\s*\]"      # `[FAIL] name :: detail`
+    r"))"
 )
 
 SUITES = [

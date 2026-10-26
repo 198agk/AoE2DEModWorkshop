@@ -104,10 +104,21 @@ def main():
     gate = "  37 have a failure gate"
     ident = "IDS_FAILED_TO_OPEN_FILE"
     passing = "SUITES: ALL PASSED"
+    # A pass line that QUOTES a shape it just proved the rule catches.  Three of
+    # these were read as failures on 2026-10-26 and made a fully green 143-suite
+    # run print `SUITES: FAILED`.
+    quoted = "          ok   caught '  FAIL a :: b'"
+    quoted2 = """          ok   caught "FAILURES: 1 -> ['x']" """[:-1]
+    # A verdict whose first word happens to be FAIL.  Green on purpose: the suite
+    # exits 0 and is REPORTING that it recognises the shape.
+    verdict = "FAIL SHAPES: EVERY REPORT SHAPE THE SUITES CAN PRINT IS RECOGNISED"
     for name, text in (("the nail-hygiene sentence", sentence),
                        ("the gate-count sentence", gate),
                        ("an identifier containing FAILED", ident),
-                       ("the all-passed line", passing)):
+                       ("the all-passed line", passing),
+                       ("a pass line quoting a report", quoted),
+                       ("a pass line quoting a count summary", quoted2),
+                       ("a verdict whose first word is FAIL", verdict)):
         check("%s is not counted as a report" % name,
               R._FAIL_RE.search(text) is None, text)
 

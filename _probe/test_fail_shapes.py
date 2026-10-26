@@ -34,7 +34,43 @@ def check(name, cond, detail=""):
         FAILS.append(name)
 
 
+_LABEL = re.compile(r"^([A-Z][A-Z0-9 _()/.\-]{2,}):")
+_SUMMARY = re.compile(
+    r"\bCHECK\(S\)\s+FAILED\b"
+    r"|\bFAILURES:\s*(?:\d|%[sdr])"
+    r"|\[\s*FAIL\s*\]"
+    r"|\bFAIL\s+[^\s]+\s*::")
+_FAIL_WORDS = ("FAIL", "FAILED", "FAILURE", "FAILURES", "FAILS")
+
+
+def is_quiet_by_convention(text):
+    """The two line shapes that are not reports, stated as conventions.
+
+    NOT "does the rule miss it" -- that would be the audit asking the thing it is
+    auditing.  These are the conventions every suite in this tree writes to:
+
+      * a passing check starts with `ok`, and may quote any shape;
+      * a sign-off starts with an ALL-CAPS label and a colon.  A failure WORD is
+        not a label, so `FAILURES: 1 -> [...]` and `FAILED: name` stay reports;
+        a label has no digits, so `FAILED 3 CHECK(S):` stays a report; and a line
+        carrying a summary marker stays a report whatever its prefix says, so
+        `NAIL HYGIENE: 2 CHECK(S) FAILED -> [...]` is still caught.
+    """
+    stripped = text.lstrip()
+    if stripped.startswith("ok "):
+        return True
+    if _SUMMARY.search(stripped):
+        return False
+    m = _LABEL.match(stripped)
+    if not m:
+        return False
+    label = m.group(1).strip()
+    return label not in _FAIL_WORDS and not any(c.isdigit() for c in label)
+
+
 def looks_like_report(text):
+    if is_quiet_by_convention(text):
+        return False
     if "::" in text:
         return True
     return text.lstrip().upper().startswith(("FAIL", "[FAIL", "FAILED", "FAILURE"))
@@ -119,7 +155,11 @@ def main():
     if FAILS:
         print("FAIL SHAPES: %d CHECK(S) FAILED -> %s" % (len(FAILS), FAILS))
         return 1
-    print("FAIL SHAPES: EVERY REPORT SHAPE THE SUITES CAN PRINT IS RECOGNISED")
+    # NOT `FAIL SHAPES: ...`.  A verdict that starts with the word FAIL is the
+    # one line shape a runner cannot tell from a report -- this suite cost a
+    # whole 143-suite run on 2026-10-26 by exiting 0 and still being counted
+    # red.  The guard is fixed too; this rename keeps the log readable.
+    print("REPORT SHAPES: EVERY REPORT SHAPE THE SUITES CAN PRINT IS RECOGNISED")
     return 0
 
 
