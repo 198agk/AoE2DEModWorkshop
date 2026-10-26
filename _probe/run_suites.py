@@ -505,6 +505,13 @@ SUITES = [
     # same way every time (which `--check` cannot see, because the file does
     # equal what the generator produces).
     r"_probe\test_project_json.py",
+    # The handoff page's info table broke twice in three days and only a human
+    # noticed: a history row split across two physical lines (which ends the
+    # table for every row after it), and an edit that prepended the newest story
+    # while keeping the old one, so the cell read twice.  Walks the table from
+    # its header instead of naming line numbers -- those move whenever a section
+    # is added above, and a gate that demands the wrong range cries wolf.
+    r"_probe\test_handoff_table.py",
 ]
 
 # Suites that are not Python.  The screen's script is JavaScript and no Python
