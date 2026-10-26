@@ -124,6 +124,7 @@ import json
 import os
 import re
 import struct
+import sys
 import zlib
 
 from ..dat import parser as P
@@ -134,7 +135,33 @@ from ..semantic import index as semantic
 from . import availability as AV
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
-_SCHEMA = os.path.join(os.path.dirname(_HERE), "schema")
+
+
+def _app_dir():
+    """The directory the tool lives in, frozen or not.
+
+    Under PyInstaller, ``__file__`` points inside the one-file archive which is
+    unpacked to a temporary ``_MEIPASS`` directory that is deleted on exit.
+    The schema must NOT live there: "the format description is an external,
+    editable file" is a standing constraint of this project, and a copy inside
+    a temp folder is not editable, not inspectable, and gone tomorrow.
+
+    So a frozen build looks beside the executable first.  If the folder is not
+    there the archive copy is still used, which keeps a single-file exe usable
+    while making "put the schema next to the exe" the thing that wins.
+    """
+    if getattr(sys, "frozen", False):
+        exe = os.path.dirname(os.path.abspath(sys.executable))
+        beside = os.path.join(exe, "aoe2mod", "schema")
+        if os.path.isdir(beside):
+            return exe
+        return getattr(sys, "_MEIPASS", exe)
+    return os.path.dirname(_HERE)
+
+
+_SCHEMA = os.path.join(_app_dir(), "schema")
+if not os.path.isdir(_SCHEMA):
+    _SCHEMA = os.path.join(os.path.dirname(_HERE), "schema")
 
 #: Where a plugin may keep its schema.  A plugin is a FOLDER, not an install: it
 #: ships JSON and nothing else (this module never imports it), so a plugin can

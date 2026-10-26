@@ -4,237 +4,411 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>帝国时代 2 DE · 模组工坊</title>
-<style>
+<style id="aoe2mod-legible">
+  /* ---- tokens ------------------------------------------------------------ */
   :root {
-    --bg: #14161a;
-    --panel: #1c2027;
-    --panel2: #23282f;
-    --line: #2e343d;
-    --text: #e6e8ec;
-    --dim: #98a0ac;
-    --gold: #c9a227;
-    --ok: #4caf7d;
-    --bad: #d9534f;
-    --warn: #d9a441;
+    --bg: #f6f8fa;
+    --panel: #ffffff;
+    --panel2: #f6f8fa;
+    --panel3: #eef1f4;
+    --line: #d8dee4;
+    --line-strong: #c2c9d1;
+    --text: #1f2328;
+    --text-2: #57606a;
+    --text-3: #6e7781;
+    --accent: #2563eb;
+    --accent-soft: #dde8fd;
+    --accent-line: #9db8f5;
+    --ok: #1a7f37;
+    --ok-soft: #dafbe1;
+    --bad: #cf222e;
+    --bad-soft: #ffebe9;
+    --warn: #9a6700;
+    --warn-soft: #fff8c5;
+    --gold: #9a6700;
+    --sunk: #eef1f4;
+    --shadow: 0 1px 2px rgba(31,35,40,.06), 0 3px 8px rgba(31,35,40,.04);
+    --mono: ui-monospace, "Cascadia Mono", Consolas, monospace;
   }
+
   * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
   body {
-    margin: 0; background: var(--bg); color: var(--text);
-    font: 14px/1.6 "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 14px/1.6 system-ui, -apple-system, "Segoe UI", "Microsoft YaHei", "PingFang SC", sans-serif;
+    -webkit-font-smoothing: antialiased;
   }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  code, kbd { font-family: var(--mono); font-size: .92em; background: var(--panel3);
+              border: 1px solid var(--line); border-radius: 4px; padding: 1px 5px; }
+  ::selection { background: var(--accent-soft); }
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-thumb { background: #ccd3da; border-radius: 6px; border: 2px solid var(--bg); }
+  ::-webkit-scrollbar-thumb:hover { background: #b6bfc8; }
+
+  /* ---- header ------------------------------------------------------------ */
   header {
-    padding: 14px 22px; border-bottom: 1px solid var(--line);
-    display: flex; align-items: baseline; gap: 14px; background: var(--panel);
+    position: sticky; top: 0; z-index: 20;
+    display: flex; align-items: center; gap: 14px;
+    padding: 12px 24px;
+    background: var(--panel);
+    border-bottom: 1px solid var(--line);
   }
-  header h1 { font-size: 16px; margin: 0; letter-spacing: .04em; }
-  header .ver { color: var(--dim); font-size: 12px; }
-  main { display: grid; grid-template-columns: 1fr 320px; gap: 18px; padding: 18px 22px 40px; }
-  @media (max-width: 900px) { main { grid-template-columns: 1fr; } }
+  header h1 { margin: 0; font-size: 15px; font-weight: 650; letter-spacing: .01em; }
+  header .ver { color: var(--text-3); font-size: 12px; }
+  header .spacer { flex: 1; }
+  header .status { color: var(--text-2); font-size: 12px; }
 
-  .box { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; }
-  .box h2 { font-size: 13px; margin: 0; padding: 10px 14px; color: var(--dim);
-            border-bottom: 1px solid var(--line); font-weight: 600; letter-spacing: .06em; }
-  .box .body { padding: 14px; }
-
-  textarea {
-    width: 100%; min-height: 92px; resize: vertical; padding: 12px;
-    background: var(--panel2); color: var(--text); border: 1px solid var(--line);
-    border-radius: 6px; font: inherit; outline: none;
+  /* ---- layout ------------------------------------------------------------ */
+  main {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 384px;
+    gap: 20px;
+    align-items: start;
+    max-width: 1560px;
+    margin: 0 auto;
+    padding: 20px 24px 56px;
   }
-  textarea:focus { border-color: var(--gold); }
-  .hint { color: var(--dim); font-size: 12px; margin-top: 8px; }
-  .hint code { color: var(--gold); background: none; }
-  /* The "this one is API-only" tag in the 能做的事 list.  Dimmer than the title
-     beside it, because it is a caveat on that line, not a second entry. */
-  #intents .bysentence { color: var(--dim); font-size: 12px; }
-
-  button {
-    font: inherit; cursor: pointer; border-radius: 6px; border: 1px solid var(--line);
-    background: var(--panel2); color: var(--text); padding: 8px 16px;
+  @media (max-width: 1080px) {
+    main { grid-template-columns: minmax(0, 1fr); }
   }
-  button:hover { border-color: var(--gold); }
-  button.primary { background: var(--gold); color: #1a1a1a; border-color: var(--gold); font-weight: 600; }
-  button.primary:disabled { background: #3a3a3a; color: #777; border-color: #3a3a3a; cursor: default; }
-  button.link { background: none; border: none; color: var(--gold); padding: 2px 6px; }
-  button.chip { padding: 3px 10px; font-size: 12px; }
 
-  .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .box {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    box-shadow: var(--shadow);
+    padding: 18px 20px 20px;
+    margin: 0 0 20px;
+    color: var(--text);
+  }
+  main > .box:last-child { margin-bottom: 0; }
+  .box > h2 {
+    margin: 0 0 14px;
+    font-size: 15px;
+    font-weight: 650;
+    color: var(--text);
+    letter-spacing: .01em;
+  }
+  .box > h2::after { content: none; }
+  .box h2 { font-size: 15px; font-weight: 650; margin: 0 0 10px; }
+  .box .body, .box .hint, .box p { color: var(--text-2); font-size: 13px; line-height: 1.65; }
+  .box .hint { margin-top: 10px; }
+  .box .hint code { color: var(--text); }
+  .hint { color: var(--text-2); font-size: 13px; }
+  .hint code { color: var(--text); }
+  .err { color: var(--bad); }
+  .empty { color: var(--text-3); font-size: 13px; padding: 6px 0; }
+
+  /* ---- rows and controls -------------------------------------------------- */
+  .row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
   .row.end { justify-content: flex-end; }
+  .row + .row { margin-top: 10px; }
   .spacer { flex: 1; }
-
-  .clause { border: 1px solid var(--line); border-radius: 6px; padding: 12px;
-            margin-bottom: 10px; background: var(--panel2);
-            display: flex; gap: 12px; align-items: flex-start; }
-  .clause.ok { border-left: 3px solid var(--ok); }
-  .clause.bad { border-left: 3px solid var(--bad); }
-  /* The text column has to be allowed to shrink, or a long sentence pushes the
-     box wider than the page (flex items default to min-width:auto). */
-  .clause .cbody { flex: 1; min-width: 0; }
-  /* The game's own picture, at 48px, sitting where the player's eye lands first.
-     `image-rendering` keeps a 256px source crisp at that size instead of the
-     browser's blurry default. */
-  .clause .ico { width: 48px; height: 48px; border-radius: 4px;
-                 image-rendering: pixelated; background: #11151a; flex: none; }
-  .clause .sent { color: var(--dim); font-size: 12px; margin-bottom: 6px; }
-  .clause .main { font-size: 15px; }
-  .clause .why { color: var(--warn); }
-  .clause .meta { color: var(--dim); font-size: 12px; margin-top: 6px; }
-  .cands { margin-top: 8px; display: flex; gap: 6px; flex-wrap: wrap; }
-  .detailrow { margin-top: 8px; }
-  .detail { margin-top: 6px; padding: 10px; border-radius: 6px;
-            background: #171b21; border: 1px solid var(--line); }
-  .detailhead { margin-bottom: 6px; display: flex; gap: 8px; align-items: baseline; }
-  .detailhead .name { font-size: 14px; }
-  .detailtext { font-size: 13px; line-height: 1.6; white-space: pre-wrap;
-                color: var(--text); }
-  .detailtext.why { color: var(--warn); }
-  .detailtext.dim { color: var(--dim); font-size: 12px; }
-
-  .stat { display: inline-block; padding: 1px 8px; border-radius: 10px;
-          background: #2a3038; color: var(--dim); font-size: 12px; margin-right: 6px; }
-  .stat.ok { color: var(--ok); }
-  .stat.bad { color: var(--bad); }
-
-  input[type=text] {
-    background: var(--panel2); color: var(--text); border: 1px solid var(--line);
-    border-radius: 6px; padding: 7px 10px; font: inherit; outline: none; width: 100%;
+  .chip {
+    appearance: none; cursor: pointer;
+    padding: 5px 11px; font: inherit; font-size: 13px;
+    color: var(--text); background: var(--panel);
+    border: 1px solid var(--line-strong); border-radius: 6px;
   }
-  input[type=text]:focus { border-color: var(--gold); }
+  .chip:hover { background: var(--panel2); }
+  .chip.on { background: var(--accent-soft); border-color: var(--accent-line); color: #12386f; }
 
-  .mod { padding: 8px 0; border-bottom: 1px solid var(--line); display: flex;
-         gap: 8px; align-items: center; font-size: 13px; }
-  .mod:last-child { border-bottom: none; }
-  .mod .nm { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .mod .nm.own { color: var(--gold); }
-/* Quiet by default: removing is not the thing a player does often, and a red
-   button on every row reads as a warning about the whole list. */
-.remove { background: none; border: 1px solid var(--line); color: var(--dim);
-  border-radius: 4px; padding: 2px 6px; font-size: 11px; cursor: pointer; flex: none; }
-.remove:hover { color: var(--bad); border-color: var(--bad); }
-.remove.armed { color: #fff; background: var(--bad); border-color: var(--bad); }
-  .switch { width: 34px; height: 18px; border-radius: 9px; background: #3a4048;
-            position: relative; cursor: pointer; flex: none; border: none; padding: 0; }
-  .switch::after { content: ""; position: absolute; top: 2px; left: 2px; width: 14px;
-                   height: 14px; border-radius: 50%; background: #888; transition: .15s; }
-  .switch.on { background: #2f6b4f; }
-  .switch.on::after { left: 18px; background: var(--ok); }
+  .box button {
+    appearance: none; cursor: pointer;
+    padding: 7px 14px; font: inherit; font-size: 13px; font-weight: 500;
+    color: var(--text); background: var(--panel);
+    border: 1px solid var(--line-strong); border-radius: 6px;
+  }
+  .box button:hover { background: var(--panel2); }
+  .box button:active { background: var(--panel3); }
+  .box button:disabled { color: var(--text-3); background: var(--panel2); cursor: default; }
+  .box button.primary {
+    background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600;
+  }
+  .box button.primary:hover { background: #1d4fd0; border-color: #1d4fd0; }
+  button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible {
+    outline: 2px solid var(--accent); outline-offset: 1px;
+  }
 
-  .toast { position: fixed; left: 50%; bottom: 26px; transform: translateX(-50%);
-           background: #262c34; border: 1px solid var(--line); border-radius: 8px;
-           padding: 10px 18px; max-width: 80vw; opacity: 0; transition: .2s;
-           pointer-events: none; z-index: 20; }
-  .toast.show { opacity: 1; }
-  .toast.bad { border-color: var(--bad); }
-  .toast.warn { border-color: var(--warn); }
-  .toast.ok { border-color: var(--ok); }
-  .empty { color: var(--dim); text-align: center; padding: 26px 0; }
-  .err { color: var(--bad); font-size: 12px; white-space: pre-wrap; }
-  /* A warning is not an error: it says something may not stick, not that what
-     you asked for was wrong.  Same reason it is not red. */
-  .warn { color: var(--warn); font-size: 12px; white-space: pre-wrap;
-          margin-top: 8px; }
+  .box input[type=text], .box textarea, .box select {
+    font: inherit; font-size: 13px; color: var(--text); background: var(--panel);
+    border: 1px solid var(--line-strong); border-radius: 6px; padding: 7px 10px;
+  }
+  .box input[type=text]:focus, .box textarea:focus { border-color: var(--accent); }
+  .box textarea { width: 100%; resize: vertical; line-height: 1.7; }
 
-  /* Only shown when the game's data moved under an installed mod.  The mod
-     carries a whole .dat, so it would overwrite the patch; rebuilding is the
-     one fix.  Nothing is shown for mods the guard cannot know about -- a banner
-     nobody can act on teaches people to ignore the ones they can. */
-  #banner { display: none; margin-bottom: 16px; border: 1px solid var(--warn);
-            border-radius: 8px; background: #2e2618; padding: 14px 16px;
-            grid-column: 1 / -1; }
-  #banner.open { display: block; }
-  #banner .line { display: flex; gap: 12px; align-items: flex-start; }
-  #banner .txt { flex: 1; font-size: 13px; line-height: 1.6; }
-  #banner .who { color: var(--warn); }
-  #banner .note { color: var(--dim); font-size: 12px; margin-top: 6px; }
+  .tabs { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+  .tabs button {
+    padding: 5px 11px; font-size: 13px; border-radius: 6px;
+    background: var(--panel); border: 1px solid var(--line-strong); color: var(--text-2);
+  }
+  .tabs button.on { background: var(--accent-soft); border-color: var(--accent-line); color: #12386f; font-weight: 600; }
+  .tabs input[type=text] { flex: 1; min-width: 120px; }
 
-  /* ---- the game's own command card --------------------------------------
-     The goal asks for a 假游戏界面.  A form is not one: the thing a player
-     recognises is the bottom card -- one square per unit, the number in the
-     corner, a stat bar underneath.  Everything drawn here is a field the plan
-     actually carries (builder_names / button / edit_count / civ_count); a clause
-     with no position simply shows no number, which is the honest shape of the
-     11 of 14 intents that edit a record already on a card. */
-  .card { display: flex; gap: 10px; flex-wrap: wrap; margin: 10px 0 2px; }
-  .tile { width: 76px; text-align: center; position: relative; }
-  .tile .frame { width: 62px; height: 62px; margin: 0 auto; border-radius: 5px;
-    border: 1px solid var(--line); background: #0f1318; display: flex;
-    align-items: center; justify-content: center; overflow: hidden; }
-  .tile.good .frame { border-color: var(--gold); }
-  .tile img { width: 56px; height: 56px; image-rendering: pixelated; }
-  .tile .noimg { font-size: 22px; color: var(--dim); }
-  .tile .slot { position: absolute; top: 0; right: 7px; font-size: 10px;
-    line-height: 1; padding: 1px 3px; border-radius: 3px; background: var(--gold);
-    color: #1a1a1a; font-weight: 600; }
-  .tile .bar { height: 4px; margin: 3px 7px 0; border-radius: 2px;
-    background: #2a3038; overflow: hidden; }
-  .tile .bar i { display: block; height: 100%; background: var(--ok); }
+  /* ---- clauses (the preview list) ---------------------------------------- */
+  .clause {
+    display: flex; gap: 12px; align-items: flex-start;
+    padding: 11px 0; border-top: 1px solid var(--line);
+  }
+  .clause:first-of-type { border-top: 0; }
+  .clause .cbody { flex: 1; min-width: 0; }
+  .clause .ico { width: 44px; height: 44px; flex: none; border-radius: 6px;
+                 background: var(--panel2); image-rendering: pixelated; }
+  .clause .sent { font-size: 13px; color: var(--text-3); }
+  .clause .main { font-size: 14px; color: var(--text); margin-top: 3px; }
+  .clause .meta { font-size: 12px; color: var(--text-2); margin-top: 5px;
+                  display: flex; gap: 12px; flex-wrap: wrap; }
+  .clause .why { font-size: 12.5px; color: var(--bad); margin-top: 5px; }
+  .clause.ok .main { color: var(--text); }
+  .clause.bad .main { color: var(--bad); }
+  .stat { font-size: 12px; padding: 1px 7px; border-radius: 20px;
+          background: var(--ok-soft); color: var(--ok); }
+  .stat.bad { background: var(--bad-soft); color: var(--bad); }
+  .stat.ok { background: var(--ok-soft); color: var(--ok); }
+  .cands { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 7px; }
+  .cands button { padding: 3px 9px; font-size: 12px; }
+
+  /* ---- detail panel, command card, icon grid ----------------------------- */
+  .detailrow { border-top: 1px solid var(--line); }
+  .detail { padding: 10px 0 2px; }
+  .detailhead { display: flex; gap: 10px; align-items: center; margin-bottom: 6px; }
+  .detailhead .name { font-weight: 600; font-size: 13.5px; }
+  .detailtext { font-size: 13px; color: var(--text-2); line-height: 1.7; }
+  .detailtext.dim { color: var(--text-3); }
+  .detailtext.why { color: var(--bad); }
+
+  .card { display: flex; gap: 8px; flex-wrap: wrap; padding: 12px 0 2px; }
+  .tile { width: 74px; display: flex; flex-direction: column; align-items: center; gap: 3px; }
+  .tile .frame {
+    width: 58px; height: 58px; display: grid; place-items: center;
+    background: var(--panel2); border: 1px solid var(--line); border-radius: 8px;
+    position: relative; overflow: hidden;
+  }
+  .tile.good .frame { border-color: var(--accent-line); background: var(--accent-soft); }
+  .tile img { width: 52px; height: 52px; image-rendering: pixelated; }
+  .tile .noimg { color: var(--text-3); font-size: 18px; }
+  .tile .slot {
+    position: absolute; top: 0; right: 0;
+    background: var(--accent); color: #fff; font-size: 10px; font-weight: 700;
+    line-height: 14px; min-width: 14px; text-align: center; border-bottom-left-radius: 6px;
+  }
+  .tile .bar { width: 46px; height: 3px; background: var(--line); border-radius: 2px; overflow: hidden; }
+  .tile .bar i { display: block; height: 100%; width: 100%; background: var(--ok); }
   .tile.bad .bar i { background: var(--bad); }
-  .tile .cap { font-size: 10px; color: var(--dim); margin-top: 3px;
-    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  /* The pick-a-picture grid.  A name is only usable if you already know it, and
-     the game's Chinese names are not the ones people use, so this exists to let
-     a player point instead of type. */
-  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(62px, 1fr));
-          gap: 8px; margin-top: 10px; }
-  .cell { display: flex; flex-direction: column; align-items: center; gap: 4px;
-          padding: 6px 2px; background: var(--panel2); border: 1px solid var(--line);
-          border-radius: 6px; overflow: hidden; }
-  .cell:hover { border-color: var(--gold); }
-  .cell img { width: 44px; height: 44px; image-rendering: pixelated; flex: none; }
-  .cell .nm { font-size: 10px; color: var(--dim); line-height: 1.25; text-align: center;
-              max-width: 100%; overflow: hidden; text-overflow: ellipsis;
-              white-space: nowrap; }
-  /* Some of the game's units ship no picture.  Saying so beats a hole. */
-  .cell.noicon .blank { width: 44px; height: 44px; display: flex; align-items: center;
-                        justify-content: center; color: var(--line); font-size: 18px;
-                        border: 1px dashed var(--line); border-radius: 4px; }
-  .tabs { display: flex; gap: 6px; align-items: center; margin-top: 10px; }
-  .tabs button.on { border-color: var(--gold); color: var(--gold); }
-  /* `input[type=text]` is width:100% for the standalone title field; inside this
-     flex row that would push the row wider than the panel. */
-  .tabs input[type=text] { width: auto; flex: 1; min-width: 90px; padding: 4px 8px;
-                           font-size: 12px; }
-  #pick { display: none; margin-top: 12px; border-top: 1px solid var(--line);
-          padding-top: 12px; }
-  #pick.open { display: block; }
-  /* The form panel: one intent, one shape, one line of slots.  It exists because
-     "用中文说就行" is only friendly if you already know what the reader accepts.
-     Every sentence it builds comes from a template the reader is tested against
-     (_probe/test_compose_roundtrip.py), so this cannot drift into producing
-     sentences the tool refuses. */
-  #form { display: none; margin-top: 12px; border-top: 1px solid var(--line);
-          padding-top: 12px; }
-  #form.open { display: block; }
-  .fslots { display: flex; gap: 8px; flex-wrap: wrap; align-items: flex-end;
-            margin-top: 8px; }
-  .fslot { display: flex; flex-direction: column; gap: 3px; min-width: 96px; }
-  .fslot label { font-size: 11px; color: var(--dim); }
-  .fslot input, .fslot select { padding: 4px 8px; font-size: 12px;
-                                background: #11151a; color: inherit;
-                                border: 1px solid var(--line); border-radius: 4px; }
-  #fpreview { margin-top: 10px; font-size: 13px; color: var(--gold);
-              word-break: break-all; }
-  /* Saved sentences.  Always visible rather than behind a chip: if the list is
-     hidden, a player who saved three recipes last week cannot tell whether the
-     tool still has them, and "does it remember" is the whole promise. */
-  #recipe { margin-top: 14px; border-top: 1px solid var(--line); padding-top: 12px; }
-  #rlist { margin-top: 8px; display: flex; flex-direction: column; gap: 6px; }
-  .recipe { display: flex; align-items: flex-start; gap: 8px;
-            padding: 6px 8px; background: #11151a; border: 1px solid var(--line);
-            border-radius: 4px; }
-  .recipe .rbody { flex: 1; min-width: 0; }
-  .recipe .rname { font-size: 13px; }
-  .recipe .rsent { font-size: 11px; color: var(--dim); word-break: break-all; }
-  .recipe .rnone { font-size: 11px; color: var(--bad); }
-  .pickscroll { max-height: 320px; overflow-y: auto; padding-right: 4px; }
-  /* Dragging is the second half of "point instead of type": the cell has to
-     advertise that it can be picked up. */
-  .cell { cursor: grab; }
+  .tile .cap {
+    font-size: 10.5px; color: var(--text-2); max-width: 74px;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(62px, 1fr)); gap: 6px; }
+  .cell {
+    display: flex; flex-direction: column; align-items: center; gap: 2px;
+    padding: 5px 2px; border-radius: 6px; cursor: grab;
+    border: 1px solid transparent; background: var(--panel2);
+  }
+  .cell:hover { border-color: var(--accent-line); background: var(--accent-soft); }
   .cell:active { cursor: grabbing; }
-  /* The cell being carried dims, so the screen shows which one is in flight. */
-  .cell.dragging { opacity: 0.45; }
-  /* A drop target has to LOOK like one, or the drag is a guess. */
-  #say.dragover { border-color: var(--gold); background: #202731; }
+  .cell.dragging { opacity: .45; }
+  .cell img { width: 40px; height: 40px; image-rendering: pixelated; }
+  .cell .nm {
+    font-size: 10.5px; color: var(--text-2); max-width: 100%;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .cell.noicon .blank {
+    width: 40px; height: 40px; display: grid; place-items: center;
+    border: 1px dashed var(--line-strong); border-radius: 6px;
+    color: var(--text-3); font-size: 15px;
+  }
+  .pickscroll { max-height: 320px; overflow-y: auto; }
+
+  /* ---- forms (the sentence builder) -------------------------------------- */
+  .fslots { display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end; margin-top: 10px; }
+  .fslot { display: flex; flex-direction: column; gap: 4px; min-width: 104px; }
+  .fslot label { font-size: 12px; color: var(--text-2); }
+  .fslot input, .fslot select { padding: 6px 9px; font-size: 13px; width: 100%; }
+  #fpreview {
+    margin-top: 12px; padding: 10px 12px; font-size: 13.5px;
+    color: var(--text); background: var(--panel2);
+    border: 1px dashed var(--line-strong); border-radius: 8px;
+    word-break: break-word;
+  }
+
+  /* ---- recipes ------------------------------------------------------------ */
+  #rlist { margin-top: 10px; display: flex; flex-direction: column; gap: 8px; }
+  .recipe {
+    display: flex; align-items: flex-start; gap: 10px;
+    padding: 9px 11px; background: var(--panel2);
+    border: 1px solid var(--line); border-radius: 8px;
+  }
+  .recipe .rbody { flex: 1; min-width: 0; }
+  .recipe .rname { font-size: 13.5px; font-weight: 600; }
+  .recipe .rsent { font-size: 12px; color: var(--text-2); word-break: break-word; margin-top: 2px; }
+  .recipe .rnone { font-size: 12px; color: var(--bad); }
+
+  /* ---- mods list ---------------------------------------------------------- */
+  .mod {
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 0; border-top: 1px solid var(--line); font-size: 13px;
+  }
+  .mod:first-child { border-top: 0; }
+  .mod .nm {
+    flex: 1; min-width: 0; overflow: hidden;
+    text-overflow: ellipsis; white-space: nowrap;
+  }
+  .mod .nm.own { color: var(--accent); font-weight: 600; }
+  .mod .state { font-size: 11.5px; color: var(--text-3); }
+  .remove {
+    appearance: none; cursor: pointer; flex: none;
+    font: inherit; font-size: 12px; padding: 3px 9px;
+    background: var(--panel); color: var(--text-2);
+    border: 1px solid var(--line-strong); border-radius: 6px;
+  }
+  .remove:hover { color: var(--bad); border-color: var(--bad); }
+  .remove.armed { color: #fff; background: var(--bad); border-color: var(--bad); }
+  .box .remove, .box .remove.armed { border-radius: 6px; }
+
+  .switch {
+    position: relative; flex: none; width: 34px; height: 20px; cursor: pointer;
+    background: #ccd3da; border-radius: 20px; transition: background .15s;
+  }
+  .switch::after {
+    content: ""; position: absolute; top: 2px; left: 2px;
+    width: 16px; height: 16px; border-radius: 50%;
+    background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.25); transition: left .15s;
+  }
+  .switch.on { background: var(--ok); }
+  .switch.on::after { left: 16px; }
+  .box .switch { width: 34px; height: 20px; border-radius: 20px; }
+  .box .switch i { display: none; }
+
+  /* ---- editor ------------------------------------------------------------- */
+  #editor { margin-top: 12px; color: var(--text); }
+  #editor .edtabs { display: flex; gap: 6px; align-items: center; margin-bottom: 12px; }
+  #editor .edtabs input { flex: 1; min-width: 120px; }
+  #editor .edbody {
+    display: grid; grid-template-columns: 244px minmax(0, 1fr);
+    gap: 14px; height: 460px;
+  }
+  @media (max-width: 860px) {
+    #editor .edbody { grid-template-columns: minmax(0, 1fr); height: auto; }
+    #editor .edlist { max-height: 240px; }
+  }
+  #editor .edlist {
+    overflow-y: auto; border: 1px solid var(--line);
+    border-radius: 8px; background: var(--panel2);
+  }
+  #editor .edrow {
+    display: flex; align-items: center; gap: 8px;
+    padding: 5px 9px; cursor: pointer;
+    border-bottom: 1px solid var(--line); background: transparent;
+  }
+  #editor .edrow:hover { background: var(--panel3); }
+  #editor .edrow.on {
+    background: var(--accent-soft);
+    box-shadow: inset 3px 0 0 var(--accent);
+  }
+  #editor .edrow img { width: 26px; height: 26px; flex: none; image-rendering: pixelated; }
+  #editor .edrow .blank {
+    width: 26px; height: 26px; flex: none; display: grid; place-items: center;
+    color: var(--text-3); font-size: 12px;
+    border: 1px dashed var(--line-strong); border-radius: 5px;
+  }
+  #editor .edrow .nm {
+    font-size: 13px; flex: 1; min-width: 0;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  #editor .edrow .id {
+    font-size: 11px; color: var(--text-3); flex: none;
+    font-variant-numeric: tabular-nums;
+  }
+  #editor .edpane {
+    overflow-y: auto; border: 1px solid var(--line);
+    border-radius: 8px; background: var(--panel); padding: 14px 16px;
+  }
+  #editor .edhead {
+    display: flex; gap: 12px; align-items: center;
+    padding-bottom: 12px; border-bottom: 1px solid var(--line);
+  }
+  #editor .edhead img { width: 54px; height: 54px; image-rendering: pixelated;
+                        border-radius: 6px; background: var(--panel2); }
+  #editor .edhead .t { font-size: 16px; font-weight: 650; color: var(--text); }
+  #editor .edhead .s { font-size: 12px; color: var(--text-2); margin-top: 2px; }
+  #editor table.f { width: 100%; max-width: 620px; border-collapse: collapse; margin-top: 10px; }
+  #editor table.f th {
+    text-align: left; font-size: 12px; font-weight: 500; color: var(--text-3);
+    padding: 4px 6px; border-bottom: 1px solid var(--line);
+  }
+  #editor table.f td { padding: 4px 6px; font-size: 13px; border-bottom: 1px solid var(--panel2); }
+  #editor table.f td.v {
+    color: var(--text); text-align: right; width: 96px;
+    font-variant-numeric: tabular-nums; font-weight: 600;
+  }
+  #editor table.f td.v.none { color: var(--text-3); font-style: italic; font-weight: 400; }
+  #editor table.f td.e { display: flex; gap: 8px; align-items: center; }
+  #editor table.f input {
+    width: 84px; padding: 5px 8px; font-size: 13px;
+    background: var(--panel); color: var(--text);
+    border: 1px solid var(--line-strong); border-radius: 6px;
+  }
+  #editor table.f input:focus { border-color: var(--accent); }
+  #editor table.f button { padding: 5px 11px; font-size: 12.5px; }
+  #editor .ednone { color: var(--text-3); font-size: 13px; margin-top: 10px; }
+  #intents .bysentence { color: var(--text-3); }
+
+  /* ---- banner and toast --------------------------------------------------- */
+  #banner {
+    display: none; grid-column: 1 / -1; gap: 14px; align-items: center;
+    padding: 12px 16px; margin-bottom: 4px;
+    background: var(--warn-soft); border: 1px solid #d4a72c; border-radius: 10px;
+  }
+  #banner.open { display: flex; }
+  #banner .txt { flex: 1; min-width: 0; }
+  #banner .line { font-size: 13.5px; font-weight: 600; color: #7d4e00; }
+  #banner .who { font-size: 13px; color: var(--text); margin-top: 2px; word-break: break-word; }
+  #banner .note { font-size: 12px; color: #7d4e00; margin-top: 3px; }
+
+  #toast {
+    position: fixed; left: 50%; bottom: 26px; transform: translate(-50%, 16px);
+    max-width: 76vw; padding: 10px 18px; border-radius: 10px;
+    font-size: 13.5px; color: #fff; background: #24292f;
+    box-shadow: 0 8px 24px rgba(0,0,0,.22);
+    opacity: 0; pointer-events: none; transition: opacity .16s, transform .16s; z-index: 60;
+  }
+  #toast.show { opacity: 1; transform: translate(-50%, 0); }
+  #toast.ok { background: #1a7f37; }
+  #toast.bad { background: #cf222e; }
+  #toast.warn { background: #9a6700; }
+  /* The markup writes `class="toast"` on the same element the sheet styles by
+     id; both are kept so neither half can be renamed without the other. */
+  .toast { position: fixed; }
+  .toast.show { opacity: 1; }
+
+  /* ---- misc --------------------------------------------------------------- */
+  #say.dragover { border-color: var(--accent); background: var(--accent-soft); }
+  .link { color: var(--accent); cursor: pointer; }
+  .link:hover { text-decoration: underline; }
+  .warn { color: var(--warn); }
+  .bad { color: var(--bad); }
+  .ok { color: var(--ok); }
+  #form { display: none; margin-top: 12px; border-top: 1px solid var(--line); padding-top: 14px; }
+  #form.open { display: block; }
+  #pick { display: none; margin-top: 12px; border-top: 1px solid var(--line); padding-top: 14px; }
+  #pick.open { display: block; }
+  #recipe { margin-top: 16px; border-top: 1px solid var(--line); padding-top: 14px; }
+  .line { font-size: 13px; }
+  .txt { font-size: 13px; }
+  .note { font-size: 12px; color: var(--text-3); }
+  .who { font-size: 13px; }
+  .name { font-weight: 600; }
+  .ver { color: var(--text-3); font-size: 12px; }
+  .e { display: flex; gap: 8px; align-items: center; }
+  .v { font-variant-numeric: tabular-nums; }
+  .id { font-size: 11px; color: var(--text-3); }
+  .cap, .bar, .frame, .slot, .noimg { }
 </style>
 </head>
 <body>
@@ -343,6 +517,26 @@
       </div>
     </div>
 
+      <div class="box" style="margin-top:16px">
+        <h2>编辑一个单位</h2>
+        <div class="hint">
+          左边挑一个，右边就是它现在存着的每一项。改一个数字，句子会写进下面的框里 ——
+          句子仍然是唯一入口，所以每一步都还能被读器重新判一次。
+        </div>
+        <div id="editor">
+          <div class="edtabs">
+            <button class="chip on" data-edkind="unit">单位</button>
+            <button class="chip" data-edkind="tech">科技</button>
+            <input type="text" id="edq" placeholder="按名字过滤…">
+            <span class="hint" id="edcount" style="margin:0"></span>
+          </div>
+          <div class="edbody">
+            <div class="edlist" id="edlist"><div class="empty">读取中…</div></div>
+            <div class="edpane" id="edpane"><div class="empty">从左边挑一个。</div></div>
+          </div>
+        </div>
+      </div>
+
     <div class="box" style="margin-top:16px">
       <h2 data-i18n="preview.heading">预览 —— 还没动任何文件</h2>
       <div class="body" id="preview">
@@ -376,7 +570,7 @@
     </div>
     <div class="box" style="margin-top:16px">
       <h2 data-i18n="repair.heading">能做的事</h2>
-      <div class="body" id="intents" style="font-size:13px;color:var(--dim)"></div>
+      <div class="body" id="intents" style="font-size:13px;color:#5f4d33"></div>
     </div>
   </aside>
 </main>
@@ -494,6 +688,12 @@ async function boot() {
   // asking before it has loaded would print keys on screen for one frame.
   await loadLocale();
   applyLocale();
+  // Say what is happening before the slow part.  `/api/meta` parses the whole
+  // 93 MB `.dat` on a cold start -- measured 2026-10-26 at ~25 s in the windowed
+  // build.  Without this line the screen is an empty dark page for that whole
+  // time, which reads as "the app did not start" rather than "it is reading".
+  $("#preview").innerHTML = "";
+  $("#preview").appendChild(el("div", "hint", T("page.reading")));
   try {
     META = await api("/api/meta");
   } catch (e) {
@@ -502,7 +702,33 @@ async function boot() {
       T("page.offline", {error: e.message})));
     return;
   }
+  $("#preview").innerHTML = "";
   $("#ver").textContent = T("page.version", {version: META.version});
+  // `?diag=1` prints the numbers that settle a layout question, because a
+  // screenshot shows a symptom and these show the cause.  Kept in the shipped
+  // page (it is two lines and no user ever types the query string) so the next
+  // person does not have to re-derive how to ask the window its own width.
+  // The same numbers also go into `document.title` on a timer, which the window
+  // shell can read back from outside -- measuring a window from inside it is
+  // otherwise a chicken-and-egg problem, and a one-shot write loses a race with
+  // whatever `boot()` puts in the title afterwards.
+  // `typeof location` because a fake DOM (the page harness) has none, and a
+  // debug block must never be able to take the screen down with it.
+  if (typeof location !== "undefined" && location.search.indexOf("diag=1") >= 0) {
+    const diag = () => {
+      const m = $("main");
+      const box = m ? m.getBoundingClientRect() : null;
+      const line = "vw=" + innerWidth + " dpr=" + devicePixelRatio +
+        " doc=" + document.documentElement.clientWidth + "/" + document.documentElement.scrollWidth +
+        " main=" + (box ? Math.round(box.width) : "?") +
+        " cols=" + (m ? getComputedStyle(m).gridTemplateColumns : "?");
+      const info = $("#datinfo");
+      if (info) info.textContent = "diag: " + line;
+      document.title = "DIAG " + line;
+    };
+    diag();
+    setInterval(diag, 2000);
+  }
   renderIntentList();
   renderMods(META.mods);
   // The .dat facts a player cares about, phrased as facts rather than fields.
@@ -513,6 +739,15 @@ async function boot() {
   // cost the player the screen: `loadRecipes` writes its own reason into the list
   // and returns, and nothing else depends on it.
   loadRecipes();
+  // The editor is the third way in, and the one that shows the data: fetched
+  // after meta so a failure here costs only the panel, not the screen.
+  loadEditor();
+  for (const _b of document.querySelectorAll("[data-edkind]")) {
+    _b.onclick = () => edKind(_b.getAttribute("data-edkind"));
+  }
+  if ($("#edq")) {
+    $("#edq").oninput = () => loadEditor();
+  }
 }
 
 // ---- did the game's data move under an installed mod? ------------------
@@ -1227,6 +1462,227 @@ $("#rsave").onclick = async () => {
   toast("记住了：" + name, "ok");
   await loadRecipes();
 };
+
+// ---- editor ---------------------------------------------------------------
+// The panel turns a click into a SENTENCE, never into an intent object.  The
+// reader is the only thing allowed to decide what a change means, and it is the
+// only path the suite covers; a panel that posted intents would be a second,
+// untested way to write the same bytes.
+let EDKIND = "unit";
+// `?unit=83` (optionally `&kind=tech`) opens one entity directly.  Read once:
+// the query string is not something the player changes while the page runs.
+let ED_WANT = null;
+try {
+  if (typeof location !== "undefined" && location.search) {
+    const qs = new URLSearchParams(location.search);
+    if (qs.get("unit")) ED_WANT = parseInt(qs.get("unit"), 10);
+    if (qs.get("kind") === "tech") EDKIND = "tech";
+  }
+} catch (e) { ED_WANT = null; }
+let EDROWS = [];
+let EDSEL = null;
+
+const ED_STATS = [
+  "hit_points", "displayed_attack", "displayed_melee_armour",
+  "displayed_pierce_armour", "movement_speed", "line_of_sight",
+  "creation_time", "max_range", "displayed_range", "reload_time",
+  "displayed_reload_time", "min_range", "accuracy", "garrison_capacity"
+];
+const ED_COSTS = ["food", "wood", "gold", "stone"];
+const ED_STAT_ZH = {
+  hit_points: "生命值", displayed_attack: "攻击力",
+  displayed_melee_armour: "近战护甲", displayed_pierce_armour: "远程护甲",
+  movement_speed: "移动速度", line_of_sight: "视野", creation_time: "训练时间",
+  max_range: "射程", displayed_range: "面板射程", reload_time: "装填时间",
+  displayed_reload_time: "面板装填时间", min_range: "最小射程",
+  accuracy: "命中率", garrison_capacity: "驻扎容量"
+};
+const ED_COST_ZH = { food: "食物", wood: "木材", gold: "黄金", stone: "石头" };
+
+function edName(r) { return r.zh || r.name || ("#" + r.id); }
+
+async function loadEditor() {
+  const q = ($("#edq") || {}).value || "";
+  const box = $("#edlist");
+  if (!box) return;
+  box.textContent = "";
+  let j = null;
+  try {
+    j = await api("/api/browse?kind=" + EDKIND + "&limit=400&q=" + encodeURIComponent(q));
+    EDROWS = (j.browse || {}).rows || [];
+  } catch (e) {
+    EDROWS = [];
+    box.appendChild(el("div", "empty", "读不到列表：" + e.message));
+    return;
+  }
+  // The count is the route's own total, not the length of the page we asked
+  // for -- otherwise "400 / 400" would claim the game has 400 units.
+  const total = (j.browse && j.browse.total != null) ? j.browse.total : EDROWS.length;
+  $("#edcount").textContent = EDROWS.length + " / " + total;
+  if (!EDROWS.length) { box.appendChild(el("div", "empty", "没有匹配的。")); return; }
+  for (const r of EDROWS) box.appendChild(edRow(r));
+
+  // Show something rather than an empty pane.  `?unit=83` wins over the first
+  // row so one unit is linkable (the screenshot check uses it), and a filter
+  // keeps the current pick only if it is still in the list.
+  const want = ED_WANT;
+  const keep = EDSEL && EDROWS.some(r => r.kind === EDSEL.kind && r.id === EDSEL.id);
+  let target = null;
+  if (want && EDROWS.some(r => r.id === want && r.kind === EDKIND)) {
+    target = EDROWS.find(r => r.id === want && r.kind === EDKIND);
+  } else if (keep) {
+    target = EDROWS.find(r => r.kind === EDSEL.kind && r.id === EDSEL.id);
+  } else {
+    target = EDROWS[0];
+  }
+  if (target) {
+    EDSEL = { kind: target.kind, id: target.id };
+    for (const row of box.children) {
+      if (row.dataset && row.dataset.id === String(target.id)) row.className += " on";
+    }
+    openEditor(target);
+  }
+}
+
+function edRow(r) {
+  const row = el("div", "edrow");
+  row.dataset.id = String(r.id);
+  if (EDSEL && EDSEL.kind === r.kind && EDSEL.id === r.id) row.className += " on";
+  if (r.has_icon) {
+    const img = el("img");
+    img.src = "/api/icon?kind=" + r.kind + "&id=" + r.id + "&size=26";
+    img.onerror = () => { img.replaceWith(el("div", "blank", "?")); };
+    row.appendChild(img);
+  } else {
+    row.appendChild(el("div", "blank", "?"));
+  }
+  row.appendChild(el("div", "nm", edName(r)));
+  row.appendChild(el("div", "id", String(r.id)));
+  row.onclick = () => { EDSEL = { kind: r.kind, id: r.id }; loadEditor().then(() => openEditor(r)); };
+  return row;
+}
+
+async function openEditor(r) {
+  const pane = $("#edpane");
+  if (!pane) return;
+  pane.textContent = "";
+  pane.appendChild(el("div", "empty", "读取「" + edName(r) + "」…"));
+  let d;
+  try {
+    d = await api("/api/describe?kind=" + r.kind + "&id=" + r.id);
+  } catch (e) {
+    pane.textContent = "";
+    pane.appendChild(el("div", "empty", "读不到：" + e.message));
+    return;
+  }
+  const ent = d.entity || {};
+  pane.textContent = "";
+
+  const head = el("div", "edhead");
+  if (ent.icon && ent.icon.ok) {
+    const img = el("img");
+    img.src = "/api/icon?kind=" + r.kind + "&id=" + r.id + "&size=56";
+    head.appendChild(img);
+  }
+  const ttl = el("div", "");
+  ttl.appendChild(el("div", "t", ent.zh || ent.name || "#" + r.id));
+  ttl.appendChild(el("div", "s",
+    "编号 " + r.id + " · " + (ent.en || "") +
+    (ent.icon && ent.icon.section ? " · 图标取自 " + ent.icon.section : "")));
+  head.appendChild(ttl);
+  pane.appendChild(head);
+
+  if (r.kind === "tech") {
+    pane.appendChild(el("div", "ednone",
+      "科技的数值在「研究时间 / 成本 / 第几条效果」里，不在这一页 —— 用上面的「填表」。"));
+    return;
+  }
+
+  const stats = ent.stats || {};
+  let shown = 0;
+  const tbl = el("table", "f");
+  const hr = el("tr", "");
+  hr.appendChild(el("th", "", "项目"));
+  hr.appendChild(el("th", "", "现在"));
+  hr.appendChild(el("th", "", "改成"));
+  hr.appendChild(el("th", "", ""));
+  tbl.appendChild(hr);
+
+  for (const k of ED_STATS) {
+    if (!(k in stats)) continue;
+    shown++;
+    tbl.appendChild(edFieldRow(ent, k, stats[k], ED_STAT_ZH[k] || k, "stat"));
+  }
+  for (const res of ED_COSTS) {
+    const c = (stats.costs || []).find(x => x.resource === res);
+    tbl.appendChild(edFieldRow(ent, res, c ? c.amount : null,
+                               ED_COST_ZH[res] + "成本", "cost"));
+  }
+  pane.appendChild(tbl);
+  if (!shown) pane.appendChild(el("div", "ednone", "这一版没有存任何可改的数值。"));
+
+  const note = el("div", "hint");
+  note.style.marginTop = "10px";
+  note.textContent = "改完会写一句到下面的框里并重读一次；确认无误再「生成并安装」。";
+  pane.appendChild(note);
+}
+
+// A float32 read back as a double prints seventeen digits, which is the right
+// number and the wrong text: `2` is what the data means and `2.000000029802322`
+// is what a re-encode gives you.  Trim to four decimals, then drop trailing
+// zeros, so `0.8` stays `0.8` and `25` stays `25`.
+function edNum(v) {
+  if (typeof v !== "number") return String(v);
+  if (Number.isInteger(v)) return String(v);
+  const s = v.toFixed(4).replace(/0+$/, "").replace(/\.$/, "");
+  return s === "-0" ? "0" : s;
+}
+
+function edFieldRow(ent, key, value, label, kind) {
+  const tr = el("tr", "");
+  tr.appendChild(el("td", "", label));
+  const shown = value == null ? null : edNum(value);
+  const v = el("td", "v" + (shown == null ? " none" : ""),
+               shown == null ? "这一版没有" : shown);
+  tr.appendChild(v);
+  const inp = el("input");
+  inp.type = "text";
+  inp.placeholder = shown == null ? "—" : shown;
+  inp.dataset.field = key;
+  const editTd = el("td", "e", "");
+  editTd.appendChild(inp);
+  const btn = el("button", "chip", "改成");
+  btn.onclick = () => {
+    const raw = inp.value.trim();
+    if (raw === "") { toast("先填一个数", "bad"); return; }
+    const nm = ent.zh || ent.name;
+    const sentence = kind === "cost"
+      ? nm + " " + ED_COST_ZH[key] + "成本 改成 " + raw
+      : nm + " " + label + " 改成 " + raw;
+    writeSentence(sentence);
+  };
+  editTd.appendChild(btn);
+  tr.appendChild(editTd);
+  return tr;
+}
+
+function writeSentence(sentence) {
+  const ta = $("#say");
+  ta.value = ta.value.trim() ? (ta.value.trim() + "\n" + sentence) : sentence;
+  if (typeof doParse === "function") doParse();
+  toast("已写进上面的框：" + sentence, "ok");
+}
+
+function edKind(kind) {
+  EDKIND = kind;
+  EDSEL = null;
+  for (const b of document.querySelectorAll("[data-edkind]")) {
+    b.className = b.getAttribute("data-edkind") === kind ? "chip on" : "chip";
+  }
+  const pane = $("#edpane");
+  if (pane) { pane.textContent = ""; pane.appendChild(el("div", "empty", "从左边挑一个。")); }
+  loadEditor();
+}
 
 // ---- parse ------------------------------------------------------------
 async function doParse() {

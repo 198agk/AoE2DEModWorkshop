@@ -24,6 +24,7 @@
     "mods.note": "社区模组如果自带一整份数据文件，游戏更新后它会把新内容盖回去。这里能把作者改过的东西在今天的数据上重做一遍，作者的其他文件原地保留。",
     "page.heading": "帝国时代 2 DE · 模组工坊",
     "page.offline": "连不上本地服务：{error}",
+    "page.reading": "正在读取游戏数据（第一次会久一点，约 20 秒）",
     "page.ready": "{civs} 个文明 · 已就绪",
     "page.title": "帝国时代 2 DE · 模组工坊",
     "page.unknown_error": "未知错误",

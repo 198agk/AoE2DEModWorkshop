@@ -151,9 +151,16 @@ def main(argv=None):
                     help="只开图形窗口；开不了就退出，不退回浏览器")
     ap.add_argument("--browser", action="store_true",
                     help="只在浏览器里打开（老行为）")
+    ap.add_argument("--serve-only", action="store_true",
+                    help="只起服务，不开窗口也不开浏览器（给外面的壳用）")
     args = ap.parse_args(argv)
     if args.window and args.browser:
         raise SystemExit("--window 和 --browser 是两种模式，只能选一个。")
+    # `--serve-only` exists because the Tauri shell owns the window now: it
+    # starts this process, waits for `/api/meta`, and shows the page itself.  A
+    # second window (or a browser tab) from here is a bug the user sees as "it
+    # opened twice" -- measured 2026-10-26, the first Tauri run did exactly that
+    # because the shell passed `--browser`.
 
     root, notes = _preflight(args.game_root)
     for n in notes:
@@ -163,6 +170,16 @@ def main(argv=None):
     print("模组工坊: %s" % url)
 
     want_window = not args.browser
+    if args.serve_only:
+        # Nothing owns the screen; just serve until killed.
+        print("（只起服务，Ctrl+C 结束）")
+        try:
+            httpd.serve_forever()
+        except KeyboardInterrupt:
+            print("\nbye")
+        finally:
+            httpd.server_close()
+        return 0
     if want_window:
         _serve_in_background(httpd)
         code = _run_window(url)

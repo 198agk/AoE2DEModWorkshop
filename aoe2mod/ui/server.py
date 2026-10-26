@@ -673,7 +673,15 @@ def _file(handler, path, ctype):
         body = fh.read()
     handler.send_response(200)
     handler.send_header("Content-Type", ctype)
+    if os.path.splitext(path)[1].lower() in _CACHEABLE:
+        handler.send_header("Cache-Control", "max-age=86400")
     handler.send_header("Content-Length", str(len(body)))
+    # No caching: these files are read off the local disk on every request, so a
+    # cache buys nothing -- and it costs a real bug.  Measured 2026-10-26: the
+    # window shell kept showing the page from before a fix (the CSS fix was in
+    # the file on disk, and the window still drew the old layout), because
+    # WebView2 heuristically caches a response that carries no cache header.
+    handler.send_header("Cache-Control", "no-store")
     handler.end_headers()
     handler.wfile.write(body)
 
@@ -683,7 +691,17 @@ _CTYPES = {".html": "text/html; charset=utf-8",
            ".js": "application/javascript; charset=utf-8",
            ".svg": "image/svg+xml",
            ".png": "image/png",
+           # A font served as octet-stream is a font the browser refuses to use;
+           # `@font-face` then silently keeps the fallback face.
+           ".ttf": "font/ttf",
+           ".woff2": "font/woff2",
+           ".jpg": "image/jpeg",
+           ".jpeg": "image/jpeg",
            ".json": "application/json; charset=utf-8"}
+
+# Art never changes within an install, and the frame is 460 KB.  The page itself
+# must stay `no-store` -- it is what a rebuild replaces.
+_CACHEABLE = (".png", ".jpg", ".jpeg", ".ttf", ".woff2", ".svg")
 
 
 def make_handler(app):

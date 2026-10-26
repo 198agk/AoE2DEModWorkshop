@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>模组工坊</title>
+<style>
+  html, body { height: 100%; margin: 0; }
+  body {
+    background: radial-gradient(60% 60% at 50% 40%, #232a33 0%, #14161a 100%);
+    color: #e6e6e6; display: flex; align-items: center; justify-content: center;
+    font: 14px/1.7 "Microsoft YaHei", system-ui, sans-serif; user-select: none;
+  }
+  .wrap { text-align: center; }
+  .crest {
+    width: 72px; height: 84px; margin: 0 auto 18px;
+    background: #c9a227;
+    clip-path: polygon(0 0, 100% 0, 100% 58%, 50% 100%, 0 58%);
+    opacity: .92;
+  }
+  h1 { font-size: 17px; font-weight: 500; margin: 0 0 6px; letter-spacing: .06em; }
+  p { margin: 0; color: #8a949f; font-size: 12px; }
+  .dots::after {
+    content: ""; animation: d 1.4s steps(4, end) infinite;
+  }
+  @keyframes d {
+    0% { content: ""; } 25% { content: "·"; }
+    50% { content: "··"; } 75% { content: "···"; }
+  }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="crest"></div>
+    <h1>帝国时代 2 决定版 · 模组工坊</h1>
+    <p>正在读取游戏数据<span class="dots"></span></p>
+  </div>
+</body>
+</html>

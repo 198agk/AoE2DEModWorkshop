@@ -29,14 +29,14 @@ _probe/out_*.err
 # `Start-Process -RedirectStandardError` writes this pair; naming it after the
 # commit the run describes is the only way to tell two runs apart afterwards.
 _probe/err_*.txt
-发布包/
+鍙戝竷鍖?
 _shots/
 *.zip
 *.7z
 
 # --- what the 2026-10-25 cleanup deleted (10.7 GB -> 476 MB) -----------------
 # Sweep frames from live-game rounds: 356 entries, 8.0 GB.  The verdicts live in
-# `_probe/report_*.md` and `_交接说明.md`; the six frames worth looking at are copied to
+# `_probe/report_*.md` and `_浜ゆ帴璇存槑.md`; the six frames worth looking at are copied to
 # `_evidence/`, whose README says what each one proves.
 _probe/shots/
 
@@ -115,7 +115,7 @@ _probe/asset_index/png/
 _probe/shots/
 _probe/*.png
 # The player's own screenshots, kept here by hand so the agent can OCR them.
-截图/
+鎴浘/
 # Probes that write a small JSON answer beside themselves.  The answer is the
 # conclusion and belongs in the docs; the file is one run's output.
 _probe/play_last.json
@@ -219,3 +219,7 @@ _vendor/
 # PyInstaller, installed into the repo only to answer can this ship as an exe.
 # Regenerate with: <python> -m pip install --target _vendor_pyinstaller pyinstaller
 _vendor_pyinstaller/
+# Rust build output: 1.2 GB of object files, rebuilt by cargo.
+desktop/src-tauri/target/
+desktop/src-tauri/_build_out.txt
+desktop/src-tauri/_build_err.txt

@@ -151,7 +151,13 @@ def page_queries(html):
     out = {}
     plain = set()
     for m in re.finditer(r'"(/api/[a-z\-]+)\?', html):
-        window = html[m.start():m.start() + 500]
+        # Cut at the end of the statement, as the docstring always claimed: a
+        # `;` cannot appear inside these URL literals, so the first one ends it.
+        # A flat window credited `/api/describe` with the `size=` that belongs
+        # to the `/api/icon` call twelve lines below it (2026-10-26).
+        _tail = html[m.start():m.start() + 500]
+        _cut = _tail.find(';')
+        window = _tail if _cut < 0 else _tail[:_cut]
         # Stop at the end of the statement: a `;` outside a literal ends the URL.
         keys = set(re.findall(r"[?&]([A-Za-z_]+)=", window))
         out.setdefault(m.group(1), set()).update(keys)
