@@ -128,7 +128,8 @@
         }
       },
       "compile": {
-        "strategy": "in_place_patch"
+        "strategy": "in_place_patch",
+        "not_verified_reason": "Not read on screen yet (2026-10-26): the batch wrote a +5 to the archer's class-3 (building) attack row and the plan reported edits=2 -- the row and the displayed_attack mirror -- but batch1 was a Dark Age start, where archers cannot be trained, so nobody looked at the card. The write is measured; the number on screen is still unread. A Feudal-age start with an archer selected is all this needs."
       },
       "safety": {
         "field_width_bits": 16,
@@ -175,7 +176,8 @@
         }
       },
       "compile": {
-        "strategy": "in_place_patch"
+        "strategy": "in_place_patch",
+        "verified_in_game": "Measured in a real game (2026-10-26, `dsh test batch1 五项读数`): with `unit 83` food cost set to 10 for British, the villager button on the town-centre card reads 10 instead of the shipped 50. This is the first reading of this intent -- the writer had been proven byte-exact, but nobody had looked at the price on screen."
       }
     },
     "tech.research_time": {
@@ -202,7 +204,8 @@
         }
       },
       "compile": {
-        "strategy": "in_place_patch"
+        "strategy": "in_place_patch",
+        "verified_in_game": "Measured in a real game (2026-10-26, `dsh test batch1 五项读数`): with `tech 22` research time set to 5, Loom finishes almost the moment it is clicked instead of the shipped 25 seconds. The write lands in the ResearchLocation entry, which is where VER 8.9 keeps it."
       },
       "safety": {
         "field_width_bits": 16,
@@ -244,7 +247,8 @@
         }
       },
       "compile": {
-        "strategy": "in_place_patch"
+        "strategy": "in_place_patch",
+        "verified_in_game": "Measured in a real game (2026-10-26, `dsh test batch1 五项读数`): with `tech 22` (Loom) gold cost set to 5, the Loom card inside the town centre reads 5 gold instead of the shipped 50. Loom is one of the 474/1510 techs that actually carry the slot -- the 1036 that do not are refused rather than silently skipped."
       },
       "safety": {
         "field_width_bits": 16,
@@ -278,7 +282,8 @@
         }
       },
       "compile": {
-        "strategy": "in_place_patch"
+        "strategy": "in_place_patch",
+        "verified_in_game": "Measured in a real game (2026-10-26, `dsh test batch1 五项读数`): with `tech 22` command 0 set from +15 to +100, a villager's hit points after Loom read 125 instead of the shipped 40 (25 base + 15). Command 0 is the hit-point row -- `Toolkit.effects(22)` prints it as 平民 生命值."
       },
       "safety": {
         "field_width_bits": 32,

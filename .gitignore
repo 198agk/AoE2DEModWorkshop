@@ -120,6 +120,7 @@ _probe/*.png
 # conclusion and belongs in the docs; the file is one run's output.
 _probe/play_last.json
 _probe/w1_last.json
+_probe/*_last.json
 _probe/bisect_results.json
 _probe/btn_hits.json
 _probe/v23_facts.json
