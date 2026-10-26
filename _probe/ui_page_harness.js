@@ -30,6 +30,22 @@ function node(tag) {
     // The form panel labels each control with the slot it fills (`data-slot`),
     // which is how the value reader and the renderer agree on what is on screen.
     dataset: {},
+    // Tags applied by the page markup (`data-i18n="key"`).  `applyLocale()`
+    // reads these with `getAttribute`, so the stand-in has to answer the same
+    // way -- a node that returned undefined for everything would make the whole
+    // translation pass look like a no-op and still be green.
+    attrs: {},
+    getAttribute(k) {
+      if (k in this.attrs) return this.attrs[k];
+      if (k === "data-slot") return this.dataset.slot;
+      if (k === "placeholder") return this.placeholder;
+      return null;
+    },
+    setAttribute(k, v) {
+      if (k === "data-slot") { this.dataset.slot = v; return; }
+      if (k === "placeholder") { this.placeholder = v; return; }
+      this.attrs[k] = v;
+    },
     appendChild(c) {
       c.parentNode = this;
       this.children.push(c);
@@ -58,7 +74,6 @@ function node(tag) {
     // otherwise the harness would be testing a page nobody can ship.
     classList: { add() {}, remove() {}, contains() { return false; } },
     addEventListener() {},
-    setAttribute(k, v) { this[k] = v; },
     // Enough of the real DOM for the page's own "replace, do not stack" logic:
     // find the first descendant with a class, and detach a child.
     querySelector(sel) {
@@ -98,6 +113,21 @@ const document = {
     const key = sel.replace(/^#/, "");
     if (!ids[key]) ids[key] = node(sel);
     return ids[key];
+  },
+  // `applyLocale()` walks every tagged node, so the stand-in needs the same
+  // shape.  It deliberately returns a real array rather than a NodeList: the
+  // page calls `.forEach` on it, and a live NodeList would hide the case where
+  // a node is tagged twice (both would come back, and the second would win
+  // silently).
+  querySelectorAll(sel) {
+    const attr = String(sel).replace(/^\[|\]$/g, "");
+    const out = [];
+    const walk = (n) => {
+      if (n.attrs && n.attrs[attr] !== undefined) out.push(n);
+      for (const c of n.children || []) walk(c);
+    };
+    for (const k of Object.keys(ids)) walk(ids[k]);
+    return out;
   },
 };
 // The page's buildnote is a text blob, so its rendering is the string.
@@ -321,6 +351,27 @@ const BROWSE = {
 // A real /api/update-check answer, captured from a live server with an installed
 // mod whose build record says the game's .dat has changed since.  Unknown rows
 // are in the same payload on purpose: the banner must count ONLY stale ones.
+// A real /api/locale answer, captured from the shipped table
+// (`aoe2mod/schema/locales/zh.json`).  Only the keys the assertions below name
+// are pasted in; the rest of the table is wording no assertion reads, and a
+// fixture nobody can scan is a fixture nobody checks.
+const LOCALE = {ok: true, locale: "zh", strings: {
+  "page.heading": "帝国时代 2 DE · 模组工坊",
+  "page.version": "数据版本 {version}",
+  "page.ready": "{civs} 个文明 · 已就绪",
+  "btn.parse": "读一下",
+  "btn.build": "生成并安装",
+  "mods.heading": "已安装的模组",
+  "preview.heading": "预览 —— 还没动任何文件",
+  "say.heading": "你想要什么改动？用中文说就行",
+  "status.stale": "游戏更新过了，要重建",
+  "update.banner": "游戏数据在你装这些模组之后更新过：{names}。"
+    + "它们带着旧的一整份 .dat，会把更新盖掉；重建一次就好。",
+  "btn.form": "✎ 填表",
+  "pick.unit": "单位",
+  "pick.search": "在这个列表里找…"
+}};
+
 const FORMS = {
   ok: true,
   forms: [
@@ -381,6 +432,10 @@ const rebuilt = [];
 // say something when the game is open and NOTHING when it is closed (a warning
 // shown always is a warning nobody reads).
 let RUNNING = true;
+// Whether `/api/locale` answers.  `false` reproduces the case the page's inline
+// Chinese exists for: the fetch failed, and stale wording beats blank headings.
+let LOCALE_FAIL = false;
+let STR_BEFORE = 0;
 // The second folder a split build installs (null = this build is one mod).
 let UI_HALF = null;
 const RUNNING_TEXT = "游戏正开着。它退出时会用自己记得的模组列表覆盖 mod-status.json，"
@@ -506,6 +561,14 @@ const sandbox = {
     if (url.indexOf("/api/forms") === 0) {
       return { json: async () => FORMS };
     }
+    // The screen's own wording, captured from the live `/api/locale`.  A stub
+    // that answered `{ok: true}` with no `strings` would let `applyLocale()`
+    // return early, and every wording assertion below would stay green while
+    // the page showed its stale inline copy.
+    if (url.indexOf("/api/locale") === 0) {
+      if (LOCALE_FAIL) throw new Error("locale route unreachable");
+      return { json: async () => LOCALE };
+    }
     // A parse answer is also forwarded to renderClauses, so the stub has to
     // hand back a real one rather than the generic meta-shaped object.
     if (url.indexOf("/api/parse") === 0) {
@@ -626,6 +689,7 @@ const fn = new Function(
   "formValues: formValues, renderFormPreview: renderFormPreview, " +
   "FSHAPE: () => FSHAPE, FORM_NODES: () => FSLOT_NODES, " +
   "boot: boot, " +
+  "loadLocale: loadLocale, applyLocale: applyLocale, T: T, STR: () => STR, " +
   "setLast: (v) => { LAST = v; }};");
 const page = fn(sandbox.document, sandbox.fetch, sandbox.setTimeout,
                 sandbox.clearTimeout, sandbox.console, sandbox.JSON);
@@ -1400,6 +1464,69 @@ function repairChecks() {
                     finish(); });
 }
 
+// ---- the screen's own wording ---------------------------------------------
+// Two failures this pins, and neither is cosmetic:
+//   (1) `applyLocale()` that writes the KEY when the table lacks an entry turns
+//       every heading into `say.heading` -- and a page whose text is keys is
+//       still "rendering", so nothing else here would notice.
+//   (2) A string that still holds `{version}` must not be written: the number
+//       lives in code that knows it, and pasting the raw template would put
+//       `{civs} 个文明` in front of a player.
+// The harness has no HTML body, so the tagged nodes are built here the same way
+// the file declares them -- `document.createElement` + `data-i18n`.
+function taggedNode(tag, key, text, attr) {
+  const n = sandbox.document.createElement(tag);
+  n.setAttribute(attr || "data-i18n", key);
+  n.textContent = text;
+  ids.preview.appendChild(n);
+  return n;
+}
+
+function localeChecks() {
+  // A failed fetch must leave the inline Chinese alone: the page cannot reach
+  // the table at all here, and blank headings would be worse than stale ones.
+  LOCALE_FAIL = true;
+  STR_BEFORE = Object.keys(page.STR()).length;
+  return page.loadLocale().then(() => {
+    const h = taggedNode("h2", "say.heading", "你想要什么改动？用中文说就行");
+    page.applyLocale();
+    check("a failed locale fetch leaves the inline wording alone",
+          h.textContent === "你想要什么改动？用中文说就行",
+          JSON.stringify(h.textContent));
+    check("...and the page knows it has no table",
+          Object.keys(page.STR()).length === 0,
+          JSON.stringify(Object.keys(page.STR()).length));
+    LOCALE_FAIL = false;
+    return page.loadLocale();
+  }).then(() => {
+    page.applyLocale();
+    const h = taggedNode("h2", "say.heading", "旧的一句话");
+    const ph = taggedNode("input", "pick.search", "", "data-i18n-ph");
+    ph.setAttribute("placeholder", "旧提示");
+    const templ = taggedNode("span", "page.version", "数据版本 54");
+    page.applyLocale();
+    check("the table's wording replaces the inline copy",
+          h.textContent === "你想要什么改动？用中文说就行",
+          JSON.stringify(h.textContent));
+    check("a placeholder is replaced too",
+          ph.getAttribute("placeholder") === "在这个列表里找…",
+          JSON.stringify(ph.getAttribute("placeholder")));
+    check("a string with a placeholder is left to the code that fills it",
+          templ.textContent === "数据版本 54",
+          JSON.stringify(templ.textContent));
+    const ghost = taggedNode("h2", "no.such.key", "原样留着");
+    page.applyLocale();
+    check("a key the table lacks shows its inline text, not the key",
+          ghost.textContent === "原样留着",
+          JSON.stringify(ghost.textContent));
+    check("the page fetched its wording from the route",
+          posted.some((p) => p.url.indexOf("/api/locale") === 0),
+          JSON.stringify(posted.map((p) => p.url).slice(-3)));
+    return Promise.resolve();
+  });
+}
+
+
 // ---- the 能做的事 list ---------------------------------------------------
 // A plugin adds intents to the schema and this box lists the schema, but the
 // sentence layer is hand-written: a plugin intent is reachable only through the
@@ -1436,7 +1563,7 @@ function intentListChecks() {
           String((ids.intents.children || []).map((n) => n.title).join(" "))
             .indexOf("/api/plan") >= 0,
           JSON.stringify(walk(ids.intents, []).map((n) => n.title)));
-    return aiChecks();
+    return localeChecks().then(() => aiChecks());
   }).catch((e) => { fails.push("the capability list threw: " + e.message);
                     console.log("FAIL the capability list threw :: " + e.stack);
                     finish(); });

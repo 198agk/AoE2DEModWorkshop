@@ -197,7 +197,7 @@
 </head>
 <body>
 <header>
-  <h1>帝国时代 2 DE · 模组工坊</h1>
+  <h1 data-i18n="page.heading">帝国时代 2 DE · 模组工坊</h1>
   <span class="ver" id="ver"></span>
   <span class="spacer"></span>
   <span class="ver" id="datinfo"></span>
@@ -210,33 +210,37 @@
         <div class="who" id="banner-msg"></div>
         <div class="note" id="banner-note"></div>
       </div>
-      <button id="btn-rebuild" class="primary">重建并重装</button>
+      <button id="btn-rebuild" class="primary" data-i18n="btn.rebuild">重建并重装</button>
     </div>
   </div>
   <div>
     <div class="box">
-      <h2>你想要什么改动？用中文说就行</h2>
+      <h2 data-i18n="say.heading">你想要什么改动？用中文说就行</h2>
       <div class="body">
-        <textarea id="say" placeholder="例如：
+        <textarea id="say" data-i18n-ph="say.placeholder" placeholder="例如：
 村民血量改成 1000
 弓箭手攻击力加 2
 给印加解锁蔷琵侦察兵
 波兰的伐木场木材成本减少 10
 把织布机和铸币术做成只能选一个
 照织布机做一个新科技叫铁匠学徒的手艺"></textarea>
+        <!-- No data-i18n here on purpose: this note carries two <code> samples,
+             and `applyLocale()` writes `textContent`, which would delete them.
+             A tag the pass cannot honour is a promise the markup is not keeping;
+             moving this sentence into the table means also moving the samples. -->
         <div class="hint">
           一句话一条，用「。」或换行分开。<code>改成/设为</code> 是赋值，
           <code>加/减</code> 是增量。识别不了的句子会告诉你为什么，不会瞎猜。
         </div>
         <div class="row end" style="margin-top:12px">
-          <button id="btn-form" class="chip">✎ 填表</button>
-          <button id="btn-pick" class="chip">▦ 看着选</button>
-          <button id="btn-ai" class="chip" style="display:none">✦ 让 AI 写成句子</button>
+          <button id="btn-form" class="chip" data-i18n="btn.form">✎ 填表</button>
+          <button id="btn-pick" class="chip" data-i18n="btn.pick">▦ 看着选</button>
+          <button id="btn-ai" class="chip" style="display:none" data-i18n="btn.ai">✦ 让 AI 写成句子</button>
           <span class="spacer"></span>
-          <button id="btn-parse" class="primary">读一下</button>
+          <button id="btn-parse" class="primary" data-i18n="btn.parse">读一下</button>
         </div>
         <div id="ai" style="display:none;margin-top:10px">
-          <div class="hint" id="ainote">
+          <div class="hint" data-i18n="ai.note" id="ainote">
             AI 只负责把你的话说成这个工具认得的句子，认不认、能不能做，
             仍然由下面那些同一条规则判断 —— 它不会直接改任何数据。
           </div>
@@ -252,44 +256,44 @@
                     background:#11151a;color:inherit;border:1px solid var(--line);
                     border-radius:4px"></select>
           </div>
-          <div class="hint">填好下面几格，这句话会写进上面的框里 —— 它和你自己打的那句
+          <div class="hint" data-i18n="form.note">填好下面几格，这句话会写进上面的框里 —— 它和你自己打的那句
             走的是同一条判断，工具不认识的说法它照样会拒。</div>
           <div class="fslots" id="fslots"></div>
           <div id="fpreview"></div>
           <div class="row end" style="margin-top:8px">
-            <button id="fuse" class="chip">写进上面的框</button>
+            <button id="fuse" class="chip" data-i18n="btn.use">写进上面的框</button>
           </div>
         </div>
 
         <div id="pick">
           <div class="tabs">
-            <button id="tab-unit" class="chip on">单位</button>
-            <button id="tab-tech" class="chip">科技</button>
-            <input type="text" id="pickq" placeholder="在这个列表里找…" style="flex:1">
+            <button id="tab-unit" class="chip on" data-i18n="pick.unit">单位</button>
+            <button id="tab-tech" class="chip" data-i18n="pick.tech">科技</button>
+            <input type="text" id="pickq" data-i18n-ph="pick.search" placeholder="在这个列表里找…" style="flex:1">
             <span class="hint" id="pickcount" style="margin:0"></span>
           </div>
-          <div class="hint">点一个图标，就把它填进上面的框里；也可以直接把它拖进上面的框。
+          <div class="hint" data-i18n="pick.note">点一个图标，就把它填进上面的框里；也可以直接把它拖进上面的框。
             有些东西游戏本身没有图，那些格子画成虚线框，仍然可以点。</div>
           <div class="pickscroll"><div class="grid" id="pickgrid"></div></div>
           <div class="row end" style="margin-top:8px">
-            <button id="pickmore" class="chip">再多看一些</button>
+            <button id="pickmore" class="chip" data-i18n="btn.more">再多看一些</button>
           </div>
         </div>
       </div>
     </div>
 
     <div class="box" style="margin-top:16px">
-      <h2>预览 —— 还没动任何文件</h2>
+      <h2 data-i18n="preview.heading">预览 —— 还没动任何文件</h2>
       <div class="body" id="preview">
-        <div class="empty">上面写点什么，然后点「读一下」。</div>
+        <div class="empty" data-i18n="preview.empty">上面写点什么，然后点「读一下」。</div>
       </div>
       <div class="body" id="commit" style="display:none; border-top:1px solid var(--line)">
         <div class="row">
           <div style="flex:1">
-            <label class="hint">模组名字（游戏里显示的，最多 100 字节）</label>
+            <label class="hint" data-i18n="title.label">模组名字（游戏里显示的，最多 100 字节）</label>
             <input type="text" id="title">
           </div>
-          <button id="btn-build" class="primary" style="align-self:flex-end">生成并安装</button>
+          <button id="btn-build" class="primary" style="align-self:flex-end" data-i18n="btn.build">生成并安装</button>
         </div>
         <div class="hint" id="buildnote"></div>
       </div>
@@ -298,19 +302,19 @@
 
   <aside>
     <div class="box">
-      <h2>已安装的模组</h2>
-      <div class="body" id="mods"><div class="empty">读取中…</div></div>
+      <h2 data-i18n="mods.heading">已安装的模组</h2>
+      <div class="body" id="mods"><div class="empty" data-i18n="mods.loading">读取中…</div></div>
       <div class="body" style="border-top:1px solid var(--line);margin-top:10px;padding-top:10px">
-        <div class="hint" style="margin:0 0 8px">
+        <div class="hint" data-i18n="mods.note" style="margin:0 0 8px">
           社区模组如果自带一整份数据文件，游戏更新后它会把新内容盖回去。
           这里能把作者改过的东西在今天的数据上重做一遍，作者的其他文件原地保留。
         </div>
-        <button id="btn-repair" class="chip">检查自带数据文件的模组</button>
+        <button id="btn-repair" class="chip" data-i18n="btn.repair">检查自带数据文件的模组</button>
         <div id="repair"></div>
       </div>
     </div>
     <div class="box" style="margin-top:16px">
-      <h2>能做的事</h2>
+      <h2 data-i18n="repair.heading">能做的事</h2>
       <div class="body" id="intents" style="font-size:13px;color:var(--dim)"></div>
     </div>
   </aside>
@@ -323,6 +327,78 @@ const $ = (s) => document.querySelector(s);
 let META = null;
 let LAST = null;          // last successful parse payload
 let LAST_UPDATE = null;   // last /api/update-check payload
+
+// The screen's own wording.  Every sentence the page says about itself comes
+// from `aoe2mod/schema/locales/zh.json` via `/api/locale`; the Chinese still
+// inline in this file is a fallback for the case where that one fetch fails,
+// because a page rendering empty headings is worse than a page with slightly
+// stale ones.  `T("key", {n: 3})` is how this file spells wording, and it
+// returns the key when the table lacks it -- loud, which is what a missing
+// entry should be.
+let STR = {};
+function T(key, values) {
+  let text = STR[key];
+  if (text === undefined) return key;
+  if (values) {
+    text = text.replace(/\{([a-z_][a-z0-9_]*)\}/g, function (m, k) {
+      return (values[k] === undefined || values[k] === null)
+        ? m : String(values[k]);
+    });
+  }
+  return text;
+}
+
+// Fill the nodes that carry a key.  `data-i18n` replaces text, `-ph` a
+// placeholder, `-title` a tooltip.  Run once after the table arrives; the inline
+// Chinese stays in the file so a failed fetch still renders a usable screen.
+function applyLocale() {
+  // No table means the fetch failed.  Returning here is the whole point of
+  // keeping the Chinese inline: `T()` would otherwise write raw keys into every
+  // heading, which is strictly worse than slightly stale wording.
+  if (!Object.keys(STR).length) return;
+  document.querySelectorAll("[data-i18n]").forEach(function (n) {
+    const key = n.getAttribute("data-i18n");
+    // A key the table does not have leaves the inline Chinese in place.  Writing
+    // `T(key)` here would put the raw key on screen, and a heading reading
+    // `say.heading` is a worse screen than one with yesterday's sentence in it.
+    if (!(key in STR)) return;
+    const text = T(key);
+    // A string that still holds a placeholder belongs to code that has the
+    // value to fill it (the version, the civ count).  Writing it here would put
+    // `{civs}` on screen -- so the tagged node keeps its inline text and the
+    // renderer that knows the number owns that sentence.
+    if (text.indexOf("{") >= 0) return;
+    // `textContent` replaces the WHOLE subtree.  Three of the notes carry
+    // `<code>` samples the reader needs (`改成/设为`, `加/减`), and writing over
+    // them would delete the explanation while leaving a sentence that mentions
+    // it -- so a container is out of scope for this pass and keeps its markup.
+    if (n.children.length) return;
+    n.textContent = text;
+  });
+  document.querySelectorAll("[data-i18n-ph]").forEach(function (n) {
+    const key = n.getAttribute("data-i18n-ph");
+    if (!(key in STR)) return;
+    const text = T(key);
+    if (text.indexOf("{") >= 0) return;
+    n.setAttribute("placeholder", text);
+  });
+  document.querySelectorAll("[data-i18n-title]").forEach(function (n) {
+    const key = n.getAttribute("data-i18n-title");
+    if (!(key in STR)) return;
+    const text = T(key);
+    if (text.indexOf("{") >= 0) return;
+    n.title = text;
+  });
+}
+
+async function loadLocale() {
+  try {
+    const got = await api("/api/locale");
+    if (got && got.strings) STR = got.strings;
+  } catch (e) {
+    STR = {};                     // no table = the shipped screen, not a blank one
+  }
+}
 
 function toast(msg, kind) {
   const t = $("#toast");
@@ -353,18 +429,23 @@ function el(tag, cls, text) {
 
 // ---- boot -------------------------------------------------------------
 async function boot() {
+  // Wording first: every other sentence below asks the table for its text, and
+  // asking before it has loaded would print keys on screen for one frame.
+  await loadLocale();
+  applyLocale();
   try {
     META = await api("/api/meta");
   } catch (e) {
     $("#preview").innerHTML = "";
-    $("#preview").appendChild(el("div", "err", "连不上本地服务：" + e.message));
+    $("#preview").appendChild(el("div", "err",
+      T("page.offline", {error: e.message})));
     return;
   }
-  $("#ver").textContent = "数据版本 " + META.version;
+  $("#ver").textContent = T("page.version", {version: META.version});
   renderIntentList();
   renderMods(META.mods);
   // The .dat facts a player cares about, phrased as facts rather than fields.
-  $("#datinfo").textContent = META.civs.length + " 个文明 · 已就绪";
+  $("#datinfo").textContent = T("page.ready", {civs: META.civs.length});
   checkUpdates();
   aiBoot();
 }

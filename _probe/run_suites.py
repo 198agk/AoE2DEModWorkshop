@@ -480,6 +480,14 @@ SUITES = [
     # round trip measured; a filter or a re-sort in between would offer a
     # form the reader refuses, and nothing would say so until a click.
     r"_probe\test_forms_route.py",
+    # The screen's wording lives in one table now, and three separate things can
+    # rot it without raising anything: a tag naming a key the table lacks (the
+    # inline Chinese stays, so it looks fine), a tag moved onto a container
+    # (`textContent` then deletes the `<code>` samples the sentence talks about),
+    # and a status word that starts printing `status.frobnicated` instead of the
+    # machine value.  Each was measured by breaking one place and watching this
+    # file print a named failure.
+    r"_probe\test_locale.py",
 ]
 
 # Suites that are not Python.  The screen's script is JavaScript and no Python

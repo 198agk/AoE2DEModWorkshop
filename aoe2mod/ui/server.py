@@ -38,9 +38,24 @@ from aoe2mod import api as A
 from aoe2mod.game import civnames as CN
 from aoe2mod.mod import emitter as E
 from aoe2mod.ui import compose as CP
+from aoe2mod.ui import locale as LO
 from aoe2mod.ui import nl
 
 STATIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
+
+#: The wording of this screen, loaded once.  Read at import rather than per call
+#: because every sentence here is chrome -- a heading, a button, a hint -- and
+#: none of it changes while the process runs.  A plugin that wants different
+#: wording drops a file and restarts, which is the same deal the schema makes.
+_LOCALE = LO.load()
+
+
+def _LOCALE_TEXT(key, values=None):
+    """One screen string, substituted, with the key itself as the fallback."""
+    text = _LOCALE.get(key)
+    if text is None:
+        return key
+    return LO.fill(text, values)
 
 #: Exception class names that must NOT be printed in front of a player's
 #: sentence.  `_safe_plan` and `_guard` used to send "%s: %s" % (type(exc), exc),
@@ -382,8 +397,7 @@ class App(object):
         """
         got = self.tk.update_check()
         for row in got.get("rows") or []:
-            row["status_zh"] = STATUS_ZH.get(row.get("status"),
-                                             row.get("status") or "")
+            row["status_zh"] = status_zh(row.get("status"))
         got["banner"] = _banner(got)
         return {"ok": True, "update": got}
 
@@ -574,17 +588,17 @@ def _pair_rows(rows):
     return rows
 
 
-# Status words the update guard reports, in the language this screen is written
-# in.  They live here rather than in `mod/provenance.py` because that module is
-# machine-facing (its statuses are compared by tests and by callers), while these
-# strings are for reading.
-STATUS_ZH = {
-    "current": "跟得上",
-    "stale": "游戏更新过了，要重建",
-    "edited": "装着的文件被换过",
-    "unknown": "没有记录",
-    "no_dat": "不受影响",
-}
+# Status words the update guard reports.  They now come from the locale table
+# (`aoe2mod/schema/locales/zh.json`), so a heading and a status word live in the
+# same place and one nail can read both.  A thin function rather than a dict
+# because the fallback matters: a status this table has never heard of (a newer
+# `provenance.py`) must print its machine value, not the key `status.xyz`.
+def status_zh(status):
+    if not status:
+        return ""
+    key = "status.%s" % status
+    text = _LOCALE.get(key)
+    return text if text is not None else str(status)
 
 
 def _banner(got):
@@ -598,9 +612,8 @@ def _banner(got):
     if stale:
         names = "、".join((r.get("name") or "?") for r in stale[:3])
         more = "" if len(stale) <= 3 else "等 %d 个" % len(stale)
-        return ("游戏数据在你装这些模组之后更新过：%s%s。"
-                "它们带着旧的一整份 .dat，会把更新盖掉；重建一次就好。"
-                % (names, more))
+        return _LOCALE_TEXT(
+            "update.banner", {"names": names + more})
     return None
 
 
@@ -678,6 +691,15 @@ def make_handler(app):
                 return _json(self, {"ok": False, "error": "no such file"}, 404)
             if path == "/api/meta":
                 return self._guard(lambda: app.meta())
+            if path == "/api/locale":
+                # The screen's own wording, so the page holds no Chinese prose of
+                # its own.  Same reasoning as `/api/forms`: the table can change
+                # between two page loads (a plugin can drop a locale file), and a
+                # page that baked the old words in would be the one place that
+                # cannot be corrected by editing data.
+                loc = _query(self.path).get("locale", [LO.DEFAULT_LOCALE])[0]
+                return self._guard(lambda: {
+                    "ok": True, "locale": loc, "strings": LO.load(loc)})
             if path == "/api/forms":
                 return self._guard(lambda: app.forms(
                     _query(self.path).get("intent", [None])[0]))
