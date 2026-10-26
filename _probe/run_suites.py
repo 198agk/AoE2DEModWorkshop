@@ -500,6 +500,11 @@ SUITES = [
     # short -- because that intent was mentioned lower down.  A mention is what a
     # search finds; a row is what a stranger reads.
     r"_probe\test_readme_table.py",
+    # project.json is generated from the live schema; this rows the two ways it
+    # can lie -- a file nobody regenerated, and a generator that is wrong the
+    # same way every time (which `--check` cannot see, because the file does
+    # equal what the generator produces).
+    r"_probe\test_project_json.py",
 ]
 
 # Suites that are not Python.  The screen's script is JavaScript and no Python
