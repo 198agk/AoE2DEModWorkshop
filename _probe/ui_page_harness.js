@@ -404,6 +404,18 @@ const FORMS = {
   ],
   op_choices: ["改成", "加", "减"],
 };
+// Saved sentences.  Two entries on purpose: one that the reader accepts and one
+// whose sentence is nonsense, because the list must show what is STORED, not what
+// the reader would accept -- a list that quietly hid the second one would look
+// tidier and would be lying about what the file holds.
+const RECIPES = {ok: true, file: "C:\\Users\\x\\AppData\\Local\\aoe2de-mod-workshop\\recipes.json",
+  recipes: [
+    { name: "我的伐木场", sentences: ["波兰的伐木场木材成本减少 10", "村民血量改成1000"],
+      count: 2, saved_at: "2026-10-26 10:31", note: "" },
+    { name: "旧的写法", sentences: ["把村民血量变成很多"], count: 1,
+      saved_at: "2026-10-20 08:02", note: "" },
+  ]};
+
 const UPDATE = {
   stale: {
     ok: true, state_dir: "C:\\Users\\x\\AppData\\Local\\aoe2de-mod-workshop",
@@ -541,6 +553,10 @@ let PARSE_ANSWER = FIXTURES.mixed;
 
 // ---- run the real script -------------------------------------------------
 const posted = [];
+let RECIPE_ANSWER = RECIPES;
+let RECIPES_FAIL = false;
+const savedNow = [];
+const forgotten = [];
 const sandbox = {
   document,
   fetch: async (url, opt) => {
@@ -589,6 +605,37 @@ const sandbox = {
       return { json: async () => ({ ok: true, manifest: { mod_dir: "/tmp/x",
         info: { Title: BUILT_TITLE }, sprite_refusals: DROPPED,
         warnings: BUILD_WARNINGS } }) };
+    }
+    // Saved sentences.  The route is read on boot and after every save/delete, so
+    // the stub's answer is a live variable: a page that cached the first response
+    // and never re-read would pass a fixed stub and fail on screen.
+    if (url.indexOf("/api/recipes") === 0) {
+      if (RECIPES_FAIL) throw new Error("recipes route unreachable");
+      return { json: async () => RECIPE_ANSWER };
+    }
+    if (url.indexOf("/api/recipe-forget") === 0) {
+      const body = opt && opt.body ? JSON.parse(opt.body) : {};
+      forgotten.push(body.name);
+      RECIPE_ANSWER = { ok: true, recipes: (RECIPE_ANSWER.recipes || [])
+        .filter((r) => r.name !== body.name) };
+      return { json: async () => ({ ok: true, removed: true }) };
+    }
+    if (url.indexOf("/api/recipe") === 0) {
+      const body = opt && opt.body ? JSON.parse(opt.body) : {};
+      savedNow.push(body);
+      // Answer with the server's own two shapes: a refusal for a bad name (so the
+      // page has to print the reason rather than assume success), and a stored row
+      // for a good one.
+      if (!body.name || !(body.sentences || []).length) {
+        return { json: async () => ({ ok: false,
+          error: "配方要有个名字，不然下次没法叫它出来。" }) };
+      }
+      const row = { name: body.name, sentences: body.sentences,
+                    count: body.sentences.length, saved_at: "2026-10-26 10:50",
+                    note: "" };
+      RECIPE_ANSWER = { ok: true, recipes: (RECIPE_ANSWER.recipes || [])
+        .filter((r) => r.name !== body.name).concat([row]) };
+      return { json: async () => ({ ok: true, recipe: row }) };
     }
     if (url.indexOf("/api/update-check") === 0) {
       // The route wraps its answer the way the server does ({ok, update}); a stub
@@ -690,6 +737,7 @@ const fn = new Function(
   "FSHAPE: () => FSHAPE, FORM_NODES: () => FSLOT_NODES, " +
   "boot: boot, " +
   "loadLocale: loadLocale, applyLocale: applyLocale, T: T, STR: () => STR, " +
+  "loadRecipes: loadRecipes, renderRecipes: renderRecipes, RECIPES: () => RECIPES, " +
   "setLast: (v) => { LAST = v; }};");
 const page = fn(sandbox.document, sandbox.fetch, sandbox.setTimeout,
                 sandbox.clearTimeout, sandbox.console, sandbox.JSON);
@@ -1563,10 +1611,102 @@ function intentListChecks() {
           String((ids.intents.children || []).map((n) => n.title).join(" "))
             .indexOf("/api/plan") >= 0,
           JSON.stringify(walk(ids.intents, []).map((n) => n.title)));
-    return localeChecks().then(() => aiChecks());
+    return localeChecks().then(() => recipeChecks());
   }).catch((e) => { fails.push("the capability list threw: " + e.message);
                     console.log("FAIL the capability list threw :: " + e.stack);
                     finish(); });
+}
+
+// ---- the saved sentences --------------------------------------------------
+// Three ways this panel can lie, and each of them looks like success:
+//   (1) save failing and the list still drawing the row, so the player believes
+//       a name exists that will be gone after a restart;
+//   (2) "use this recipe" APPENDING to the box, so the reader sees five sentences
+//       when three were meant -- and the extra two are whatever was there before;
+//   (3) an empty box or an empty name being saved anyway, which produces a name
+//       that rebuilds nothing.
+function recipeChecks() {
+  RECIPE_ANSWER = RECIPES;
+  return page.loadRecipes().then(() => {
+    const names = listNames();
+    check("every stored name is drawn",
+          names.length === 2 && names.indexOf("我的伐木场") >= 0
+          && names.indexOf("旧的写法") >= 0, JSON.stringify(names));
+    const flat = text(ids.rlist);
+    check("the list shows the sentences, not just the name",
+          flat.indexOf("村民血量改成1000") >= 0, flat);
+    // A sentence the reader would refuse is still shown: the list reports what is
+    // in the file.  Hiding it would make the panel tidier and dishonest.
+    check("a sentence the reader would refuse is still listed",
+          flat.indexOf("把村民血量变成很多") >= 0, flat);
+
+    // (2) loading REPLACES the box.
+    ids.say.value = "先写一句占位";
+    const rows = walk(ids.rlist, []).filter((n) => text(n) === "用这几句");
+    return Promise.resolve(rows[0].onclick()).then(() => {
+      check("using a recipe replaces the box instead of stacking on it",
+            ids.say.value === "波兰的伐木场木材成本减少 10\n村民血量改成1000",
+            JSON.stringify(ids.say.value));
+
+      // (1) a bad save must not enter the list.
+      el("rname").value = "";
+      const before = listNames().length;
+      return Promise.resolve(ids.rsave.onclick()).then(() => {
+        check("saving without a name does not add a row",
+              listNames().length === before, JSON.stringify(listNames()));
+
+        // (3) an empty box must not be saved under a name either.
+        el("rname").value = "空的";
+        ids.say.value = "";
+        return Promise.resolve(ids.rsave.onclick()).then(() => {
+          check("an empty box is not saved under a name",
+                listNames().indexOf("空的") < 0, JSON.stringify(listNames()));
+          check("and neither attempt reached the route",
+                savedNow.filter((b) => !b.name || !b.sentences.length).length === 0,
+                JSON.stringify(savedNow));
+
+          // A real save does reach the route and the list is re-read after it.
+          el("rname").value = "新的名字";
+          ids.say.value = "村民血量改成1000";
+          return Promise.resolve(ids.rsave.onclick()).then(() => {
+            check("a real save posts the name and the sentences",
+                  savedNow.some((b) => b.name === "新的名字"
+                    && b.sentences.length === 1), JSON.stringify(savedNow));
+            check("...and the list is re-read rather than patched in place",
+                  listNames().indexOf("新的名字") >= 0, JSON.stringify(listNames()));
+
+            // Deleting goes through the route and the row disappears.
+            const del = walk(ids.rlist, []).filter((n) => text(n) === "删掉");
+            return Promise.resolve(del[0].onclick()).then(() => {
+              check("deleting a name removes its row",
+                    listNames().indexOf("我的伐木场") < 0,
+                    JSON.stringify(listNames()));
+              check("...by asking the route, not by editing the list",
+                    forgotten.indexOf("我的伐木场") >= 0,
+                    JSON.stringify(forgotten));
+              return Promise.resolve();
+            });
+          });
+        });
+      });
+    });
+  }).then(() => aiChecks())
+    .catch((e) => { fails.push("the recipe panel threw: " + e.message);
+                    console.log("FAIL the recipe panel threw :: " + e.stack);
+                    finish(); });
+}
+
+function listNames() {
+  return walk(ids.rlist, [])
+    .filter((n) => n.className === "rname")
+    .map((n) => n.textContent);
+}
+
+// `ids` only holds nodes the page itself asked for by id.  The recipe box is
+// reached the same way, so ask the document rather than reading a key that may
+// not exist yet (that was the `Cannot set properties of undefined` above).
+function el(key) {
+  return document.querySelector("#" + key);
 }
 
 // ---- the AI entry ---------------------------------------------------------

@@ -40,6 +40,7 @@ from aoe2mod.mod import emitter as E
 from aoe2mod.ui import compose as CP
 from aoe2mod.ui import locale as LO
 from aoe2mod.ui import nl
+from aoe2mod.ui import recipes as RC
 
 STATIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
 
@@ -157,6 +158,32 @@ class App(object):
         table = CP.load()
         return {"ok": True, "forms": CP.forms(intent, table),
                 "op_choices": table.get("op_choices") or []}
+
+    def recipes(self):
+        """The sentences this player saved under names.
+
+        A recipe stores sentences, never a built mod: a saved ``.dat`` would be a
+        snapshot of data the game can update underneath it, while a saved sentence
+        is rebuilt against whatever the game holds today.  The reader decides what
+        each sentence means either way, so a recipe is exactly as correct as the
+        reader on the day it runs -- and if the reader gets stricter, the recipe
+        fails at parse time instead of quietly building something else.
+        """
+        return {"ok": True, "recipes": RC.rows(), "file": RC.path()}
+
+    def save_recipe(self, name, sentences, note=""):
+        try:
+            row = RC.remember(name, sentences, note=note)
+        except RC.RecipeError as exc:
+            return {"ok": False, "error": str(exc)}
+        return {"ok": True, "recipe": {"name": (name or "").strip(),
+                                       "sentences": list(row["sentences"]),
+                                       "count": len(row["sentences"]),
+                                       "saved_at": row["saved_at"],
+                                       "note": row["note"]}}
+
+    def forget_recipe(self, name):
+        return {"ok": True, "removed": RC.forget(name)}
 
     def search(self, q, kind="unit", limit=25):
         return {"ok": True, "hits": self.tk.search(q, kind=kind, limit=limit)}
@@ -705,6 +732,8 @@ def make_handler(app):
                     _query(self.path).get("intent", [None])[0]))
             if path == "/api/mods":
                 return self._guard(lambda: app.mods())
+            if path == "/api/recipes":
+                return self._guard(lambda: app.recipes())
             if path == "/api/search":
                 q = _query(self.path).get("q", [""])[0]
                 kind = _query(self.path).get("kind", ["unit"])[0]
@@ -791,6 +820,12 @@ def make_handler(app):
                 return self._guard(lambda: app.repair_apply(payload["name"]))
             if path == "/api/ai-sentences":
                 return self._guard(lambda: app.ai_sentences(payload.get("text") or ""))
+            if path == "/api/recipe":
+                return self._guard(lambda: app.save_recipe(
+                    payload.get("name") or "", payload.get("sentences") or [],
+                    note=payload.get("note") or ""))
+            if path == "/api/recipe-forget":
+                return self._guard(lambda: app.forget_recipe(payload.get("name") or ""))
             return _json(self, {"ok": False, "error": "no such route"}, 404)
 
         def _guard(self, fn):

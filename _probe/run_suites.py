@@ -488,6 +488,13 @@ SUITES = [
     # machine value.  Each was measured by breaking one place and watching this
     # file print a named failure.
     r"_probe\test_locale.py",
+    # Named recipes: the sentences a player types every week, saved under a name.
+    # Saving a name and reading it back always works; the failure this file is
+    # written against is a stored sentence that the READER no longer accepts,
+    # sitting in the list looking exactly like a working one.  Its own first run
+    # crashed on a corrupt file instead of reporting it, and the reverse check
+    # could not see the indented `  FAIL` lines it prints -- both fixed here.
+    r"_probe\test_recipes.py",
 ]
 
 # Suites that are not Python.  The screen's script is JavaScript and no Python

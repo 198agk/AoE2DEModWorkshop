@@ -184,6 +184,18 @@
                                 border: 1px solid var(--line); border-radius: 4px; }
   #fpreview { margin-top: 10px; font-size: 13px; color: var(--gold);
               word-break: break-all; }
+  /* Saved sentences.  Always visible rather than behind a chip: if the list is
+     hidden, a player who saved three recipes last week cannot tell whether the
+     tool still has them, and "does it remember" is the whole promise. */
+  #recipe { margin-top: 14px; border-top: 1px solid var(--line); padding-top: 12px; }
+  #rlist { margin-top: 8px; display: flex; flex-direction: column; gap: 6px; }
+  .recipe { display: flex; align-items: flex-start; gap: 8px;
+            padding: 6px 8px; background: #11151a; border: 1px solid var(--line);
+            border-radius: 4px; }
+  .recipe .rbody { flex: 1; min-width: 0; }
+  .recipe .rname { font-size: 13px; }
+  .recipe .rsent { font-size: 11px; color: var(--dim); word-break: break-all; }
+  .recipe .rnone { font-size: 11px; color: var(--bad); }
   .pickscroll { max-height: 320px; overflow-y: auto; padding-right: 4px; }
   /* Dragging is the second half of "point instead of type": the cell has to
      advertise that it can be picked up. */
@@ -278,6 +290,25 @@
           <div class="row end" style="margin-top:8px">
             <button id="pickmore" class="chip" data-i18n="btn.more">再多看一些</button>
           </div>
+        </div>
+
+        <!-- Saved sentences.  What is stored is the SENTENCE, never a built mod:
+             a saved .dat would be a snapshot of data the game can update
+             underneath it, while a saved sentence is rebuilt against whatever
+             the game holds today.  Loading one rewrites the box, so the reader
+             judges it again on the way in -- a recipe is exactly as correct as
+             the reader on the day it runs. -->
+        <div id="recipe">
+          <div class="tabs">
+            <input type="text" id="rname" data-i18n-ph="recipe.name"
+                   placeholder="给这几句起个名字（例如「我的伐木场」）" style="flex:1">
+            <button id="rsave" class="chip" data-i18n="btn.save">记住这几句</button>
+          </div>
+          <div class="hint" data-i18n="recipe.note">
+            记住的是句子，不是已经生成的模组 —— 所以哪天游戏更新了，叫出这个名字、
+            再点一次「生成并安装」，它就是按当天的数据重建的。
+          </div>
+          <div id="rlist"></div>
         </div>
       </div>
     </div>
@@ -448,6 +479,10 @@ async function boot() {
   $("#datinfo").textContent = T("page.ready", {civs: META.civs.length});
   checkUpdates();
   aiBoot();
+  // The saved sentences are fetched AFTER meta, because a failure here must not
+  // cost the player the screen: `loadRecipes` writes its own reason into the list
+  // and returns, and nothing else depends on it.
+  loadRecipes();
 }
 
 // ---- did the game's data move under an installed mod? ------------------
@@ -1041,6 +1076,94 @@ $("#fuse").onclick = () => {
   ta.focus();
   ta.selectionStart = ta.selectionEnd = ta.value.length;
   toast("已填进上面的框，接着点「读一下」", "ok");
+};
+
+// ---- saved sentences --------------------------------------------------
+// Three ways this list can lie, all of them quiet:
+//   1. a recipe drawn from a stale in-memory copy after a save failed;
+//   2. loading one appending to the box instead of replacing it, so the reader
+//      sees five sentences when the player meant three;
+//   3. a name that was never saved being treated as saved "because the toast
+//      said ok".
+// So every path here goes through the route, the box is replaced wholesale, and
+// the list is re-read from the server rather than patched in place.
+let RECIPES = [];
+
+function recipeRow(r, reload) {
+  const row = el("div", "recipe");
+  const body = el("div", "rbody");
+  body.appendChild(el("div", "rname", r.name));
+  body.appendChild(el("div", "rsent", (r.sentences || []).join(" ／ ")));
+  row.appendChild(body);
+  const use = el("button", "chip", "用这几句");
+  use.onclick = () => {
+    const ta = $("#say");
+    // Replace, never append: "use this recipe" means the box now holds that
+    // recipe.  Appending would silently mix it with whatever was there.
+    ta.value = (r.sentences || []).join("\n");
+    ta.focus();
+    if (typeof PINS !== "undefined") PINS.length = 0;
+    toast("已放进上面的框，接着点「读一下」", "ok");
+    doParse();
+  };
+  row.appendChild(use);
+  const del = el("button", "chip", "删掉");
+  del.onclick = async () => {
+    try {
+      await api("/api/recipe-forget", {name: r.name});
+    } catch (e) {
+      toast("删不掉：" + e.message, "bad");
+      return;
+    }
+    await reload();
+  };
+  row.appendChild(del);
+  return row;
+}
+
+function renderRecipes(rows) {
+  RECIPES = rows || [];
+  const box = $("#rlist");
+  box.innerHTML = "";
+  if (!RECIPES.length) {
+    box.appendChild(el("div", "hint", "还没有记住的句子。写好几句、点「记住这几句」，它就会留在这儿。"));
+    return;
+  }
+  for (const r of RECIPES) box.appendChild(recipeRow(r, loadRecipes));
+}
+
+async function loadRecipes() {
+  let rows = [];
+  try {
+    rows = (await api("/api/recipes")).recipes || [];
+  } catch (e) {
+    $("#rlist").innerHTML = "";
+    $("#rlist").appendChild(el("div", "rnone", "读不到已记住的句子：" + e.message));
+    return;
+  }
+  renderRecipes(rows);
+}
+
+$("#rsave").onclick = async () => {
+  const name = $("#rname").value.trim();
+  const sentences = $("#say").value.split("\n").map((s) => s.trim()).filter(Boolean);
+  if (!name) {
+    toast("先给这几句起个名字", "bad");
+    return;
+  }
+  if (!sentences.length) {
+    toast("上面的框是空的，没有句子可以记", "bad");
+    return;
+  }
+  try {
+    await api("/api/recipe", {name, sentences});
+  } catch (e) {
+    toast("没记住：" + e.message, "bad");
+    return;
+  }
+  $("#rname").value = "";
+  toast("记住了：" + name, "ok");
+  await loadRecipes();
 };
 
 // ---- parse ------------------------------------------------------------
