@@ -5,331 +5,440 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>帝国时代 2 DE · 模组工坊</title>
 <style id="aoe2mod-legible">
-  /* ---- tokens ------------------------------------------------------------ */
+  /* ==========================================================================
+     Tokens.  The ONLY place a colour literal may appear (DESIGN.md §1): every
+     rule below refers to these names, so changing the palette is one block.
+     ========================================================================== */
   :root {
     --bg: #f6f8fa;
     --panel: #ffffff;
-    --panel2: #f6f8fa;
-    --panel3: #eef1f4;
+    --panel-2: #f6f8fa;
+    --panel-3: #eef1f4;
     --line: #d8dee4;
     --line-strong: #c2c9d1;
+
     --text: #1f2328;
     --text-2: #57606a;
     --text-3: #6e7781;
+
     --accent: #2563eb;
     --accent-soft: #dde8fd;
     --accent-line: #9db8f5;
+    --accent-hover: #1d4fd0;
+    --accent-ink: #12386f;
+
     --ok: #1a7f37;
     --ok-soft: #dafbe1;
     --bad: #cf222e;
     --bad-soft: #ffebe9;
     --warn: #9a6700;
     --warn-soft: #fff8c5;
-    --gold: #9a6700;
-    --sunk: #eef1f4;
+    --warn-line: #d4a72c;
+    --warn-ink: #7d4e00;
+
+    --on-dark: #ffffff;
+    --toast-bg: #24292f;
+    --field-dark: #11151a;
+    --switch-off: #ccd3da;
+
     --shadow: 0 1px 2px rgba(31,35,40,.06), 0 3px 8px rgba(31,35,40,.04);
-    --mono: ui-monospace, "Cascadia Mono", Consolas, monospace;
+
+    --fs-micro: 11px;
+    --fs-body: 13px;
+    --fs-title: 15px;
+    --fs-display: 17px;
+
+    --r-surface: 8px;
+    --r-control: 6px;
+    --r-pill: 999px;
   }
 
+  /* ==========================================================================
+     Base
+     ========================================================================== */
   * { box-sizing: border-box; }
-  html { -webkit-text-size-adjust: 100%; }
+  html { background: var(--bg); }
   body {
     margin: 0;
     background: var(--bg);
     color: var(--text);
-    font: 14px/1.6 system-ui, -apple-system, "Segoe UI", "Microsoft YaHei", "PingFang SC", sans-serif;
+    font: 400 var(--fs-body)/1.6 system-ui, -apple-system, "Segoe UI",
+          "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;
     -webkit-font-smoothing: antialiased;
   }
-  a { color: var(--accent); text-decoration: none; }
-  a:hover { text-decoration: underline; }
-  code, kbd { font-family: var(--mono); font-size: .92em; background: var(--panel3);
-              border: 1px solid var(--line); border-radius: 4px; padding: 1px 5px; }
-  ::selection { background: var(--accent-soft); }
-  ::-webkit-scrollbar { width: 10px; height: 10px; }
-  ::-webkit-scrollbar-thumb { background: #ccd3da; border-radius: 6px; border: 2px solid var(--bg); }
-  ::-webkit-scrollbar-thumb:hover { background: #b6bfc8; }
+  h1, h2, h3 { margin: 0; font-weight: 600; }
+  p { margin: 0; }
+  code, kbd {
+    font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+    font-size: var(--fs-micro);
+    background: var(--panel-3);
+    border-radius: var(--r-control);
+    padding: 2px 6px;
+  }
+  ::-webkit-scrollbar { width: 12px; height: 12px; }
+  ::-webkit-scrollbar-thumb {
+    background: var(--line-strong);
+    border: 3px solid var(--bg);
+    border-radius: var(--r-pill);
+  }
+  ::-webkit-scrollbar-thumb:hover { background: var(--text-3); }
+  ::-webkit-scrollbar-track { background: transparent; }
 
-  /* ---- header ------------------------------------------------------------ */
+  /* ==========================================================================
+     Header
+     ========================================================================== */
   header {
-    position: sticky; top: 0; z-index: 20;
-    display: flex; align-items: center; gap: 14px;
+    display: flex; align-items: center; gap: 8px;
     padding: 12px 24px;
     background: var(--panel);
     border-bottom: 1px solid var(--line);
   }
-  header h1 { margin: 0; font-size: 15px; font-weight: 650; letter-spacing: .01em; }
-  header .ver { color: var(--text-3); font-size: 12px; }
-  header .spacer { flex: 1; }
-  header .status { color: var(--text-2); font-size: 12px; }
+  header h1 { font-size: var(--fs-title); font-weight: 600; }
+  header .ver { font-size: var(--fs-micro); color: var(--text-3); }
+  .spacer { flex: 1; }
 
-  /* ---- layout ------------------------------------------------------------ */
-  /* No rule existed for this element, so it fell back to its automatic
-     minimum size -- the widest child -- and overflowed its grid track
-     without a scrollbar to say so. */
-  aside { min-width: 0; }
+  /* ==========================================================================
+     Layout.  Every grid/flex child gets an explicit min-width:0 -- the reason
+     the right column used to overflow silently (DESIGN.md §6).
+     ========================================================================== */
   main {
     display: grid;
     grid-template-columns: minmax(0, 1fr) 384px;
-    gap: 20px;
+    gap: 16px;
     align-items: start;
     max-width: 1560px;
     margin: 0 auto;
-    padding: 20px 24px 56px;
+    padding: 24px 24px 48px;
   }
-  /* 1237 px is what the real window gets (measured 2026-10-26); at that
-     width a 384 px column has the module rows' own width taken out of it
-     and the buttons fall off the edge.  Narrow the column first, then
-     collapse. */
+  main > div { min-width: 0; }
+  aside { min-width: 0; }
   @media (max-width: 1320px) {
-    main { grid-template-columns: minmax(0, 1fr) 340px; gap: 16px; }
+    main { grid-template-columns: minmax(0, 1fr) 340px; gap: 12px; }
   }
   @media (max-width: 1120px) {
     main { grid-template-columns: minmax(0, 1fr); }
   }
 
+  /* ==========================================================================
+     Card
+     ========================================================================== */
   .box {
+    min-width: 0;
     background: var(--panel);
     border: 1px solid var(--line);
-    border-radius: 10px;
+    border-radius: var(--r-surface);
     box-shadow: var(--shadow);
-    padding: 18px 20px 20px;
-    margin: 0 0 20px;
-    color: var(--text);
+    padding: 16px;
+    margin: 0;
   }
-  main > .box:last-child { margin-bottom: 0; }
+  .box + .box, main > aside > .box + .box { margin-top: 16px; }
   .box > h2 {
-    margin: 0 0 14px;
-    font-size: 15px;
-    font-weight: 650;
+    font-size: var(--fs-title);
+    line-height: 1.35;
+    font-weight: 600;
+    margin: 0 0 12px;
+  }
+  .box .body, .box .hint, .box p { font-size: var(--fs-body); line-height: 1.6; }
+  .hint { color: var(--text-2); font-size: var(--fs-body); margin: 12px 0 0; }
+  .empty { color: var(--text-3); padding: 6px 0; }
+
+  /* ==========================================================================
+     Rows and buttons
+     ========================================================================== */
+  .row { display: flex; align-items: center; gap: 8px; min-width: 0; }
+  .row + .row { margin-top: 8px; }
+  .row.end { justify-content: flex-end; margin-top: 12px; }
+  .row .field { flex: 1; min-width: 200px; }
+  .row .foot { align-self: flex-end; }
+
+  button {
+    font: inherit;
+    height: 28px;
+    padding: 0 12px;
+    display: inline-flex; align-items: center; justify-content: center;
+    white-space: nowrap;
     color: var(--text);
-    letter-spacing: .01em;
+    background: var(--panel);
+    border: 1px solid var(--line-strong);
+    border-radius: var(--r-control);
+    cursor: pointer;
   }
-  .box > h2::after { content: none; }
-  .box h2 { font-size: 15px; font-weight: 650; margin: 0 0 10px; }
-  .box .body, .box .hint, .box p { color: var(--text-2); font-size: 13px; line-height: 1.65; }
-  .box .hint { margin-top: 10px; }
-  .box .hint code { color: var(--text); }
-  .hint { color: var(--text-2); font-size: 13px; }
-  .hint code { color: var(--text); }
-  .err { color: var(--bad); }
-  .empty { color: var(--text-3); font-size: 13px; padding: 6px 0; }
-
-  /* ---- rows and controls -------------------------------------------------- */
-  .row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-  .row.end { justify-content: flex-end; }
-  .row + .row { margin-top: 10px; }
-  .spacer { flex: 1; }
+  button:hover { background: var(--panel-2); }
+  button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  button:disabled {
+    color: var(--text-3); background: var(--panel-2); cursor: default;
+  }
+  button.primary {
+    height: 30px; padding: 0 16px;
+    color: var(--on-dark);
+    background: var(--accent);
+    border-color: var(--accent);
+  }
+  button.primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
   .chip {
-    appearance: none; cursor: pointer;
-    padding: 5px 11px; font: inherit; font-size: 13px;
-    color: var(--text); background: var(--panel);
-    border: 1px solid var(--line-strong); border-radius: 6px;
+    height: 26px; padding: 0 12px;
+    background: transparent; border-color: var(--line);
+    color: var(--text-2);
   }
-  .chip:hover { background: var(--panel2); }
-  .chip.on { background: var(--accent-soft); border-color: var(--accent-line); color: #12386f; }
-
-  .box button {
-    appearance: none; cursor: pointer;
-    padding: 7px 14px; font: inherit; font-size: 13px; font-weight: 500;
-    color: var(--text); background: var(--panel);
-    border: 1px solid var(--line-strong); border-radius: 6px;
-  }
-  .box button:hover { background: var(--panel2); }
-  .box button:active { background: var(--panel3); }
-  .box button:disabled { color: var(--text-3); background: var(--panel2); cursor: default; }
-  .box button.primary {
-    background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600;
-  }
-  .box button.primary:hover { background: #1d4fd0; border-color: #1d4fd0; }
-  button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible {
-    outline: 2px solid var(--accent); outline-offset: 1px;
+  .chip:hover { background: var(--panel-2); color: var(--text); }
+  .chip.on {
+    color: var(--accent-ink);
+    background: var(--accent-soft);
+    border-color: var(--accent-line);
   }
 
-  .box input[type=text], .box textarea, .box select {
-    font: inherit; font-size: 13px; color: var(--text); background: var(--panel);
-    border: 1px solid var(--line-strong); border-radius: 6px; padding: 7px 10px;
+  /* ==========================================================================
+     Fields
+     ========================================================================== */
+  .box input, .box textarea, .box select {
+    font: inherit;
+    color: var(--text);
+    background: var(--panel);
+    border: 1px solid var(--line-strong);
+    border-radius: var(--r-control);
+    padding: 0 8px;
+    min-width: 0;
   }
-  .box input[type=text]:focus, .box textarea:focus { border-color: var(--accent); }
-  .box textarea { width: 100%; resize: vertical; line-height: 1.7; }
-
-  .tabs { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
-  .tabs button {
-    padding: 5px 11px; font-size: 13px; border-radius: 6px;
-    background: var(--panel); border: 1px solid var(--line-strong); color: var(--text-2);
+  .box input, .box select { height: 28px; }
+  /* Six example lines above need room to be READ as examples; a 2-row box
+     clips three of them and looks broken rather than empty. */
+  .box textarea { padding: 8px; line-height: 1.6; width: 100%;
+                  min-height: 132px; resize: vertical; }
+  .box input:focus, .box textarea:focus, .box select:focus {
+    outline: none; border-color: var(--accent);
+    box-shadow: 0 0 0 2px var(--accent-soft);
   }
-  .tabs button.on { background: var(--accent-soft); border-color: var(--accent-line); color: #12386f; font-weight: 600; }
-  .tabs input[type=text] { flex: 1; min-width: 120px; }
+  .tabs { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  .tabs input[type=text], .tabs select { flex: 1; min-width: 120px; }
+  .tabs .hint { margin: 0; }
 
-  /* ---- clauses (the preview list) ---------------------------------------- */
+  /* ==========================================================================
+     Clauses -- the preview list
+     ========================================================================== */
   .clause {
     display: flex; gap: 12px; align-items: flex-start;
-    padding: 11px 0; border-top: 1px solid var(--line);
+    padding: 12px 0;
+    border-top: 1px solid var(--line);
   }
   .clause:first-of-type { border-top: 0; }
   .clause .cbody { flex: 1; min-width: 0; }
-  .clause .ico { width: 44px; height: 44px; flex: none; border-radius: 6px;
-                 background: var(--panel2); image-rendering: pixelated; }
-  .clause .sent { font-size: 13px; color: var(--text-3); }
-  .clause .main { font-size: 14px; color: var(--text); margin-top: 3px; }
-  .clause .meta { font-size: 12px; color: var(--text-2); margin-top: 5px;
-                  display: flex; gap: 12px; flex-wrap: wrap; }
-  .clause .why { font-size: 12.5px; color: var(--bad); margin-top: 5px; }
-  .clause.ok .main { color: var(--text); }
+  .clause .ico {
+    width: 44px; height: 44px; flex: none;
+    border-radius: var(--r-control);
+    background: var(--panel-2);
+    image-rendering: pixelated;
+  }
+  .clause .sent { font-size: var(--fs-micro); color: var(--text-3); }
+  .clause .main { font-size: var(--fs-body); color: var(--text); margin-top: 2px; }
+  .clause .meta {
+    font-size: var(--fs-micro); color: var(--text-2);
+    margin-top: 6px; display: flex; gap: 12px; flex-wrap: wrap;
+  }
+  .clause .why { font-size: var(--fs-micro); color: var(--bad); margin-top: 6px; }
   .clause.bad .main { color: var(--bad); }
-  .stat { font-size: 12px; padding: 1px 7px; border-radius: 20px;
-          background: var(--ok-soft); color: var(--ok); }
-  .stat.bad { background: var(--bad-soft); color: var(--bad); }
-  .stat.ok { background: var(--ok-soft); color: var(--ok); }
-  .cands { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 7px; }
-  .cands button { padding: 3px 9px; font-size: 12px; }
 
-  /* ---- detail panel, command card, icon grid ----------------------------- */
+  .stat {
+    font-size: var(--fs-micro); padding: 2px 8px;
+    border-radius: var(--r-pill);
+    background: var(--ok-soft); color: var(--ok);
+  }
+  .stat.bad { background: var(--bad-soft); color: var(--bad); }
+
+  .cands { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+  .cands button { height: 24px; padding: 0 8px; font-size: var(--fs-micro); }
+
+  /* ==========================================================================
+     Detail panel
+     ========================================================================== */
   .detailrow { border-top: 1px solid var(--line); }
-  .detail { padding: 10px 0 2px; }
-  .detailhead { display: flex; gap: 10px; align-items: center; margin-bottom: 6px; }
-  .detailhead .name { font-weight: 600; font-size: 13.5px; }
-  .detailtext { font-size: 13px; color: var(--text-2); line-height: 1.7; }
+  .detail { padding: 12px 0 4px; }
+  .detailhead { display: flex; gap: 8px; align-items: center; margin-bottom: 6px; }
+  .detailhead .name { font-weight: 600; font-size: var(--fs-body); }
+  .detailtext { font-size: var(--fs-body); color: var(--text-2); line-height: 1.6; }
   .detailtext.dim { color: var(--text-3); }
   .detailtext.why { color: var(--bad); }
 
-  .card { display: flex; gap: 8px; flex-wrap: wrap; padding: 12px 0 2px; }
-  .tile { width: 74px; display: flex; flex-direction: column; align-items: center; gap: 3px; }
+  /* ==========================================================================
+     Command card (the tiles that mimic the game's bottom-left card)
+     ========================================================================== */
+  .card { display: flex; gap: 8px; flex-wrap: wrap; padding: 12px 0 4px; }
+  .tile { width: 72px; display: flex; flex-direction: column; align-items: center; gap: 4px; }
   .tile .frame {
-    width: 58px; height: 58px; display: grid; place-items: center;
-    background: var(--panel2); border: 1px solid var(--line); border-radius: 8px;
+    width: 56px; height: 56px; display: grid; place-items: center;
     position: relative; overflow: hidden;
+    background: var(--panel-2);
+    border: 1px solid var(--line);
+    border-radius: var(--r-surface);
   }
   .tile.good .frame { border-color: var(--accent-line); background: var(--accent-soft); }
-  .tile img { width: 52px; height: 52px; image-rendering: pixelated; }
-  .tile .noimg { color: var(--text-3); font-size: 18px; }
+  .tile img { width: 48px; height: 48px; image-rendering: pixelated; }
+  .tile .noimg { color: var(--text-3); font-size: var(--fs-title); }
   .tile .slot {
     position: absolute; top: 0; right: 0;
-    background: var(--accent); color: #fff; font-size: 10px; font-weight: 700;
-    line-height: 14px; min-width: 14px; text-align: center; border-bottom-left-radius: 6px;
+    background: var(--accent); color: var(--on-dark);
+    font-size: var(--fs-micro); line-height: 16px; min-width: 16px;
+    text-align: center; border-bottom-left-radius: var(--r-control);
   }
-  .tile .bar { width: 46px; height: 3px; background: var(--line); border-radius: 2px; overflow: hidden; }
+  .tile .bar { width: 44px; height: 4px; background: var(--line); border-radius: var(--r-pill); overflow: hidden; }
   .tile .bar i { display: block; height: 100%; width: 100%; background: var(--ok); }
   .tile.bad .bar i { background: var(--bad); }
   .tile .cap {
-    font-size: 10.5px; color: var(--text-2); max-width: 74px;
+    font-size: var(--fs-micro); color: var(--text-2); max-width: 72px;
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   }
 
+  /* ==========================================================================
+     Icon picker
+     ========================================================================== */
   .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(62px, 1fr)); gap: 6px; }
   .cell {
     display: flex; flex-direction: column; align-items: center; gap: 2px;
-    padding: 5px 2px; border-radius: 6px; cursor: grab;
-    border: 1px solid transparent; background: var(--panel2);
+    padding: 4px 2px;
+    border: 1px solid transparent; border-radius: var(--r-control);
+    background: var(--panel-2);
+    cursor: grab;
   }
   .cell:hover { border-color: var(--accent-line); background: var(--accent-soft); }
   .cell:active { cursor: grabbing; }
   .cell.dragging { opacity: .45; }
   .cell img { width: 40px; height: 40px; image-rendering: pixelated; }
   .cell .nm {
-    font-size: 10.5px; color: var(--text-2); max-width: 100%;
+    font-size: var(--fs-micro); color: var(--text-2); max-width: 100%;
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   }
   .cell.noicon .blank {
     width: 40px; height: 40px; display: grid; place-items: center;
-    border: 1px dashed var(--line-strong); border-radius: 6px;
-    color: var(--text-3); font-size: 15px;
+    border: 1px dashed var(--line-strong); border-radius: var(--r-control);
+    color: var(--text-3); font-size: var(--fs-title);
   }
-  .pickscroll { max-height: 320px; overflow-y: auto; }
+  .pickscroll { max-height: 320px; overflow-y: auto; margin-top: 8px; }
 
-  /* ---- forms (the sentence builder) -------------------------------------- */
-  .fslots { display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end; margin-top: 10px; }
+  /* ==========================================================================
+     Sentence builder
+     ========================================================================== */
+  .fslots { display: flex; gap: 8px; flex-wrap: wrap; align-items: flex-end; margin-top: 12px; }
   .fslot { display: flex; flex-direction: column; gap: 4px; min-width: 104px; }
-  .fslot label { font-size: 12px; color: var(--text-2); }
-  .fslot input, .fslot select { padding: 6px 9px; font-size: 13px; width: 100%; }
+  .fslot label { font-size: var(--fs-micro); color: var(--text-2); }
+  .fslot input, .fslot select { width: 100%; }
   #fpreview {
-    margin-top: 12px; padding: 10px 12px; font-size: 13.5px;
-    color: var(--text); background: var(--panel2);
-    border: 1px dashed var(--line-strong); border-radius: 8px;
+    margin-top: 12px; padding: 12px;
+    font-size: var(--fs-body); color: var(--text);
+    background: var(--panel-2);
+    border: 1px dashed var(--line-strong);
+    border-radius: var(--r-surface);
     word-break: break-word;
   }
 
-  /* ---- recipes ------------------------------------------------------------ */
-  #rlist { margin-top: 10px; display: flex; flex-direction: column; gap: 8px; }
+  /* ==========================================================================
+     Saved sentences
+     ========================================================================== */
+  #rlist { margin-top: 12px; display: flex; flex-direction: column; gap: 8px; }
   .recipe {
-    display: flex; align-items: flex-start; gap: 10px;
-    padding: 9px 11px; background: var(--panel2);
-    border: 1px solid var(--line); border-radius: 8px;
+    display: flex; align-items: flex-start; gap: 8px;
+    padding: 8px 12px;
+    background: var(--panel-2);
+    border: 1px solid var(--line);
+    border-radius: var(--r-surface);
   }
   .recipe .rbody { flex: 1; min-width: 0; }
-  .recipe .rname { font-size: 13.5px; font-weight: 600; }
-  .recipe .rsent { font-size: 12px; color: var(--text-2); word-break: break-word; margin-top: 2px; }
-  .recipe .rnone { font-size: 12px; color: var(--bad); }
+  .recipe .rname { font-size: var(--fs-body); font-weight: 600; }
+  .recipe .rsent {
+    font-size: var(--fs-micro); color: var(--text-2);
+    margin-top: 2px; word-break: break-word;
+  }
+  .recipe .rnone { font-size: var(--fs-micro); color: var(--bad); }
 
-  /* ---- mods list ---------------------------------------------------------- */
+  /* ==========================================================================
+     Installed mods
+     ========================================================================== */
   .mod {
-    display: flex; align-items: center; gap: 10px;
-    padding: 8px 0; border-top: 1px solid var(--line); font-size: 13px;
+    display: flex; align-items: center; gap: 8px;
+    padding: 8px 0;
+    border-top: 1px solid var(--line);
+    font-size: var(--fs-body);
   }
   .mod:first-child { border-top: 0; }
-  .mod .move {
-  flex: none;
-  width: 22px;
-  padding: 1px 0;
-  font-size: 9px;
-  line-height: 1;
-  border: 1px solid var(--line);
-  background: var(--panel);
-  color: var(--dim);
-  cursor: pointer;
-}
-.mod .move:hover { border-color: var(--accent); color: var(--accent); }
-.mod .nm {
-    flex: 1; min-width: 0; overflow: hidden;
-    text-overflow: ellipsis; white-space: nowrap;
+  .mod .nm {
+    flex: 1; min-width: 0;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   }
-  .mod .nm.own { color: var(--accent); font-weight: 600; }
-  .mod .state { font-size: 11.5px; color: var(--text-3); }
+  .mod .nm.own { color: var(--accent-ink); font-weight: 600; }
+  .mod .nm.half { color: var(--text-2); }
+  .mod .state { font-size: var(--fs-micro); color: var(--text-3); }
+  .mod .move {
+    flex: none; width: 20px; height: 20px; padding: 0;
+    font-size: var(--fs-micro); line-height: 1;
+    color: var(--text-3);
+    border-color: var(--line);
+    background: var(--panel);
+  }
+  .mod .move:hover { color: var(--accent); border-color: var(--accent); }
   .remove {
-    appearance: none; cursor: pointer; flex: none;
-    font: inherit; font-size: 12px; padding: 3px 9px;
-    background: var(--panel); color: var(--text-2);
-    border: 1px solid var(--line-strong); border-radius: 6px;
+    flex: none; height: 24px; padding: 0 8px;
+    font-size: var(--fs-micro);
+    color: var(--text-2);
+    border-color: var(--line-strong);
+    background: var(--panel);
   }
   .remove:hover { color: var(--bad); border-color: var(--bad); }
-  .remove.armed { color: #fff; background: var(--bad); border-color: var(--bad); }
-  .box .remove, .box .remove.armed { border-radius: 6px; }
+  .remove.armed { color: var(--on-dark); background: var(--bad); border-color: var(--bad); }
+  .mods-foot { border-top: 1px solid var(--line); margin-top: 12px; padding-top: 12px; }
+  .mods-foot .hint { margin: 0 0 8px; }
 
+  /* The switch.  Track is a pill, the knob is a square-ish block; the hit area
+     extends 4px on every side without changing the drawn size. */
   .switch {
-    position: relative; flex: none; width: 34px; height: 20px; cursor: pointer;
-    background: #ccd3da; border-radius: 20px; transition: background .15s;
+    position: relative; flex: none; width: 34px; height: 20px;
+    padding: 0; cursor: pointer;
+    background: var(--switch-off);
+    border: 0; border-radius: var(--r-pill);
+    transition: background .15s;
   }
   .switch::after {
     content: ""; position: absolute; top: 2px; left: 2px;
-    width: 16px; height: 16px; border-radius: 50%;
-    background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.25); transition: left .15s;
+    width: 16px; height: 16px; border-radius: var(--r-pill);
+    background: var(--on-dark);
+    box-shadow: 0 1px 2px rgba(31,35,40,.25);
+    transition: left .15s;
+  }
+  .switch::before {
+    content: ""; position: absolute; inset: -4px;
   }
   .switch.on { background: var(--ok); }
   .switch.on::after { left: 16px; }
-  .box .switch { width: 34px; height: 20px; border-radius: 20px; }
-  .box .switch i { display: none; }
+  .switch i { display: none; }
 
-  /* ---- editor ------------------------------------------------------------- */
-  #editor { margin-top: 12px; color: var(--text); }
+  /* ==========================================================================
+     Editor.  Its own container so the split follows the CARD width, not the
+     window (DESIGN.md §6: the right column is 340px at 1237px and @media
+     cannot see it).
+     ========================================================================== */
+  #editor { margin-top: 12px; color: var(--text); container-type: inline-size; }
   #editor .edtabs { display: flex; gap: 6px; align-items: center; margin-bottom: 12px; }
   #editor .edtabs input { flex: 1; min-width: 120px; }
   #editor .edbody {
-    display: grid; grid-template-columns: 244px minmax(0, 1fr);
-    gap: 14px; height: 460px;
-  }
-  @media (max-width: 860px) {
-    #editor .edbody { grid-template-columns: minmax(0, 1fr); height: auto; }
-    #editor .edlist { max-height: 240px; }
+    display: grid; grid-template-columns: 240px minmax(0, 1fr);
+    /* one bounded row: without minmax(0,1fr) the row is content-sized, so the
+       list and the pane both grew to their 14000px content and never scrolled
+       (measured: edlist clientHeight 14000 inside a 660px max-height box). */
+    grid-template-rows: minmax(0, 1fr);
+    gap: 12px;
+    height: calc(100dvh - 220px); min-height: 420px;
+    overflow: hidden;
   }
   #editor .edlist {
-    overflow-y: auto; border: 1px solid var(--line);
-    border-radius: 8px; background: var(--panel2);
+    overflow-y: auto; min-width: 0; min-height: 0;
+    border: 1px solid var(--line);
+    border-radius: var(--r-surface);
+    background: var(--panel-2);
   }
   #editor .edrow {
     display: flex; align-items: center; gap: 8px;
-    padding: 5px 9px; cursor: pointer;
-    border-bottom: 1px solid var(--line); background: transparent;
+    padding: 4px 8px;
+    border-bottom: 1px solid var(--line);
+    cursor: pointer;
   }
-  #editor .edrow:hover { background: var(--panel3); }
+  #editor .edrow:hover { background: var(--panel-3); }
   #editor .edrow.on {
     background: var(--accent-soft);
     box-shadow: inset 3px 0 0 var(--accent);
@@ -337,101 +446,127 @@
   #editor .edrow img { width: 26px; height: 26px; flex: none; image-rendering: pixelated; }
   #editor .edrow .blank {
     width: 26px; height: 26px; flex: none; display: grid; place-items: center;
-    color: var(--text-3); font-size: 12px;
-    border: 1px dashed var(--line-strong); border-radius: 5px;
+    color: var(--text-3); font-size: var(--fs-micro);
+    border: 1px dashed var(--line-strong); border-radius: var(--r-control);
   }
   #editor .edrow .nm {
-    font-size: 13px; flex: 1; min-width: 0;
+    flex: 1; min-width: 0; font-size: var(--fs-body);
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   }
   #editor .edrow .id {
-    font-size: 11px; color: var(--text-3); flex: none;
+    flex: none; font-size: var(--fs-micro); color: var(--text-3);
     font-variant-numeric: tabular-nums;
   }
   #editor .edpane {
-    overflow-y: auto; border: 1px solid var(--line);
-    border-radius: 8px; background: var(--panel); padding: 14px 16px;
+    overflow-y: auto; min-width: 0; min-height: 0;
+    border: 1px solid var(--line);
+    border-radius: var(--r-surface);
+    background: var(--panel);
+    padding: 12px 16px;
   }
   #editor .edhead {
     display: flex; gap: 12px; align-items: center;
-    padding-bottom: 12px; border-bottom: 1px solid var(--line);
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--line);
   }
-  #editor .edhead img { width: 54px; height: 54px; image-rendering: pixelated;
-                        border-radius: 6px; background: var(--panel2); }
-  #editor .edhead .t { font-size: 16px; font-weight: 650; color: var(--text); }
-  #editor .edhead .s { font-size: 12px; color: var(--text-2); margin-top: 2px; }
-  #editor table.f { width: 100%; max-width: 620px; border-collapse: collapse; margin-top: 10px; }
+  #editor .edhead img {
+    width: 52px; height: 52px; image-rendering: pixelated;
+    border-radius: var(--r-control); background: var(--panel-2);
+  }
+  #editor .edhead .t { font-size: var(--fs-display); line-height: 1.3; font-weight: 650; }
+  #editor .edhead .s { font-size: var(--fs-micro); color: var(--text-2); margin-top: 2px; }
+  #editor table.f { width: 100%; max-width: 620px; border-collapse: collapse; margin-top: 12px; }
   #editor table.f th {
-    text-align: left; font-size: 12px; font-weight: 500; color: var(--text-3);
+    text-align: left; font-size: var(--fs-micro); font-weight: 400;
+    color: var(--text-3);
     padding: 4px 6px; border-bottom: 1px solid var(--line);
   }
-  #editor table.f td { padding: 4px 6px; font-size: 13px; border-bottom: 1px solid var(--panel2); }
+  #editor table.f td {
+    padding: 4px 6px; font-size: var(--fs-body);
+    border-bottom: 1px solid var(--panel-2);
+  }
   #editor table.f td.v {
-    color: var(--text); text-align: right; width: 96px;
+    width: 96px; text-align: right;
+    color: var(--text);
     font-variant-numeric: tabular-nums; font-weight: 600;
   }
-  #editor table.f td.v.none { color: var(--text-3); font-style: italic; font-weight: 400; }
+  #editor table.f td.v.none { color: var(--text-3); font-weight: 400; }
   #editor table.f td.e { display: flex; gap: 8px; align-items: center; }
-  #editor table.f input {
-    width: 84px; padding: 5px 8px; font-size: 13px;
-    background: var(--panel); color: var(--text);
-    border: 1px solid var(--line-strong); border-radius: 6px;
+  #editor table.f input { width: 84px; height: 26px; }
+  #editor table.f button { height: 26px; padding: 0 8px; font-size: var(--fs-micro); }
+  #editor .ednone { font-size: var(--fs-body); color: var(--text-3); margin-top: 12px; }
+  @container (max-width: 620px) {
+    #editor .edbody {
+      grid-template-columns: minmax(0, 1fr); grid-template-rows: auto auto;
+      height: auto; min-height: 0; overflow: visible;
+    }
+    #editor .edlist { max-height: 240px; }
   }
-  #editor table.f input:focus { border-color: var(--accent); }
-  #editor table.f button { padding: 5px 11px; font-size: 12.5px; }
-  #editor .ednone { color: var(--text-3); font-size: 13px; margin-top: 10px; }
+
+  #intents { font-size: var(--fs-body); color: var(--text-2); }
   #intents .bysentence { color: var(--text-3); }
 
-  /* ---- banner and toast --------------------------------------------------- */
+  /* ==========================================================================
+     Banner and toast
+     ========================================================================== */
   #banner {
-    display: none; grid-column: 1 / -1; gap: 14px; align-items: center;
-    padding: 12px 16px; margin-bottom: 4px;
-    background: var(--warn-soft); border: 1px solid #d4a72c; border-radius: 10px;
+    display: none; grid-column: 1 / -1;
+    gap: 12px; align-items: center;
+    padding: 12px 16px; margin-bottom: 12px;
+    background: var(--warn-soft);
+    border: 1px solid var(--warn-line);
+    border-radius: var(--r-surface);
   }
   #banner.open { display: flex; }
+  #banner .box { border: 0; box-shadow: none; background: transparent; padding: 0; }
   #banner .txt { flex: 1; min-width: 0; }
-  #banner .line { font-size: 13.5px; font-weight: 600; color: #7d4e00; }
-  #banner .who { font-size: 13px; color: var(--text); margin-top: 2px; word-break: break-word; }
-  #banner .note { font-size: 12px; color: #7d4e00; margin-top: 3px; }
+  #banner .line { font-size: var(--fs-body); font-weight: 600; color: var(--warn-ink); }
+  #banner .who { font-size: var(--fs-body); color: var(--text); margin-top: 2px; word-break: break-word; }
+  #banner .note { font-size: var(--fs-micro); color: var(--warn-ink); margin-top: 2px; }
 
   #toast {
-    position: fixed; left: 50%; bottom: 26px; transform: translate(-50%, 16px);
-    max-width: 76vw; padding: 10px 18px; border-radius: 10px;
-    font-size: 13.5px; color: #fff; background: #24292f;
-    box-shadow: 0 8px 24px rgba(0,0,0,.22);
-    opacity: 0; pointer-events: none; transition: opacity .16s, transform .16s; z-index: 60;
+    position: fixed; left: 50%; bottom: 24px; z-index: 60;
+    transform: translate(-50%, 16px);
+    max-width: 76vw; padding: 12px 16px;
+    font-size: var(--fs-body); color: var(--on-dark);
+    background: var(--toast-bg);
+    border-radius: var(--r-surface);
+    box-shadow: 0 4px 16px rgba(31,35,40,.24);
+    opacity: 0; pointer-events: none;
+    transition: opacity .16s, transform .16s;
   }
   #toast.show { opacity: 1; transform: translate(-50%, 0); }
-  #toast.ok { background: #1a7f37; }
-  #toast.bad { background: #cf222e; }
-  #toast.warn { background: #9a6700; }
-  /* The markup writes `class="toast"` on the same element the sheet styles by
-     id; both are kept so neither half can be renamed without the other. */
-  .toast { position: fixed; }
-  .toast.show { opacity: 1; }
+  #toast.ok { background: var(--ok); }
+  #toast.bad { background: var(--bad); }
+  #toast.warn { background: var(--warn); }
 
-  /* ---- misc --------------------------------------------------------------- */
+  /* ==========================================================================
+     Misc
+     ========================================================================== */
   #say.dragover { border-color: var(--accent); background: var(--accent-soft); }
   .link { color: var(--accent); cursor: pointer; }
   .link:hover { text-decoration: underline; }
   .warn { color: var(--warn); }
   .bad { color: var(--bad); }
   .ok { color: var(--ok); }
-  #form { display: none; margin-top: 12px; border-top: 1px solid var(--line); padding-top: 14px; }
-  #form.open { display: block; }
-  #pick { display: none; margin-top: 12px; border-top: 1px solid var(--line); padding-top: 14px; }
-  #pick.open { display: block; }
-  #recipe { margin-top: 16px; border-top: 1px solid var(--line); padding-top: 14px; }
-  .line { font-size: 13px; }
-  .txt { font-size: 13px; }
-  .note { font-size: 12px; color: var(--text-3); }
-  .who { font-size: 13px; }
+
+  #form, #pick { display: none; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); }
+  #form.open, #pick.open { display: block; }
+  #recipe { margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--line); }
+  #ai { margin-top: 12px; }
+  #commit { display: none; border-top: 1px solid var(--line); margin-top: 12px; padding-top: 12px; }
+  #commit.open { display: block; }
+  .hide { display: none; }
+
+  .line { font-size: var(--fs-body); }
+  .txt { font-size: var(--fs-body); }
+  .who { font-size: var(--fs-body); }
+  .note { font-size: var(--fs-micro); color: var(--text-3); }
   .name { font-weight: 600; }
-  .ver { color: var(--text-3); font-size: 12px; }
+  .ver { color: var(--text-3); font-size: var(--fs-micro); }
   .e { display: flex; gap: 8px; align-items: center; }
   .v { font-variant-numeric: tabular-nums; }
-  .id { font-size: 11px; color: var(--text-3); }
-  .cap, .bar, .frame, .slot, .noimg { }
+  .id { font-size: var(--fs-micro); color: var(--text-3); }
 </style>
 </head>
 <body>
@@ -449,7 +584,7 @@
         <div class="who" id="banner-msg"></div>
         <div class="note" id="banner-note"></div>
       </div>
-      <button id="btn-rebuild" class="primary" data-i18n="btn.rebuild">重建并重装</button>
+      <button id="btn-rebuild" data-i18n="btn.rebuild">重建并重装</button>
     </div>
   </div>
   <div>
@@ -471,35 +606,31 @@
           一句话一条，用「。」或换行分开。<code>改成/设为</code> 是赋值，
           <code>加/减</code> 是增量。识别不了的句子会告诉你为什么，不会瞎猜。
         </div>
-        <div class="row end" style="margin-top:12px">
+        <div class="row end">
           <button id="btn-form" class="chip" data-i18n="btn.form">✎ 填表</button>
           <button id="btn-pick" class="chip" data-i18n="btn.pick">▦ 看着选</button>
-          <button id="btn-ai" class="chip" style="display:none" data-i18n="btn.ai">✦ 让 AI 写成句子</button>
+          <button id="btn-ai" class="chip hide" data-i18n="btn.ai">✦ 让 AI 写成句子</button>
           <span class="spacer"></span>
-          <button id="btn-parse" class="primary" data-i18n="btn.parse">读一下</button>
+          <button id="btn-parse" data-i18n="btn.parse">读一下</button>
         </div>
-        <div id="ai" style="display:none;margin-top:10px">
+        <div id="ai" class="hide">
           <div class="hint" data-i18n="ai.note" id="ainote">
             AI 只负责把你的话说成这个工具认得的句子，认不认、能不能做，
-            仍然由下面那些同一条规则判断 —— 它不会直接改任何数据。
+            仍然由下面那些同一条规则判断，它不会直接改任何数据。
           </div>
           <div id="aigot"></div>
         </div>
 
         <div id="form">
           <div class="tabs">
-            <select id="fintent" style="flex:1;padding:4px 8px;font-size:12px;
-                    background:#11151a;color:inherit;border:1px solid var(--line);
-                    border-radius:4px"></select>
-            <select id="fshape" style="flex:1;padding:4px 8px;font-size:12px;
-                    background:#11151a;color:inherit;border:1px solid var(--line);
-                    border-radius:4px"></select>
+            <select id="fintent"></select>
+            <select id="fshape"></select>
           </div>
-          <div class="hint" data-i18n="form.note">填好下面几格，这句话会写进上面的框里 —— 它和你自己打的那句
+          <div class="hint" data-i18n="form.note">填好下面几格，这句话会写进上面的框里，它和你自己打的那句
             走的是同一条判断，工具不认识的说法它照样会拒。</div>
           <div class="fslots" id="fslots"></div>
           <div id="fpreview"></div>
-          <div class="row end" style="margin-top:8px">
+          <div class="row end">
             <button id="fuse" class="chip" data-i18n="btn.use">写进上面的框</button>
           </div>
         </div>
@@ -508,13 +639,13 @@
           <div class="tabs">
             <button id="tab-unit" class="chip on" data-i18n="pick.unit">单位</button>
             <button id="tab-tech" class="chip" data-i18n="pick.tech">科技</button>
-            <input type="text" id="pickq" data-i18n-ph="pick.search" placeholder="在这个列表里找…" style="flex:1">
-            <span class="hint" id="pickcount" style="margin:0"></span>
+            <input type="text" id="pickq" data-i18n-ph="pick.search" placeholder="在这个列表里找…">
+            <span class="hint" id="pickcount"></span>
           </div>
           <div class="hint" data-i18n="pick.note">点一个图标，就把它填进上面的框里；也可以直接把它拖进上面的框。
             有些东西游戏本身没有图，那些格子画成虚线框，仍然可以点。</div>
           <div class="pickscroll"><div class="grid" id="pickgrid"></div></div>
-          <div class="row end" style="margin-top:8px">
+          <div class="row end">
             <button id="pickmore" class="chip" data-i18n="btn.more">再多看一些</button>
           </div>
         </div>
@@ -528,11 +659,11 @@
         <div id="recipe">
           <div class="tabs">
             <input type="text" id="rname" data-i18n-ph="recipe.name"
-                   placeholder="给这几句起个名字（例如「我的伐木场」）" style="flex:1">
+                   placeholder="给这几句起个名字（例如「我的伐木场」）">
             <button id="rsave" class="chip" data-i18n="btn.save">记住这几句</button>
           </div>
           <div class="hint" data-i18n="recipe.note">
-            记住的是句子，不是已经生成的模组 —— 所以哪天游戏更新了，叫出这个名字、
+            记住的是句子，不是已经生成的模组。所以哪天游戏更新了，叫出这个名字、
             再点一次「生成并安装」，它就是按当天的数据重建的。
           </div>
           <div id="rlist"></div>
@@ -540,10 +671,10 @@
       </div>
     </div>
 
-      <div class="box" style="margin-top:16px">
+      <div class="box">
         <h2>编辑一个单位</h2>
         <div class="hint">
-          左边挑一个，右边就是它现在存着的每一项。改一个数字，句子会写进下面的框里 ——
+          左边挑一个，右边就是它现在存着的每一项。改一个数字，句子会写进下面的框里，
           句子仍然是唯一入口，所以每一步都还能被读器重新判一次。
         </div>
         <div id="editor">
@@ -551,7 +682,7 @@
             <button class="chip on" data-edkind="unit">单位</button>
             <button class="chip" data-edkind="tech">科技</button>
             <input type="text" id="edq" placeholder="按名字过滤…">
-            <span class="hint" id="edcount" style="margin:0"></span>
+            <span class="hint" id="edcount"></span>
           </div>
           <div class="edbody">
             <div class="edlist" id="edlist"><div class="empty">读取中…</div></div>
@@ -560,18 +691,18 @@
         </div>
       </div>
 
-    <div class="box" style="margin-top:16px">
-      <h2 data-i18n="preview.heading">预览 —— 还没动任何文件</h2>
+    <div class="box">
+      <h2 data-i18n="preview.heading">预览，还没动任何文件</h2>
       <div class="body" id="preview">
         <div class="empty" data-i18n="preview.empty">上面写点什么，然后点「读一下」。</div>
       </div>
-      <div class="body" id="commit" style="display:none; border-top:1px solid var(--line)">
+      <div class="body" id="commit">
         <div class="row">
-          <div style="flex:1">
-            <label class="hint" data-i18n="title.label">模组名字（游戏里显示的，最多 100 字节）</label>
+          <div class="field">
+            <label class="hint" for="title" data-i18n="title.label">模组名字（游戏里显示的，最多 100 字节）</label>
             <input type="text" id="title">
           </div>
-          <button id="btn-build" class="primary" style="align-self:flex-end" data-i18n="btn.build">生成并安装</button>
+          <button id="btn-build" class="primary foot" data-i18n="btn.build">生成并安装</button>
         </div>
         <div class="hint" id="buildnote"></div>
       </div>
@@ -582,8 +713,8 @@
     <div class="box">
       <h2 data-i18n="mods.heading">已安装的模组</h2>
       <div class="body" id="mods"><div class="empty" data-i18n="mods.loading">读取中…</div></div>
-      <div class="body" style="border-top:1px solid var(--line);margin-top:10px;padding-top:10px">
-        <div class="hint" data-i18n="mods.note" style="margin:0 0 8px">
+      <div class="body mods-foot">
+        <div class="hint" data-i18n="mods.note">
           社区模组如果自带一整份数据文件，游戏更新后它会把新内容盖回去。
           这里能把作者改过的东西在今天的数据上重做一遍，作者的其他文件原地保留。
         </div>
@@ -591,9 +722,9 @@
         <div id="repair"></div>
       </div>
     </div>
-    <div class="box" style="margin-top:16px">
+    <div class="box">
       <h2 data-i18n="repair.heading">能做的事</h2>
-      <div class="body" id="intents" style="font-size:13px;color:#5f4d33"></div>
+      <div class="body" id="intents"></div>
     </div>
   </aside>
 </main>
@@ -933,13 +1064,13 @@ async function aiBoot() {
   } catch (e) {
     AI_META = null;
   }
-  $("#btn-ai").style.display = (AI_META && AI_META.available) ? "" : "none";
+  $("#btn-ai").classList.toggle("hide", !(AI_META && AI_META.available));
   if (AI_META && AI_META.available) {
     $("#btn-ai").title = "把上面的愿望写成这个工具认得的句子"
       + (AI_META.model ? "（" + AI_META.model + "）" : "");
     $("#ainote").textContent =
       "AI 只负责把你的话说成这个工具认得的句子，认不认、能不能做，"
-      + "仍然由下面那些同一条规则判断 —— 它不会直接改任何数据。";
+      + "仍然由下面那些同一条规则判断，它不会直接改任何数据。";
   }
 }
 
@@ -951,7 +1082,7 @@ async function doAI() {
   btn.disabled = true;
   btn.textContent = "✦ 正在写…";
   box.innerHTML = "";
-  $("#ai").style.display = "block";
+  $("#ai").classList.remove("hide");
   try {
     const got = await api("/api/ai-sentences", {text: wish});
     const list = (got.ai && got.ai.sentences) || [];
@@ -1027,11 +1158,17 @@ function renderMods(mods) {
           ? "数据模组 · 排第 1（下一局就是它）"
           : "数据模组 · 排第 " + m.dat_rank + "（前面还有 " + (m.dat_rank - 1) + " 个）";
       } else {
-        badge.textContent = "数据模组 · 没启用";
+        // "没启用" named a state with no way out of it: a data mod gets no
+        // switch here (the player's words, 2026-10-26: 数据模组不需要去启用的).
+        // Say where the action actually lives instead.
+        badge.textContent = "数据模组 · 还没在游戏里勾上";
       }
-      badge.title = "一局只能加载一个数据模组，本机已启用 " +
-                    (m.dat_competing || 0) + " 个。" +
-                    "开局前在「创建游戏」界面的「数据模组：」下拉框里选它。";
+      badge.title = "一局只能加载一个数据模组。这个还没在游戏的模组界面里勾上，" +
+                    "勾上之后，开局前在「创建游戏」界面的「数据模组：」下拉框里选它。" +
+                    (m.dat_competing
+                       ? "本机已经有 " + m.dat_competing +
+                         " 个数据模组，一局只能用其中一个。"
+                       : "");
       const line = el("div", "hint");
       line.appendChild(badge);
       nm.appendChild(line);
@@ -1147,7 +1284,7 @@ async function loadPick(append) {
     for (const row of b.rows) grid.appendChild(pickCell(row));
     PICK.offset = b.offset + b.rows.length;
     $("#pickcount").textContent = PICK.offset + " / " + b.total;
-    $("#pickmore").style.display = PICK.offset < b.total ? "" : "none";
+    $("#pickmore").classList.toggle("hide", !(PICK.offset < b.total));
   } catch (e) {
     grid.innerHTML = "";
     grid.appendChild(el("div", "err", "读不到列表：" + e.message));
@@ -1656,7 +1793,7 @@ async function openEditor(r) {
 
   if (r.kind === "tech") {
     pane.appendChild(el("div", "ednone",
-      "科技的数值在「研究时间 / 成本 / 第几条效果」里，不在这一页 —— 用上面的「填表」。"));
+      "科技的数值在「研究时间 / 成本 / 第几条效果」里，不在这一页，用上面的「填表」。"));
     return;
   }
 
@@ -1709,7 +1846,7 @@ function edFieldRow(ent, key, value, label, kind) {
   tr.appendChild(v);
   const inp = el("input");
   inp.type = "text";
-  inp.placeholder = shown == null ? "—" : shown;
+  inp.placeholder = shown == null ? "未存" : shown;
   inp.dataset.field = key;
   const editTd = el("td", "e", "");
   editTd.appendChild(inp);
@@ -1966,7 +2103,7 @@ function renderClauses(clauses) {
       img.src = "/api/icon?kind=" + encodeURIComponent(c.kind) +
                 "&id=" + encodeURIComponent(c.entity_id) + "&size=48";
       img.alt = c.entity || "";
-      img.onerror = () => { img.style.display = "none"; };
+      img.onerror = () => { img.classList.add("hide"); };
       wrap.appendChild(img);
     }
     // Everything textual lives in one column so a long sentence wraps instead of
@@ -2088,7 +2225,7 @@ function renderClauses(clauses) {
   // referencing it threw a ReferenceError on every render until this said
   // buildable(c) again.
   const refused = clauses.filter(c => c.intent && !buildable(c)).length;
-  $("#commit").style.display = good ? "block" : "none";
+  $("#commit").classList.toggle("open", !!good);
   $("#buildnote").textContent = good
     ? "会把这些改动打进一个 mod：如果两句改的是同一条数据，分成两个 mod 会互相覆盖。"
       + (refused ? "做不了的那 " + refused + " 句会被跳过，不会拦住其余的。" : "")
@@ -2153,9 +2290,9 @@ async function doBuild() {
       uiHalf && uiHalf.name
         ? ("装好了，这次是两个模组：「" + (man.info && man.info.Title
             ? man.info.Title : dir) + "」和「" + uiHalf.name + "」。"
-            + "两个都要在模组界面里勾上 —— 数据模组只带数据，图标那一半在另一个里。"
+            + "两个都要在模组界面里勾上。数据模组只带数据，图标那一半在另一个里。"
             + "开局前在「创建游戏」界面的「数据模组：」下拉框里选数据那个。")
-        : ("装好了。开局前在「创建游戏」界面的「数据模组：」下拉框里选它 —— "
+        : ("装好了。开局前在「创建游戏」界面的「数据模组：」下拉框里选它。"
             + "注意不是「模组」界面，那个界面没有这个下拉框。进入对局才真正加载。"));
     $("#buildnote").innerHTML = "";
     $("#buildnote").appendChild(note);
@@ -2166,7 +2303,7 @@ async function doBuild() {
     const ver = man.verification || {};
     if (ver.ok === false) {
       $("#buildnote").appendChild(el("div", "err",
-        "装上了，但这次构建自己没通过校验 —— 先别指望它对："
+        "装上了，但这次构建自己没通过校验，先别指望它对："
         + (ver.why_not_dat || ver.formatting_note || "manifest 里 verification.ok 是 false")));
     }
     // A trimmed title is not an error -- but the player should be told, because

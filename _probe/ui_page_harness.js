@@ -72,7 +72,12 @@ function node(tag) {
     // The mods list marks the interface half of a split build with a class.  Real
     // `classList` is what the page calls, so the fake DOM has to have it too --
     // otherwise the harness would be testing a page nobody can ship.
-    classList: { add() {}, remove() {}, contains() { return false; } },
+    // A real classList edits className; the page now uses it to show and hide
+    // panels (`classList.toggle("hide", …)`) instead of writing inline styles.
+    // A stub with no `toggle` made the harness report `classList.toggle is not
+    // a function` while every browser was fine -- the fake DOM was the defect.
+    classList: null,   // wired below, because it needs `this` to be the node
+
     addEventListener() {},
     // Enough of the real DOM for the page's own "replace, do not stack" logic:
     // find the first descendant with a class, and detach a child.
@@ -94,6 +99,25 @@ function node(tag) {
     },
     get firstChild() { return this.children[0] || null; },
   };
+  // A real classList edits className; the page now uses it to show and hide
+  // panels (`classList.toggle("hide", …)`) instead of writing inline styles.
+  // A stub with no `toggle` made the harness report `classList.toggle is not a
+  // function` while every browser was fine -- the fake DOM was the defect.
+  Object.defineProperty(n, "classList", {
+    value: {
+      _set() { return (n.className || "").split(/\s+/).filter(Boolean); },
+      _put(list) { n.className = list.join(" "); },
+      add(c) { const s = this._set(); if (s.indexOf(c) < 0) s.push(c); this._put(s); },
+      remove(c) { this._put(this._set().filter((x) => x !== c)); },
+      contains(c) { return this._set().indexOf(c) >= 0; },
+      toggle(c, force) {
+        const want = force === undefined ? !this.contains(c) : !!force;
+        if (want) this.add(c); else this.remove(c);
+        return want;
+      },
+    },
+  });
+
   // `box.innerHTML = ""` is how the page starts every render.  In a real DOM
   // that detaches the old children; a stub that just stores the string keeps
   // them, so a later assertion sees the PREVIOUS payload's nodes and reports a
@@ -769,7 +793,8 @@ try {
   check("a mixed payload renders instead of throwing (this is the `can` bug)",
         true);
   check("the commit box is shown when at least one clause is possible",
-        ids.commit.style.display === "block", ids.commit.style.display);
+        ids.commit.classList.contains("open"),
+        ids.commit.className);
   check("the note says the refused sentence will be skipped, not fail the build",
         note.indexOf("跳过") >= 0, note);
   check("the auto title names only the buildable sentence",
@@ -786,7 +811,8 @@ try {
 
   page.renderClauses(FIXTURES.refusedOnly.clauses);
   check("nothing possible -> the commit box is hidden",
-        ids.commit.style.display === "none", ids.commit.style.display);
+        !ids.commit.classList.contains("open"),
+        ids.commit.className);
   check("nothing possible -> the note says so in words",
         text(ids.buildnote).indexOf("改不了") >= 0, text(ids.buildnote));
 
@@ -1180,8 +1206,15 @@ function modsChecks() {
                  kind: "local", priority: 3, ships_dat: true, dat_rank: null,
                  dat_competing: 0 }];
   page.renderMods(off);
-  check("a disabled data mod says it is not enabled, not a rank",
-        text(ids.mods).indexOf("数据模组 · 没启用") >= 0, text(ids.mods));
+  // The wording moved on 2026-10-26: "没启用" named a state with no way out of it,
+  // because a data mod gets no switch here (the player's words: 数据模组不需要去启用
+  // 的).  Pin the FACT the badge has to carry -- never a rank, and it points at the
+  // place the choice really is made -- instead of the phrase of the day.
+  const offText = text(ids.mods);
+  check("a disabled data mod never claims a rank",
+        offText.indexOf("排第") < 0, offText);
+  check("a disabled data mod points at the game's mod screen",
+        offText.indexOf("游戏里勾上") >= 0, offText);
 
   page.renderMods(MODS);
   // Toggling while the game runs is the case where the list on screen and the
@@ -1825,14 +1858,14 @@ function aiChecks() {
   AI_ANSWER = AI_OFF;
   return page.aiBoot().then(() => {
     check("no endpoint configured means no button",
-          String(ids["btn-ai"].style.display) === "none",
-          JSON.stringify(ids["btn-ai"].style.display));
+          ids["btn-ai"].classList.contains("hide"),
+          ids["btn-ai"].className);
     AI_ANSWER = AI_ON;
     return page.aiBoot();
   }).then(() => {
     check("a configured endpoint draws the button",
-          ids["btn-ai"].style.display === "",
-          JSON.stringify(ids["btn-ai"].style.display));
+          !ids["btn-ai"].classList.contains("hide"),
+          ids["btn-ai"].className);
     check("and the button names the model it will call",
           String(ids["btn-ai"].title).indexOf("some-model") >= 0,
           ids["btn-ai"].title);

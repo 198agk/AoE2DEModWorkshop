@@ -530,6 +530,10 @@ SUITES = [
     # URL was never implemented stays silently empty and its rejection is swallowed
     # by the same catch that handles "no recipes yet".
     r"_probe\test_url_coverage.py",
+    # The design checker is the gate the workspace contract names; this nail is
+    # what stops the gate from quietly relaxing.  It writes its own scratch tree,
+    # so it must not be pointed at the live page.
+    r"_probe\test_design_acceptance.py",
 ]
 
 # Suites that are not Python.  The screen's script is JavaScript and no Python
