@@ -39,6 +39,7 @@ from aoe2mod.game import civnames as CN
 from aoe2mod.mod import emitter as E
 from aoe2mod.ui import compose as CP
 from aoe2mod.ui import locale as LO
+from aoe2mod.ui.loading import LOADING_PAGE
 from aoe2mod.ui import nl
 from aoe2mod.ui import recipes as RC
 
@@ -705,6 +706,17 @@ def _json(handler, obj, code=200):
     handler.wfile.write(body)
 
 
+def _html(handler, text, code=200):
+    """Write an HTML string with the same no-store header the page route uses."""
+    body = text.encode("utf-8")
+    handler.send_response(code)
+    handler.send_header("Content-Type", "text/html; charset=utf-8")
+    handler.send_header("Content-Length", str(len(body)))
+    handler.send_header("Cache-Control", "no-store")
+    handler.end_headers()
+    handler.wfile.write(body)
+
+
 def _file(handler, path, ctype):
     with open(path, "rb") as fh:
         body = fh.read()
@@ -782,6 +794,20 @@ def make_handler(app):
                 loc = _query(self.path).get("locale", [LO.DEFAULT_LOCALE])[0]
                 return self._guard(lambda: {
                     "ok": True, "locale": loc, "strings": LO.load(loc)})
+            if path == "/loading":
+                # The window opens HERE first, not at "/".  The socket is bound
+                # before any parse (serve() builds App lazily), so this page is on
+                # screen in ~1 s while the backend spends its measured 10.7 s
+                # walking 93 MB.  Same origin as /api/progress, so no CORS and no
+                # port baked into a page.
+                return _html(self, LOADING_PAGE)
+            if path == "/api/progress":
+                # Must answer in milliseconds while `Parser.parse` is running: it
+                # reads only a module-level dict, never the toolkit.  The window
+                # polls this every 250 ms during startup and the bar is drawn from
+                # what comes back.
+                from aoe2mod import progress as PG
+                return self._guard(lambda: {"ok": True, "progress": PG.snapshot()})
             if path == "/api/diag":
                 # The page reports its own viewport here so a shell can read it
                 # from outside.  A screenshot shows the symptom (the side panel
@@ -984,10 +1010,35 @@ def _quiet_connection_errors():
     return _Server
 
 
-def serve(port=0, game_root=None, host="127.0.0.1"):
-    """Start the server; returns (httpd, app, url).  Caller calls `serve_forever`."""
+def serve(port=0, game_root=None, host="127.0.0.1", warm=False):
+    """Start the server; returns (httpd, app, url).  Caller calls `serve_forever`.
+
+    `warm=True` starts reading the game data on a background thread immediately.
+    That is what makes the loading screen honest: the `.dat` is parsed lazily on
+    the first request that needs it, and the splash page only asks `/api/progress`,
+    which touches nothing -- so without this the bar sits at 0 % forever while the
+    backend waits for a request the splash will not make until the bar is full.
+    Measured 2026-10-26 on the first packaged run: exactly that deadlock.
+
+    Tests leave it off: a background parse would run behind every test that builds
+    a server, and `AOE2MOD_STATE_DIR` tests must not spend 10 s each on data they
+    never read.
+    """
     app = App(game_root=game_root)
     httpd = _quiet_connection_errors()((host, port), make_handler(app))
     url = "http://%s:%d" % (host, httpd.server_address[1])
+    if warm:
+        def _warm():
+            try:
+                # `app.tk` only CONSTRUCTS the toolkit -- it is lazy and parses
+                # nothing.  Touching `version` is what enters `_ensure()`, so this
+                # must ask for a fact, not for the object.  Measured 2026-10-26:
+                # the first version of this thread held `app.tk` and the splash sat
+                # at 0 % for the whole run because no parse had started.
+                app.tk.version
+            except BaseException as exc:              # noqa: BLE001
+                from aoe2mod import progress as PG
+                PG.fail("读取游戏数据失败：%s" % exc)
+        threading.Thread(target=_warm, name="warm-dat", daemon=True).start()
     return httpd, app, url
 

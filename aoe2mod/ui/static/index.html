@@ -21,11 +21,11 @@
     --text-2: #57606a;
     --text-3: #6e7781;
 
-    --accent: #2563eb;
-    --accent-soft: #dde8fd;
-    --accent-line: #9db8f5;
-    --accent-hover: #1d4fd0;
-    --accent-ink: #12386f;
+    --accent: #15803d;
+    --accent-soft: #dcfce7;
+    --accent-line: #86efac;
+    --accent-hover: #166534;
+    --accent-ink: #14532d;
 
     --ok: #1a7f37;
     --ok-soft: #dafbe1;
@@ -89,9 +89,7 @@
      ========================================================================== */
   header {
     display: flex; align-items: center; gap: 8px;
-    padding: 12px 24px;
-    background: var(--panel);
-    border-bottom: 1px solid var(--line);
+    padding: 0 0 16px;
   }
   header h1 { font-size: var(--fs-title); font-weight: 600; }
   header .ver { font-size: var(--fs-micro); color: var(--text-3); }
@@ -101,22 +99,133 @@
      Layout.  Every grid/flex child gets an explicit min-width:0 -- the reason
      the right column used to overflow silently (DESIGN.md §6).
      ========================================================================== */
-  main {
+  .shell {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) 384px;
-    gap: 16px;
+    grid-template-columns: 248px minmax(0, 1fr);
+    gap: 24px;
     align-items: start;
     max-width: 1560px;
+    min-height: 100dvh;
     margin: 0 auto;
-    padding: 24px 24px 48px;
+    padding: 16px;
   }
-  main > div { min-width: 0; }
-  aside { min-width: 0; }
-  @media (max-width: 1320px) {
-    main { grid-template-columns: minmax(0, 1fr) 340px; gap: 12px; }
+  .shell > * { min-width: 0; }
+  .content { min-width: 0; }
+
+  /* The rail.  Sticky rather than fixed so it scrolls away with the page on a
+     short window instead of floating over the content. */
+  .rail {
+    position: sticky;
+    top: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    min-height: calc(100dvh - 32px);
+    padding: 16px;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: var(--r-surface);
   }
-  @media (max-width: 1120px) {
-    main { grid-template-columns: minmax(0, 1fr); }
+  .brand { display: flex; align-items: center; gap: 8px; }
+  .mark {
+    display: grid;
+    place-items: center;
+    width: 28px;
+    height: 28px;
+    border-radius: var(--r-control);
+    background: var(--accent);
+    color: var(--on-dark);
+    font-size: var(--fs-micro);
+    font-weight: 600;
+  }
+  .wordmark { font-size: var(--fs-title); font-weight: 600; }
+  .navlist { display: flex; flex-direction: column; gap: 2px; }
+  .navitem {
+    /* `button` centres its content; a navigation row reads as a list only when
+       its label starts at the same left edge for every row. */
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 8px;
+    width: 100%;
+    height: 34px;
+    padding: 0 12px;
+    border: 0;
+    border-radius: var(--r-control);
+    background: transparent;
+    color: var(--text-2);
+    font-size: var(--fs-body);
+    font-weight: 400;
+    text-align: left;
+  }
+  .navitem:hover { background: var(--panel-3); color: var(--text); }
+  .navitem.on {
+    background: var(--accent-soft);
+    color: var(--accent-ink);
+    font-weight: 600;
+  }
+  .railfoot {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-top: auto;
+    padding-top: 16px;
+    border-top: 1px solid var(--line);
+  }
+  .status {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: var(--fs-micro);
+    color: var(--text-2);
+  }
+  .dot { width: 8px; height: 8px; border-radius: var(--r-pill); background: var(--ok); }
+  .railnote { font-size: var(--fs-micro); color: var(--text-3); word-break: break-word; }
+
+  /* One view at a time.  The nav decides which; nothing is removed from the
+     DOM, so `boot()` can fill every panel whether or not it is showing. */
+  .intents {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+    gap: 8px;
+  }
+  .intentcard {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 12px;
+    background: var(--panel-2);
+    border: 1px solid var(--line);
+    border-radius: var(--r-control);
+  }
+  .intentcard .t { font-size: var(--fs-body); font-weight: 600; }
+  .intentcard .bysentence { font-size: var(--fs-micro); color: var(--text-3); }
+
+  .view { display: none; }
+  .view.on { display: block; }
+
+  main { display: block; max-width: none; margin: 0; padding: 0; }
+
+  @media (max-width: 1100px) {
+    .shell { grid-template-columns: minmax(0, 1fr); gap: 16px; }
+    .rail {
+      position: static;
+      min-height: 0;
+      flex-direction: row;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 12px;
+    }
+    .navlist { flex-direction: row; flex-wrap: wrap; }
+    .navitem { width: auto; }
+    .railfoot {
+      flex-direction: row;
+      align-items: center;
+      gap: 12px;
+      margin-top: 0;
+      padding-top: 0;
+      border-top: 0;
+    }
   }
 
   /* ==========================================================================
@@ -570,11 +679,28 @@
 </style>
 </head>
 <body>
+<div class="shell">
+<nav class="rail" aria-label="主导航">
+  <div class="brand">
+    <span class="mark" aria-hidden="true">II</span>
+    <span class="wordmark" data-i18n="rail.brand">模组工坊</span>
+  </div>
+  <div class="navlist">
+    <button class="navitem on" id="nav-home" data-i18n="nav.home">主页</button>
+    <button class="navitem" id="nav-editor" data-i18n="nav.editor">编辑器</button>
+    <button class="navitem" id="nav-mods" data-i18n="nav.mods">模组</button>
+    <button class="navitem" id="nav-intents" data-i18n="nav.intents">能做的事</button>
+  </div>
+  <div class="railfoot">
+    <div class="status"><span class="dot" aria-hidden="true"></span><span id="rail-state" data-i18n="rail.ready">就绪</span></div>
+    <div class="railver"><span class="ver" id="ver"></span></div>
+    <div class="railnote" id="datinfo"></div>
+  </div>
+</nav>
+<div class="content">
 <header>
   <h1 data-i18n="page.heading">帝国时代 2 DE · 模组工坊</h1>
-  <span class="ver" id="ver"></span>
   <span class="spacer"></span>
-  <span class="ver" id="datinfo"></span>
 </header>
 
 <main>
@@ -587,7 +713,7 @@
       <button id="btn-rebuild" data-i18n="btn.rebuild">重建并重装</button>
     </div>
   </div>
-  <div>
+<section class="view on" id="view-home">
     <div class="box">
       <h2 data-i18n="say.heading">你想要什么改动？用中文说就行</h2>
       <div class="body">
@@ -671,6 +797,25 @@
       </div>
     </div>
 
+    <div class="box">
+      <h2 data-i18n="preview.heading">预览，还没动任何文件</h2>
+      <div class="body" id="preview">
+        <div class="empty" data-i18n="preview.empty">上面写点什么，然后点「读一下」。</div>
+      </div>
+      <div class="body" id="commit">
+        <div class="row">
+          <div class="field">
+            <label class="hint" for="title" data-i18n="title.label">模组名字（游戏里显示的，最多 100 字节）</label>
+            <input type="text" id="title">
+          </div>
+          <button id="btn-build" class="primary foot" data-i18n="btn.build">生成并安装</button>
+        </div>
+        <div class="hint" id="buildnote"></div>
+      </div>
+    </div>
+</section>
+
+<section class="view" id="view-editor">
       <div class="box">
         <h2>编辑一个单位</h2>
         <div class="hint">
@@ -691,25 +836,9 @@
         </div>
       </div>
 
-    <div class="box">
-      <h2 data-i18n="preview.heading">预览，还没动任何文件</h2>
-      <div class="body" id="preview">
-        <div class="empty" data-i18n="preview.empty">上面写点什么，然后点「读一下」。</div>
-      </div>
-      <div class="body" id="commit">
-        <div class="row">
-          <div class="field">
-            <label class="hint" for="title" data-i18n="title.label">模组名字（游戏里显示的，最多 100 字节）</label>
-            <input type="text" id="title">
-          </div>
-          <button id="btn-build" class="primary foot" data-i18n="btn.build">生成并安装</button>
-        </div>
-        <div class="hint" id="buildnote"></div>
-      </div>
-    </div>
-  </div>
+</section>
 
-  <aside>
+<section class="view" id="view-mods">
     <div class="box">
       <h2 data-i18n="mods.heading">已安装的模组</h2>
       <div class="body" id="mods"><div class="empty" data-i18n="mods.loading">读取中…</div></div>
@@ -722,12 +851,17 @@
         <div id="repair"></div>
       </div>
     </div>
+</section>
+
+<section class="view" id="view-intents">
     <div class="box">
       <h2 data-i18n="repair.heading">能做的事</h2>
-      <div class="body" id="intents"></div>
+      <div class="body intents" id="intents"></div>
     </div>
-  </aside>
+</section>
 </main>
+</div>
+</div>
 
 <div class="toast" id="toast"></div>
 
@@ -837,6 +971,44 @@ function el(tag, cls, text) {
 }
 
 // ---- boot -------------------------------------------------------------
+// ---- the rail -----------------------------------------------------------
+// The four views never leave the DOM.  Switching is one class, because
+// `boot()` fills every panel on load and the harness reads them whether or not
+// they are on screen.
+const VIEWS = ["home", "editor", "mods", "intents"];
+let VIEW = "home";
+let ED_LOADED = false;
+
+function showView(name) {
+  if (VIEWS.indexOf(name) < 0) name = "home";
+  VIEW = name;
+  for (const v of VIEWS) {
+    const node = $("#view-" + v);
+    if (node) node.classList.toggle("on", v === name);
+    const btn = $("#nav-" + v);
+    if (btn) btn.classList.toggle("on", v === name);
+  }
+  // The editor's 400 rows are fetched the first time it is looked at, not on
+  // the first paint: the sentence box is what the window is for.
+  if (name === "editor" && !ED_LOADED) {
+    ED_LOADED = true;
+    }
+  try {
+    history.replaceState(null, "", name === "home" ? location.pathname : "#" + name);
+  } catch (e) {
+    /* a file:// or a stripped history must not break the screen */
+  }
+}
+
+for (const v of VIEWS) {
+  const btn = $("#nav-" + v);
+  if (btn) btn.onclick = () => showView(v);
+}
+
+// A deep link wins over "home", so `#editor` in the Tauri address bar works.
+showView((String((typeof location !== "undefined" && location.hash) || "")
+  .replace("#", "")) || "home");
+
 async function boot() {
   // Wording first: every other sentence below asks the table for its text, and
   // asking before it has loaded would print keys on screen for one frame.
@@ -870,7 +1042,9 @@ async function boot() {
   // debug block must never be able to take the screen down with it.
   if (typeof location !== "undefined" && location.search.indexOf("diag=1") >= 0) {
     const diag = () => {
-      const m = $("main");
+      // The columns live on `.shell` now, not on `main`: the rail is a real
+      // column of the shell grid, and `main` is a stack of views inside it.
+      const m = $(".shell") || $("main");
       const box = m ? m.getBoundingClientRect() : null;
       const line = "vw=" + innerWidth + " dpr=" + devicePixelRatio +
         " doc=" + document.documentElement.clientWidth + "/" + document.documentElement.scrollWidth +
@@ -1112,8 +1286,8 @@ function renderIntentList() {
   const box = $("#intents");
   box.innerHTML = "";
   for (const it of META.intents) {
-    const d = el("div", "", "· " + it.title);
-    d.style.margin = "2px 0";
+    const d = el("div", "intentcard", "");
+    d.appendChild(el("div", "t", it.title));
     // A plugin can add an intent to the schema, and this list IS the schema.
     // The sentence layer is hand-written, though, so a plugin intent can only be
     // driven through the API -- and saying nothing makes this list a promise the
@@ -1121,10 +1295,11 @@ function renderIntentList() {
     // was listed here while `把村民血量设成40` kept parsing to `unit.stat`).
     // Marked, not hidden: the API genuinely can do it.
     if (it.by_sentence === false) {
-      d.appendChild(el("span", "bysentence",
-        " · 只能用接口（句子还认不出来）"));
+      d.appendChild(el("div", "bysentence", "只能用接口（句子还认不出来）"));
       d.title = "这项是插件加的。命令行 /api/plan 能用它，"
         + "但这屏的句子解析器还没有对应说法。";
+    } else {
+      d.appendChild(el("div", "bysentence", "可以说出来"));
     }
     box.appendChild(d);
   }
@@ -1147,36 +1322,12 @@ function renderMods(mods) {
     const nm = el("div", "nm" + (String(m.name || "").startsWith("dsh ") ? " own" : ""),
                   m.title || m.name);
     nm.title = m.name + (m.priority != null ? "  · 顺序 " + m.priority : "");
-    // A match loads exactly ONE data mod, and nothing else on this screen says
-    // which one will win.  The game decides by priority, so print the rank
-    // among the enabled data mods -- "13 compete" without "yours is #4" tells
-    // the player there is a problem and hides the answer.
-    if (m.ships_dat) {
-      const badge = el("span", "stat");
-      if (m.dat_rank) {
-        badge.textContent = m.dat_rank === 1
-          ? "数据模组 · 排第 1（下一局就是它）"
-          : "数据模组 · 排第 " + m.dat_rank + "（前面还有 " + (m.dat_rank - 1) + " 个）";
-      } else {
-        // "没启用" named a state with no way out of it: a data mod gets no
-        // switch here (the player's words, 2026-10-26: 数据模组不需要去启用的).
-        // Say where the action actually lives instead.
-        badge.textContent = "数据模组 · 还没在游戏里勾上";
-      }
-      badge.title = "一局只能加载一个数据模组。这个还没在游戏的模组界面里勾上，" +
-                    "勾上之后，开局前在「创建游戏」界面的「数据模组：」下拉框里选它。" +
-                    (m.dat_competing
-                       ? "本机已经有 " + m.dat_competing +
-                         " 个数据模组，一局只能用其中一个。"
-                       : "");
-      const line = el("div", "hint");
-      line.appendChild(badge);
-      nm.appendChild(line);
-    }
-    // A data mod gets NO switch.  The player's own words (2026-10-26): "数据模组
-    // 不需要去启用的" -- it is picked in the game's 数据模组 dropdown when the
-    // match is created, and a checkbox here says otherwise.  Its rank badge
-    // above already answers the only question that matters.
+    // A data mod gets NO switch, and no badge either.  The player's words
+    // (2026-10-26): "数据模组不需要去启用的" and then "把这个去掉" about the badge.
+    // Both are the same point -- the game picks the data mod in its own 数据模组
+    // dropdown when the match is created, so a checkbox or a status word here
+    // describes a decision this page cannot make.  What is left is the row's
+    // position, which the two arrows actually change.
     const sw = m.ships_dat ? null : el("button", "switch" + (m.enabled ? " on" : ""));
     if (sw) sw.title = m.enabled ? "已启用（点击停用）" : "未启用（点击启用）";
     if (sw) sw.onclick = async () => {
@@ -1222,31 +1373,35 @@ function renderMods(mods) {
     // acts on the second click.  For a split build the server removes both halves
     // (that is nailed), which is why the armed label names the sibling: a player
     // looking at one row cannot otherwise know the other one goes too.
-    const rm = el("button", "remove", "移除");
+    // The button names what actually happens: the folder goes to the Recycle Bin
+    // (the player, 2026-10-26: "移除是什么意思，放入回收站吗").  Before that
+    // change this called `shutil.rmtree`, so "移除" was permanent.
+    const rm = el("button", "remove", "放进回收站");
     rm.title = m.role && m.paired_with
-      ? "删掉这个构建的两个文件夹（含「" + m.paired_with + "」）"
-      : "删掉这个模组的文件夹";
+      ? "把这个构建的两个文件夹放进回收站（含「" + m.paired_with + "」）"
+      : "把这个模组的文件夹放进回收站（可以还原）";
     let armed = false;
     rm.onclick = async () => {
       if (!armed) {
         armed = true;
         rm.classList.add("armed");
-        rm.textContent = "确定删掉？";
+        rm.textContent = "确定放？";
         if (m.role && m.paired_with) {
-          rm.textContent = "确定删掉两个？";
+          rm.textContent = "确定两个都放？";
         }
         return;
       }
       try {
         const r = await api("/api/uninstall", {name: m.name});
         renderMods(r.mods || []);
-        toast("已删掉 " + (m.title || m.name), "ok");
+        toast("已放进回收站：" + (m.title || m.name) +
+              "（要还原就去回收站里取）", "ok");
         if (r.running_warning) toast(r.running_warning, "bad");
       } catch (e) {
         armed = false;
         rm.classList.remove("armed");
-        rm.textContent = "移除";
-        toast("删不掉：" + e.message, "bad");
+        rm.textContent = "放进回收站";
+        toast("没放进回收站，什么也没删：" + e.message, "bad");
       }
     };
     row.appendChild(rm);

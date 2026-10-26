@@ -534,6 +534,10 @@ SUITES = [
     # what stops the gate from quietly relaxing.  It writes its own scratch tree,
     # so it must not be pointed at the live page.
     r"_probe\test_design_acceptance.py",
+    # The command card: one byte per box.  Registered because every way it can
+    # fail looks like success -- a wrong offset reads garbage and re-parses to
+    # the old box, and an overwrite instead of a swap drops a unit silently.
+    r"_probe\test_card.py",
 ]
 
 # Suites that are not Python.  The screen's script is JavaScript and no Python

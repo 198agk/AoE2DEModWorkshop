@@ -29,6 +29,10 @@ _probe/out_*.err
 # `Start-Process -RedirectStandardError` writes this pair; naming it after the
 # commit the run describes is the only way to tell two runs apart afterwards.
 _probe/err_*.txt
+# Server and headless-browser logs from a manual check.  Same reasoning as
+# above: they describe one run, not the repository.
+_probe/out_*.log
+_probe/err_*.log
 鍙戝竷鍖?
 _shots/
 *.zip

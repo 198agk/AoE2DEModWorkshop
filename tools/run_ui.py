@@ -166,7 +166,12 @@ def main(argv=None):
     for n in notes:
         print(n)
 
-    httpd, app, url = S.serve(port=args.port, host=args.host, game_root=root)
+    # warm=True: start reading the 93 MB of game data now, in the background, so
+    # the loading page has something to draw.  Measured 2026-10-26: without it the
+    # splash polled /api/progress (which touches nothing) and the bar stayed at 0 %
+    # until the player typed something -- the lazy load never started.
+    httpd, app, url = S.serve(port=args.port, host=args.host, game_root=root,
+                             warm=True)
     print("模组工坊: %s" % url)
 
     want_window = not args.browser

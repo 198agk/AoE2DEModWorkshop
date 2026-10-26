@@ -782,6 +782,57 @@
         "Byte-for-byte reproducible: the shipped 2,533-byte file round-trips through json.dumps(indent=4) with CRLF and a trailing newline, so any diff in a built mod is the row this intent added.",
         "The file lives in `resources/_common/dat`, the only one of the 28 storage points whose `use_modes_path_for_mods` is true -- so a mod's copy is the copy the engine reads."
       ]
+    },
+    "unit.card_move": {
+      "title": "把单位挪到命令卡的另一格",
+      "title_en": "Move a unit to another box on a building's command card",
+      "applies_to": "unit",
+      "description": "Rewrite the box number in the unit's own train location.  One byte per entry, and the unit that was in the target box takes the vacated one, so no button is ever hidden by a drop.",
+      "fields": {
+        "unit": {
+          "type": "entity_ref",
+          "kind": "unit",
+          "required": true,
+          "label": "单位",
+          "help": "Name or id.  The unit has to be on that building's card already: adding a box for a unit that never had one changes the record's length, which is a different edit."
+        },
+        "builder": {
+          "type": "entity_ref",
+          "kind": "unit",
+          "required": true,
+          "label": "哪座建筑",
+          "help": "The building whose card holds the box.  Measured on British: the town centre has 42 units on 6 boxes, the barracks 49, the castle 171."
+        },
+        "button": {
+          "type": "int",
+          "required": true,
+          "label": "第几格",
+          "range": [
+            0,
+            24
+          ],
+          "help": "0 to 24.  A box can hold several units: the town centre puts all twenty of the villager's build items on box 0, so a drop onto an occupied box swaps with the FIRST unit there and refuses when the box is ambiguous."
+        },
+        "civ": {
+          "type": "civ_ref",
+          "required": true,
+          "label": "文明",
+          "help": "Exactly one civilization.  The unit table and every box number in it are per-civilization, so the same box number means different things in two civs and one sentence cannot honestly cover both."
+        }
+      },
+      "compile": {
+        "strategy": "card_move",
+        "why_not_dat": "This one DOES write the .dat, but it appends nothing: the box number lives inside the unit's existing train location, so the edit is one byte in place.  Measured 2026-10-26: moving the villager from box 1 to box 12 rewrote byte 5,526,065 and re-parsing the edited stream read the new box back.",
+        "what_it_cannot_do": "It cannot put a unit on a card that never listed it.  A train location is a variable-length list inside the unit's record, so adding one changes every offset after it; that is `unit.create`'s job (it appends a whole record) rather than a box move.  It also cannot move a unit between civilizations: box numbers are per civ.",
+        "mod_contains_dat": true,
+        "in_bundle": true,
+        "verified_in_game": null,
+        "not_verified_reason": "No run has yet opened a game to see the button in its new box.  What IS proven is the byte: the edit is one byte, the edited stream re-parses to the new box, and the row count on the card is unchanged after a swap (`_probe/test_card.py`)."
+      },
+      "safety": {
+        "field_width_bits": 8,
+        "signed": false
+      }
     }
   },
   "mod": {

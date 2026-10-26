@@ -1184,10 +1184,14 @@ function modsChecks() {
   check("one row per installed mod", rows.length === 3, String(rows.length));
   const all = walk(ids.mods, []);
   const labels = all.map((n) => n.textContent || "").join(" | ");
-  check("the data mod says it wins the slot, and by what rank",
-        labels.indexOf("数据模组 · 排第 1") >= 0, labels);
-  check("and says the next match is the one that uses it",
-        labels.indexOf("下一局就是它") >= 0, labels);
+  // The badge is gone on purpose (the player, 2026-10-26: "把这个去掉").  A data
+  // mod is chosen in the game's own 数据模组 dropdown, so a rank or a state word
+  // here describes a decision this page cannot make.  What must NOT happen is the
+  // badge growing back -- not the rank, not "没启用", not a replacement phrase.
+  check("a data mod carries no rank badge",
+        labels.indexOf("排第") < 0, labels);
+  check("and no state word either",
+        labels.indexOf("数据模组 ·") < 0, labels);
   check("a mod that is not a data mod gets no such badge",
         labels.indexOf("别人做的 UI 模组") >= 0
         && labels.indexOf("数据模组 · 别的") < 0);
@@ -1213,8 +1217,14 @@ function modsChecks() {
   const offText = text(ids.mods);
   check("a disabled data mod never claims a rank",
         offText.indexOf("排第") < 0, offText);
-  check("a disabled data mod points at the game's mod screen",
-        offText.indexOf("游戏里勾上") >= 0, offText);
+  check("and gets no badge at all, enabled or not",
+        offText.indexOf("数据模组 ·") < 0, offText);
+  check("it still gets no switch, because the game chooses it",
+        walk(ids.mods, []).filter(
+          (n) => n.className === "switch" || n.className === "switch on"
+        ).length === 0,
+        String(walk(ids.mods, []).filter(
+          (n) => n.className === "switch" || n.className === "switch on").length));
 
   page.renderMods(MODS);
   // Toggling while the game runs is the case where the list on screen and the
@@ -1534,7 +1544,10 @@ function removeChecks() {
   return Promise.resolve(rm && rm.onclick ? rm.onclick() : null).then(() => {
     check("the first click only arms it", removed.length === 0,
           JSON.stringify(removed));
-    check("and the label asks before deleting", text(rm).indexOf("确定删掉") >= 0,
+    // The label has to ask before it acts.  It used to read "确定删掉？"; since the
+    // button recycles instead of deleting, the FACT being pinned is that a second
+    // confirmation is demanded at all -- not the verb of the day.
+    check("and the label asks before acting", text(rm).indexOf("确定") >= 0,
           text(rm));
     check("a split build says both halves go", text(rm).indexOf("两个") >= 0,
           text(rm));
@@ -1723,8 +1736,12 @@ function intentListChecks() {
   return page.boot().then(() => {
     const rows = walk(ids.intents, []);
     const flat = text(ids.intents);
+    // One card per intent.  Pinned on the card class rather than on "the class
+    // is empty": the row became a card on 2026-10-26, and an assertion that the
+    // class is "" would have kept passing while the CSS had nothing to hook.
     check("the capability list renders one row per intent",
-          rows.filter((n) => n.className === "" && n.children.length >= 1).length >= 2,
+          rows.filter((n) => String(n.className).indexOf("intentcard") >= 0
+                             && n.children.length >= 1).length >= 2,
           flat);
     check("an intent a sentence can reach is listed plainly",
           flat.indexOf("改数值") >= 0,

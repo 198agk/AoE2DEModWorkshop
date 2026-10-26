@@ -843,6 +843,61 @@ def resolve_mod_name(profile_root, name, kind="local", account=None):
     return name, "bare"
 
 
+def recycle_path(path):
+    """Move a file or folder to the Recycle Bin.  Returns ``True`` on success.
+
+    The player asked for this directly (2026-10-26): "还有移除是什么意思，放入
+    回收站吗".  Up to today `uninstall_mod` called `shutil.rmtree`, so "移除" was
+    permanent -- and the thing it deletes is a folder the player may have spent
+    an evening tuning.  Nothing here is about tidiness: an editor that can only
+    destroy is an editor people stop using on anything they care about.
+
+    Uses the shell's own recycle verb (``SHFileOperationW`` with ``FOF_ALLOWUNDO``)
+    because that is the only route that lands in the bin rather than in a
+    folder this program invented.  It refuses a path that does not exist, and on
+    a machine where the call fails it returns ``False`` so the caller can say so
+    instead of reporting a deletion that did not happen.
+    """
+    import ctypes
+    from ctypes import wintypes
+
+    path = os.path.abspath(path)
+    if not os.path.exists(path):
+        return False
+    if os.name != "nt":
+        return False
+
+    class SHFILEOPSTRUCTW(ctypes.Structure):
+        _fields_ = [("hwnd", wintypes.HWND),
+                    ("wFunc", wintypes.UINT),
+                    ("pFrom", wintypes.LPCWSTR),
+                    ("pTo", wintypes.LPCWSTR),
+                    ("fFlags", ctypes.c_uint16),
+                    ("fAnyOperationsAborted", wintypes.BOOL),
+                    ("hNameMappings", ctypes.c_void_p),
+                    ("lpszProgressTitle", wintypes.LPCWSTR)]
+
+    FO_DELETE = 3
+    FOF_SILENT = 0x0004
+    FOF_NOCONFIRMATION = 0x0010
+    FOF_ALLOWUNDO = 0x0040
+    FOF_NOERRORUI = 0x0400
+    # pFrom is a double-NUL-terminated list; one path means two terminators.
+    op = SHFILEOPSTRUCTW()
+    op.hwnd = None
+    op.wFunc = FO_DELETE
+    op.pFrom = path + "\0\0"
+    op.pTo = None
+    op.fFlags = FOF_ALLOWUNDO | FOF_SILENT | FOF_NOCONFIRMATION | FOF_NOERRORUI
+    try:
+        rc = ctypes.windll.shell32.SHFileOperationW(ctypes.byref(op))
+    except Exception:
+        return False
+    if rc != 0 or op.fAnyOperationsAborted:
+        return False
+    return not os.path.exists(path)
+
+
 def uninstall_mod(profile_root, name, kind="local", remove_files=True,
                   account=None, backup=True):
     """Remove a mod's status entry, and its folder unless told otherwise.
@@ -850,8 +905,6 @@ def uninstall_mod(profile_root, name, kind="local", remove_files=True,
     ``name`` may be the mod's FOLDER name or its Title -- see
     :func:`resolve_mod_name` for why both are needed.
     """
-    import shutil
-
     if account:
         acc = account
     elif os.path.isdir(os.path.join(profile_root, "mods")):
@@ -869,12 +922,21 @@ def uninstall_mod(profile_root, name, kind="local", remove_files=True,
 
     target = os.path.join(account_mods_dir(acc, kind), folder)
     files_gone = False
+    recycled = False
     if remove_files and os.path.isdir(target):
-        shutil.rmtree(target)
-        files_gone = True
+        # Recycle, never destroy: the player asked (2026-10-26).  Measured before
+        # this change, "移除" called `shutil.rmtree` -- an evening's tuning gone
+        # with one click and no way back.
+        recycled = recycle_path(target)
+        files_gone = recycled
+        if not files_gone:
+            raise OSError(
+                "\u300c%s\u300d的文件夹没能放进回收站，所以什么也没删：%s。"
+                "（退出占用它的程序再试）" % (folder, target))
     return {"account": acc, "name": folder, "requested": name,
             "resolved_by": how, "kind": kind,
             "entries_removed": removed, "folder_removed": files_gone,
+            "recycled": recycled,
             "mod_dir": target, "status_entries": len(doc.get("Mods", [])),
             "game_running": _running["game_running"],
             "running_warning": _running["running_warning"]}

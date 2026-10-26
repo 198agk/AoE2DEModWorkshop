@@ -144,12 +144,19 @@ fn http_get_ok(port: u16, path: &str) -> Option<String> {
 }
 
 fn wait_ready(port: u16, limit: Duration) -> bool {
+    // Wait for the SPLASH, not for the parsed page.
+    //
+    // Measured 2026-10-26: `/api/meta` needs 10.7 s because it parses 93 MB, and
+    // the window used to sit on a static "正在读取游戏数据…" for that whole time
+    // with no bar.  The socket is bound before any parse, and `/loading` reads
+    // only a module-level dict, so this returns in ~1 s; the splash page then
+    // draws the real progress and swaps itself for "/" when the backend is ready.
     let start = Instant::now();
     while start.elapsed() < limit {
-        if http_get_ok(port, "/api/meta").is_some() {
+        if http_get_ok(port, "/loading").is_some() {
             return true;
         }
-        std::thread::sleep(Duration::from_millis(300));
+        std::thread::sleep(Duration::from_millis(120));
     }
     false
 }
@@ -339,12 +346,16 @@ fn main() {
                             } else {
                                 ""
                             };
-                            format!("http://127.0.0.1:{}/{}", port, q)
+                            // Open the SPLASH, which polls `/api/progress` and
+                            // replaces itself with "/" the moment the parse is done.
+                            // Measured 2026-10-26: this is what puts a bar on screen
+                            // during the 10.7 s the backend spends reading 93 MB.
+                            format!("http://127.0.0.1:{}/loading{}", port, q)
                         }
                     }
                 };
 
-                std::thread::sleep(Duration::from_millis(600));
+                std::thread::sleep(Duration::from_millis(120));
                 log(&format!("opening {}", url));
                 let parsed = match url.parse() {
                     Ok(u) => u,
@@ -357,6 +368,16 @@ fn main() {
                 // machine is 2560x1440 at 200% scaling, so the logical work area
                 // is 1280x720 -- the hardcoded 1280x860 window hung off the
                 // bottom edge and the page looked wider than the screen.
+                // Ask for the monitor's own size, minus a margin for the taskbar.
+                //
+                // Measured 2026-10-26 with `?diag=1` read from a real window: this
+                // machine is 2560x1440, `scale_factor()` answers 1.0 (the bundled
+                // manifest never linked, so the process is DPI-virtualised), and the
+                // page inside reported `vw=2520 dpr=1.5 doc=2508 scroll=2508
+                // cols=1112px 384px` -- both columns, no horizontal scroll.  Dividing
+                // by the scale a SECOND time shrank the window to 1695 px and pushed
+                // the side column off the edge again (measured, same probe), so the
+                // single division below is the value that fits.
                 let (win_w, win_h) = match handle.primary_monitor() {
                     Ok(Some(m)) => {
                         let scale = m.scale_factor();
