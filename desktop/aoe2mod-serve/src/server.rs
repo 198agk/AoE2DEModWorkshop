@@ -406,6 +406,58 @@ fn route(
             let v = crate::ai::meta_json(&app_dir);
             (200, "application/json; charset=utf-8", v.to_string().into_bytes())
         }
+        "/api/describe" => {
+            let q: std::collections::HashMap<String, String> = _query
+                .split('&')
+                .filter_map(|kv| kv.split_once('='))
+                .map(|(k, v)| (k.to_string(), v.to_string()))
+                .collect();
+            let kind = q.get("kind").cloned().unwrap_or_else(|| "unit".into());
+            let id: i16 = q.get("id").and_then(|v| v.parse().ok()).unwrap_or(-1);
+            let json = match server.parsed.lock().unwrap().clone() {
+                None => format!(
+                    "{{\"ok\":false,\"error\":\"{}\"}}",
+                    json_escape("游戏数据还没读完")
+                ),
+                Some(parsed) => {
+                    let offsets_path = std::env::var("AOE2MOD_STAT_OFFSETS")
+                        .map(std::path::PathBuf::from)
+                        .unwrap_or_else(|_| std::path::PathBuf::from("_golden/stat_offsets.json"));
+                    match crate::stats::StatTable::load(&offsets_path) {
+                        Err(e) => format!(
+                            "{{\"ok\":false,\"error\":\"{}\"}}",
+                            json_escape(&format!("读不到属性偏移表：{e}"))
+                        ),
+                        Ok(table) => {
+                            let root = crate::game_root();
+                            let raw = root
+                                .as_ref()
+                                .and_then(|r| {
+                                    aoe2mod_dat::load_dat(
+                                        &r.join("resources/_common/dat/empires2_x2_p1.dat"),
+                                    )
+                                    .ok()
+                                })
+                                .map(|(b, _)| b)
+                                .unwrap_or_default();
+                            let names = crate::describe::entity_names();
+                            match crate::describe::describe(
+                                &parsed, &table, &raw, &names, &kind, id,
+                            ) {
+                                Ok(v) => {
+                                    format!("{{\"ok\":true,\"entity\":{}}}", v)
+                                }
+                                Err(e) => format!(
+                                    "{{\"ok\":false,\"error\":\"{}\"}}",
+                                    json_escape(&e)
+                                ),
+                            }
+                        }
+                    }
+                }
+            };
+            (200, "application/json; charset=utf-8", json.into_bytes())
+        }
         "/api/icon" => {
             // `?kind=unit&id=83&section=Units&max=64`
             let q: std::collections::HashMap<String, String> = _query
