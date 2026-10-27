@@ -5,6 +5,7 @@
 //! write route so the whole chain (WebView2 -> HTTP -> Rust -> 93 MB -> bytes)
 //! is exercised rather than assumed.
 
+pub mod mods;
 pub mod server;
 pub mod stat_edit;
 

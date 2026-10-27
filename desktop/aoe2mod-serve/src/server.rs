@@ -237,6 +237,24 @@ fn route(
                 b"{\"ok\":false,\"error\":\"\xe8\xbf\x98\xe5\x9c\xa8\xe8\xaf\xbb\xe5\x8f\x96\xe6\xb8\xb8\xe6\x88\x8f\xe6\x95\xb0\xe6\x8d\xae\"}".to_vec(),
             ),
         },
+        "/api/mods" => match crate::mods::profile_root() {
+            Some(root) => match crate::mods::read_mods(&root) {
+                Ok(rows) => {
+                    let json = format!("{{\"ok\":true,\"mods\":{}}}", crate::mods::to_json(&rows));
+                    (200, "application/json; charset=utf-8", json.into_bytes())
+                }
+                Err(e) => (
+                    200,
+                    "application/json; charset=utf-8",
+                    format!("{{\"ok\":false,\"error\":\"{}\"}}", json_escape(&e.to_string())).into_bytes(),
+                ),
+            },
+            None => (
+                200,
+                "application/json; charset=utf-8",
+                format!("{{\"ok\":false,\"error\":\"{}\"}}", json_escape("找不到玩家档案目录")).into_bytes(),
+            ),
+        },
         // The one write path, so the whole chain can be exercised end to end.
         "/api/stat" => {
             let req: serde_json::Value = match serde_json::from_slice(body) {
