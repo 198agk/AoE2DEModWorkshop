@@ -616,6 +616,55 @@
           ]
         }
       ]
+    },
+    "unit.card_move": {
+      "label": "把单位挪到命令卡的另一格",
+      "forms": [
+        {
+          "id": "move_on_card",
+          "label": "挪到某一格",
+          "template": "把{unit}放在第{box}格",
+          "slots": [
+            {
+              "name": "unit",
+              "kind": "unit",
+              "label": "单位",
+              "sample": "民兵"
+            },
+            {
+              "name": "box",
+              "kind": "number",
+              "label": "第几格",
+              "sample": "5"
+            }
+          ]
+        },
+        {
+          "id": "move_on_building_card",
+          "label": "挪到某座建筑的某一格",
+          "template": "把{unit}挪到{builder}的第{box}格",
+          "slots": [
+            {
+              "name": "unit",
+              "kind": "unit",
+              "label": "单位",
+              "sample": "民兵"
+            },
+            {
+              "name": "builder",
+              "kind": "unit",
+              "label": "哪座建筑",
+              "sample": "兵营"
+            },
+            {
+              "name": "box",
+              "kind": "number",
+              "label": "第几格",
+              "sample": "5"
+            }
+          ]
+        }
+      ]
     }
   }
 }

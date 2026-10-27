@@ -776,7 +776,13 @@ fn strip_ordinal(text: &str) -> String {
 pub fn intent_is_reachable(id: &str) -> bool {
     matches!(
         id,
-        "unit.stat" | "unit.cost" | "tech.research_time" | "tech.cost" | "tech.effect"
+        "unit.stat"
+            | "unit.cost"
+            | "tech.research_time"
+            | "tech.cost"
+            | "tech.effect"
+            | "unit.card_move"
+            | "unit.attack_class"
     )
 }
 

@@ -38,7 +38,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 OUT = r"D:\Software\AI\AoE2ModWorkshop"
 GOLDEN = ["stat_offsets.json", "entity_names.json", "ai_grammar.json",
-          "tech_offsets.json", "effect_offsets.json", "command_cards.json"]
+          "tech_offsets.json", "effect_offsets.json", "command_cards.json", "class_names.json"]
 
 
 def install_tables(app_dir):
@@ -91,7 +91,7 @@ def check_routes(port):
         print("      refusal:", pr.get("refusals"))
 
     f = json.loads(get("/api/forms"))
-    note("/api/forms", len(f.get("forms") or []) == 21,
+    note("/api/forms", len(f.get("forms") or []) == 23,
          " forms=%d" % len(f.get("forms") or []))
     l = json.loads(get("/api/locale?locale=zh"))
     note("/api/locale", len(l.get("strings") or {}) == 55,
@@ -151,6 +151,16 @@ def main():
     if total is None:
         return 1
     print("  total %.1f MB" % (total / (1024.0 * 1024.0)))
+    # Every table the engine reads must be present: a missing one does not crash,
+    # it silently changes behaviour -- "步弓手对骑兵攻击加2" fell through to
+    # unit.stat when class_names.json was absent from the bundle.
+    golden_dir = os.path.join(app, "_golden")
+    have = set(os.listdir(golden_dir)) if os.path.isdir(golden_dir) else set()
+    missing = [g for g in GOLDEN if g not in have]
+    if missing:
+        print("  FAIL missing tables: %s" % missing)
+        return 1
+    print("  all %d tables present" % len(GOLDEN))
 
     exe = os.path.join(OUT, "aoe2-mod-workshop.exe")
     subprocess.run(["taskkill", "/IM", "aoe2-mod-workshop.exe", "/F"],
