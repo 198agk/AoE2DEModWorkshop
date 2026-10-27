@@ -1,41 +1,37 @@
-//! A real window around the mod workshop.
+//! Replace the Python child with the embedded native engine.
 //!
-//! Measured 2026-10-26 evening, in this order:
+//! What this file used to do
+//! ------------------------
+//! Find a `python.exe`, spawn it on `tools/run_ui.py --serve-only`, poll for the
+//! port, read its stderr when it died.  Every one of those steps has a failure
+//! mode this project paid for:
 //!
-//!  1. navigating to an empty `data:` URL first left the window white for the
-//!     whole 25 s the parser needs, and the later navigation never repainted;
-//!  2. bundling `desktop/ui` as the frontend showed the loading page, but that
-//!     page runs on `tauri://localhost`, and jumping from there to
-//!     `http://127.0.0.1:<port>` was refused by the webview -- the loading page
-//!     stayed up while the backend served `/api/meta` (8700 bytes, 200);
-//!  3. `WebviewWindow::navigate` itself is capability-gated in Tauri 2, so the
-//!     `let _ =` around it hid the refusal.
+//!   * no interpreter -> the PATH fallback is the Microsoft Store stub, which
+//!     spawns successfully and exits with 9009 in 0.13 s, so the app waited the
+//!     full 150 s on a splash that never advanced;
+//!   * a bundle missing `WebView2Loader.dll` -> a modal dialog and ZERO log
+//!     bytes;
+//!   * a stale `python.exe` in `runtime\` -> a version of the engine the shell
+//!     was not written against.
 //!
-//! So the flow is: show the bundled loading page at once, start Python, wait for
-//! `/api/meta`, then *create a second window* pointed at the local server and
-//! close the loading one.  Nothing is ever navigated.
+//! All three disappear when there is no child process at all.  The engine is a
+//! library now (`aoe2mod-serve`), so the window and the code that reads the
+//! `.dat` are the same image: nothing to find, nothing to spawn, nothing to
+//! poll, and a failure is a Rust `Result` rather than a missing log line.
+//!
+//! The loading page survives, because it was never about Python: the parse can
+//! take seconds on a cold disk cache and a window that sits blank reads as a
+//! crash.
 
-// A windowed app, not a console app.  Without this the exe gets a console
-// window of its own on Windows, which is the "cmd window" that appears
-// behind the app and does nothing.  It has to be at the crate root, before
-// any `use`, and it only takes effect in a release build.
-#![windows_subsystem = "windows"]
-
-use std::fs::OpenOptions;
-use std::io::Write;
-use std::path::{Path, PathBuf};
-use std::sync::Mutex;
+use std::path::PathBuf;
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use tauri::Manager;
 
-/// Holds the Python child so closing the window also ends the server.
-struct Server(Mutex<Option<std::process::Child>>);
-
 fn log(msg: &str) {
-    // A windowed app has no console; without this file every startup failure is
-    // invisible.  Append so two runs in a row both survive.
-    if let Ok(mut fh) = OpenOptions::new()
+    use std::io::Write;
+    if let Ok(mut fh) = std::fs::OpenOptions::new()
         .create(true)
         .append(true)
         .open(std::env::temp_dir().join("aoe2-mod-workshop.log"))
@@ -44,90 +40,38 @@ fn log(msg: &str) {
     }
 }
 
-fn looks_like_root(dir: &Path) -> bool {
-    dir.join("tools").join("run_ui.py").is_file() && dir.join("aoe2mod").is_dir()
+/// Locate the folder that holds `index.html` and `aoe2mod/schema`.
+///
+/// Two shapes are supported and both are legitimate:
+///   * an installed folder: `<exe dir>\app\` (what the bundler produces);
+///   * a checkout: the exe is somewhere under the repo, so walk up.
+/// The installed shape wins when both exist, because whoever shipped the folder
+/// meant that folder.
+fn find_ui_root() -> Option<PathBuf> {
+    let mut candidates: Vec<PathBuf> = Vec::new();
+    let exe = std::env::current_exe().ok()?;
+    if let Some(dir) = exe.parent() {
+        candidates.push(dir.join("app"));
+        candidates.push(dir.to_path_buf());
+    }
+    let mut cur = std::env::current_dir().ok();
+    while let Some(d) = cur {
+        candidates.push(d.clone());
+        cur = d.parent().map(|p| p.to_path_buf());
+    }
+    candidates.into_iter().find(|p| {
+        p.join("aoe2mod/ui/static/index.html").is_file()
+            || p.join("ui/static/index.html").is_file()
+    })
 }
 
-fn find_root() -> Option<PathBuf> {
-    if let Ok(v) = std::env::var("AOE2MOD_ROOT") {
-        let p = PathBuf::from(v);
-        if looks_like_root(&p) {
-            return Some(p);
-        }
+fn static_dir(root: &std::path::Path) -> PathBuf {
+    let a = root.join("aoe2mod/ui/static");
+    if a.is_dir() {
+        a
+    } else {
+        root.join("ui/static")
     }
-    // The installed layout wins even when the exe happens to sit inside
-    // a checkout: whoever shipped this folder meant this folder.
-    if let Ok(exe) = std::env::current_exe() {
-        if let Some(d) = exe.parent() {
-            let bundle = d.join("app");
-            if looks_like_root(&bundle) {
-                log(&format!("root: {} (bundled)", bundle.display()));
-                return Some(bundle);
-            }
-        }
-    }
-    let mut seeds: Vec<PathBuf> = Vec::new();
-    if let Ok(exe) = std::env::current_exe() {
-        if let Some(d) = exe.parent() {
-            seeds.push(d.to_path_buf());
-        }
-    }
-    if let Ok(cwd) = std::env::current_dir() {
-        seeds.push(cwd);
-    }
-    for seed in seeds {
-        let mut cur: Option<&Path> = Some(seed.as_path());
-        for _ in 0..6 {
-            let dir = match cur {
-                Some(d) => d,
-                None => break,
-            };
-            if looks_like_root(dir) {
-                return Some(dir.to_path_buf());
-            }
-            cur = dir.parent();
-        }
-    }
-    // A bundle whose engine folder is spelled differently, for symmetry
-    // with the probe above.  Kept because a hand-built folder is common
-    // while someone is testing a package.
-    if let Ok(exe) = std::env::current_exe() {
-        if let Some(d) = exe.parent() {
-            if looks_like_root(&d.join("workshop")) {
-                log(&format!("root: {} (workshop)", d.join("workshop").display()));
-                return Some(d.join("workshop"));
-            }
-        }
-    }
-    None
-}
-
-fn python_candidates() -> Vec<PathBuf> {
-    let mut out: Vec<PathBuf> = Vec::new();
-    if let Ok(v) = std::env::var("AOE2MOD_PYTHON") {
-        out.push(PathBuf::from(v));
-    }
-    // The shipped interpreter.  This is the only candidate that exists on
-    // a machine that merely installed the app; the two below are for the
-    // development checkout.
-    if let Ok(exe) = std::env::current_exe() {
-        if let Some(d) = exe.parent() {
-            out.push(d.join("runtime").join("python.exe"));
-        }
-    }
-    if let Ok(dir) = std::env::var("AOE2MOD_RUNTIME") {
-        out.push(PathBuf::from(dir).join("python.exe"));
-    }
-    if let Ok(home) = std::env::var("USERPROFILE") {
-        out.push(PathBuf::from(home).join(
-            r".dsh\dsh-runtimes\dsh-primary-runtime\dependencies\python\python.exe",
-        ));
-    }
-    // Last resort: whatever is on PATH.  A machine with Python installed
-    // should not need our copy, and a machine with neither gets the error
-    // page rather than a silent failure.
-    out.push(PathBuf::from("python"));
-    out
 }
 
 fn free_port() -> u16 {
@@ -142,9 +86,7 @@ fn port_from_argv() -> Option<u16> {
     let args: Vec<String> = std::env::args().collect();
     for (i, a) in args.iter().enumerate() {
         if a == "--port" {
-            if let Some(v) = args.get(i + 1) {
-                return v.parse().ok();
-            }
+            return args.get(i + 1).and_then(|v| v.parse().ok());
         }
         if let Some(rest) = a.strip_prefix("--port=") {
             return rest.parse().ok();
@@ -153,99 +95,35 @@ fn port_from_argv() -> Option<u16> {
     None
 }
 
-fn http_get_ok(port: u16, path: &str) -> Option<String> {
+fn http_get_ok(port: u16, path: &str) -> bool {
     use std::io::{Read, Write};
-    let mut stream = std::net::TcpStream::connect(("127.0.0.1", port)).ok()?;
-    stream.set_read_timeout(Some(Duration::from_secs(3))).ok()?;
+    let mut stream = match std::net::TcpStream::connect(("127.0.0.1", port)) {
+        Ok(s) => s,
+        Err(_) => return false,
+    };
+    let _ = stream.set_read_timeout(Some(Duration::from_secs(3)));
     let req = format!(
-        "GET {} HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n",
-        path
+        "GET {path} HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n"
     );
-    stream.write_all(req.as_bytes()).ok()?;
+    if stream.write_all(req.as_bytes()).is_err() {
+        return false;
+    }
     let mut buf = Vec::new();
-    stream.read_to_end(&mut buf).ok()?;
-    let text = String::from_utf8_lossy(&buf).to_string();
-    if text.starts_with("HTTP/1.1 200") || text.starts_with("HTTP/1.0 200") {
-        Some(text)
-    } else {
-        None
-    }
+    let _ = stream.read_to_end(&mut buf);
+    let text = String::from_utf8_lossy(&buf);
+    text.starts_with("HTTP/1.1 200") || text.starts_with("HTTP/1.0 200")
 }
 
-fn wait_ready(port: u16, limit: Duration) -> bool {
-    // Wait for the SPLASH, not for the parsed page.
-    //
-    // Measured 2026-10-26: `/api/meta` needs 10.7 s because it parses 93 MB, and
-    // the window used to sit on a static "正在读取游戏数据…" for that whole time
-    // with no bar.  The socket is bound before any parse, and `/loading` reads
-    // only a module-level dict, so this returns in ~1 s; the splash page then
-    // draws the real progress and swaps itself for "/" when the backend is ready.
-    let start = Instant::now();
-    while start.elapsed() < limit {
-        if http_get_ok(port, "/loading").is_some() {
-            return true;
-        }
-        std::thread::sleep(Duration::from_millis(120));
-    }
-    false
-}
-
-fn spawn_server(root: &Path, port: u16) -> Result<std::process::Child, String> {
-    let mut tried: Vec<String> = Vec::new();
-    let mut all: Vec<PathBuf> = python_candidates();
-    all.push(PathBuf::from("python"));
-    for py in all {
-        if py.is_absolute() && !py.is_file() {
-            tried.push(format!("{} (missing)", py.display()));
-            continue;
-        }
-        let mut cmd = std::process::Command::new(&py);
-        cmd
-            .args([
-                "-X",
-                "utf8",
-                "-u",
-                "tools/run_ui.py",
-                "--serve-only",
-                "--port",
-                &port.to_string(),
-            ])
-            .current_dir(root)
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::piped());
-        // Windows gives every child process a console unless it is told not
-        // to.  The Python server needs none: its output goes to a log file and
-        // its stderr is read back through the pipe below.  Without this flag a
-        // black cmd window sits behind the app for the whole session.
-        #[cfg(windows)]
-        let child = {
-            use std::os::windows::process::CommandExt;
-            const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-            cmd.creation_flags(CREATE_NO_WINDOW).spawn()
-        };
-        #[cfg(not(windows))]
-        let child = cmd.spawn();
-        match child {
-            Ok(c) => {
-                log(&format!("started {} on port {}", py.display(), port));
-                log(&format!("root for the child: {}", root.display()));
-                return Ok(c);
-            }
-            Err(e) => tried.push(format!("{} ({})", py.display(), e)),
-        }
-    }
-    Err(format!(
-        "找不到可用的 Python 解释器。试过：{}",
-        tried.join("；")
-    ))
-}
-
-fn error_page(msg: &str) -> String {
+fn error_page(msg: &str, hint: &str) -> String {
     let esc = msg
         .replace('&', "&amp;")
         .replace('<', "&lt;")
         .replace('>', "&gt;")
         .replace('\n', "<br>");
+    let esc_hint = hint
+        .replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;");
     format!(
         r#"<!doctype html><meta charset="utf-8"><title>模组工坊</title>
 <style>
@@ -257,11 +135,10 @@ fn error_page(msg: &str) -> String {
  code{{background:#11151a;padding:2px 6px;border-radius:4px;color:#c9a227}}
  p{{margin:10px 0}}
 </style>
-<div class="box"><h1>模组工坊没能启动</h1><p>{}</p>
-<p>数据层（读 <code>.dat</code>）需要本机有一个 Python 3。这个窗口只是外壳。</p>
+<div class="box"><h1>模组工坊没能启动</h1><p>{esc}</p>
+<p>{esc_hint}</p>
 <p>日志：<code>%TEMP%\aoe2-mod-workshop.log</code></p>
-</div>"#,
-        esc
+</div>"#
     )
 }
 
@@ -279,17 +156,6 @@ fn data_url(html: &str) -> String {
 }
 
 fn main() {
-    // Declare DPI awareness ourselves.
-    //
-    // Measured 2026-10-26: this machine is 2560x1440 at 200% scaling, but the
-    // window came up reporting `scale_factor() == 1.0`, and the page inside it
-    // drew at twice its intended size -- a 1240 px window held only ~620 CSS px
-    // of layout, so the 320 px side panel fell outside the viewport.  The linker
-    // in this toolchain prints `.rsrc merge failure: multiple non-default
-    // manifests`, i.e. the manifest Tauri embeds (which carries the DPI setting)
-    // did not land in the exe, so Windows virtualised the whole process as
-    // DPI-unaware and upscaled it.  Setting it at runtime is what makes the
-    // coordinate space agree with the screen again.
     #[cfg(windows)]
     unsafe {
         #[link(name = "user32")]
@@ -302,112 +168,96 @@ fn main() {
     }
 
     let port = port_from_argv().unwrap_or_else(free_port);
-    log(&format!("--- start (pid {}, port {}) ---", std::process::id(), port));
+    log(&format!(
+        "--- start (pid {}, port {}) ---",
+        std::process::id(),
+        port
+    ));
 
-    // Start Python before the window exists, but do not block the window on it:
-    // the loading page is what the player sees during those 25 seconds.
-    let mut child: Option<std::process::Child> = None;
-    let mut failure: Option<String> = None;
-    match find_root() {
+    // Start the engine BEFORE the window, and do not block on it: the loading
+    // page is what the player sees while the `.dat` is read.
+    let mut startup_failure: Option<(String, String)> = None;
+    let server = match find_ui_root() {
         None => {
-            failure = Some(
-                "找不到工具目录：从 exe 和当前目录向上都找不到 tools/run_ui.py。\
-                 可以用环境变量 AOE2MOD_ROOT 指定仓库根目录。"
+            startup_failure = Some((
+                "找不到界面目录：exe 旁边没有 app\\，从 exe 和当前目录向上也没有 aoe2mod/ui/static/index.html。"
                     .to_string(),
-            )
+                "装好的文件夹里应该有 app\\ 和 runtime 无关的东西；如果你是从仓库运行，\
+                 请确认 exe 在仓库内部。".to_string(),
+            ));
+            None
         }
-        Some(r) => match spawn_server(&r, port) {
-            Ok(c) => child = Some(c),
-            Err(msg) => failure = Some(msg),
-        },
-    }
-    let startup_failure = failure.clone();
+        Some(root) => {
+            let statics = static_dir(&root);
+            log(&format!("ui root: {}", statics.display()));
+            let server = aoe2mod_serve::build(statics, port);
+            {
+                let s = Arc::clone(&server);
+                std::thread::spawn(move || aoe2mod_serve::load_game(&s));
+            }
+            {
+                let s = Arc::clone(&server);
+                std::thread::spawn(move || {
+                    if let Err(e) = aoe2mod_serve::server::serve(s) {
+                        log(&format!("serve failed: {e}"));
+                    }
+                });
+            }
+            Some(server)
+        }
+    };
 
     tauri::Builder::default()
-        .manage(Server(Mutex::new(child)))
         .setup(move |app| {
             let handle = app.handle().clone();
-            // Window "loading" is declared in tauri.conf.json and shows the
-            // bundled `desktop/ui/index.html`.
+            let failure = startup_failure.clone();
             std::thread::spawn(move || {
-                let url = match &startup_failure {
-                    Some(msg) => {
-                        log(&format!("failed: {}", msg));
-                        data_url(&error_page(msg))
+                let url = match failure {
+                    Some((msg, hint)) => {
+                        log(&format!("failed: {msg}"));
+                        data_url(&error_page(&msg, &hint))
                     }
                     None => {
-                        if !wait_ready(port, Duration::from_secs(150)) {
-                            let detail = {
-                                let server = handle.state::<Server>();
-                                let mut detail = String::new();
-                                let mut guard = server.0.lock().unwrap();
-                                if let Some(c) = guard.as_mut() {
-                                    if let Some(err) = c.stderr.take() {
-                                        use std::io::BufRead;
-                                        for line in
-                                            std::io::BufReader::new(err).lines().take(12).flatten()
-                                        {
-                                            detail.push_str(&line);
-                                            detail.push('\n');
-                                        }
-                                    }
-                                }
-                                detail
-                            };
-                            let msg = format!(
-                                "后端在 150 秒内没有应答（端口 {}）。\n{}",
-                                port,
-                                if detail.trim().is_empty() {
-                                    "没有拿到错误输出。".to_string()
-                                } else {
-                                    detail
-                                }
-                            );
-                            log(&format!("failed: {}", msg));
-                            data_url(&error_page(&msg))
+                        // The engine now runs in this process, so "did it come
+                        // up" is a port check and nothing else: there is no
+                        // child to die, no stderr to drain, no interpreter to
+                        // find.
+                        let began = Instant::now();
+                        let limit = Duration::from_secs(150);
+                        while began.elapsed() < limit {
+                            if http_get_ok(port, "/loading") {
+                                break;
+                            }
+                            std::thread::sleep(Duration::from_millis(60));
+                        }
+                        if !http_get_ok(port, "/loading") {
+                            let msg = format!("引擎在 150 秒内没有开始监听端口 {port}。");
+                            log(&format!("failed: {msg}"));
+                            data_url(&error_page(
+                                &msg,
+                                "这是内置引擎，不依赖 Python；请把日志发出来。",
+                            ))
                         } else {
-                            log(&format!("ready on port {}", port));
-                            // `AOE2MOD_DIAG=1` opens the page with `?diag=1`, which
-                            // makes the header print the viewport that the layout
-                            // actually got.  Kept behind an env var so a normal
-                            // launch shows the version, not numbers.
+                            log(&format!("listening on port {port}"));
                             let q = if std::env::var("AOE2MOD_DIAG").is_ok() {
                                 "?diag=1"
                             } else {
                                 ""
                             };
-                            // Open the SPLASH, which polls `/api/progress` and
-                            // replaces itself with "/" the moment the parse is done.
-                            // Measured 2026-10-26: this is what puts a bar on screen
-                            // during the 10.7 s the backend spends reading 93 MB.
-                            format!("http://127.0.0.1:{}/loading{}", port, q)
+                            format!("http://127.0.0.1:{port}/loading{q}")
                         }
                     }
                 };
 
-                std::thread::sleep(Duration::from_millis(120));
-                log(&format!("opening {}", url));
+                std::thread::sleep(Duration::from_millis(80));
+                log(&format!("opening {url}"));
                 let parsed = match url.parse() {
                     Ok(u) => u,
                     Err(e) => {
-                        log(&format!("bad url {}: {}", url, e));
+                        log(&format!("bad url {url}: {e}"));
                         return;
                     }
                 };
-                // The work area, in logical pixels.  Measured 2026-10-26: this
-                // machine is 2560x1440 at 200% scaling, so the logical work area
-                // is 1280x720 -- the hardcoded 1280x860 window hung off the
-                // bottom edge and the page looked wider than the screen.
-                // Ask for the monitor's own size, minus a margin for the taskbar.
-                //
-                // Measured 2026-10-26 with `?diag=1` read from a real window: this
-                // machine is 2560x1440, `scale_factor()` answers 1.0 (the bundled
-                // manifest never linked, so the process is DPI-virtualised), and the
-                // page inside reported `vw=2520 dpr=1.5 doc=2508 scroll=2508
-                // cols=1112px 384px` -- both columns, no horizontal scroll.  Dividing
-                // by the scale a SECOND time shrank the window to 1695 px and pushed
-                // the side column off the edge again (measured, same probe), so the
-                // single division below is the value that fits.
                 let (win_w, win_h) = match handle.primary_monitor() {
                     Ok(Some(m)) => {
                         let scale = m.scale_factor();
@@ -419,92 +269,35 @@ fn main() {
                     }
                     _ => (1180.0, 760.0),
                 };
-                log(&format!("work area {}x{}", win_w, win_h));
-                let win = tauri::WebviewWindowBuilder::new(
+                log(&format!("work area {win_w}x{win_h}"));
+                match tauri::WebviewWindowBuilder::new(
                     &handle,
                     "workshop",
                     tauri::WebviewUrl::External(parsed),
                 )
                 .title("帝国时代 2 决定版 · 模组工坊")
-                // Fit the screen instead of assuming 1280 logical px: this machine
-                // runs 2560x1440 at 200%, so a 1180 px window holds only ~590 CSS
-                // px of layout and the 320 px side panel falls outside the
-                // viewport.  The size below is whatever the monitor reports, and
-                // `scale_factor()` is unreliable here (it answers 1.0 even after
-                // the DPI call, because the bundled manifest did not link), so no
-                // extra clamp -- the monitor's own size is the cap.
                 .inner_size(win_w, win_h)
                 .min_inner_size(640.0, 480.0)
                 .center()
-                .build();
-                match win {
+                .build()
+                {
                     Ok(w) => {
                         let _ = w.set_focus();
                         if let Some(old) = handle.get_webview_window("loading") {
                             let _ = old.close();
                         }
                         log("real window shown");
-                        // Ask the page its own width.  Screenshots show a symptom
-                        // (the side panel is missing); these numbers show whether
-                        // the layout got 800 CSS px or 1600, which is the whole
-                        // question when DPI scaling is involved.
-                        //
-                        // The page writes them into `document.title`, and we read
-                        // that back through the webview handle -- NOT from the OS
-                        // window title, which the shell itself owns and which the
-                        // page can never overwrite.  Reading the wrong one cost a
-                        // build: the probe looked like it had not run.
-                        let probe = w.clone();
-                        std::thread::spawn(move || {
-                            std::thread::sleep(Duration::from_secs(30));
-                            // The numbers have to be readable from OUTSIDE the page
-                            // and survive whatever `boot()` writes afterwards, so a
-                            // timer keeps rewriting the header span.  `#datinfo` was
-                            // chosen because a screenshot already reads that line
-                            // ("数据版本 54"), so it is known to be on screen.
-                            //
-                            // `document.title` was the first choice and it was wrong:
-                            // `WebviewWindow::title()` returns the title the SHELL
-                            // set, so ten reads of it told us nothing about the page.
-                            let ask = r#"
-(function () {
-  var say = function () {
-    var el = document.getElementById('datinfo');
-    var m = document.querySelector('main');
-    var r = m ? m.getBoundingClientRect() : null;
-    var txt = 'diag vw=' + innerWidth + ' vh=' + innerHeight +
-      ' dpr=' + devicePixelRatio +
-      ' doc=' + document.documentElement.clientWidth +
-      ' scroll=' + document.documentElement.scrollWidth +
-      ' main=' + (r ? Math.round(r.width) : -1) +
-      ' cols=' + (m ? getComputedStyle(m).gridTemplateColumns : 'none');
-    if (el) { el.textContent = txt; el.style.color = '#c9a227'; }
-    return txt;
-  };
-  say();
-  setInterval(say, 1500);
-})();
-"#;
-                            match probe.eval(ask) {
-                                Ok(_) => log("viewport probe installed"),
-                                Err(e) => log(&format!("viewport probe failed: {}", e)),
-                            }
-                        });
                     }
-                    Err(e) => log(&format!("window build failed: {}", e)),
+                    Err(e) => log(&format!("window build failed: {e}")),
                 }
             });
             Ok(())
         })
         .build(tauri::generate_context!())
         .expect("tauri app failed to build")
-        .run(|app, event| {
-            if let tauri::RunEvent::Exit = event {
-                let server = app.state::<Server>();
-                if let Some(mut c) = server.0.lock().unwrap().take() {
-                    let _ = c.kill();
-                    let _ = c.wait();
-                };
-            }
-        });
+        .run(|_app, _event| {});
+
+    // Keep the server handle alive for the process lifetime.  Dropping it would
+    // close the listener the webview is still talking to.
+    drop(server);
 }

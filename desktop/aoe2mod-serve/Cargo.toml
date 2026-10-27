@@ -2,7 +2,15 @@
 name = "aoe2mod-serve"
 version = "0.1.0"
 edition = "2021"
-description = "Native workshop server: the piece that replaces runtime\\python.exe"
+description = "Native workshop engine: library for the shell, binary for development"
+
+[lib]
+name = "aoe2mod_serve"
+path = "src/lib.rs"
+
+[[bin]]
+name = "aoe2mod-serve"
+path = "src/main.rs"
 
 [dependencies]
 aoe2mod-dat = { path = "../aoe2mod-dat" }

@@ -22,6 +22,10 @@ tauri-build = { version = "2", features = [] }
 tauri = { version = "2", features = ["webview-data-url"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+# The engine, embedded rather than spawned.  This is what removes the
+# bundled CPython from the shipped folder.
+aoe2mod-serve = { path = "../aoe2mod-serve" }
+flate2 = "1"
 
 [profile.release]
 opt-level = "s"
