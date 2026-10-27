@@ -12,6 +12,7 @@
 
 pub mod mods;
 pub mod recipes;
+pub mod sentences;
 pub mod server;
 pub mod stat_edit;
 

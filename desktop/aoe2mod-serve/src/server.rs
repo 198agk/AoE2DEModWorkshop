@@ -255,6 +255,48 @@ fn route(
                 format!("{{\"ok\":false,\"error\":\"{}\"}}", json_escape("找不到玩家档案目录")).into_bytes(),
             ),
         },
+        "/api/parse" => {
+            let req: serde_json::Value = match serde_json::from_slice(body) {
+                Ok(v) => v,
+                Err(_) => return (400, "application/json; charset=utf-8", b"{\"ok\":false}".to_vec()),
+            };
+            let text = req.get("text").and_then(|v| v.as_str()).unwrap_or("");
+            let clauses = crate::sentences::read(text);
+            let mut intents: Vec<String> = Vec::new();
+            let mut refusals: Vec<String> = Vec::new();
+            let mut rows: Vec<String> = Vec::new();
+            for cl in &clauses {
+                match &cl.intent {
+                    Some(it) => intents.push(it.to_json()),
+                    None => refusals.push(format!(
+                        "{{\"text\":\"{}\",\"why\":\"{}\"}}",
+                        json_escape(&cl.text),
+                        json_escape(cl.why.as_deref().unwrap_or(""))
+                    )),
+                }
+                rows.push(format!(
+                    "{{\"text\":\"{}\",\"entity\":{},\"entity_id\":{},\"why\":{}}}",
+                    json_escape(&cl.text),
+                    match &cl.entity_name {
+                        Some(n) => format!("\"{}\"", json_escape(n)),
+                        None => "null".into(),
+                    },
+                    match cl.entity_id {
+                        Some(v) => v.to_string(),
+                        None => "null".into(),
+                    },
+                    match &cl.why {
+                        Some(w) => format!("\"{}\"", json_escape(w)),
+                        None => "null".into(),
+                    }
+                ));
+            }
+            let json = format!(
+                "{{\"ok\":true,\"intents\":[{}],\"refusals\":[{}],\"clauses\":[{}]}}",
+                intents.join(","), refusals.join(","), rows.join(",")
+            );
+            (200, "application/json; charset=utf-8", json.into_bytes())
+        }
         "/api/recipes" => {
             let json = match crate::recipes::rows() {
                 Ok(rows) => {
