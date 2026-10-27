@@ -569,6 +569,49 @@ fn route(
             let v = crate::ai::meta_json(&app_dir);
             (200, "application/json; charset=utf-8", v.to_string().into_bytes())
         }
+        "/api/card" => {
+            // `?building=12` -- one building's command card.
+            let q: std::collections::HashMap<String, String> = _query
+                .split('&')
+                .filter_map(|kv| kv.split_once('='))
+                .map(|(k, v)| (k.to_string(), percent_decode(v)))
+                .collect();
+            let building: i16 = q
+                .get("building")
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(12);
+            let json = match crate::cards::Cards::load(&crate::cards::table_path()) {
+                Err(e) => format!(
+                    "{{\"ok\":false,\"error\":\"{}\"}}",
+                    json_escape(&format!("读不到命令面板表：{e}"))
+                ),
+                Ok(cards) => {
+                    let names = crate::describe::entity_names();
+                    // Icon ids come from the records, same as the browse grid.
+                    let icons = {
+                        let root = crate::game_root();
+                        match root {
+                            Some(r) => {
+                                let dat = r.join("resources/_common/dat/empires2_x2_p1.dat");
+                                match aoe2mod_dat::load_dat(&dat) {
+                                    Ok((raw, _)) => {
+                                        let table = crate::stats::StatTable::load(
+                                            &crate::stats_path(),
+                                        )
+                                        .unwrap_or_else(|_| empty_stat_table());
+                                        crate::browse::icon_ids_from_dat(&raw, &table)
+                                    }
+                                    Err(_) => std::collections::HashMap::new(),
+                                }
+                            }
+                            None => std::collections::HashMap::new(),
+                        }
+                    };
+                    crate::cards::card(&cards, building, &names, &icons).to_string()
+                }
+            };
+            (200, "application/json; charset=utf-8", json.into_bytes())
+        }
         "/api/browse" => {
             // `?kind=unit&limit=400&q=...&offset=0`
             let q: std::collections::HashMap<String, String> = _query
