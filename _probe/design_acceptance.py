@@ -219,6 +219,53 @@ def main():
           "%d in markup, %d in locales %s"
           % (len(em), len(locale_em), locale_em[:4]))
 
+    # 13-15. DESIGN.md §12.4.  These three exist because §12 is about the page
+    # LOOKING like a desktop tool, and the way that fails is not a literal -- it
+    # is a size that was defined and then never spent, or a radius drift nobody
+    # noticed.  Each one therefore asks "how many distinct values are actually
+    # declared", not "is any value forbidden".
+    #
+    # 13: all four type steps must be used.  The page had four defined and spent
+    #     three, so the biggest thing on screen was a 15px card title -- no
+    #     focal line anywhere.  `--fs-display` is now the app bar's h1.
+    fs_defs = sorted(
+        {v for k, v in table.items() if k.startswith("--fs-")},
+        key=lambda s: float(re.sub(r"[^0-9.]", "", s) or 0))
+    fs_used = set()
+    for name in ("--fs-micro", "--fs-body", "--fs-title", "--fs-display"):
+        if re.search(r"var\(\s*" + re.escape(name) + r"\s*\)", css):
+            fs_used.add(name)
+    check("13 all four type steps are spent", len(fs_used) == 4,
+          "%d of 4 used (%s); defined: %s"
+          % (len(fs_used), ", ".join(sorted(fs_used)), fs_defs))
+
+    # 14: exactly three radii.  §12 raised surface/control but kept the count.
+    check("14 exactly three radii", len(radii) == 3,
+          "%d: %s" % (len(radii), sorted(radii)))
+
+    # 15: the panel must sit clearly above the page.  A white card on a page that
+    # is nearly white has no edge, and the fix people reach for is a heavier
+    # border -- which is the web-est possible answer.  Measured as the WCAG
+    # contrast between --panel and --bg: >= 1.09 is about 4 steps of grey.
+    def _lum(hexval):
+        h = hexval.lstrip("#")
+        if len(h) == 3:
+            h = "".join(c * 2 for c in h)
+        r, g, b = (int(h[i:i + 2], 16) / 255 for i in (0, 2, 4))
+        f = lambda c: c / 12.92 if c <= 0.03928 else ((c + 0.055) / 1.055) ** 2.4
+        return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b)
+
+    panel = table.get("--panel", "")
+    bg = table.get("--bg", "")
+    if panel.startswith("#") and bg.startswith("#"):
+        lp, lb = _lum(panel), _lum(bg)
+        ratio = (max(lp, lb) + 0.05) / (min(lp, lb) + 0.05)
+        check("15 panel stands off the page", ratio >= 1.09,
+              "%.3f:1 (%s on %s), need >= 1.09" % (ratio, panel, bg))
+    else:
+        check("15 panel stands off the page", False,
+              "could not read --panel / --bg (%r, %r)" % (panel, bg))
+
     bad = 0
     for name, ok, detail in checks:
         mark = "MANUAL" if ok is None else ("ok  " if ok else "FAIL")

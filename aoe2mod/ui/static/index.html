@@ -10,16 +10,16 @@
      rule below refers to these names, so changing the palette is one block.
      ========================================================================== */
   :root {
-    --bg: #f6f8fa;
+    --bg: #eef1f5;
     --panel: #ffffff;
-    --panel-2: #f6f8fa;
-    --panel-3: #eef1f4;
-    --line: #d8dee4;
-    --line-strong: #c2c9d1;
+    --panel-2: #f7f9fb;
+    --panel-3: #eaeef3;
+    --line: #dde3ea;
+    --line-strong: #c4ccd6;
 
-    --text: #1f2328;
-    --text-2: #57606a;
-    --text-3: #6e7781;
+    --text: #16191d;
+    --text-2: #4f5763;
+    --text-3: #6b7480;
 
     --accent: #15803d;
     --accent-soft: #dcfce7;
@@ -41,16 +41,24 @@
     --field-dark: #11151a;
     --switch-off: #ccd3da;
 
-    --shadow: 0 1px 2px rgba(31,35,40,.06), 0 3px 8px rgba(31,35,40,.04);
+    --shadow: 0 1px 2px rgba(16, 24, 40, .04), 0 1px 3px rgba(16, 24, 40, .05);
+    --shadow-lift: 0 2px 4px rgba(16, 24, 40, .05), 0 8px 20px rgba(16, 24, 40, .07);
+    --wash: radial-gradient(120% 90% at 18% 0%, rgba(21, 128, 61, .05), transparent 60%);
 
     --fs-micro: 11px;
     --fs-body: 13px;
     --fs-title: 15px;
     --fs-display: 17px;
 
-    --r-surface: 8px;
-    --r-control: 6px;
+    --r-surface: 12px;
+    --r-control: 8px;
     --r-pill: 999px;
+
+    /* Two motion curves, both under the 120ms the direction allows (DESIGN.md
+       §12.3).  Named so a component can say "the standard settle" instead of
+       inventing a fourth duration. */
+    --ease: cubic-bezier(.2, .7, .3, 1);
+    --t-quick: 120ms;
   }
 
   /* ==========================================================================
@@ -61,6 +69,9 @@
   body {
     margin: 0;
     background: var(--bg);
+    background-image: var(--wash);
+    background-repeat: no-repeat;
+    background-attachment: fixed;
     color: var(--text);
     font: 400 var(--fs-body)/1.6 system-ui, -apple-system, "Segoe UI",
           "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;
@@ -87,11 +98,26 @@
   /* ==========================================================================
      Header
      ========================================================================== */
+  /* ==========================================================================
+     App bar.  One focal line per screen: the title is the only place the
+     17px display size is spent (DESIGN.md §12.2.4).  Sticky at the same 16px
+     offset as the rail so the two never drift apart while scrolling (§12.2.6).
+     ========================================================================== */
   header {
     display: flex; align-items: center; gap: 8px;
-    padding: 0 0 16px;
+    position: sticky; top: 0; z-index: 5;
+    height: 48px;
+    padding: 0 16px;
+    margin: 0 0 16px;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: var(--r-surface);
+    box-shadow: var(--shadow);
   }
-  header h1 { font-size: var(--fs-title); font-weight: 600; }
+  header h1 {
+    font-size: var(--fs-display); line-height: 1.3; font-weight: 650;
+    letter-spacing: -.01em;
+  }
   header .ver { font-size: var(--fs-micro); color: var(--text-3); }
   .spacer { flex: 1; }
 
@@ -112,21 +138,25 @@
   .shell > * { min-width: 0; }
   .content { min-width: 0; }
 
-  /* The rail.  Sticky rather than fixed so it scrolls away with the page on a
-     short window instead of floating over the content. */
+  /* The rail.  Three bands, not one stack: identity / navigation / objects +
+     status.  The middle band is the only one that grows, and it is a LIST --
+     a rail whose middle band is empty is a rail that was never finished
+     (DESIGN.md §12.2.6).  Fixed height so `minmax(0,1fr)` has something to
+     divide; `min-height` would let the list shrink to nothing instead. */
   .rail {
     position: sticky;
     top: 16px;
-    display: flex;
-    flex-direction: column;
-    gap: 16px;
-    min-height: calc(100dvh - 32px);
-    padding: 16px;
+    display: grid;
+    grid-template-rows: auto auto minmax(0, 1fr) auto;
+    gap: 12px;
+    height: calc(100dvh - 32px);
+    padding: 16px 12px;
     background: var(--panel);
     border: 1px solid var(--line);
     border-radius: var(--r-surface);
+    box-shadow: var(--shadow);
   }
-  .brand { display: flex; align-items: center; gap: 8px; }
+  .brand { display: flex; align-items: center; gap: 8px; padding: 0 4px; }
   .mark {
     display: grid;
     place-items: center;
@@ -137,18 +167,20 @@
     color: var(--on-dark);
     font-size: var(--fs-micro);
     font-weight: 600;
+    box-shadow: 0 1px 2px rgba(21, 128, 61, .35);
   }
-  .wordmark { font-size: var(--fs-title); font-weight: 600; }
+  .wordmark { font-size: var(--fs-title); font-weight: 600; letter-spacing: -.01em; }
   .navlist { display: flex; flex-direction: column; gap: 2px; }
   .navitem {
     /* `button` centres its content; a navigation row reads as a list only when
        its label starts at the same left edge for every row. */
+    position: relative;
     display: flex;
     align-items: center;
     justify-content: flex-start;
     gap: 8px;
     width: 100%;
-    height: 34px;
+    height: 32px;
     padding: 0 12px;
     border: 0;
     border-radius: var(--r-control);
@@ -157,19 +189,89 @@
     font-size: var(--fs-body);
     font-weight: 400;
     text-align: left;
+    transition: background var(--t-quick) var(--ease),
+                color var(--t-quick) var(--ease);
   }
   .navitem:hover { background: var(--panel-3); color: var(--text); }
+  /* Selected is a SHAPE, not only a tint: on a near-white panel a pale green
+     fill is barely a state change, while a 2px bar at the leading edge is
+     visible in peripheral vision (§12.2.5). */
   .navitem.on {
     background: var(--accent-soft);
     color: var(--accent-ink);
     font-weight: 600;
   }
+  .navitem.on::before {
+    content: "";
+    position: absolute;
+    left: 0; top: 6px; bottom: 6px;
+    width: 2px;
+    border-radius: var(--r-pill);
+    background: var(--accent);
+  }
+
+  /* Band three: the object list.  Empty is a sentence, never stretched space. */
+  .railgroup { display: flex; flex-direction: column; gap: 6px; min-height: 0; min-width: 0; }
+  .glabel {
+    padding: 0 4px;
+    font-size: var(--fs-micro);
+    font-weight: 600;
+    color: var(--text-3);
+    letter-spacing: .06em;
+  }
+  .railkv {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 4px 8px;
+    padding: 0 4px;
+    font-size: var(--fs-micro);
+  }
+  .railkv dt { color: var(--text-3); }
+  .railkv dd {
+    margin: 0;
+    color: var(--text-2);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+  }
+  .railempty {
+    padding: 8px 4px;
+    font-size: var(--fs-micro);
+    line-height: 1.55;
+    color: var(--text-3);
+  }
+  /* The object list itself.  `overflow-y:auto` plus `min-height:0` is what makes
+     the 1fr row scroll instead of pushing the footer off the bottom; `flex:1`
+     is what makes the scroll region claim that row, so the list grows into the
+     rail rather than leaving a white gap between the last row and the footer. */
+  .rlist {
+    display: flex; flex-direction: column; gap: 2px;
+    flex: 1;
+    overflow-y: auto; min-height: 0;
+    padding: 0 4px;
+  }
+  .rrow {
+    display: flex; align-items: center; gap: 6px;
+    height: 24px; padding: 0 4px;
+    border: 0; border-radius: var(--r-control);
+    background: transparent;
+    color: var(--text-2);
+    font-size: var(--fs-micro);
+    text-align: left;
+    transition: background var(--t-quick) var(--ease),
+                color var(--t-quick) var(--ease);
+  }
+  .rrow:hover { background: var(--panel-3); color: var(--text); }
+  .rrow .n {
+    flex: 1; min-width: 0;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .rrow .c { color: var(--text-3); font-variant-numeric: tabular-nums; }
+
   .railfoot {
     display: flex;
     flex-direction: column;
-    gap: 6px;
-    margin-top: auto;
-    padding-top: 16px;
+    gap: 4px;
+    padding: 12px 4px 0;
     border-top: 1px solid var(--line);
   }
   .status {
@@ -179,8 +281,17 @@
     font-size: var(--fs-micro);
     color: var(--text-2);
   }
-  .dot { width: 8px; height: 8px; border-radius: var(--r-pill); background: var(--ok); }
-  .railnote { font-size: var(--fs-micro); color: var(--text-3); word-break: break-word; }
+  .dot {
+    width: 7px; height: 7px; border-radius: var(--r-pill);
+    background: var(--ok);
+    box-shadow: 0 0 0 3px var(--ok-soft);
+  }
+  .railnote {
+    font-size: var(--fs-micro);
+    color: var(--text-3);
+    word-break: break-word;
+    font-variant-numeric: tabular-nums;
+  }
 
   /* One view at a time.  The nav decides which; nothing is removed from the
      DOM, so `boot()` can fill every panel whether or not it is showing. */
@@ -210,22 +321,27 @@
     .shell { grid-template-columns: minmax(0, 1fr); gap: 16px; }
     .rail {
       position: static;
-      min-height: 0;
+      display: flex;
       flex-direction: row;
       flex-wrap: wrap;
       align-items: center;
+      height: auto;
+      padding: 12px;
       gap: 12px;
     }
+    .railgroup, .railkv, .railempty { display: none; }
     .navlist { flex-direction: row; flex-wrap: wrap; }
-    .navitem { width: auto; }
+    .navitem { width: auto; height: 30px; padding: 0 12px; }
+    .navitem.on::before { left: 6px; right: 6px; top: auto; bottom: 0; width: auto; height: 2px; }
     .railfoot {
       flex-direction: row;
       align-items: center;
       gap: 12px;
       margin-top: 0;
-      padding-top: 0;
+      padding: 0;
       border-top: 0;
     }
+    header { height: 44px; }
   }
 
   /* ==========================================================================
@@ -460,36 +576,80 @@
   /* ==========================================================================
      Installed mods
      ========================================================================== */
+  /* A mod row is one line with three columns: name / order / switch.  The
+     switch is the ONLY always-visible control, pinned to the right edge so its
+     position never moves; the reorder and delete buttons fade in on hover or
+     keyboard focus (DESIGN.md §12.2.7).  Visual order comes from `order`, not
+     from the DOM, so the tab sequence stays name -> up -> down -> delete ->
+     switch for a keyboard player who never hovers anything.
+
+     `opacity`, never `display` or `visibility`: a hidden-by-visibility button
+     leaves the tab order, which would make "remove a mod" unreachable without a
+     mouse -- and the two-step confirm below relies on the armed button staying
+     hittable. */
   .mod {
-    display: flex; align-items: center; gap: 8px;
-    padding: 8px 0;
-    border-top: 1px solid var(--line);
+    display: flex; align-items: center; gap: 6px;
+    height: 30px;
+    padding: 0 8px;
+    border-radius: var(--r-control);
     font-size: var(--fs-body);
+    transition: background var(--t-quick) var(--ease);
   }
-  .mod:first-child { border-top: 0; }
+  .mod + .mod { margin-top: 2px; }
+  .mod:hover { background: var(--panel-2); }
   .mod .nm {
+    order: 1;
     flex: 1; min-width: 0;
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   }
   .mod .nm.own { color: var(--accent-ink); font-weight: 600; }
   .mod .nm.half { color: var(--text-2); }
-  .mod .state { font-size: var(--fs-micro); color: var(--text-3); }
-  .mod .move {
-    flex: none; width: 20px; height: 20px; padding: 0;
-    font-size: var(--fs-micro); line-height: 1;
+  .mod .state { order: 2; font-size: var(--fs-micro); color: var(--text-3); }
+  /* Secondary actions: borderless ghosts that only take up visual weight when
+     the row is live. */
+  .mod .move,
+  .mod .remove {
+    order: 3;
+    flex: none;
+    border: 0;
+    background: transparent;
     color: var(--text-3);
-    border-color: var(--line);
-    background: var(--panel);
-  }
-  .mod .move:hover { color: var(--accent); border-color: var(--accent); }
-  .remove {
-    flex: none; height: 24px; padding: 0 8px;
     font-size: var(--fs-micro);
-    color: var(--text-2);
-    border-color: var(--line-strong);
-    background: var(--panel);
+    opacity: 0;
+    transition: opacity var(--t-quick) var(--ease),
+                color var(--t-quick) var(--ease),
+                background var(--t-quick) var(--ease);
   }
-  .remove:hover { color: var(--bad); border-color: var(--bad); }
+  .mod .move {
+    width: 18px; height: 22px; padding: 0;
+    line-height: 1;
+    border-radius: var(--r-control);
+  }
+  .mod .remove {
+    height: 22px; padding: 0 6px;
+    border-radius: var(--r-control);
+  }
+  .mod:hover .move, .mod:hover .remove,
+  .mod:focus-within .move, .mod:focus-within .remove { opacity: 1; }
+  .mod .move:hover { color: var(--accent); background: var(--accent-soft); }
+  .mod .remove:hover { color: var(--bad); background: var(--bad-soft); }
+  .mod .move:focus-visible, .mod .remove:focus-visible { opacity: 1; }
+  /* The armed confirm MUST stay painted.  It is a two-step delete: the first
+     click asks, the second acts.  If the pointer leaves the row the buttons
+     fade and the player comes back to a button that reads "确认" without
+     remembering why -- or clicks a control they cannot see. */
+  .mod .remove.armed {
+    order: 3;
+    opacity: 1;
+    color: var(--on-dark);
+    background: var(--bad);
+    padding: 0 8px;
+  }
+  /* No hover available: every control is a permanent part of the row. */
+  @media (hover: none) {
+    .mod .move, .mod .remove { opacity: 1; }
+  }
+  .mod .switch { order: 4; }
   .remove.armed { color: var(--on-dark); background: var(--bad); border-color: var(--bad); }
   .mods-foot { border-top: 1px solid var(--line); margin-top: 12px; padding-top: 12px; }
   .mods-foot .hint { margin: 0 0 8px; }
@@ -586,8 +746,12 @@
   #editor .edhead .s { font-size: var(--fs-micro); color: var(--text-2); margin-top: 2px; }
   #editor table.f { width: 100%; max-width: 620px; border-collapse: collapse; margin-top: 12px; }
   #editor table.f th {
-    text-align: left; font-size: var(--fs-micro); font-weight: 400;
-    color: var(--text-3);
+    /* The header was 11px / 400 / --text-3, which made the labels fainter than
+       the data they announce -- the one row that should be quietest was the
+       loudest thing in the column.  Weight and one contrast step fix it without
+       spending a fifth type size (DESIGN.md §12.2.8). */
+    text-align: left; font-size: var(--fs-micro); font-weight: 600;
+    color: var(--text-2);
     padding: 4px 6px; border-bottom: 1px solid var(--line);
   }
   #editor table.f td {
@@ -603,6 +767,38 @@
   #editor table.f td.e { display: flex; gap: 8px; align-items: center; }
   #editor table.f input { width: 84px; height: 26px; }
   #editor table.f button { height: 26px; padding: 0 8px; font-size: var(--fs-micro); }
+  /* Eighteen identical "改成" buttons down a column read as a wall: every row
+     shouts at the same volume whether or not it has anything to say.  A row
+     with an empty box has nothing to submit, so the button is drawn as a dim
+     ghost until the player types -- the eye then finds the one or two rows
+     that are actually in play (DESIGN.md §12.2.8).
+
+     `:has(input:not(:placeholder-shown))` is the whole mechanism: the box
+     always carries a placeholder (the current value), so "placeholder shown"
+     is exactly "input is empty".  WebView2 is Chromium and has `:has`; where
+     it did not, every button would simply stay bright -- a degraded look, not
+     a broken control, which is the only kind of fallback worth shipping. */
+  #editor table.f td.e { transition: none; }
+  #editor table.f td.e button {
+    transition: color var(--t-quick) var(--ease),
+                background var(--t-quick) var(--ease),
+                border-color var(--t-quick) var(--ease);
+  }
+  #editor table.f td.e:has(input:placeholder-shown) button {
+    color: var(--text-3);
+    background: transparent;
+    border-color: var(--line);
+    font-weight: 400;
+  }
+  #editor table.f td.e:has(input:not(:placeholder-shown)) button {
+    color: var(--accent-ink);
+    background: var(--accent-soft);
+    border-color: var(--accent-line);
+  }
+  #editor table.f td.e:has(input:focus) button {
+    color: var(--accent-ink);
+    border-color: var(--accent-line);
+  }
   #editor .ednone { font-size: var(--fs-body); color: var(--text-3); margin-top: 12px; }
   @container (max-width: 620px) {
     #editor .edbody {
@@ -691,9 +887,25 @@
     <button class="navitem" id="nav-mods" data-i18n="nav.mods">模组</button>
     <button class="navitem" id="nav-intents" data-i18n="nav.intents">能做的事</button>
   </div>
+  <!-- Band three.  The rail used to jump from four nav rows straight to the
+       footer, leaving 543px of nothing at 1237x880.  That band is where a
+       desktop tool puts the objects you came to work on; with no objects yet
+       it says so in a sentence instead of growing the gap.
+
+       The list is the saved sentences, because they are the only real objects
+       this tool owns: a recipe is a thing with a name that survives a restart,
+       and putting it one click away is the whole reason to keep it. -->
+  <div class="railgroup">
+    <div class="glabel">这次要改的</div>
+    <dl class="railkv">
+      <dt>数据版本</dt><dd class="ver" id="ver">·</dd>
+      <dt>已装模组</dt><dd id="rail-mods">·</dd>
+      <dt>记住的句子</dt><dd id="rail-recipes">·</dd>
+    </dl>
+    <div class="rlist" id="rail-recent"></div>
+  </div>
   <div class="railfoot">
     <div class="status"><span class="dot" aria-hidden="true"></span><span id="rail-state" data-i18n="rail.ready">就绪</span></div>
-    <div class="railver"><span class="ver" id="ver"></span></div>
     <div class="railnote" id="datinfo"></div>
   </div>
 </nav>
@@ -717,7 +929,7 @@
     <div class="box">
       <h2 data-i18n="say.heading">你想要什么改动？用中文说就行</h2>
       <div class="body">
-        <textarea id="say" data-i18n-ph="say.placeholder" placeholder="例如：
+        <textarea id="say" aria-label="用中文写你想改的地方" data-i18n-ph="say.placeholder" placeholder="例如：
 村民血量改成 1000
 弓箭手攻击力加 2
 给印加解锁蔷琵侦察兵
@@ -749,8 +961,8 @@
 
         <div id="form">
           <div class="tabs">
-            <select id="fintent"></select>
-            <select id="fshape"></select>
+            <select id="fintent" aria-label="要做什么"></select>
+            <select id="fshape" aria-label="用哪种说法"></select>
           </div>
           <div class="hint" data-i18n="form.note">填好下面几格，这句话会写进上面的框里，它和你自己打的那句
             走的是同一条判断，工具不认识的说法它照样会拒。</div>
@@ -765,7 +977,7 @@
           <div class="tabs">
             <button id="tab-unit" class="chip on" data-i18n="pick.unit">单位</button>
             <button id="tab-tech" class="chip" data-i18n="pick.tech">科技</button>
-            <input type="text" id="pickq" data-i18n-ph="pick.search" placeholder="在这个列表里找…">
+            <input type="text" id="pickq" aria-label="在这个列表里找" data-i18n-ph="pick.search" placeholder="在这个列表里找…">
             <span class="hint" id="pickcount"></span>
           </div>
           <div class="hint" data-i18n="pick.note">点一个图标，就把它填进上面的框里；也可以直接把它拖进上面的框。
@@ -784,7 +996,8 @@
              the reader on the day it runs. -->
         <div id="recipe">
           <div class="tabs">
-            <input type="text" id="rname" data-i18n-ph="recipe.name"
+            <input type="text" id="rname" aria-label="给这几句起个名字"
+                   data-i18n-ph="recipe.name"
                    placeholder="给这几句起个名字（例如「我的伐木场」）">
             <button id="rsave" class="chip" data-i18n="btn.save">记住这几句</button>
           </div>
@@ -826,7 +1039,7 @@
           <div class="edtabs">
             <button class="chip on" data-edkind="unit">单位</button>
             <button class="chip" data-edkind="tech">科技</button>
-            <input type="text" id="edq" placeholder="按名字过滤…">
+            <input type="text" id="edq" aria-label="按名字过滤单位或建筑" placeholder="按名字过滤…">
             <span class="hint" id="edcount"></span>
           </div>
           <div class="edbody">
@@ -1029,7 +1242,10 @@ async function boot() {
     return;
   }
   $("#preview").innerHTML = "";
-  $("#ver").textContent = T("page.version", {version: META.version});
+  $("#ver").textContent = META.version == null ? "·" : String(META.version);
+  // The sentence stays available, but as a tooltip: the rail row already has a
+  // "数据版本" label, and repeating it inside the value read as "数据版本 数据版本 54".
+  $("#ver").title = T("page.version", {version: META.version});
   // `?diag=1` prints the numbers that settle a layout question, because a
   // screenshot shows a symptom and these show the cause.  Kept in the shipped
   // page (it is two lines and no user ever types the query string) so the next
@@ -1316,7 +1532,12 @@ async function moveRow(m, delta) {
 function renderMods(mods) {
   const box = $("#mods");
   box.innerHTML = "";
-  if (!mods.length) { box.appendChild(el("div", "empty", "一个都没有")); return; }
+  RAIL_MODS = mods || [];
+  if (!mods.length) {
+    box.appendChild(el("div", "empty", "一个都没有"));
+    railSync();
+    return;
+  }
   for (const m of mods) {
     const row = el("div", "mod");
     const nm = el("div", "nm" + (String(m.name || "").startsWith("dsh ") ? " own" : ""),
@@ -1407,6 +1628,7 @@ function renderMods(mods) {
     row.appendChild(rm);
     box.appendChild(row);
   }
+  railSync();
 }
 
 // ---- pick by picture --------------------------------------------------
@@ -1606,11 +1828,16 @@ function renderShapes() {
 function slotInput(slot) {
   const wrap = el("div", "fslot");
   wrap.appendChild(el("label", null, slot.label || slot.name));
+  // The label above is a sibling, not a wrapper, so it names nothing on its own.
+  // Every control built here carries the same words as an explicit accessible
+  // name -- a bare label is a caption, and a caption is not a name.
+  const name = slot.label || slot.name;
   // A civ is a closed list and a picture is a file, so those two get a control
   // that cannot be mistyped; everything else is a name or a number the player
   // types, and the reader judges it.
   if (slot.kind === "civ" && META && META.civs) {
     const sel = el("select");
+    sel.setAttribute("aria-label", name);
     for (const c of META.civs) {
       const o = el("option", null, c);
       o.value = c;
@@ -1623,6 +1850,7 @@ function slotInput(slot) {
   }
   if (slot.kind === "op" || slot.kind === "ordinal") {
     const sel = el("select");
+    sel.setAttribute("aria-label", name);
     const opts = slot.kind === "ordinal"
       ? ["1", "2", "3", "4", "5"]
       : OP_CHOICES;
@@ -1640,6 +1868,7 @@ function slotInput(slot) {
   const inp = el("input");
   inp.type = "text";
   inp.dataset.slot = slot.name;
+  inp.setAttribute("aria-label", name);
   inp.placeholder = slot.sample == null ? "" : String(slot.sample);
   inp.oninput = renderFormPreview;
   wrap.appendChild(inp);
@@ -1778,9 +2007,46 @@ function renderRecipes(rows) {
   box.innerHTML = "";
   if (!RECIPES.length) {
     box.appendChild(el("div", "hint", "还没有记住的句子。写好几句、点「记住这几句」，它就会留在这儿。"));
+  } else {
+    for (const r of RECIPES) box.appendChild(recipeRow(r, loadRecipes));
+  }
+  railSync();
+}
+
+// The rail's third band mirrors the two lists this page actually owns.  It is
+// a mirror, not a second source of truth: every call comes from the render
+// functions above, so the rail can never show a sentence the main list does
+// not, and clicking a row calls the same handler the main list's button does.
+let RAIL_MODS = [];
+function railSync() {
+  const mods = $("#rail-mods");
+  if (mods) mods.textContent = RAIL_MODS.length ? String(RAIL_MODS.length) : "0";
+  const rec = $("#rail-recipes");
+  if (rec) rec.textContent = RECIPES.length ? String(RECIPES.length) : "0";
+  const list = $("#rail-recent");
+  if (!list) return;
+  list.innerHTML = "";
+  if (!RECIPES.length) {
+    list.appendChild(el("div", "railempty",
+      "还没有记住的句子。在主页写一句话，点「记住这几句」，它就挂在这。"));
     return;
   }
-  for (const r of RECIPES) box.appendChild(recipeRow(r, loadRecipes));
+  for (const r of RECIPES) {
+    const b = el("button", "rrow");
+    b.title = (r.sentences || []).join("\n");
+    b.appendChild(el("span", "n", r.name));
+    b.appendChild(el("span", "c", String((r.sentences || []).length)));
+    b.onclick = () => {
+      const ta = $("#say");
+      ta.value = (r.sentences || []).join("\n");
+      if (typeof showView === "function") showView("home");
+      ta.focus();
+      if (typeof PINS !== "undefined") PINS.length = 0;
+      toast("已放进上面的框，接着点「读一下」", "ok");
+      if (typeof doParse === "function") doParse();
+    };
+    list.appendChild(b);
+  }
 }
 
 async function loadRecipes() {
@@ -2002,6 +2268,7 @@ function edFieldRow(ent, key, value, label, kind) {
   const inp = el("input");
   inp.type = "text";
   inp.placeholder = shown == null ? "未存" : shown;
+  inp.setAttribute("aria-label", (ent.zh || ent.name) + " " + label);
   inp.dataset.field = key;
   const editTd = el("td", "e", "");
   editTd.appendChild(inp);
