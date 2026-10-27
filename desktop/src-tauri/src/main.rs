@@ -1,3 +1,9 @@
+// A windowed app, not a console app. Without this the exe gets a console
+// window of its own on Windows -- the black cmd box that appears behind the app
+// and does nothing. It must be at the crate ROOT, before any item, and a `//!`
+// doc comment counts as an item for this rule, so it goes above one.
+#![windows_subsystem = "windows"]
+
 //! Replace the Python child with the embedded native engine.
 //!
 //! What this file used to do
@@ -258,18 +264,32 @@ fn main() {
                         return;
                     }
                 };
-                let (win_w, win_h) = match handle.primary_monitor() {
-                    Ok(Some(m)) => {
-                        let scale = m.scale_factor();
-                        let size = m.size();
-                        (
-                            (size.width as f64 / scale) - 40.0,
-                            (size.height as f64 / scale) - 90.0,
-                        )
+                // A fixed, modest window instead of "fill the work area".
+                //
+                // History: this used to be `monitor size - margins` because the
+                // page had been drawn for a 1240 px viewport and a smaller window
+                // pushed the 320 px side column off the edge. That was a layout
+                // bug; filling the screen was the workaround, and on a 2560x1440
+                // display the result was a 2535x1387 window that covered
+                // everything else. The layout now survives 1200 px, so the
+                // window can be a normal size.
+                //
+                // The cap keeps it usable on a small laptop as well: never larger
+                // than the work area minus a margin for the taskbar.
+                let (mut win_w, mut win_h) = (1240.0_f64, 860.0_f64);
+                if let Ok(Some(m)) = handle.primary_monitor() {
+                    let scale = m.scale_factor();
+                    let size = m.size();
+                    let avail_w = (size.width as f64 / scale) - 40.0;
+                    let avail_h = (size.height as f64 / scale) - 90.0;
+                    if win_w > avail_w {
+                        win_w = avail_w.max(640.0);
                     }
-                    _ => (1180.0, 760.0),
-                };
-                log(&format!("work area {win_w}x{win_h}"));
+                    if win_h > avail_h {
+                        win_h = avail_h.max(480.0);
+                    }
+                }
+                log(&format!("window {win_w}x{win_h}"));
                 match tauri::WebviewWindowBuilder::new(
                     &handle,
                     "workshop",

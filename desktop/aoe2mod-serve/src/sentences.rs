@@ -607,3 +607,20 @@ fn strip_ordinal(text: &str) -> String {
     }
     out
 }
+
+
+/// Whether the native reader can produce this intent from a sentence.
+///
+/// The screen lists every intent in the schema and marks the ones a sentence
+/// cannot reach, because a plugin adds intents to the schema and this list IS
+/// the schema -- hiding them would make the list a promise the screen cannot
+/// keep, and showing them unmarked would be worse.
+///
+/// This is a LIST, not a guess: it grows as the reader does, and an intent that
+/// is not here simply refuses with "这个改动还只能用原来的引擎".
+pub fn intent_is_reachable(id: &str) -> bool {
+    matches!(
+        id,
+        "unit.stat" | "unit.cost" | "tech.research_time" | "tech.cost" | "tech.effect"
+    )
+}

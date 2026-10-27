@@ -268,9 +268,64 @@ fn route(
                     .iter()
                     .map(|c| format!("\"{}\"", json_escape(c)))
                     .collect();
+                // The page reads six fields off META: version, mods, civs,
+                // available, model, intents. Supplying two of them made `boot()`
+                // throw at `renderIntentList` and the editor never initialised
+                // -- while every per-endpoint probe was green. The screen is the
+                // user, so the screen is the test.
+                let app_dir = app_dir_of(&server.root);
+                let table = crate::tables::load_sentences(&app_dir);
+                let empty = serde_json::Map::new();
+                let intents_src = table
+                    .get("intents")
+                    .and_then(|v| v.as_object())
+                    .unwrap_or(&empty);
+                let mut intents: Vec<String> = Vec::new();
+                for (id, spec) in intents_src {
+                    let title = spec
+                        .get("label")
+                        .or_else(|| spec.get("title"))
+                        .and_then(|v| v.as_str())
+                        .unwrap_or(id);
+                    let fields: Vec<String> = spec
+                        .get("fields")
+                        .and_then(|v| v.as_object())
+                        .map(|m| m.keys().cloned().collect())
+                        .unwrap_or_default();
+                    // `by_sentence` says whether a SENTENCE can reach this intent.
+                    // A plugin adds intents to the schema and this list IS the
+                    // schema, so an unreachable one is marked rather than hidden:
+                    // the API genuinely can drive it.
+                    let reachable = crate::sentences::intent_is_reachable(id);
+                    let fjson: Vec<String> =
+                        fields.iter().map(|f| format!("\"{}\"", json_escape(f))).collect();
+                    intents.push(format!(
+                        "{{\"id\":\"{}\",\"title\":\"{}\",\"fields\":[{}],\"by_sentence\":{}}}",
+                        json_escape(id),
+                        json_escape(title),
+                        fjson.join(","),
+                        reachable
+                    ));
+                }
+                let mods = match crate::mods::profile_root() {
+                    Some(p) => crate::mods::read_mods(&p).unwrap_or_default(),
+                    None => Vec::new(),
+                };
+                let cfg = crate::ai::config();
+                let (avail, model) = match &cfg {
+                    Some(c) => ("true", format!("\"{}\"", json_escape(&c.model))),
+                    None => ("false", "null".to_string()),
+                };
                 let json = format!(
-                    "{{\"ok\":true,\"version\":\"native\",\"civs\":[{}],\"unit_count\":{},\"tech_count\":{},\"graphic_count\":{},\"raw_bytes\":{},\"parse_ms\":{}}}",
+                    "{{\"ok\":true,\"version\":\"native\",\"civs\":[{}],\
+                     \"intents\":[{}],\"mods\":{},\"available\":{},\
+                     \"model\":{},\"unit_count\":{},\"tech_count\":{},\
+                     \"graphic_count\":{},\"raw_bytes\":{},\"parse_ms\":{}}}",
                     civs.join(","),
+                    intents.join(","),
+                    crate::mods::to_json(&mods),
+                    avail,
+                    model,
                     r.unit_count,
                     r.tech_count,
                     r.graph_count,
@@ -282,25 +337,7 @@ fn route(
             None => (
                 200,
                 "application/json; charset=utf-8",
-                b"{\"ok\":false,\"error\":\"\xe8\xbf\x98\xe5\x9c\xa8\xe8\xaf\xbb\xe5\x8f\x96\xe6\xb8\xb8\xe6\x88\x8f\xe6\x95\xb0\xe6\x8d\xae\"}".to_vec(),
-            ),
-        },
-        "/api/mods" => match crate::mods::profile_root() {
-            Some(root) => match crate::mods::read_mods(&root) {
-                Ok(rows) => {
-                    let json = format!("{{\"ok\":true,\"mods\":{}}}", crate::mods::to_json(&rows));
-                    (200, "application/json; charset=utf-8", json.into_bytes())
-                }
-                Err(e) => (
-                    200,
-                    "application/json; charset=utf-8",
-                    format!("{{\"ok\":false,\"error\":\"{}\"}}", json_escape(&e.to_string())).into_bytes(),
-                ),
-            },
-            None => (
-                200,
-                "application/json; charset=utf-8",
-                format!("{{\"ok\":false,\"error\":\"{}\"}}", json_escape("找不到玩家档案目录")).into_bytes(),
+                b"{\"ok\":false,\"error\":\"\xe8\xbf\x98\xe5\x9c\xa8\xe8\xaf\xbb\xe5\x8f\x96\xe6\xb8\xb8\xe6\x88\x8f\xe6\x95\xb0\xe6\x8d\xae\",\"intents\":[],\"civs\":[],\"mods\":[],\"available\":false,\"model\":null}".to_vec(),
             ),
         },
         "/api/forms" => {
