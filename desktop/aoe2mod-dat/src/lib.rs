@@ -111,7 +111,15 @@ impl<'a> Reader<'a> {
     }
 
     pub fn f32(&mut self) -> io::Result<f32> {
-        Ok(f32::from_bits(self.u32()? as u32))
+        Ok(f32::from_bits(self.u32()?))
+    }
+
+    /// Advance without decoding.  The format is full of fixed-size fields this
+    /// reader does not model (`Colors[3]`, `CliffColors`, `Padding`, the three
+    /// dropped floats in a graphic); skipping them keeps the cursor honest
+    /// without inventing structs nobody will read.
+    pub fn skip(&mut self, n: usize) -> io::Result<()> {
+        self.take(n).map(|_| ())
     }
 
     /// Fixed-width, NUL-padded string: the file version field.
@@ -120,6 +128,285 @@ impl<'a> Reader<'a> {
         let end = b.iter().position(|&c| c == 0).unwrap_or(b.len());
         Ok(String::from_utf8_lossy(&b[..end]).into_owned())
     }
+
+    pub fn u8(&mut self) -> io::Result<u8> {
+        Ok(self.take(1)?[0])
+    }
+
+    /// `serializeDebugString`: u16 marker, u16 length, then `length` bytes.
+    ///
+    /// Returns `(marker, text, stored_len)`.  The stored length is the WIDTH IN
+    /// THE STREAM, which is not `text.len()`: a string may be NUL-padded or may
+    /// carry trailing bytes.  The writer needs that width to advance its raw
+    /// cursor, and getting it wrong is how this project once produced 991,273
+    /// mismatches from a single 3-byte string change.  The Python original
+    /// keeps it in `Reader.last_string_len` for the same reason; here it is
+    /// returned so a caller cannot forget it exists.
+    pub fn debug_string(&mut self) -> io::Result<(u16, String, u16)> {
+        let marker = self.u16()?;
+        let len = self.u16()?;
+        let b = self.take(len as usize)?;
+        let end = b.iter().position(|&c| c == 0).unwrap_or(b.len());
+        Ok((marker, String::from_utf8_lossy(&b[..end]).into_owned(), len))
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Stage 2: sounds
+// ---------------------------------------------------------------------------
+#[derive(Debug, Clone)]
+pub struct SoundItem {
+    pub file: String,
+    pub resource_id: i32,
+    pub probability: i16,
+    pub civilization: i16,
+    pub iconset: i16,
+}
+
+#[derive(Debug, Clone)]
+pub struct Sound {
+    pub id: i16,
+    pub play_delay: i16,
+    pub cache_time: i32,
+    pub total_probability: i16,
+    pub items: Vec<SoundItem>,
+}
+
+fn read_sound_item(r: &mut Reader<'_>) -> io::Result<SoundItem> {
+    let (_m, file, _n) = r.debug_string()?;
+    Ok(SoundItem {
+        file,
+        resource_id: r.i32()?,
+        probability: r.i16()?,
+        civilization: r.i16()?,
+        iconset: r.i16()?,
+    })
+}
+
+pub fn read_sound(r: &mut Reader<'_>) -> io::Result<Sound> {
+    let id = r.i16()?;
+    let play_delay = r.i16()?;
+    // NOTE the order: the item count is read BEFORE cache_time, i.e. it sits
+    // 6 bytes earlier in the stream than a "count then payload" reading would
+    // put it.  Taken from the Python original line for line.
+    let file_count = r.i16()?;
+    let cache_time = r.i32()?;
+    let total_probability = r.i16()?;
+    let mut items = Vec::with_capacity(file_count.max(0) as usize);
+    for _ in 0..file_count {
+        items.push(read_sound_item(r)?);
+    }
+    Ok(Sound {
+        id,
+        play_delay,
+        cache_time,
+        total_probability,
+        items,
+    })
+}
+
+// ---------------------------------------------------------------------------
+// Stage 3: graphics
+// ---------------------------------------------------------------------------
+/// `(i16, i16, i32, i16, i16, i16, i16)` -- 16 bytes.
+pub type GraphicDelta = (i16, i16, i32, i16, i16, i16, i16);
+/// Three `(i16, i16, u32)` pairs -- 24 bytes, alongside the deltas.
+pub type AngleSound = [(i16, i16, u32); 3];
+
+#[derive(Debug, Clone)]
+pub struct Graphic {
+    pub name: String,
+    pub file: String,
+    pub particle_effect: String,
+    /// Stored widths of the three strings, as bytes in the stream.
+    pub name_len: u16,
+    pub file_len: u16,
+    pub particle_len: u16,
+    pub slp: i32,
+    pub is_loaded: u8,
+    pub old_color_flag: u8,
+    pub layer: u8,
+    pub player_color: i16,
+    pub transparent_selection: u8,
+    pub coordinates: [i16; 4],
+    pub sound_id: i16,
+    pub wwise_sound_id: u32,
+    pub angle_sounds_used: u8,
+    pub frame_count: i16,
+    pub angle_count: i16,
+    pub id: i16,
+    pub mirroring_mode: u8,
+    pub editor_flag: u8,
+    pub deltas: Vec<GraphicDelta>,
+    pub angle_sounds: Vec<AngleSound>,
+}
+
+fn read_graphic_delta(r: &mut Reader<'_>) -> io::Result<GraphicDelta> {
+    Ok((
+        r.i16()?, r.i16()?, r.i32()?, r.i16()?, r.i16()?, r.i16()?, r.i16()?,
+    ))
+}
+
+fn read_graphic_angle_sound(r: &mut Reader<'_>) -> io::Result<AngleSound> {
+    Ok([(r.i16()?, r.i16()?, r.u32()?), (r.i16()?, r.i16()?, r.u32()?),
+        (r.i16()?, r.i16()?, r.u32()?)])
+}
+
+pub fn read_graphic(r: &mut Reader<'_>) -> io::Result<Graphic> {
+    let (_m1, name, name_len) = r.debug_string()?;
+    let (_m2, file, file_len) = r.debug_string()?;
+    let (_m3, particle_effect, particle_len) = r.debug_string()?;
+
+    let slp = r.i32()?;
+    let is_loaded = r.u8()?;
+    let old_color_flag = r.u8()?;
+    let layer = r.u8()?;
+    let player_color = r.i16()?;
+    let transparent_selection = r.u8()?;
+    let mut coordinates = [0i16; 4];
+    for slot in coordinates.iter_mut() {
+        *slot = r.i16()?;
+    }
+    let delta_count = r.i16()?;
+    let sound_id = r.i16()?;
+    let wwise_sound_id = r.u32()?;
+    let angle_sounds_used = r.u8()?;
+    let frame_count = r.i16()?;
+    let angle_count = r.i16()?;
+    // SpeedMultiplier, FrameDuration, ReplayDelay: read and dropped, exactly as
+    // the Python original does (`r.f32()` with no assignment).
+    r.f32()?;
+    r.f32()?;
+    r.f32()?;
+    r.u8()?; // SequenceType
+    let id = r.i16()?;
+    let mirroring_mode = r.u8()?;
+    let editor_flag = r.u8()?;
+
+    let mut deltas = Vec::with_capacity(delta_count.max(0) as usize);
+    for _ in 0..delta_count {
+        deltas.push(read_graphic_delta(r)?);
+    }
+    let mut angle_sounds = Vec::new();
+    if angle_sounds_used != 0 {
+        for _ in 0..angle_count {
+            angle_sounds.push(read_graphic_angle_sound(r)?);
+        }
+    }
+    Ok(Graphic {
+        name,
+        file,
+        particle_effect,
+        name_len,
+        file_len,
+        particle_len,
+        slp,
+        is_loaded,
+        old_color_flag,
+        layer,
+        player_color,
+        transparent_selection,
+        coordinates,
+        sound_id,
+        wwise_sound_id,
+        angle_sounds_used,
+        frame_count,
+        angle_count,
+        id,
+        mirroring_mode,
+        editor_flag,
+        deltas,
+        angle_sounds,
+    })
+}
+
+// ---------------------------------------------------------------------------
+// Stages 2 + 3 together
+// ---------------------------------------------------------------------------
+pub struct Stages23 {
+    pub sounds: Vec<Sound>,
+    pub graphic_pointers_nonzero: usize,
+    pub graphics: Vec<Graphic>,
+}
+
+pub fn read_stages23(r: &mut Reader<'_>) -> io::Result<Stages23> {
+    let sound_count = r.i16()?;
+    let mut sounds = Vec::with_capacity(sound_count.max(0) as usize);
+    for _ in 0..sound_count {
+        sounds.push(read_sound(r)?);
+    }
+
+    let graphic_count = r.i16()?;
+    let mut ptrs = Vec::with_capacity(graphic_count.max(0) as usize);
+    for _ in 0..graphic_count {
+        ptrs.push(r.i32()?);
+    }
+    // The pointer array is a presence flag per slot; records exist only where
+    // the pointer is non-zero, and they follow in order.  `graphic_count` is
+    // the SLOT count, not the record count -- reading it as records is a
+    // classic way to over-run here.
+    let nonzero = ptrs.iter().filter(|&&p| p != 0).count();
+    let mut graphics = Vec::with_capacity(nonzero);
+    for &p in ptrs.iter() {
+        if p != 0 {
+            graphics.push(read_graphic(r)?);
+        }
+    }
+    Ok(Stages23 {
+        sounds,
+        graphic_pointers_nonzero: nonzero,
+        graphics,
+    })
+}
+
+// ---------------------------------------------------------------------------
+// Stages 4-7: terrain, random maps, effects, unit headers
+// ---------------------------------------------------------------------------
+pub mod stages37;
+
+pub use stages37::{
+    read_effect, read_random_maps, read_task, read_terrain, read_terrain_block,
+    read_unit_header, read_unit_line, Effect, Task, Terrain, TerrainBlock,
+    UnitHeader, UnitLine,
+};
+
+pub struct Stages47 {
+    pub terrain_block: TerrainBlock,
+    pub random_map_count: usize,
+    pub effects: Vec<Effect>,
+    pub unit_headers: Vec<UnitHeader>,
+}
+
+/// Stages 4-7 in one call, with stage 6 deliberately absent.
+///
+/// DatFile.cpp:214 guards UnitLines with `if (gv >= GV_SWGB)`, and GV_C32 (54)
+/// is below GV_SWGB (55), so a VER 8.9 file has NO UnitLines array at this
+/// point.  The stage numbering in the docs lists one; the source contradicts
+/// that, and reading it here would shift everything after.
+pub fn read_stages47(r: &mut Reader<'_>, gv: u32) -> io::Result<Stages47> {
+    let terrain_block = read_terrain_block(r)?;
+    let random_map_count = read_random_maps(r)?;
+
+    let effect_count = r.i32()?;
+    let mut effects = Vec::with_capacity(effect_count.max(0) as usize);
+    for _ in 0..effect_count {
+        effects.push(read_effect(r)?);
+    }
+
+    // stage 6: UnitLines -- not present, see above.
+
+    let unit_header_count = r.i32()?;
+    let mut unit_headers = Vec::with_capacity(unit_header_count.max(0) as usize);
+    for _ in 0..unit_header_count {
+        unit_headers.push(read_unit_header(r, gv)?);
+    }
+
+    Ok(Stages47 {
+        terrain_block,
+        random_map_count,
+        effects,
+        unit_headers,
+    })
 }
 
 /// `VER 8.9` -> the ordinal the C++ `GameVersion` enum gives it.
