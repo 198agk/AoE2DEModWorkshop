@@ -141,15 +141,21 @@
   /* The rail.  Three bands, not one stack: identity / navigation / objects +
      status.  The middle band is the only one that grows, and it is a LIST --
      a rail whose middle band is empty is a rail that was never finished
-     (DESIGN.md §12.2.6).  Fixed height so `minmax(0,1fr)` has something to
-     divide; `min-height` would let the list shrink to nothing instead. */
+     (DESIGN.md §12.2.6).
+
+     `max-height`, not `height`: a fixed height forces the rail to 848px even
+     when its content ends at 430px, and the leftover comes out as the exact
+     dead band this section exists to remove (measured with 0 saved sentences:
+     451px list, 50px of it text).  With `max-height` the `1fr` row is content
+     sized while the rail is short, and only shrinks -- giving the list a
+     scrollbar -- once the content would exceed the window. */
   .rail {
     position: sticky;
     top: 16px;
     display: grid;
     grid-template-rows: auto auto minmax(0, 1fr) auto;
     gap: 12px;
-    height: calc(100dvh - 32px);
+    max-height: calc(100dvh - 32px);
     padding: 16px 12px;
     background: var(--panel);
     border: 1px solid var(--line);
@@ -325,11 +331,11 @@
       flex-direction: row;
       flex-wrap: wrap;
       align-items: center;
-      height: auto;
+      max-height: none;
       padding: 12px;
       gap: 12px;
     }
-    .railgroup, .railkv, .railempty { display: none; }
+    .railgroup { display: none; }
     .navlist { flex-direction: row; flex-wrap: wrap; }
     .navitem { width: auto; height: 30px; padding: 0 12px; }
     .navitem.on::before { left: 6px; right: 6px; top: auto; bottom: 0; width: auto; height: 2px; }
@@ -427,8 +433,14 @@
   .box input, .box select { height: 28px; }
   /* Six example lines above need room to be READ as examples; a 2-row box
      clips three of them and looks broken rather than empty. */
+  /* The example text is the only instruction on this screen, so it has to be
+     fully readable before anything is typed.  Measured: the placeholder is
+     7 lines (「例如：」 + 6 sentences) at 20.8px each plus 16px padding = 164px,
+     and the old 132px box clipped the last 32px -- one and a half lines, i.e.
+     the example about two technologies silently lost its ending.  168px is
+     that requirement rounded up to the 4px scale. */
   .box textarea { padding: 8px; line-height: 1.6; width: 100%;
-                  min-height: 132px; resize: vertical; }
+                  min-height: 168px; resize: vertical; }
   .box input:focus, .box textarea:focus, .box select:focus {
     outline: none; border-color: var(--accent);
     box-shadow: 0 0 0 2px var(--accent-soft);
