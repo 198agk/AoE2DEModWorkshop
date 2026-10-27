@@ -41,6 +41,7 @@ VIEWS = [
     ("view-home", "intents", 5, "能做的事：意图卡片"),
     ("view-editor", "edlist", 50, "编辑器：单位列表"),
     ("view-mods", "mods", 5, "模组：行"),
+    ("view-card", "cardgrid", 15, "命令面板：格子"),
 ]
 
 SCRIPT = r"""
@@ -142,6 +143,25 @@ def main():
                     out.meta_ver = (document.getElementById('ver') || {}).textContent;
                     out.intent_cards = (document.getElementById('intents') || {}).children.length;
                     out.civ_status = (document.getElementById('datinfo') || {}).textContent;
+                    // The card grid, counted as BOXES with numbers, not just
+                    // children. The panel drew 25 boxes for three weeks because
+                    // the number came from `max(button_id)` in the .dat instead
+                    // of from `widgetui/commandpanel.json`; counting children
+                    // alone would have passed for both 15 and 25, so this reads
+                    // the box labels back and checks the set is exactly 0..N-1
+                    // with N taken from the page, not from this file.
+                    const grid = document.getElementById('cardgrid');
+                    const boxes = grid
+                        ? Array.from(grid.children).map(c => c.dataset.box)
+                                .filter(v => v !== undefined).map(Number)
+                        : [];
+                    boxes.sort((a, b) => a - b);
+                    out.card = {
+                        boxes,
+                        contiguous: boxes.length > 0 &&
+                            boxes.every((v, i) => v === i),
+                        offgrid_note: (document.getElementById('card-offgrid') || {}).textContent,
+                    };
                     return out;
                 }""",
                 [[v[0], v[1], v[2], v[3]] for v in VIEWS],
@@ -174,6 +194,21 @@ def main():
         if result.get("intent_cards", 0) < 5:
             print("  FAIL: intents box is empty")
             ok = False
+        # The grid must be 0..N-1 with no gap and no box past the layout. The
+        # specific N is asserted too: 15 is what the game's own commandpanel.json
+        # holds, and the panel must not invent a 16th.
+        card = result.get("card") or {}
+        boxes = card.get("boxes") or []
+        print("  card boxes: n=%d contiguous=%s" % (len(boxes), card.get("contiguous")))
+        if not card.get("contiguous"):
+            print("  FAIL: card boxes are not 0..%d-1" % len(boxes))
+            ok = False
+        if len(boxes) != 15:
+            print("  FAIL: card grid drew %d boxes; widgetui/commandpanel.json has 15"
+                  % len(boxes))
+            ok = False
+        if card.get("offgrid_note"):
+            print("  off-grid: %s" % card["offgrid_note"][:120])
 
         print()
         print("PAGE GATE: %s" % ("ALL PASSED" if ok else "FAILURES ABOVE"))

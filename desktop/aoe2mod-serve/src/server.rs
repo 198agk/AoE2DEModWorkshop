@@ -98,7 +98,8 @@ const LOADING_PAGE: &str = r#"<!doctype html>
  .s{color:#8a949f;min-height:22px;margin:0 0 14px}
  .t{height:4px;background:#232a33;border-radius:999px;overflow:hidden}
  .b{height:100%;width:0;background:#c9a227;transition:width .25s}
- .f{color:#cf222e;margin-top:14px;text-align:left;white-space:pre-wrap;display:none}
+ .f{color:#cf222e;margin-top:14px;text-align:left;white-space:pre-wrap;
+   overflow-wrap:anywhere;word-break:break-word;display:none}
  .f.on{display:block}
 </style></head><body><div class="w">
 <h1>帝国时代 2 决定版 · 模组工坊</h1>
@@ -658,7 +659,11 @@ fn route(
                             None => std::collections::HashMap::new(),
                         }
                     };
-                    crate::cards::card(&cards, building, &names, &icons).to_string()
+                    let slots = match crate::game_root() {
+                        Some(r) => crate::slots::card_slots(&r).0,
+                        None => crate::slots::FALLBACK_SLOTS,
+                    };
+                    crate::cards::card(&cards, building, &names, &icons, slots).to_string()
                 }
             };
             (200, "application/json; charset=utf-8", json.into_bytes())

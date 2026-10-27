@@ -1258,6 +1258,7 @@
           <button class="btn" id="card-next" type="button">下一个建筑 →</button>
         </div>
         <div class="cardgrid" id="cardgrid" aria-live="polite"><div class="empty">读取中…</div></div>
+        <div class="hint" id="card-offgrid"></div>
         <div class="hint" id="card-note"></div>
       </div>
     </section>
@@ -1425,6 +1426,21 @@ function el(tag, cls, text) {
 const VIEWS = ["home", "card", "editor", "mods", "intents"];
 let VIEW = "home";
 let ED_LOADED = false;
+// `CARD_BUILDING` / `CARD_LOADED` live HERE, above the reader, instead of down
+// beside `loadCard` where they read more naturally.  `showView` runs at module
+// top level (line ~1460) so a `#card` deep link paints before the rest of the
+// file has been evaluated; `let` is hoisted but stays in its temporal dead zone
+// until its own line, so reading it from above threw
+//     ReferenceError: Cannot access 'CARD_LOADED' before initialization
+// and nothing caught it -- the throw ended the whole module, so `boot()` never
+// ran and the command panel AND the editor both sat on "读取中…" forever
+// whenever the page was opened at `#card` / `#editor`, or simply reloaded while
+// on either view.  Measured 2026-10-27 20:50 in the shipped exe.
+// `var` would have dodged the TDZ and kept the bug: the value would read
+// `undefined`, the guard would pass, and `loadCard` would be called before it
+// was defined.  Declaring above the reader is the fix.
+let CARD_BUILDING = 12;      // the Barracks: the documented example
+let CARD_LOADED = false;
 
 function showView(name) {
   if (VIEWS.indexOf(name) < 0) name = "home";
@@ -1435,15 +1451,10 @@ function showView(name) {
     const btn = $("#nav-" + v);
     if (btn) btn.classList.toggle("on", v === name);
   }
-  // The editor's 400 rows are fetched the first time it is looked at, not on
-  // the first paint: the sentence box is what the window is for.
-  if (name === "card" && !CARD_LOADED) {
-    CARD_LOADED = true;
-    loadCard(CARD_BUILDING);
-  }
-  if (name === "editor" && !ED_LOADED) {
-    ED_LOADED = true;
-    }
+  // Both panels are filled during `boot()`, so there is nothing lazy left to do
+  // here. This branch used to set `ED_LOADED = true` and then fall off the end
+  // of the block with the fetch nowhere in sight -- a guard around nothing,
+  // which reads as "the editor is loaded on demand" and is not true.
   try {
     history.replaceState(null, "", name === "home" ? location.pathname : "#" + name);
   } catch (e) {
@@ -1459,6 +1470,16 @@ for (const v of VIEWS) {
 // A deep link wins over "home", so `#editor` in the Tauri address bar works.
 showView((String((typeof location !== "undefined" && location.hash) || "")
   .replace("#", "")) || "home");
+// And keep working if the hash changes afterwards: the page writes the hash on
+// every switch (`history.replaceState` above), and a browser Back or a
+// hand-edited address must move the view rather than leave it. Without this the
+// only way to change views was a nav click, so a harness that set `location.hash`
+// measured nothing -- it appeared to switch views and did not.
+if (typeof window !== "undefined" && window.addEventListener) {
+  window.addEventListener("hashchange", () => {
+    showView(String(location.hash || "").replace("#", "") || "home");
+  });
+}
 
 async function boot() {
   // Wording first: every other sentence below asks the table for its text, and
@@ -1537,6 +1558,17 @@ async function boot() {
   // The editor is the third way in, and the one that shows the data: fetched
   // after meta so a failure here costs only the panel, not the screen.
   loadEditor();
+  // The card panel is filled here too, not lazily on first look. Every other
+  // view is filled during boot (see the VIEWS comment above), and this one was
+  // the exception: it waited for `showView("card")`, so a page opened at `#card`
+  // raced the boot sequence and could sit on "读取中…" -- measured 2026-10-27
+  // 21:22 in the shipped exe, where `#card` was exactly the case that failed.
+  // A panel that is only filled when someone looks at it is a panel that can be
+  // empty while it is being looked at.
+  if (!CARD_LOADED) {
+    CARD_LOADED = true;
+    loadCard(CARD_BUILDING);
+  }
   for (const _b of document.querySelectorAll("[data-edkind]")) {
     _b.onclick = () => edKind(_b.getAttribute("data-edkind"));
   }
@@ -3035,13 +3067,18 @@ $("#say").addEventListener("keydown", (e) => {
 boot();
 
 // ---- command card ------------------------------------------------------
-// The game's bottom-left panel. `/api/card` returns 25 boxes with the empty ones
-// included: an editor that only lists occupied boxes cannot show a player where
-// an empty target is. A box holding a CHAIN says so -- the Barracks' first box is
-// the whole militia upgrade line, and flattening that to one unit would misreport
-// 45 of its 49 entries.
-let CARD_BUILDING = 12;      // the Barracks: the documented example
-let CARD_LOADED = false;
+// The game's bottom-left panel. `/api/card` returns the boxes the layout draws,
+// empty ones included: an editor that only lists occupied boxes cannot show a
+// player where an empty target is. A box holding a CHAIN says so -- the
+// Barracks' first box is the whole militia upgrade line, and flattening that to
+// one unit would misreport 45 of its 49 entries.
+//
+// `CARD_BUILDING` / `CARD_LOADED` are declared near the top of this file, by the
+// other `let`s that `showView` and `boot()` read. Declaring them a second time
+// here is a SyntaxError, not a shadow: `let` at module scope cannot be repeated,
+// and it took the whole page down ("Identifier 'CARD_BUILDING' has already been
+// declared") -- measured 2026-10-27 21:5x, after the first copy was moved up to
+// fix a TDZ. Two ways to the same variable is how a fix becomes a second bug.
 
 async function loadCard(building) {
   const grid = $("#cardgrid");
@@ -3062,9 +3099,29 @@ async function loadCard(building) {
   $("#card-title").textContent = j.name ? (j.name + "（" + j.building + "）")
                                         : ("建筑 " + j.building);
   $("#card-note").textContent = j.note || "";
+  // Entries the .dat stores on this card but the panel has no box for. Kept
+  // visible with their real ids: the Dock's are campaign heroes (Leif Erikson,
+  // Vasco da Gama, Admiral Yi) plus hidden units, and dropping them silently
+  // would make the panel claim the card holds less than it does.
+  const offg = $("#card-offgrid");
+  if (offg) {
+    const off = j.off_grid || [];
+    offg.textContent = off.length
+      ? ("不在 " + (j.slots || 15) + " 格里的还有 " + off.length + " 条："
+         + off.map(o => ("第 " + o.button + " 格 " + o.units.map(u => u.name || ("unit " + u.unit)).join("、"))).join("；")
+         + "。这些是剧情英雄或隐藏单位，面板不给它们画格子。")
+      : "";
+  }
   const byBox = {};
   for (const b of (j.boxes || [])) byBox[b.button] = b;
-  for (let i = 0; i < 25; i++) {
+  // How many boxes to DRAW comes from the server, which reads it out of the
+  // game's own `widgetui/commandpanel.json` (5 columns x 3 rows). This loop used
+  // to run to a literal 25, and 25 was never measured -- it came from "the .dat
+  // stores button_id up to 24", which is a property of a sample of a sparse id
+  // space, not a layout. The shipped data does reach 24 on the Dock (campaign
+  // heroes, hidden units); those are listed under the grid, not drawn as boxes.
+  const SLOTS = j.slots || 15;
+  for (let i = 0; i < SLOTS; i++) {
     const b = byBox[i];
     const cell = el("div", "cardslot" + (b ? "" : " free"), "");
     cell.setAttribute("draggable", b ? "true" : "false");

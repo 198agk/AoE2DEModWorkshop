@@ -237,3 +237,13 @@ target/
 # 19 MB of measured offsets, regenerated in ~40 s by _probe/make_stat_offsets.py
 _golden/stat_offsets.json
 _golden/unit0_trace.txt
+
+# Tauri's generated capability schemas.  Rewritten by `tauri-build` on every
+# compile from the capabilities/ folder, so it is output that happens to sit
+# in the source tree.  Committing it means every build produces a diff.
+desktop/src-tauri/gen/
+
+# Scratch .dat files written by the probe runs (hp1000.dat, test_hp.dat).
+# They are copies of the game's own data with a few bytes changed -- 23 MB of
+# it -- and any probe regenerates them in seconds.
+_out/

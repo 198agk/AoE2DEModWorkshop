@@ -70,7 +70,21 @@ pub fn table_path() -> std::path::PathBuf {
 ///
 /// `boxes` groups the entries by `button_id` and preserves the order the `.dat`
 /// stores, because that order IS the upgrade chain the game cycles through.
-pub fn card(cards: &Cards, building: i16, names: &Value, unit_icons: &HashMap<i16, i16>) -> Value {
+///
+/// `slots` is how many boxes to DRAW, from the game's own layout
+/// (`slots::card_slots`). It is not `boxes.len()` and not `max(button)+1`: the
+/// shipped data reaches `button_id` 24 (Dock, campaign heroes and hidden units),
+/// and rendering 25 boxes because a stored id is 24 is reading a sample of a
+/// sparse id space as a capacity. Anything at or past `slots` goes into
+/// `off_grid` with its ids intact, so nothing is silently dropped -- the panel
+/// just does not draw a box the engine would not draw.
+pub fn card(
+    cards: &Cards,
+    building: i16,
+    names: &Value,
+    unit_icons: &HashMap<i16, i16>,
+    slots: u8,
+) -> Value {
     let entries = cards.cards.get(&building).cloned().unwrap_or_default();
 
     // Group by box, keeping first-seen order: the chain order matters.
@@ -101,7 +115,14 @@ pub fn card(cards: &Cards, building: i16, names: &Value, unit_icons: &HashMap<i1
     }
     order.sort();
 
-    let boxes: Vec<Value> = order
+    // Split where the layout says the grid ends. Both halves keep `button` so a
+    // caller can still act on an off-grid entry; the difference is only whether
+    // the panel draws a box for it.
+    let slots = if slots == 0 { 15 } else { slots };
+    let (in_grid, off_grid): (Vec<i64>, Vec<i64>) =
+        order.iter().partition(|b| **b >= 0 && **b < slots as i64);
+
+    let boxes: Vec<Value> = in_grid
         .iter()
         .map(|b| {
             let list = grouped.get(b).cloned().unwrap_or_default();
@@ -111,6 +132,22 @@ pub fn card(cards: &Cards, building: i16, names: &Value, unit_icons: &HashMap<i1
                 // one fact a caller must not flatten.
                 "count": list.len(),
                 "is_chain": list.len() > 1,
+                "units": list,
+            })
+        })
+        .collect();
+
+    // Out-of-grid entries, kept and explained rather than dropped. On the shipped
+    // data this is the Dock's heroes (Leif Erikson, Vasco da Gama, Admiral Yi,
+    // Longboat at 15, Dragon Ship at 24) -- ids the .dat stores but no player
+    // drops a unit onto.
+    let off: Vec<Value> = off_grid
+        .iter()
+        .map(|b| {
+            let list = grouped.get(b).cloned().unwrap_or_default();
+            json!({
+                "button": b,
+                "count": list.len(),
                 "units": list,
             })
         })
@@ -131,9 +168,11 @@ pub fn card(cards: &Cards, building: i16, names: &Value, unit_icons: &HashMap<i1
         "building": building,
         "name": bname,
         "has_data": cards.has_data(building),
+        "slots": slots,
         "box_count": boxes.len(),
         "unit_count": entries.len(),
         "boxes": boxes,
+        "off_grid": off,
         "note": if cards.has_data(building) {
             "这是 .dat 里的全部：某个文明实际能造的会少一些，收窄在树/面板那一层"
         } else {

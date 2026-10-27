@@ -1,0 +1,1875 @@
+
+const $ = (s) => document.querySelector(s);
+let META = null;
+let LAST = null;          // last successful parse payload
+let LAST_UPDATE = null;   // last /api/update-check payload
+
+// The screen's own wording.  Every sentence the page says about itself comes
+// from `aoe2mod/schema/locales/zh.json` via `/api/locale`; the Chinese still
+// inline in this file is a fallback for the case where that one fetch fails,
+// because a page rendering empty headings is worse than a page with slightly
+// stale ones.  `T("key", {n: 3})` is how this file spells wording, and it
+// returns the key when the table lacks it -- loud, which is what a missing
+// entry should be.
+let STR = {};
+function T(key, values) {
+  let text = STR[key];
+  if (text === undefined) return key;
+  if (values) {
+    text = text.replace(/\{([a-z_][a-z0-9_]*)\}/g, function (m, k) {
+      return (values[k] === undefined || values[k] === null)
+        ? m : String(values[k]);
+    });
+  }
+  return text;
+}
+
+// Fill the nodes that carry a key.  `data-i18n` replaces text, `-ph` a
+// placeholder, `-title` a tooltip.  Run once after the table arrives; the inline
+// Chinese stays in the file so a failed fetch still renders a usable screen.
+function applyLocale() {
+  // No table means the fetch failed.  Returning here is the whole point of
+  // keeping the Chinese inline: `T()` would otherwise write raw keys into every
+  // heading, which is strictly worse than slightly stale wording.
+  if (!Object.keys(STR).length) return;
+  document.querySelectorAll("[data-i18n]").forEach(function (n) {
+    const key = n.getAttribute("data-i18n");
+    // A key the table does not have leaves the inline Chinese in place.  Writing
+    // `T(key)` here would put the raw key on screen, and a heading reading
+    // `say.heading` is a worse screen than one with yesterday's sentence in it.
+    if (!(key in STR)) return;
+    const text = T(key);
+    // A string that still holds a placeholder belongs to code that has the
+    // value to fill it (the version, the civ count).  Writing it here would put
+    // `{civs}` on screen -- so the tagged node keeps its inline text and the
+    // renderer that knows the number owns that sentence.
+    if (text.indexOf("{") >= 0) return;
+    // `textContent` replaces the WHOLE subtree.  Three of the notes carry
+    // `<code>` samples the reader needs (`改成/设为`, `加/减`), and writing over
+    // them would delete the explanation while leaving a sentence that mentions
+    // it -- so a container is out of scope for this pass and keeps its markup.
+    if (n.children.length) return;
+    n.textContent = text;
+  });
+  document.querySelectorAll("[data-i18n-ph]").forEach(function (n) {
+    const key = n.getAttribute("data-i18n-ph");
+    if (!(key in STR)) return;
+    const text = T(key);
+    if (text.indexOf("{") >= 0) return;
+    n.setAttribute("placeholder", text);
+  });
+  document.querySelectorAll("[data-i18n-title]").forEach(function (n) {
+    const key = n.getAttribute("data-i18n-title");
+    if (!(key in STR)) return;
+    const text = T(key);
+    if (text.indexOf("{") >= 0) return;
+    n.title = text;
+  });
+}
+
+async function loadLocale() {
+  try {
+    const got = await api("/api/locale");
+    if (got && got.strings) STR = got.strings;
+  } catch (e) {
+    STR = {};                     // no table = the shipped screen, not a blank one
+  }
+}
+
+function toast(msg, kind) {
+  const t = $("#toast");
+  t.textContent = msg;
+  t.className = "toast show " + (kind || "");
+  clearTimeout(toast._t);
+  toast._t = setTimeout(() => { t.className = "toast " + (kind || ""); }, 4200);
+}
+
+async function api(path, body) {
+  const opt = body === undefined ? {} : {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify(body),
+  };
+  const r = await fetch(path, opt);
+  const j = await r.json();
+  if (!j.ok) throw new Error(j.error || "未知错误");
+  return j;
+}
+
+function el(tag, cls, text) {
+  const n = document.createElement(tag);
+  if (cls) n.className = cls;
+  if (text !== undefined) n.textContent = text;
+  return n;
+}
+
+// ---- boot -------------------------------------------------------------
+// ---- the rail -----------------------------------------------------------
+// The four views never leave the DOM.  Switching is one class, because
+// `boot()` fills every panel on load and the harness reads them whether or not
+// they are on screen.
+const VIEWS = ["home", "card", "editor", "mods", "intents"];
+let VIEW = "home";
+let ED_LOADED = false;
+// `CARD_BUILDING` / `CARD_LOADED` live HERE, above the reader, instead of down
+// beside `loadCard` where they read more naturally.  `showView` runs at module
+// top level (line ~1460) so a `#card` deep link paints before the rest of the
+// file has been evaluated; `let` is hoisted but stays in its temporal dead zone
+// until its own line, so reading it from above threw
+//     ReferenceError: Cannot access 'CARD_LOADED' before initialization
+// and nothing caught it -- the throw ended the whole module, so `boot()` never
+// ran and the command panel AND the editor both sat on "读取中…" forever
+// whenever the page was opened at `#card` / `#editor`, or simply reloaded while
+// on either view.  Measured 2026-10-27 20:50 in the shipped exe.
+// `var` would have dodged the TDZ and kept the bug: the value would read
+// `undefined`, the guard would pass, and `loadCard` would be called before it
+// was defined.  Declaring above the reader is the fix.
+let CARD_BUILDING = 12;      // the Barracks: the documented example
+let CARD_LOADED = false;
+
+function showView(name) {
+  if (VIEWS.indexOf(name) < 0) name = "home";
+  VIEW = name;
+  for (const v of VIEWS) {
+    const node = $("#view-" + v);
+    if (node) node.classList.toggle("on", v === name);
+    const btn = $("#nav-" + v);
+    if (btn) btn.classList.toggle("on", v === name);
+  }
+  // Both panels are filled during `boot()`, so there is nothing lazy left to do
+  // here. This branch used to set `ED_LOADED = true` and then fall off the end
+  // of the block with the fetch nowhere in sight -- a guard around nothing,
+  // which reads as "the editor is loaded on demand" and is not true.
+  try {
+    history.replaceState(null, "", name === "home" ? location.pathname : "#" + name);
+  } catch (e) {
+    /* a file:// or a stripped history must not break the screen */
+  }
+}
+
+for (const v of VIEWS) {
+  const btn = $("#nav-" + v);
+  if (btn) btn.onclick = () => showView(v);
+}
+
+// A deep link wins over "home", so `#editor` in the Tauri address bar works.
+showView((String((typeof location !== "undefined" && location.hash) || "")
+  .replace("#", "")) || "home");
+// And keep working if the hash changes afterwards: the page writes the hash on
+// every switch (`history.replaceState` above), and a browser Back or a
+// hand-edited address must move the view rather than leave it. Without this the
+// only way to change views was a nav click, so a harness that set `location.hash`
+// measured nothing -- it appeared to switch views and did not.
+if (typeof window !== "undefined" && window.addEventListener) {
+  window.addEventListener("hashchange", () => {
+    showView(String(location.hash || "").replace("#", "") || "home");
+  });
+}
+
+async function boot() {
+  // Wording first: every other sentence below asks the table for its text, and
+  // asking before it has loaded would print keys on screen for one frame.
+  await loadLocale();
+  applyLocale();
+  // Say what is happening before the slow part.  `/api/meta` parses the whole
+  // 93 MB `.dat` on a cold start -- measured 2026-10-26 at ~25 s in the windowed
+  // build.  Without this line the screen is an empty dark page for that whole
+  // time, which reads as "the app did not start" rather than "it is reading".
+  $("#preview").innerHTML = "";
+  $("#preview").appendChild(el("div", "hint", T("page.reading")));
+  try {
+    META = await api("/api/meta");
+  } catch (e) {
+    $("#preview").innerHTML = "";
+    $("#preview").appendChild(el("div", "err",
+      T("page.offline", {error: e.message})));
+    return;
+  }
+  $("#preview").innerHTML = "";
+  $("#ver").textContent = META.version == null ? "·" : String(META.version);
+  // The sentence stays available, but as a tooltip: the rail row already has a
+  // "数据版本" label, and repeating it inside the value read as "数据版本 数据版本 54".
+  $("#ver").title = T("page.version", {version: META.version});
+  // `?diag=1` prints the numbers that settle a layout question, because a
+  // screenshot shows a symptom and these show the cause.  Kept in the shipped
+  // page (it is two lines and no user ever types the query string) so the next
+  // person does not have to re-derive how to ask the window its own width.
+  // The same numbers also go into `document.title` on a timer, which the window
+  // shell can read back from outside -- measuring a window from inside it is
+  // otherwise a chicken-and-egg problem, and a one-shot write loses a race with
+  // whatever `boot()` puts in the title afterwards.
+  // `typeof location` because a fake DOM (the page harness) has none, and a
+  // debug block must never be able to take the screen down with it.
+  if (typeof location !== "undefined" && location.search.indexOf("diag=1") >= 0) {
+    const diag = () => {
+      // The columns live on `.shell` now, not on `main`: the rail is a real
+      // column of the shell grid, and `main` is a stack of views inside it.
+      const m = $(".shell") || $("main");
+      const box = m ? m.getBoundingClientRect() : null;
+      const line = "vw=" + innerWidth + " dpr=" + devicePixelRatio +
+        " doc=" + document.documentElement.clientWidth + "/" + document.documentElement.scrollWidth +
+        " main=" + (box ? Math.round(box.width) : "?") +
+        " cols=" + (m ? getComputedStyle(m).gridTemplateColumns : "?");
+      const info = $("#datinfo");
+      if (info) info.textContent = "diag: " + line;
+      // Report it to the server as well.  `document.title` cannot be read back
+      // (the shell owns that), and a screenshot only shows the symptom, and
+      // `#datinfo` sits at the far right of the header -- exactly the part that
+      // gets clipped when the layout is too wide to fit.  A GET with the
+      // numbers in the query string works from any page origin and needs no
+      // CORS preflight.
+      const q = "/api/diag?vw=" + encodeURIComponent(innerWidth) +
+        "&vh=" + encodeURIComponent(innerHeight) +
+        "&dpr=" + encodeURIComponent(devicePixelRatio) +
+        "&doc=" + encodeURIComponent(document.documentElement.clientWidth) +
+        "&scroll=" + encodeURIComponent(document.documentElement.scrollWidth) +
+        "&main=" + encodeURIComponent(box ? Math.round(box.width) : "") +
+        "&cols=" + encodeURIComponent(m ? getComputedStyle(m).gridTemplateColumns : "");
+      fetch(q).catch(() => {});
+    };
+    diag();
+    setInterval(diag, 2000);
+  }
+  renderIntentList();
+  renderMods(META.mods);
+  // The .dat facts a player cares about, phrased as facts rather than fields.
+  $("#datinfo").textContent = T("page.ready", {civs: META.civs.length});
+  checkUpdates();
+  aiBoot();
+  // The saved sentences are fetched AFTER meta, because a failure here must not
+  // cost the player the screen: `loadRecipes` writes its own reason into the list
+  // and returns, and nothing else depends on it.
+  loadRecipes();
+  // The editor is the third way in, and the one that shows the data: fetched
+  // after meta so a failure here costs only the panel, not the screen.
+  loadEditor();
+  // The card panel is filled here too, not lazily on first look. Every other
+  // view is filled during boot (see the VIEWS comment above), and this one was
+  // the exception: it waited for `showView("card")`, so a page opened at `#card`
+  // raced the boot sequence and could sit on "读取中…" -- measured 2026-10-27
+  // 21:22 in the shipped exe, where `#card` was exactly the case that failed.
+  // A panel that is only filled when someone looks at it is a panel that can be
+  // empty while it is being looked at.
+  if (!CARD_LOADED) {
+    CARD_LOADED = true;
+    loadCard(CARD_BUILDING);
+  }
+  for (const _b of document.querySelectorAll("[data-edkind]")) {
+    _b.onclick = () => edKind(_b.getAttribute("data-edkind"));
+  }
+  if ($("#edq")) {
+    $("#edq").oninput = () => loadEditor();
+  }
+}
+
+// ---- did the game's data move under an installed mod? ------------------
+// A mod we build ships a whole .dat, so a game patch is silently overwritten by
+// the installed copy.  The guard costs ~10 ms (a file hash and a 64-byte
+// inflate), so it runs on every load; only a stale mod is worth a banner.
+async function checkUpdates() {
+  let got;
+  try {
+    const r = await api("/api/update-check");
+    got = r.update;
+  } catch (e) {
+    return;                       // a guard that cannot run must not block the screen
+  }
+  LAST_UPDATE = got;
+  if (!got || !got.rows) { $("#banner").className = ""; return; }
+  const stale = got.rows.filter(r => r.status === "stale");
+  if (!stale.length) { $("#banner").className = ""; return; }
+  $("#banner-msg").textContent = got.banner || ("有 " + stale.length + " 个模组要重建");
+  const names = stale.map(r => r.name).join("、");
+  $("#banner-note").textContent =
+    "受影响：" + names + "。重建会用游戏现在这份数据重新生成，再装回原处。";
+  $("#btn-rebuild").onclick = () => rebuildAll(stale);
+  $("#banner").className = "open";
+}
+
+async function rebuildAll(rows) {
+  const btn = $("#btn-rebuild");
+  btn.disabled = true;
+  const done = [];
+  const failed = [];
+  let warned = null;
+  for (const r of rows) {
+    btn.textContent = "重建中… (" + (done.length + failed.length + 1) + "/" + rows.length + ")";
+    try {
+      const got = await api("/api/rebuild", {title: r.name});
+      // A rebuild reinstalls, so it has the same hazard as install: the game
+      // rewrites mod-status.json at exit.  Reading the warning only on the
+      // install path would make "rebuild" the one button that looks safe.
+      if (got.installed && got.installed.running_warning) warned = got.installed.running_warning;
+      done.push(r.name);
+    } catch (e) {
+      // One failure must not hide the others: a mod whose record lost its
+      // intents cannot be rebuilt, and the user needs to know which one.
+      failed.push(r.name + "：" + e.message);
+    }
+  }
+  btn.disabled = false;
+  btn.textContent = "重建并重装";
+  if (done.length) toast("已重建 " + done.length + " 个，重开游戏才会生效", "ok");
+  if (warned) toast(warned, "warn");
+  if (failed.length) toast(failed.join("；"), "bad");
+  await checkUpdates();
+  try { renderMods((await api("/api/mods")).mods); } catch (e) {}
+}
+
+// ---- can a community mod that ships a whole .dat be saved? --------------
+// The guard above only knows about mods THIS tool built (it has a record to
+// compare against).  A mod someone else made has no record, so the question it
+// can answer is different and just as useful: what did it change, and can that
+// change be replayed on the data the game has today?  Both answers cost 3-12 s
+// per mod of parsing, so this is a button, never a page load.
+const REPAIR_VERDICT_ZH = {
+  auto: "可以自动修",
+  manual: "只能部分自动修",
+  impossible: "不能自动修",
+  identical: "不用修",
+  no_dat: "不带数据文件",
+};
+
+function repairRow(r) {
+  const row = el("div", "mod");
+  const left = el("div", "");
+  left.appendChild(el("div", "nm", r.title || r.name));
+  const v = REPAIR_VERDICT_ZH[r.verdict] || r.verdict || "?";
+  const badge = el("span", "stat" + (r.verdict === "auto" ? "" : " dim"), v);
+  const line = el("div", "hint");
+  line.appendChild(badge);
+  left.appendChild(line);
+  // The summary is the product's own sentence, printed verbatim: re-phrasing it
+  // here would drift away from what every other surface says.
+  left.appendChild(el("div", "hint", r.summary || ""));
+  row.appendChild(left);
+  if (r.verdict === "auto") {
+    const b = el("button", "chip", "修好它");
+    b.onclick = async (ev) => {
+      const btn = ev.target;
+      btn.disabled = true;
+      btn.textContent = "修…";
+      try {
+        const got = await api("/api/repair-apply", {name: r.name});
+        toast("已修好并装回：" + (r.title || r.name), "ok");
+        if (got.installed && got.installed.running_warning)
+          toast(got.installed.running_warning, "warn");
+        // Re-ask rather than assume: the row must now read 不用修, and if it does
+        // not, the rebuild did not reproduce what the author had.
+        await checkRepairs();
+      } catch (e) {
+        btn.disabled = false;
+        btn.textContent = "修好它";
+        toast("没修成：" + e.message, "bad");
+      }
+    };
+    row.appendChild(b);
+  }
+  return row;
+}
+
+async function checkRepairs() {
+  const box = $("#repair");
+  const btn = $("#btn-repair");
+  btn.disabled = true;
+  btn.textContent = "检查中…（每个模组要读一遍数据文件）";
+  box.innerHTML = "";
+  try {
+    const got = await api("/api/repair-check");
+    const rows = (got.mods || []).filter(r => r.verdict && r.verdict !== "no_dat");
+    if (!rows.length) {
+      box.appendChild(el("div", "hint", "没有自带数据文件的模组。"));
+    } else {
+      // Say the split before the list: a player who sees twenty rows needs to
+      // know how many of them this tool can actually fix.
+      const fixable = rows.filter(r => r.verdict === "auto").length;
+      box.appendChild(el("div", "hint",
+        "自带数据文件的模组 " + rows.length + " 个，其中 " + fixable + " 个能在这里修好。"));
+      for (const r of rows) box.appendChild(repairRow(r));
+    }
+  } catch (e) {
+    box.appendChild(el("div", "err", "检查失败：" + e.message));
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "检查自带数据文件的模组";
+  }
+}
+
+// ---- AI as one more way to WRITE, never a way around the checks ----------
+// The model is asked for sentences and nothing else.  Those sentences go into
+// the box and the ordinary reader judges them, so a wrong or over-reaching
+// answer arrives as a refusal the player can read, not as a byte edit.  The
+// button stays hidden unless the endpoint is configured: an AI box that always
+// fails is worse than no box.
+let AI_META = null;
+
+async function aiBoot() {
+  try {
+    AI_META = await api("/api/ai-meta");
+  } catch (e) {
+    AI_META = null;
+  }
+  $("#btn-ai").classList.toggle("hide", !(AI_META && AI_META.available));
+  if (AI_META && AI_META.available) {
+    $("#btn-ai").title = "把上面的愿望写成这个工具认得的句子"
+      + (AI_META.model ? "（" + AI_META.model + "）" : "");
+    $("#ainote").textContent =
+      "AI 只负责把你的话说成这个工具认得的句子，认不认、能不能做，"
+      + "仍然由下面那些同一条规则判断，它不会直接改任何数据。";
+  }
+}
+
+async function doAI() {
+  const btn = $("#btn-ai");
+  const box = $("#aigot");
+  const wish = ($("#say").value || "").trim();
+  if (!wish) { toast("先说你想要什么，再让 AI 写", "warn"); return; }
+  btn.disabled = true;
+  btn.textContent = "✦ 正在写…";
+  box.innerHTML = "";
+  $("#ai").classList.remove("hide");
+  try {
+    const got = await api("/api/ai-sentences", {text: wish});
+    const list = (got.ai && got.ai.sentences) || [];
+    if (!list.length) { box.appendChild(el("div", "hint", "AI 一句话都没写出来。")); }
+    for (const s of list) {
+      const row = el("div", "mod");
+      row.appendChild(el("div", "nm", s));
+      const use = el("button", "chip", "用这句");
+      // "Use this" REPLACES the box rather than appending: the wish the player
+      // typed is on its way out, and keeping it would leave two versions of the
+      // same request in one box for the reader to mis-parse together.
+      use.onclick = () => { $("#say").value = s; doParse(); };
+      row.appendChild(use);
+      box.appendChild(row);
+    }
+    // The model's own sentence is offered, not applied: every line still has to
+    // pass the reader, and the player is the one who decides what to send.
+  } catch (e) {
+    box.appendChild(el("div", "err", "AI 没写成：" + e.message));
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "✦ 让 AI 写成句子";
+  }
+}
+
+function renderIntentList() {
+  const box = $("#intents");
+  box.innerHTML = "";
+  for (const it of META.intents) {
+    const d = el("div", "intentcard", "");
+    d.appendChild(el("div", "t", it.title));
+    // A plugin can add an intent to the schema, and this list IS the schema.
+    // The sentence layer is hand-written, though, so a plugin intent can only be
+    // driven through the API -- and saying nothing makes this list a promise the
+    // screen cannot keep (measured 2026-10-23: a plugin intent `unit.set_stat`
+    // was listed here while `把村民血量设成40` kept parsing to `unit.stat`).
+    // Marked, not hidden: the API genuinely can do it.
+    if (it.by_sentence === false) {
+      d.appendChild(el("div", "bysentence", "只能用接口（句子还认不出来）"));
+      d.title = "这项是插件加的。命令行 /api/plan 能用它，"
+        + "但这屏的句子解析器还没有对应说法。";
+    } else {
+      d.appendChild(el("div", "bysentence", "可以说出来"));
+    }
+    box.appendChild(d);
+  }
+}
+
+async function moveRow(m, delta) {
+  try {
+    const r = await api("/api/mod-move", {name: m.name, delta: delta});
+    renderMods(r.mods || []);
+    if (r.running_warning) toast(r.running_warning, "bad");
+  } catch (e) { toast("移不动：" + e.message, "bad"); }
+}
+
+function renderMods(mods) {
+  const box = $("#mods");
+  box.innerHTML = "";
+  RAIL_MODS = mods || [];
+  if (!mods.length) {
+    box.appendChild(el("div", "empty", "一个都没有"));
+    railSync();
+    return;
+  }
+  for (const m of mods) {
+    const row = el("div", "mod");
+    const nm = el("div", "nm" + (String(m.name || "").startsWith("dsh ") ? " own" : ""),
+                  m.title || m.name);
+    nm.title = m.name + (m.priority != null ? "  · 顺序 " + m.priority : "");
+    // A data mod gets NO switch, and no badge either.  The player's words
+    // (2026-10-26): "数据模组不需要去启用的" and then "把这个去掉" about the badge.
+    // Both are the same point -- the game picks the data mod in its own 数据模组
+    // dropdown when the match is created, so a checkbox or a status word here
+    // describes a decision this page cannot make.  What is left is the row's
+    // position, which the two arrows actually change.
+    const sw = m.ships_dat ? null : el("button", "switch" + (m.enabled ? " on" : ""));
+    if (sw) sw.title = m.enabled ? "已启用（点击停用）" : "未启用（点击启用）";
+    if (sw) sw.onclick = async () => {
+      try {
+        const r = await api("/api/mod", {name: m.name, enabled: !m.enabled});
+        renderMods(r.mods);
+        toast((m.enabled ? "已停用 " : "已启用 ") + (m.title || m.name), "ok");
+        // Toggling while the game runs is the one case where the list on screen
+        // and the list the game will use can differ: the game rewrites
+        // mod-status.json when it exits, from the list it still remembers.  The
+        // server already computed this and the page used to throw it away.
+        if (r.running_warning) toast(r.running_warning, "bad");
+      } catch (e) { toast("改不动：" + e.message, "bad"); }
+    };
+    // A split build is two folders but one decision.  Mark the pair so the row
+    // says so -- the player who switched off only the data half ended up with an
+    // orphan applying the icon tables, which looks like nothing at all.
+    if (m.role === "ui") {
+      nm.classList.add("half");
+      const tag = el("span", "stat");
+      tag.textContent = "界面半边";
+      tag.title = "这个构建的数据那一半是「" + (m.paired_with || "?") +
+                   "」。两个要一起启用：只要数据那一半时，图标一层不生效。";
+      nm.appendChild(tag);
+    }
+    row.appendChild(nm);
+    if (sw) {
+      row.appendChild(sw);
+    } else {
+      // Load order IS the conflict order, so a data mod needs "move" rather than
+      // "on/off".  Two arrows are the smallest way to say that, and the rank
+      // badge above redraws from the answer so the number cannot drift.
+      const up = el("button", "move", "\u25b2");
+      up.title = "往上移一位（越靠上越先加载，覆盖冲突时它赢）";
+      up.onclick = () => moveRow(m, -1);
+      const down = el("button", "move", "\u25bc");
+      down.title = "往下移一位";
+      down.onclick = () => moveRow(m, 1);
+      row.appendChild(up);
+      row.appendChild(down);
+    }
+    // Removing is the one action here that deletes folders, so it arms first and
+    // acts on the second click.  For a split build the server removes both halves
+    // (that is nailed), which is why the armed label names the sibling: a player
+    // looking at one row cannot otherwise know the other one goes too.
+    // The button names what actually happens: the folder goes to the Recycle Bin
+    // (the player, 2026-10-26: "移除是什么意思，放入回收站吗").  Before that
+    // change this called `shutil.rmtree`, so "移除" was permanent.
+    const rm = el("button", "remove", "放进回收站");
+    rm.title = m.role && m.paired_with
+      ? "把这个构建的两个文件夹放进回收站（含「" + m.paired_with + "」）"
+      : "把这个模组的文件夹放进回收站（可以还原）";
+    let armed = false;
+    rm.onclick = async () => {
+      if (!armed) {
+        armed = true;
+        rm.classList.add("armed");
+        rm.textContent = "确定放？";
+        if (m.role && m.paired_with) {
+          rm.textContent = "确定两个都放？";
+        }
+        return;
+      }
+      try {
+        const r = await api("/api/uninstall", {name: m.name});
+        renderMods(r.mods || []);
+        toast("已放进回收站：" + (m.title || m.name) +
+              "（要还原就去回收站里取）", "ok");
+        if (r.running_warning) toast(r.running_warning, "bad");
+      } catch (e) {
+        armed = false;
+        rm.classList.remove("armed");
+        rm.textContent = "放进回收站";
+        toast("没放进回收站，什么也没删：" + e.message, "bad");
+      }
+    };
+    row.appendChild(rm);
+    box.appendChild(row);
+  }
+  railSync();
+}
+
+// ---- pick by picture --------------------------------------------------
+// Typing a name only works if you already know the name, and the game's Chinese
+// names are not the ones players use: 弓箭手 is not any unit's name, and 城堡 is
+// both a building and part of a technology's name.  This panel lets a player
+// point at a picture instead of recalling a name.
+const PICK = {kind: "unit", query: "", offset: 0, total: 0, busy: false};
+const PICK_STEP = 60;
+// Picks are sent back with the sentence so a clicked picture keeps its id.
+const PINS = [];
+// The last title this page wrote into the box.  Kept so the build can tell "the
+// player typed this" from "we wrote this and nobody touched it" -- only the
+// second may be trimmed to the engine's 100-byte limit.
+let AUTO_TITLE = "";
+
+function pickName(row) { return row.zh || row.name || ("#" + row.id); }
+
+async function loadPick(append) {
+  if (PICK.busy) return;
+  PICK.busy = true;
+  const grid = $("#pickgrid");
+  try {
+    const j = await api("/api/browse?kind=" + encodeURIComponent(PICK.kind) +
+                        "&q=" + encodeURIComponent(PICK.query) +
+                        "&limit=" + PICK_STEP + "&offset=" + PICK.offset);
+    const b = j.browse;
+    if (!append) grid.innerHTML = "";
+    PICK.total = b.total;
+    for (const row of b.rows) grid.appendChild(pickCell(row));
+    PICK.offset = b.offset + b.rows.length;
+    $("#pickcount").textContent = PICK.offset + " / " + b.total;
+    $("#pickmore").classList.toggle("hide", !(PICK.offset < b.total));
+  } catch (e) {
+    grid.innerHTML = "";
+    grid.appendChild(el("div", "err", "读不到列表：" + e.message));
+  } finally { PICK.busy = false; }
+}
+
+function pickCell(row) {
+  const cell = el("div", "cell" + (row.has_icon ? "" : " noicon"));
+  cell.title = pickName(row) + (row.en ? " · " + row.en : "") + "  (#" + row.id + ")";
+  if (row.has_icon) {
+    const img = document.createElement("img");
+    img.src = "/api/icon?kind=" + encodeURIComponent(row.kind) +
+              "&id=" + encodeURIComponent(row.id) + "&size=48";
+    img.alt = pickName(row);
+    // A record can declare an icon id whose texture is missing from this
+    // install; falling back to the labelled blank keeps the grid honest
+    // instead of showing a broken-image glyph.
+    img.onerror = () => {
+      cell.className = "cell noicon";
+      img.remove();
+      cell.insertBefore(el("div", "blank", "?"), cell.firstChild);
+    };
+    cell.appendChild(img);
+  } else {
+    cell.appendChild(el("div", "blank", "?"));
+  }
+  cell.appendChild(el("div", "nm", pickName(row)));
+  // One function for both ways of picking.  Clicking and dropping must agree,
+  // because the thing that makes a pick safe is the PIN, not the click: if the
+  // drop path forgot the id, dragging a picture of 城门 (29 records) would edit
+  // the smallest one while the screen showed the one that was dragged.
+  const use = () => {
+    const ta = $("#say");
+    const name = pickName(row);
+    // Append rather than replace: a sentence often needs a number typed after
+    // the name, and clobbering what the player already wrote would lose it.
+    ta.value = (ta.value.trim() ? ta.value.replace(/\s*$/, "") + "\n" : "") + name + " ";
+    // The name alone does not identify the record: 城门 is 29 ids and 城镇中心
+    // is 20, so "城门 血量改成1000" edits the smallest id, not the picture that
+    // was clicked.  Remember the pick and send it with the sentence; the server
+    // honours it only while the name is still spelled out.
+    PINS.unshift({kind: row.kind, id: row.id, name});
+    if (PINS.length > 12) PINS.length = 12;
+    ta.focus();
+    ta.selectionStart = ta.selectionEnd = ta.value.length;
+    toast("已填进上面的框，接着写要改什么", "ok");
+  };
+  cell.onclick = use;
+  // Dragging needs both halves: the cell has to carry something, and the box
+  // has to accept it.  `text/plain` rather than a custom type, so dragging into
+  // any text field (including someone else's) still does the obvious thing.
+  cell.draggable = true;
+  cell.ondragstart = (e) => {
+    if (e && e.dataTransfer) {
+      e.dataTransfer.setData("text/plain", pickName(row));
+      e.dataTransfer.effectAllowed = "copy";
+    }
+    DRAGGING = {kind: row.kind, id: row.id, name: pickName(row), use};
+    cell.className += " dragging";
+  };
+  cell.ondragend = () => {
+    DRAGGING = null;
+    cell.className = cell.className.replace(/\s*dragging/g, "");
+  };
+  return cell;
+}
+
+// What the pointer is currently carrying, if it started on a cell.  A browser
+// only exposes dataTransfer CONTENTS on drop, not the row it came from, so the
+// id has to be remembered here for the duration of the drag.
+let DRAGGING = null;
+
+// The textarea accepts a dropped cell.  Dropping plain text from elsewhere just
+// gets the browser's own insertion -- this handler only claims the case it can
+// do better, because swallowing a paste would be worse than not supporting drag.
+function dropOnSay(e) {
+  const ta = $("#say");
+  const ours = DRAGGING;
+  ta.className = ta.className.replace(/\s*dragover/g, "");
+  if (!ours) return;                       // let the browser handle foreign text
+  e.preventDefault();
+  ours.use();
+  DRAGGING = null;
+}
+
+function setPickKind(kind) {
+  PICK.kind = kind;
+  PICK.offset = 0;
+  $("#tab-unit").className = "chip" + (kind === "unit" ? " on" : "");
+  $("#tab-tech").className = "chip" + (kind === "tech" ? " on" : "");
+  loadPick(false);
+}
+
+$("#btn-pick").onclick = () => {
+  const p = $("#pick");
+  p.className = p.className === "open" ? "" : "open";
+  if (p.className === "open" && !$("#pickgrid").children.length) loadPick(false);
+};
+$("#tab-unit").onclick = () => setPickKind("unit");
+$("#tab-tech").onclick = () => setPickKind("tech");
+$("#pickmore").onclick = () => loadPick(true);
+$("#pickq").addEventListener("input", () => {
+  PICK.query = $("#pickq").value.trim();
+  PICK.offset = 0;
+  // Searching is cheap (one pass over the name table), so it is not debounced
+  // into feeling laggy; but a half-typed word is still a valid query here.
+  loadPick(false);
+});
+
+// ---- form -------------------------------------------------------------
+// The panel is a view of `schema/sentences.json`, fetched from /api/forms so a
+// plugin added while the tool runs shows up here too.  It never builds an intent
+// itself: it writes a SENTENCE into the box, and the reader decides.  That is
+// the whole design -- a form that could bypass the reader would be a second,
+// untested way to change game data.
+let FORMS = null;
+let FSHAPE = null;
+// The rendered slot controls, in template order.  Reading them back from this
+// list instead of asking the DOM (`querySelectorAll`) keeps one source of truth
+// for "what is on the panel" and means the value reader cannot disagree with the
+// renderer about which slots exist.
+let FSLOT_NODES = [];
+// The op words come from the same table as the templates, not from META: they
+// are part of a sentence ("加/减/改成"), and a table that ships the sentence
+// should ship the words inside it.
+let OP_CHOICES = ["改成", "加", "减"];
+
+async function loadForms() {
+  if (FORMS) return FORMS;
+  const b = await api("/api/forms");
+  FORMS = b.forms || [];
+  if (b.op_choices && b.op_choices.length) OP_CHOICES = b.op_choices;
+  return FORMS;
+}
+
+function formIntents() {
+  const seen = [];
+  for (const f of FORMS || []) {
+    if (!seen.some((x) => x.intent === f.intent)) {
+      seen.push({intent: f.intent, label: f.intent_label || f.intent});
+    }
+  }
+  return seen;
+}
+
+function renderShapes() {
+  const intent = $("#fintent").value;
+  const shapes = (FORMS || []).filter((f) => f.intent === intent);
+  const sel = $("#fshape");
+  sel.innerHTML = "";
+  for (const f of shapes) {
+    const o = el("option", null, f.label || f.id);
+    o.value = f.id;
+    sel.appendChild(o);
+  }
+  FSHAPE = shapes[0] || null;
+  sel.onchange = () => {
+    FSHAPE = shapes.find((f) => f.id === sel.value) || null;
+    renderSlots();
+  };
+  renderSlots();
+}
+
+function slotInput(slot) {
+  const wrap = el("div", "fslot");
+  wrap.appendChild(el("label", null, slot.label || slot.name));
+  // The label above is a sibling, not a wrapper, so it names nothing on its own.
+  // Every control built here carries the same words as an explicit accessible
+  // name -- a bare label is a caption, and a caption is not a name.
+  const name = slot.label || slot.name;
+  // A civ is a closed list and a picture is a file, so those two get a control
+  // that cannot be mistyped; everything else is a name or a number the player
+  // types, and the reader judges it.
+  if (slot.kind === "civ" && META && META.civs) {
+    const sel = el("select");
+    sel.setAttribute("aria-label", name);
+    for (const c of META.civs) {
+      const o = el("option", null, c);
+      o.value = c;
+      sel.appendChild(o);
+    }
+    sel.dataset.slot = slot.name;
+    sel.onchange = renderFormPreview;
+    wrap.appendChild(sel);
+    return wrap;
+  }
+  if (slot.kind === "op" || slot.kind === "ordinal") {
+    const sel = el("select");
+    sel.setAttribute("aria-label", name);
+    const opts = slot.kind === "ordinal"
+      ? ["1", "2", "3", "4", "5"]
+      : OP_CHOICES;
+    for (const o of opts) {
+      const opt = el("option", null, o);
+      opt.value = o;
+      sel.appendChild(opt);
+    }
+    if (slot["default"]) sel.value = slot["default"];
+    sel.dataset.slot = slot.name;
+    sel.onchange = renderFormPreview;
+    wrap.appendChild(sel);
+    return wrap;
+  }
+  const inp = el("input");
+  inp.type = "text";
+  inp.dataset.slot = slot.name;
+  inp.setAttribute("aria-label", name);
+  inp.placeholder = slot.sample == null ? "" : String(slot.sample);
+  inp.oninput = renderFormPreview;
+  wrap.appendChild(inp);
+  return wrap;
+}
+
+function renderSlots() {
+  const box = $("#fslots");
+  box.innerHTML = "";
+  FSLOT_NODES = [];
+  if (!FSHAPE) { $("#fpreview").textContent = ""; return; }
+  for (const slot of FSHAPE.slots || []) {
+    const n = slotInput(slot);
+    FSLOT_NODES.push(n);
+    box.appendChild(n);
+  }
+  renderFormPreview();
+}
+
+function formValues() {
+  const vals = {};
+  for (const wrap of FSLOT_NODES) {
+    // The row is [label, control]; take the child that carries the slot name
+    // rather than a fixed index, so adding a hint under the label cannot make
+    // every slot read back as "" and the preview say "还差" forever.
+    const n = (wrap.children || []).filter((c) => c.dataset && c.dataset.slot)[0];
+    if (!n) continue;
+    const v = (n.value || "").trim();
+    if (v) vals[n.dataset.slot] = v;
+  }
+  return vals;
+}
+
+// Composing here rather than on the server keeps the box editable: the player
+// can fix one word by hand after filling the form, and the pin/parse path then
+// treats it as any other typed sentence.
+function renderFormPreview() {
+  const out = $("#fpreview");
+  if (!FSHAPE) { out.textContent = ""; return; }
+  const vals = formValues();
+  let text = FSHAPE.template;
+  for (const slot of FSHAPE.slots || []) {
+    const v = vals[slot.name];
+    if (v === undefined) {
+      out.textContent = "还差：" + (slot.label || slot.name);
+      return;
+    }
+    text = text.split("{" + slot.name + "}").join(v);
+  }
+  out.textContent = text;
+}
+
+$("#btn-form").onclick = async () => {
+  const p = $("#form");
+  p.className = p.className === "open" ? "" : "open";
+  if (p.className !== "open") return;
+  try {
+    await loadForms();
+  } catch (e) {
+    $("#fslots").textContent = "读不到表单：" + e.message;
+    return;
+  }
+  const sel = $("#fintent");
+  if (!sel.children.length) {
+    for (const it of formIntents()) {
+      const o = el("option", null, it.label);
+      o.value = it.intent;
+      sel.appendChild(o);
+    }
+    sel.onchange = renderShapes;
+    // Set the selection explicitly instead of relying on the browser to pick the
+    // first option.  The browser does pick it, but the panel reads `sel.value`
+    // back to decide which shapes to draw, and a control whose state is only
+    // implied by the user agent is a control nothing can test.
+    if (sel.children.length) sel.value = sel.children[0].value;
+  }
+  renderShapes();
+};
+
+$("#fuse").onclick = () => {
+  const text = $("#fpreview").textContent;
+  if (!text || text.indexOf("还差：") === 0) return;
+  const ta = $("#say");
+  ta.value = (ta.value.trim() ? ta.value.replace(/\s*$/, "") + "\n" : "") + text;
+  ta.focus();
+  ta.selectionStart = ta.selectionEnd = ta.value.length;
+  toast("已填进上面的框，接着点「读一下」", "ok");
+};
+
+// ---- saved sentences --------------------------------------------------
+// Three ways this list can lie, all of them quiet:
+//   1. a recipe drawn from a stale in-memory copy after a save failed;
+//   2. loading one appending to the box instead of replacing it, so the reader
+//      sees five sentences when the player meant three;
+//   3. a name that was never saved being treated as saved "because the toast
+//      said ok".
+// So every path here goes through the route, the box is replaced wholesale, and
+// the list is re-read from the server rather than patched in place.
+let RECIPES = [];
+
+function recipeRow(r, reload) {
+  const row = el("div", "recipe");
+  const body = el("div", "rbody");
+  body.appendChild(el("div", "rname", r.name));
+  body.appendChild(el("div", "rsent", (r.sentences || []).join(" ／ ")));
+  row.appendChild(body);
+  const use = el("button", "chip", "用这几句");
+  use.onclick = () => {
+    const ta = $("#say");
+    // Replace, never append: "use this recipe" means the box now holds that
+    // recipe.  Appending would silently mix it with whatever was there.
+    ta.value = (r.sentences || []).join("\n");
+    ta.focus();
+    if (typeof PINS !== "undefined") PINS.length = 0;
+    toast("已放进上面的框，接着点「读一下」", "ok");
+    doParse();
+  };
+  row.appendChild(use);
+  const del = el("button", "chip", "删掉");
+  del.onclick = async () => {
+    try {
+      await api("/api/recipe-forget", {name: r.name});
+    } catch (e) {
+      toast("删不掉：" + e.message, "bad");
+      return;
+    }
+    await reload();
+  };
+  row.appendChild(del);
+  return row;
+}
+
+function renderRecipes(rows) {
+  RECIPES = rows || [];
+  const box = $("#rlist");
+  box.innerHTML = "";
+  if (!RECIPES.length) {
+    box.appendChild(el("div", "hint", "还没有记住的句子。写好几句、点「记住这几句」，它就会留在这儿。"));
+  } else {
+    for (const r of RECIPES) box.appendChild(recipeRow(r, loadRecipes));
+  }
+  railSync();
+}
+
+// The rail's third band mirrors the two lists this page actually owns.  It is
+// a mirror, not a second source of truth: every call comes from the render
+// functions above, so the rail can never show a sentence the main list does
+// not, and clicking a row calls the same handler the main list's button does.
+let RAIL_MODS = [];
+function railSync() {
+  const mods = $("#rail-mods");
+  if (mods) mods.textContent = RAIL_MODS.length ? String(RAIL_MODS.length) : "0";
+  const rec = $("#rail-recipes");
+  if (rec) rec.textContent = RECIPES.length ? String(RECIPES.length) : "0";
+  const list = $("#rail-recent");
+  if (!list) return;
+  list.innerHTML = "";
+  if (!RECIPES.length) {
+    list.appendChild(el("div", "railempty",
+      "还没有记住的句子。在主页写一句话，点「记住这几句」，它就挂在这。"));
+    return;
+  }
+  for (const r of RECIPES) {
+    const b = el("button", "rrow");
+    b.title = (r.sentences || []).join("\n");
+    b.appendChild(el("span", "n", r.name));
+    b.appendChild(el("span", "c", String((r.sentences || []).length)));
+    b.onclick = () => {
+      const ta = $("#say");
+      ta.value = (r.sentences || []).join("\n");
+      if (typeof showView === "function") showView("home");
+      ta.focus();
+      if (typeof PINS !== "undefined") PINS.length = 0;
+      toast("已放进上面的框，接着点「读一下」", "ok");
+      if (typeof doParse === "function") doParse();
+    };
+    list.appendChild(b);
+  }
+}
+
+async function loadRecipes() {
+  let rows = [];
+  try {
+    rows = (await api("/api/recipes")).recipes || [];
+  } catch (e) {
+    $("#rlist").innerHTML = "";
+    $("#rlist").appendChild(el("div", "rnone", "读不到已记住的句子：" + e.message));
+    return;
+  }
+  renderRecipes(rows);
+}
+
+$("#rsave").onclick = async () => {
+  const name = $("#rname").value.trim();
+  const sentences = $("#say").value.split("\n").map((s) => s.trim()).filter(Boolean);
+  if (!name) {
+    toast("先给这几句起个名字", "bad");
+    return;
+  }
+  if (!sentences.length) {
+    toast("上面的框是空的，没有句子可以记", "bad");
+    return;
+  }
+  try {
+    await api("/api/recipe", {name, sentences});
+  } catch (e) {
+    toast("没记住：" + e.message, "bad");
+    return;
+  }
+  $("#rname").value = "";
+  toast("记住了：" + name, "ok");
+  await loadRecipes();
+};
+
+// ---- editor ---------------------------------------------------------------
+// The panel turns a click into a SENTENCE, never into an intent object.  The
+// reader is the only thing allowed to decide what a change means, and it is the
+// only path the suite covers; a panel that posted intents would be a second,
+// untested way to write the same bytes.
+let EDKIND = "unit";
+// `?unit=83` (optionally `&kind=tech`) opens one entity directly.  Read once:
+// the query string is not something the player changes while the page runs.
+let ED_WANT = null;
+try {
+  if (typeof location !== "undefined" && location.search) {
+    const qs = new URLSearchParams(location.search);
+    if (qs.get("unit")) ED_WANT = parseInt(qs.get("unit"), 10);
+    if (qs.get("kind") === "tech") EDKIND = "tech";
+  }
+} catch (e) { ED_WANT = null; }
+let EDROWS = [];
+let EDSEL = null;
+
+const ED_STATS = [
+  "hit_points", "displayed_attack", "displayed_melee_armour",
+  "displayed_pierce_armour", "movement_speed", "line_of_sight",
+  "creation_time", "max_range", "displayed_range", "reload_time",
+  "displayed_reload_time", "min_range", "accuracy", "garrison_capacity"
+];
+const ED_COSTS = ["food", "wood", "gold", "stone"];
+const ED_STAT_ZH = {
+  hit_points: "生命值", displayed_attack: "攻击力",
+  displayed_melee_armour: "近战护甲", displayed_pierce_armour: "远程护甲",
+  movement_speed: "移动速度", line_of_sight: "视野", creation_time: "训练时间",
+  max_range: "射程", displayed_range: "面板射程", reload_time: "装填时间",
+  displayed_reload_time: "面板装填时间", min_range: "最小射程",
+  accuracy: "命中率", garrison_capacity: "驻扎容量"
+};
+const ED_COST_ZH = { food: "食物", wood: "木材", gold: "黄金", stone: "石头" };
+
+function edName(r) { return r.zh || r.name || ("#" + r.id); }
+
+async function loadEditor() {
+  const q = ($("#edq") || {}).value || "";
+  const box = $("#edlist");
+  if (!box) return;
+  box.textContent = "";
+  let j = null;
+  try {
+    j = await api("/api/browse?kind=" + EDKIND + "&limit=400&q=" + encodeURIComponent(q));
+    EDROWS = (j.browse || {}).rows || [];
+  } catch (e) {
+    EDROWS = [];
+    box.appendChild(el("div", "empty", "读不到列表：" + e.message));
+    return;
+  }
+  // The count is the route's own total, not the length of the page we asked
+  // for -- otherwise "400 / 400" would claim the game has 400 units.
+  const total = (j.browse && j.browse.total != null) ? j.browse.total : EDROWS.length;
+  $("#edcount").textContent = EDROWS.length + " / " + total;
+  if (!EDROWS.length) { box.appendChild(el("div", "empty", "没有匹配的。")); return; }
+  for (const r of EDROWS) box.appendChild(edRow(r));
+
+  // Show something rather than an empty pane.  `?unit=83` wins over the first
+  // row so one unit is linkable (the screenshot check uses it), and a filter
+  // keeps the current pick only if it is still in the list.
+  const want = ED_WANT;
+  const keep = EDSEL && EDROWS.some(r => r.kind === EDSEL.kind && r.id === EDSEL.id);
+  let target = null;
+  if (want && EDROWS.some(r => r.id === want && r.kind === EDKIND)) {
+    target = EDROWS.find(r => r.id === want && r.kind === EDKIND);
+  } else if (keep) {
+    target = EDROWS.find(r => r.kind === EDSEL.kind && r.id === EDSEL.id);
+  } else {
+    target = EDROWS[0];
+  }
+  if (target) {
+    EDSEL = { kind: target.kind, id: target.id };
+    for (const row of box.children) {
+      if (row.dataset && row.dataset.id === String(target.id)) row.className += " on";
+    }
+    openEditor(target);
+  }
+}
+
+function edRow(r) {
+  const row = el("div", "edrow");
+  row.dataset.id = String(r.id);
+  if (EDSEL && EDSEL.kind === r.kind && EDSEL.id === r.id) row.className += " on";
+  if (r.has_icon) {
+    const img = el("img");
+    img.src = "/api/icon?kind=" + r.kind + "&id=" + r.id + "&size=26";
+    img.onerror = () => { img.replaceWith(el("div", "blank", "?")); };
+    row.appendChild(img);
+  } else {
+    row.appendChild(el("div", "blank", "?"));
+  }
+  row.appendChild(el("div", "nm", edName(r)));
+  row.appendChild(el("div", "id", String(r.id)));
+  row.onclick = () => { EDSEL = { kind: r.kind, id: r.id }; loadEditor().then(() => openEditor(r)); };
+  return row;
+}
+
+async function openEditor(r) {
+  const pane = $("#edpane");
+  if (!pane) return;
+  pane.textContent = "";
+  pane.appendChild(el("div", "empty", "读取「" + edName(r) + "」…"));
+  let d;
+  try {
+    d = await api("/api/describe?kind=" + r.kind + "&id=" + r.id);
+  } catch (e) {
+    pane.textContent = "";
+    pane.appendChild(el("div", "empty", "读不到：" + e.message));
+    return;
+  }
+  const ent = d.entity || {};
+  pane.textContent = "";
+
+  const head = el("div", "edhead");
+  if (ent.icon && ent.icon.ok) {
+    const img = el("img");
+    img.src = "/api/icon?kind=" + r.kind + "&id=" + r.id + "&size=56";
+    head.appendChild(img);
+  }
+  const ttl = el("div", "");
+  ttl.appendChild(el("div", "t", ent.zh || ent.name || "#" + r.id));
+  ttl.appendChild(el("div", "s",
+    "编号 " + r.id + " · " + (ent.en || "") +
+    (ent.icon && ent.icon.section ? " · 图标取自 " + ent.icon.section : "")));
+  head.appendChild(ttl);
+  pane.appendChild(head);
+
+  if (r.kind === "tech") {
+    pane.appendChild(el("div", "ednone",
+      "科技的数值在「研究时间 / 成本 / 第几条效果」里，不在这一页，用上面的「填表」。"));
+    return;
+  }
+
+  const stats = ent.stats || {};
+  let shown = 0;
+  const tbl = el("table", "f");
+  const hr = el("tr", "");
+  hr.appendChild(el("th", "", "项目"));
+  hr.appendChild(el("th", "", "现在"));
+  hr.appendChild(el("th", "", "改成"));
+  hr.appendChild(el("th", "", ""));
+  tbl.appendChild(hr);
+
+  for (const k of ED_STATS) {
+    if (!(k in stats)) continue;
+    shown++;
+    tbl.appendChild(edFieldRow(ent, k, stats[k], ED_STAT_ZH[k] || k, "stat"));
+  }
+  for (const res of ED_COSTS) {
+    const c = (stats.costs || []).find(x => x.resource === res);
+    tbl.appendChild(edFieldRow(ent, res, c ? c.amount : null,
+                               ED_COST_ZH[res] + "成本", "cost"));
+  }
+  pane.appendChild(tbl);
+  if (!shown) pane.appendChild(el("div", "ednone", "这一版没有存任何可改的数值。"));
+
+  const note = el("div", "hint");
+  note.style.marginTop = "10px";
+  note.textContent = "改完会写一句到下面的框里并重读一次；确认无误再「生成并安装」。";
+  pane.appendChild(note);
+}
+
+// A float32 read back as a double prints seventeen digits, which is the right
+// number and the wrong text: `2` is what the data means and `2.000000029802322`
+// is what a re-encode gives you.  Trim to four decimals, then drop trailing
+// zeros, so `0.8` stays `0.8` and `25` stays `25`.
+function edNum(v) {
+  if (typeof v !== "number") return String(v);
+  if (Number.isInteger(v)) return String(v);
+  const s = v.toFixed(4).replace(/0+$/, "").replace(/\.$/, "");
+  return s === "-0" ? "0" : s;
+}
+
+function edFieldRow(ent, key, value, label, kind) {
+  const tr = el("tr", "");
+  tr.appendChild(el("td", "", label));
+  const shown = value == null ? null : edNum(value);
+  const v = el("td", "v" + (shown == null ? " none" : ""),
+               shown == null ? "这一版没有" : shown);
+  tr.appendChild(v);
+  const inp = el("input");
+  inp.type = "text";
+  inp.placeholder = shown == null ? "未存" : shown;
+  inp.setAttribute("aria-label", (ent.zh || ent.name) + " " + label);
+  inp.dataset.field = key;
+  const editTd = el("td", "e", "");
+  editTd.appendChild(inp);
+  const btn = el("button", "chip", "改成");
+  btn.onclick = () => {
+    const raw = inp.value.trim();
+    if (raw === "") { toast("先填一个数", "bad"); return; }
+    const nm = ent.zh || ent.name;
+    const sentence = kind === "cost"
+      ? nm + " " + ED_COST_ZH[key] + "成本 改成 " + raw
+      : nm + " " + label + " 改成 " + raw;
+    writeSentence(sentence);
+  };
+  editTd.appendChild(btn);
+  tr.appendChild(editTd);
+  return tr;
+}
+
+function writeSentence(sentence) {
+  const ta = $("#say");
+  ta.value = ta.value.trim() ? (ta.value.trim() + "\n" + sentence) : sentence;
+  if (typeof doParse === "function") doParse();
+  toast("已写进上面的框：" + sentence, "ok");
+}
+
+function edKind(kind) {
+  EDKIND = kind;
+  EDSEL = null;
+  for (const b of document.querySelectorAll("[data-edkind]")) {
+    b.className = b.getAttribute("data-edkind") === kind ? "chip on" : "chip";
+  }
+  const pane = $("#edpane");
+  if (pane) { pane.textContent = ""; pane.appendChild(el("div", "empty", "从左边挑一个。")); }
+  loadEditor();
+}
+
+// ---- parse ------------------------------------------------------------
+async function doParse() {
+  const text = $("#say").value.trim();
+  if (!text) return;
+  $("#btn-parse").disabled = true;
+  $("#preview").innerHTML = "";
+  $("#preview").appendChild(el("div", "empty", "在读…"));
+  try {
+    const j = await api("/api/parse", {text, pins: PINS});
+    LAST = j;
+    renderClauses(j.clauses);
+  } catch (e) {
+    $("#preview").innerHTML = "";
+    $("#preview").appendChild(el("div", "err", e.message));
+  } finally {
+    $("#btn-parse").disabled = false;
+  }
+}
+
+function planLine(plan) {
+  // The product already writes the sentence; do not rebuild it here.
+  const bits = [];
+  if (plan.description) bits.push(plan.description);
+  if (plan.civ_count) bits.push("影响 " + plan.civ_count + " 个文明");
+  if (plan.edit_count != null) bits.push(plan.edit_count + " 处改动");
+  return bits.join(" · ");
+}
+
+// Where a brand-new unit will be trained is a choice the player has to make: the
+// clone inherits the donor's own training entry, and that entry can share a box
+// with four other units (村民 1810 lands on 修道院 box 14, which already holds
+// five).  So offer the numbers that are actually free on that building's card.
+//
+// The click rewrites the SENTENCE rather than passing a field down, because the
+// sentence is the source of truth everywhere else on this screen -- the preview
+// is recomputed from it, the build sends the intent parsed from it, and a side
+// channel would be a second place the box could be set and disagree.
+function boxPicker(c, p) {
+  const ids = p.builder_ids || [];
+  if (!ids.length) return null;
+  const free = p.free_buttons && p.free_buttons[String(ids[0])];
+  if (!free || !free.length) return null;
+  const wrap = el("div", "cands");
+  const who = (p.builder_names && p.builder_names[0]) || ("#" + ids[0]);
+  wrap.appendChild(el("span", "meta", "放在 " + who + " 的第几格？"));
+  for (const n of free) {
+    const b = el("button", "chip", "第 " + n + " 格");
+    b.onclick = () => {
+      const ta = $("#say");
+      const bare = c.text.replace(/[，,]?\s*放在第\s*[0-9一二三四五六七八九十]+\s*格/g, "");
+      const rebuilt = bare + "，放在第" + n + "格";
+      const lines = ta.value.split("\n");
+      const at = lines.indexOf(c.text);
+      if (at >= 0) lines[at] = rebuilt;
+      else ta.value = ta.value.replace(c.text, rebuilt);
+      ta.value = lines.join("\n");
+      doParse();
+    };
+    wrap.appendChild(b);
+  }
+  return wrap;
+}
+
+// A clause having an intent only means the SENTENCE was understood.  The plan
+// can still refuse the edit ("already has it", "nothing would change", "no such
+// field").  Counting by `c.intent` alone offered a build button for work that
+// cannot be done -- and since the build sends every intent it is given, one
+// refusal took the possible sentences down with it.  The server computes the
+// same answer and ships it as `buildable`; prefer it, and keep this fallback so
+// an older response still renders.
+function buildable(c) {
+  if (!c || !c.intent) return false;
+  if (typeof c.buildable === "boolean") return c.buildable;
+  if (!c.preview || !c.preview.ok) return false;
+  const p = c.preview.plan;
+  return !p || p.editable !== false;
+}
+
+// A link that opens what the game itself says about this entity.  It is a
+// click, not part of the preview line, because the answer can be a paragraph --
+// and for every unit in this build the answer is "there is no description",
+// which is a fact the player should read once rather than a blank space that
+// looks like our bug.
+function detailButton(c) {
+  const row = el("div", "detailrow");
+  const b = el("button", "link", "游戏里怎么说的？");
+  b.onclick = async () => {
+    b.disabled = true;
+    // Clicking again must REPLACE the answer, not stack a second copy of it.
+    // (`row.innerHTML = ""` would also drop the button itself, so only the
+    // previous detail box is removed.)  The first version appended, so two
+    // clicks printed the same paragraph twice.
+    const old = row.querySelector(".detail");
+    if (old) old.remove();
+    try {
+      const j = await api("/api/describe?kind=" + encodeURIComponent(c.kind) +
+                          "&id=" + encodeURIComponent(c.entity_id));
+      // The route wraps the entity: {"ok": true, "entity": {...}}.  Reading the
+      // top level as if it were the entity printed an empty header.
+      row.appendChild(renderDetail(j.entity || {}));
+    } catch (e) {
+      row.appendChild(el("div", "why", "读不到：" + e.message));
+    } finally { b.disabled = false; }
+  };
+  row.appendChild(b);
+  return row;
+}
+
+function renderDetail(d) {
+  const box = el("div", "detail");
+  const head = el("div", "detailhead");
+  // `describe` ships `name` (already the Chinese one when it has one), plus the
+  // raw `zh`/`en`.  Do not look for `name_zh`: that key does not exist, and
+  // reading a missing key here showed a header with nothing in it.
+  head.appendChild(el("span", "name", d.zh || d.name || ("#" + d.id)));
+  if (d.en && d.en !== (d.zh || d.name)) head.appendChild(el("span", "stat", d.en));
+  box.appendChild(head);
+
+  // A refusal is information.  Print the product's own sentence -- it already
+  // says WHY there is nothing (this build's string table has no unit help
+  // text), which is the difference between a missing feature and a missing file.
+  if (d.prose && !d.prose.ok && d.prose.why) {
+    box.appendChild(el("div", "detailtext why", d.prose.why));
+  }
+  if (d.prose && d.prose.ok) {
+    const f = d.prose.fields || {};
+    for (const k of ["description", "help", "tech_tree"]) {
+      const blk = f[k];
+      const t = blk && (blk.zh || blk.en);
+      if (t) box.appendChild(el("div", "detailtext", t));
+    }
+    const miss = d.prose.missing || {};
+    for (const k in miss) {
+      box.appendChild(el("div", "detailtext why", miss[k]));
+    }
+  }
+  if (d.icon && d.icon.ok) {
+    box.appendChild(el("div", "detailtext dim", "图标：" + d.icon.file));
+  }
+  return box;
+}
+
+// ---- the game's command card ---------------------------------------------
+// A picture tile per accepted clause, laid out the way the game lays out its own
+// bottom card.  The position badge only appears when the plan names one -- for
+// `unit.create` that is `button` on `builder_names[0]`, and for the eleven intents
+// that edit an existing record there is no position to claim, so claiming one
+// would be inventing a fact.
+//
+// Measured 2026-10-26: `不列颠照村民做一个新单位，叫铁匠学徒，放在第5格` carries
+// `builder_names ["修道院"]`, `button 5`, `free_buttons {"104": [0,2,3,...]}`,
+// `new_id 30000`; `村民血量改成1000` carries `civ_count 63`, `edit_count 1701`.
+function cardTile(c, can) {
+  const p = c.preview && c.preview.ok ? c.preview.plan : null;
+  const tile = el("div", "tile " + (can ? "good" : "bad"));
+  const frame = el("div", "frame");
+  if (c.entity_id != null && c.kind) {
+    const img = document.createElement("img");
+    img.src = "/api/icon?kind=" + encodeURIComponent(c.kind) +
+              "&id=" + encodeURIComponent(c.entity_id) + "&size=56";
+    img.alt = c.entity || "";
+    img.onerror = () => {
+      img.remove();
+      frame.appendChild(el("span", "noimg", "?"));
+    };
+    frame.appendChild(img);
+  } else {
+    frame.appendChild(el("span", "noimg", "?"));
+  }
+  tile.appendChild(frame);
+
+  // The corner number is the box on the building's card.  `button` is 0-based in
+  // the record and 1-based on screen, which is why the plan's own sentence says
+  // 「第 5 格」 for `button: 5`.
+  if (p && p.button != null) tile.appendChild(el("span", "slot", String(p.button)));
+
+  // The bar is a pulse, not a measurement: it says "this landed" without claiming
+  // a health value the plan never carries.
+  const bar = el("div", "bar");
+  bar.appendChild(el("i", "", ""));
+  tile.appendChild(bar);
+
+  const cap = p && p.builder_names && p.builder_names.length
+    ? p.builder_names[0]
+    : (c.entity || (c.kind === "tech" ? "科技" : "单位"));
+  tile.appendChild(el("div", "cap", cap));
+  return tile;
+}
+
+function renderCard(clauses) {
+  const buildableOnes = clauses.filter((c) => c.intent && buildable(c));
+  if (!buildableOnes.length) return null;
+  const card = el("div", "card");
+  // Six is how many the game fits on one row of its own card; more than that
+  // would be a wall, not a card.
+  for (const c of buildableOnes.slice(0, 6)) card.appendChild(cardTile(c, true));
+  return card;
+}
+
+function renderClauses(clauses) {
+  const box = $("#preview");
+  box.innerHTML = "";
+  // The game-shaped card sits above the sentence rows: a player recognises the
+  // picture row before they read anything.
+  const _card = renderCard(clauses);
+  if (_card) box.appendChild(_card);
+  let good = 0;
+  for (const c of clauses) {
+    const can = buildable(c);
+    const wrap = el("div", "clause " + (can ? "ok" : "bad"));
+    // The picture comes from the game's own files, through /api/icon, so the
+    // screen shows what the player would see in the build menu.  A missing
+    // picture is a fact about the game, so it is simply not rendered rather
+    // than shown as a broken-image box.
+    if (c.entity_id != null && c.kind) {
+      const img = document.createElement("img");
+      img.className = "ico";
+      img.src = "/api/icon?kind=" + encodeURIComponent(c.kind) +
+                "&id=" + encodeURIComponent(c.entity_id) + "&size=48";
+      img.alt = c.entity || "";
+      img.onerror = () => { img.classList.add("hide"); };
+      wrap.appendChild(img);
+    }
+    // Everything textual lives in one column so a long sentence wraps instead of
+    // pushing the box past the page width.
+    const body = el("div", "cbody");
+    body.appendChild(el("div", "sent", c.text));
+    if (c.intent) {
+      if (can) good++;
+      // `preview.ok` is `_safe_plan`'s wrapper flag, not the plan's, so it is
+      // true for every plan that did not raise -- including `editable: false`
+      // refusals, which carry a `description` that says why.  Keying on it here
+      // is therefore right; keying on `plan.ok` would not be (a plan that is
+      // refused on purpose has `ok: null`).
+      //
+      // Measured 2026-10-21: every accepted plan carries a non-empty
+      // `description`, so there is no fallback text to write here.  An earlier
+      // version of this line fell back to `p.reason` on the belief that
+      // `unit.sprite` refusals arrived without a description; they do not.
+      const p = c.preview && c.preview.ok ? c.preview.plan : null;
+      body.appendChild(el("div", "main", p && p.description ? p.description : "能读懂"));
+      // The reader says what it had to assume: "「弓箭手」不是出厂单位名，按最接近的
+      // 「复合弓箭手」读".  Those sentences used to be dropped on the floor, so the
+      // preview said 复合弓箭手 with no hint that the player had asked for
+      // something else -- a confident answer to a question nobody asked.
+      for (const nt of (c.notes || [])) {
+        body.appendChild(el("div", "hint", nt));
+      }
+      // A plan can be buildable and still leave something the player should know
+      // before they press 生成: a new technology will not appear in the tech tree
+      // (its id is shared with a unit), it borrows the donor's icon, and its
+      // research box already holds two other technologies.  Those sentences
+      // existed in `plan.warnings` from the day the intent landed and the page
+      // never printed them -- measured 2026-10-23: `tech.create` produced four
+      // warnings and the preview showed none of them.  They are not refusals, so
+      // they must not look like one (`.warn`, not `.why`).
+      for (const wn of (p && p.warnings) || []) {
+        body.appendChild(el("div", "warn", wn));
+      }
+      // A plan can be understood AND refused (`editable: false`) -- a donor that
+      // no building trains, a tech with no cost slot.  The refusal reason is the
+      // only sentence that says why, and the "做不了" badge below does not carry
+      // it: without this line the screen shows a grey badge and no explanation.
+      if (p && p.editable === false && p.reason) {
+        body.appendChild(el("div", "why", p.reason));
+      }
+      const meta = el("div", "meta");
+      if (p) {
+        meta.appendChild(el("span", "stat", p.kind === "tech" ? "科技" : "单位"));
+        // `civs` are .dat indices; the server sends names in `civ_labels`.
+        // Printing the indices straight onto the screen would say "范围 1、2、3".
+        if (p.civ_labels && p.civ_labels.length) {
+          const shown = p.civ_labels.slice(0, 4).join("、");
+          const more = p.civ_labels.length > 4 ? " 等 " + p.civ_labels.length + " 个" : "";
+          meta.appendChild(el("span", "stat", "范围 " + shown + more));
+        } else if (p.civ_count) meta.appendChild(el("span", "stat", "范围 " + p.civ_count + " 个文明"));
+        if (p.edit_count != null) meta.appendChild(el("span", "stat", p.edit_count + " 处改动"));
+        // What lands on disk.  The four byte-patcher intents rewrite the whole
+        // .dat inside a new mod and their plans did not say so until
+        // 2026-10-25 -- measured: `writes` was absent for unit.stat / unit.cost /
+        // tech.research_time / tech.effect while every newer strategy had it.
+        // "1,701 处改动" and "1,701 处改动，重写 93 MB 的 .dat" are different
+        // promises, and only one of them is checked before pressing the button.
+        if (p.writes) meta.appendChild(el("span", "stat", "写入 " + p.writes));
+        // A class edit ("所有步兵血量加10") reaches 217 ids at once and the preview
+        // knows how many.  The byte count alone reads as "a big edit" without
+        // saying what it is a big edit OF: 1,764 处改动 over 28 records and over
+        // 1,764 records look identical on screen, and those are different promises.
+        if (p.member_count) meta.appendChild(el("span", "stat", p.member_count + " 个单位"));
+        if (p.changes_dat) meta.appendChild(el("span", "stat ok", "会改游戏数据"));
+        if (p.editable === false) meta.appendChild(el("span", "stat bad", "做不了"));
+      } else if (c.preview && !c.preview.ok) {
+        meta.appendChild(el("span", "stat bad", "预览被拒"));
+        body.appendChild(el("div", "why", c.preview.error));
+      }
+      body.appendChild(meta);
+      if (p && p.shape === "new_unit") {
+        const picker = boxPicker(c, p);
+        if (picker) body.appendChild(picker);
+      }
+      if (c.entity_id != null && c.kind) body.appendChild(detailButton(c));
+    } else {
+      body.appendChild(el("div", "main why", c.why || "没读懂"));
+      if (c.candidates && c.candidates.length) {
+        const cands = el("div", "cands");
+        cands.appendChild(el("span", "meta", "是这些里的哪一个？"));
+        for (const cand of c.candidates) {
+          const b = el("button", "chip", cand.name + " (#" + cand.id + ")");
+          b.onclick = () => {
+            // Rewrite just this sentence with the picked name, keeping the
+            // number and the verb the user already wrote.  When the refusal was
+            // "that is a class, not a record", the server hands over the EXACT
+            // word the player typed, so the replacement is that word and not a
+            // guess about which substring was the entity.
+            const num = c.text.match(/[-+]?\d+(?:\.\d+)?/);
+            const rebuilt = c.class_word
+              ? c.text.split(c.class_word).join(cand.name)
+              : cand.name + (num ? " " + num[0] : "");
+            const ta = $("#say");
+            const lines = ta.value.split("\n");
+            const at = lines.indexOf(c.text);
+            if (at >= 0) lines[at] = rebuilt;
+            else ta.value = ta.value.replace(c.text, rebuilt);
+            ta.value = lines.join("\n");
+            // Remember the pick the same way a grid click does: 靶场 is 10
+            // records and 城门 is 29, so a name alone is not enough.
+            PINS.unshift({kind: cand.kind || c.kind || "unit", id: cand.id, name: cand.name});
+            if (PINS.length > 12) PINS.length = 12;
+            doParse();
+          };
+          cands.appendChild(b);
+        }
+        body.appendChild(cands);
+      }
+    }
+    wrap.appendChild(body);
+    box.appendChild(wrap);
+  }
+  // `can` above is block-scoped inside the loop, so it is NOT visible here --
+  // referencing it threw a ReferenceError on every render until this said
+  // buildable(c) again.
+  const refused = clauses.filter(c => c.intent && !buildable(c)).length;
+  $("#commit").classList.toggle("open", !!good);
+  $("#buildnote").textContent = good
+    ? "会把这些改动打进一个 mod：如果两句改的是同一条数据，分成两个 mod 会互相覆盖。"
+      + (refused ? "做不了的那 " + refused + " 句会被跳过，不会拦住其余的。" : "")
+    : (refused ? "这些句子看懂了，但改不了；换成能改的说法再试。" : "");
+  if (good) {
+    const names = clauses.filter(buildable).map(c =>
+      (c.entity ? c.entity + " " : "") + (c.text.length > 26 ? c.text.slice(0, 26) : c.text));
+    // Two limits live on this line.  `.slice(0, 60)` is the engine's 100-byte cap
+    // written as characters, which is wrong for Chinese: 60 characters can be 180
+    // bytes, and the title then gets cut by the engine into a folder name that
+    // does not exist -- a mod that says it is enabled and does nothing.  A path
+    // in a sentence would also put `/` or `:` into a folder name.  So the page
+    // trims to 60 characters for looks, and the server trims to 100 BYTES because
+    // this title is `title_auto`.
+    AUTO_TITLE = ("dsh " + names.join(" + ")).slice(0, 60);
+    $("#title").value = AUTO_TITLE;
+  }
+}
+
+// ---- build + install --------------------------------------------------
+async function doBuild() {
+  if (!LAST) return;
+  // Only sentences the plan actually accepted.  Sending a refused one makes
+  // build_bundle raise, which loses the edits that WERE possible.
+  const usable = LAST.clauses.filter(buildable);
+  const intents = usable.map(c => c.intent);
+  if (!intents.length) return;
+  $("#btn-build").disabled = true;
+  try {
+    const typed = $("#title").value.trim();
+    const b = await api("/api/build", {
+      intents, title: typed || null, author: "dsh",
+      // Says the title above was written by this page, not by the player, so the
+      // server may trim it to the engine's 100-byte limit.  Three Chinese
+      // characters cost nine bytes, so a few sentences pass that limit without
+      // anyone typing a long title -- and the build then failed with a refusal
+      // about byte counts.  A title the player typed is never trimmed.
+      title_auto: !typed || typed === AUTO_TITLE,
+    });
+    const man = b.manifest;
+    const dir = man.mod_dir;
+    // Show what was actually used: an auto title may have been trimmed, and the
+    // input box still holding the long one would make the mod list look wrong.
+    const shortened = !!(man.info && man.info.Title && typed
+                          && man.info.Title !== typed);
+    if (man.info && man.info.Title) $("#title").value = man.info.Title;
+    const inst = await api("/api/install", {
+      mod_dir: dir, name: man.info && man.info.Title ? man.info.Title : $("#title").value.trim(),
+      enabled: true, position: 0,
+    });
+    toast("已生成并安装：" + (man.info && man.info.Title ? man.info.Title : dir), "ok");
+    const r = await api("/api/mods");
+    renderMods(r.mods);
+    // A build that ships a `.dat` gets its `widgetui` layer split into a second
+    // mod (measured 2026-10-24: a folder holding both is read as a data mod and
+    // the icon tables are never loaded, so every new icon came out as an empty
+    // box).  The server reports the second install under `ui_install`; saying
+    // only "装好了" here would leave the player with the data half enabled and a
+    // feature that silently does nothing.
+    const uiHalf = (inst.installed || {}).ui_install || null;
+    const note = el("div", "hint",
+      uiHalf && uiHalf.name
+        ? ("装好了，这次是两个模组：「" + (man.info && man.info.Title
+            ? man.info.Title : dir) + "」和「" + uiHalf.name + "」。"
+            + "两个都要在模组界面里勾上。数据模组只带数据，图标那一半在另一个里。"
+            + "开局前在「创建游戏」界面的「数据模组：」下拉框里选数据那个。")
+        : ("装好了。开局前在「创建游戏」界面的「数据模组：」下拉框里选它。"
+            + "注意不是「模组」界面，那个界面没有这个下拉框。进入对局才真正加载。"));
+    $("#buildnote").innerHTML = "";
+    $("#buildnote").appendChild(note);
+    // A build can finish and still fail its own verification (`verification.ok`
+    // is the only safe signal in the manifest).  The page used to say "已生成并
+    // 安装" no matter what, which is the worst shape: the player is told a
+    // build landed while the bytes were not what the preview promised.
+    const ver = man.verification || {};
+    if (ver.ok === false) {
+      $("#buildnote").appendChild(el("div", "err",
+        "装上了，但这次构建自己没通过校验，先别指望它对："
+        + (ver.why_not_dat || ver.formatting_note || "manifest 里 verification.ok 是 false")));
+    }
+    // A trimmed title is not an error -- but the player should be told, because
+    // the mod list will show a shorter name than the box held a second ago.
+    if (shortened) {
+      $("#buildnote").appendChild(el("div", "hint",
+        "标题有点长，游戏只认前 100 个字节，所以做成了「" + man.info.Title
+        + "」。想用别的名字，改上面那个框再做一次。"));
+    }
+    // The game rewrites mod-status.json when it exits, so an entry written while
+    // it runs can be replaced by the list it still remembers.  Warn, do not
+    // refuse: dropping a data mod into the folder mid-session is something the
+    // user does on purpose (they said so on 2026-10-16).
+    const warn = inst.installed && inst.installed.running_warning;
+    if (warn) $("#buildnote").appendChild(el("div", "warn", warn));
+    // A bundle can succeed and still drop one of the sentences: two reskin
+    // sentences that want the same file to hold two pictures -- "make the archer
+    // look like the longbowman" and "make it look like the crossbowman" -- cannot
+    // both be honoured, and the manifest names the one it dropped.  Saying only
+    // "已生成并安装" would let the player believe both took effect, so print each
+    // refusal here.  Measured 2026-10-21: typed as two sentences, the build
+    // shipped 21 files and the page said nothing.
+    const dropped = man.sprite_refusals || [];
+    for (const ref of dropped) {
+      $("#buildnote").appendChild(el("div", "warn",
+        "有一句没做成：" + (ref.reason || ref.description || "")));
+    }
+    // A build can succeed and still carry warnings the preview never had: the
+    // emitter learns things only at write time (a JSON file it was handed is
+    // byte-identical to the shipped one so the mod would pin it to today's
+    // content; one folder ended up carrying several layers).  Measured
+    // 2026-10-23: `unit.availability` grant for unit 775 to Armenians returns
+    // 8 warnings with verification.ok true, and the page rendered none of them.
+    for (const wn of (man.warnings) || []) {
+      $("#buildnote").appendChild(el("div", "warn", wn));
+    }
+  } catch (e) {
+    toast("没做成：" + e.message, "bad");
+    $("#buildnote").innerHTML = "";
+    $("#buildnote").appendChild(el("div", "err", e.message));
+  } finally {
+    $("#btn-build").disabled = false;
+  }
+}
+
+$("#btn-parse").onclick = doParse;
+$("#btn-build").onclick = doBuild;
+$("#btn-repair").onclick = checkRepairs;
+$("#btn-ai").onclick = doAI;
+// Dropping a picture onto the sentence box.  Assigned as properties rather than
+// through addEventListener because that is also what the page harness can call
+// -- a listener registered on a stub that ignores listeners would make the drag
+// path the one thing on this screen no test can reach.
+$("#say").ondragover = (e) => {
+  if (!DRAGGING) return;                 // foreign drags keep the browser default
+  if (e && e.preventDefault) e.preventDefault();
+  if (e && e.dataTransfer) e.dataTransfer.dropEffect = "copy";
+  const ta = $("#say");
+  if (ta.className.indexOf("dragover") < 0) ta.className += " dragover";
+};
+$("#say").ondragleave = () => {
+  const ta = $("#say");
+  ta.className = ta.className.replace(/\s*dragover/g, "");
+};
+$("#say").ondrop = dropOnSay;
+$("#say").addEventListener("keydown", (e) => {
+  if ((e.ctrlKey || e.metaKey) && e.key === "Enter") doParse();
+});
+boot();
+
+// ---- command card ------------------------------------------------------
+// The game's bottom-left panel. `/api/card` returns the boxes the layout draws,
+// empty ones included: an editor that only lists occupied boxes cannot show a
+// player where an empty target is. A box holding a CHAIN says so -- the
+// Barracks' first box is the whole militia upgrade line, and flattening that to
+// one unit would misreport 45 of its 49 entries.
+//
+// `CARD_BUILDING` / `CARD_LOADED` are declared near the top of this file, by the
+// other `let`s that `showView` and `boot()` read. Declaring them a second time
+// here is a SyntaxError, not a shadow: `let` at module scope cannot be repeated,
+// and it took the whole page down ("Identifier 'CARD_BUILDING' has already been
+// declared") -- measured 2026-10-27 21:5x, after the first copy was moved up to
+// fix a TDZ. Two ways to the same variable is how a fix becomes a second bug.
+
+async function loadCard(building) {
+  const grid = $("#cardgrid");
+  if (!grid) return;
+  grid.textContent = "";
+  let j = null;
+  try {
+    j = await api("/api/card?building=" + building);
+  } catch (e) {
+    grid.appendChild(el("div", "empty", "读不到命令面板：" + e.message));
+    return;
+  }
+  if (!j.ok) {
+    grid.appendChild(el("div", "empty", j.error || "读不到"));
+    return;
+  }
+  CARD_BUILDING = building;
+  $("#card-title").textContent = j.name ? (j.name + "（" + j.building + "）")
+                                        : ("建筑 " + j.building);
+  $("#card-note").textContent = j.note || "";
+  // Entries the .dat stores on this card but the panel has no box for. Kept
+  // visible with their real ids: the Dock's are campaign heroes (Leif Erikson,
+  // Vasco da Gama, Admiral Yi) plus hidden units, and dropping them silently
+  // would make the panel claim the card holds less than it does.
+  const offg = $("#card-offgrid");
+  if (offg) {
+    const off = j.off_grid || [];
+    offg.textContent = off.length
+      ? ("不在 " + (j.slots || 15) + " 格里的还有 " + off.length + " 条："
+         + off.map(o => ("第 " + o.button + " 格 " + o.units.map(u => u.name || ("unit " + u.unit)).join("、"))).join("；")
+         + "。这些是剧情英雄或隐藏单位，面板不给它们画格子。")
+      : "";
+  }
+  const byBox = {};
+  for (const b of (j.boxes || [])) byBox[b.button] = b;
+  // How many boxes to DRAW comes from the server, which reads it out of the
+  // game's own `widgetui/commandpanel.json` (5 columns x 3 rows). This loop used
+  // to run to a literal 25, and 25 was never measured -- it came from "the .dat
+  // stores button_id up to 24", which is a property of a sample of a sparse id
+  // space, not a layout. The shipped data does reach 24 on the Dock (campaign
+  // heroes, hidden units); those are listed under the grid, not drawn as boxes.
+  const SLOTS = j.slots || 15;
+  for (let i = 0; i < SLOTS; i++) {
+    const b = byBox[i];
+    const cell = el("div", "cardslot" + (b ? "" : " free"), "");
+    cell.setAttribute("draggable", b ? "true" : "false");
+    cell.dataset.box = String(i);
+    const label = el("div", "cardbox", String(i));
+    cell.appendChild(label);
+    if (b) {
+      const first = b.units[0] || {};
+      cell.appendChild(el("div", "cardname", first.name || ("unit " + first.unit)));
+      if (b.count > 1) {
+        cell.appendChild(el("div", "cardcount", b.count + " 个"));
+        cell.title = "这一格是一条升级链：" + b.units.map(u => u.name).filter(Boolean).join(" → ");
+      } else {
+        cell.title = first.name || "";
+      }
+      cell.dataset.unit = String(first.unit);
+    } else {
+      cell.appendChild(el("div", "cardname", "空"));
+    }
+    // Drag: dropping onto another box exchanges the two units.
+    cell.ondragstart = (e) => {
+      if (!b) { e.preventDefault(); return; }
+      e.dataTransfer.setData("text/plain", String(b.units[0].unit));
+      e.dataTransfer.effectAllowed = "move";
+    };
+    cell.ondragover = (e) => {
+      if (!b) return;
+      e.preventDefault();
+      cell.classList.add("dragover");
+    };
+    cell.ondragleave = () => cell.classList.remove("dragover");
+    cell.ondrop = async (e) => {
+      e.preventDefault();
+      cell.classList.remove("dragover");
+      const unit = parseInt(e.dataTransfer.getData("text/plain"), 10);
+      if (!isFinite(unit)) return;
+      // The MOVE is a byte in the .dat, and the server refuses to invent an
+      // entry: dropping a unit that is not on this card changes the record's
+      // length, which is a different edit.
+      try {
+        const r = await api("/api/card-move", {
+          unit: unit, building: CARD_BUILDING, box: i,
+        });
+        if (!r.ok) { toast(r.error || "挪不了", "bad"); return; }
+        toast("挪好了", "ok");
+        loadCard(CARD_BUILDING);
+      } catch (err) {
+        toast("挪不了：" + err.message, "bad");
+      }
+    };
+    grid.appendChild(cell);
+  }
+}
+
+$("#card-prev").onclick = () => stepCard(-1);
+$("#card-next").onclick = () => stepCard(1);
+function stepCard(d) {
+  // The buildings that actually have a card, in id order, so the arrows never
+  // land on "建筑 4000 (empty)".
+  const list = window.CARD_BUILDINGS || [];
+  if (!list.length) return;
+  let at = list.indexOf(CARD_BUILDING);
+  if (at < 0) at = 0;
+  at = (at + d + list.length) % list.length;
+  loadCard(list[at]);
+}

@@ -29,6 +29,7 @@ pub mod icons;
 pub mod mods;
 pub mod recipes;
 pub mod sentences;
+pub mod slots;
 pub mod server;
 pub mod stat_edit;
 pub mod tables;

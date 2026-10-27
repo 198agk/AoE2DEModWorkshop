@@ -808,7 +808,8 @@ fn build_card_move(server: &Server, req: &serde_json::Value) -> Result<String, S
     // Offsets are ABSOLUTE in the table (locate stores cursor positions); the box
     // byte is a fixed distance after the train-time field.
     let table = lookup.clone();
-    let report = crate::cardmove::move_unit(&mut out, unit, building, target, |u| {
+    let slots = crate::slots::card_slots(&root).0;
+    let report = crate::cardmove::move_unit(&mut out, unit, building, target, slots, |u| {
         table.get(&u).copied()
     })?;
 

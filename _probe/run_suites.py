@@ -538,6 +538,12 @@ SUITES = [
     # fail looks like success -- a wrong offset reads garbage and re-parses to
     # the old box, and an overwrite instead of a swap drops a unit silently.
     r"_probe\test_card.py",
+    # Can the player READ why it failed?  Both failure shapes are silent when
+    # broken: the shell's error page was a blank window for want of a Cargo
+    # feature, and the engine's failure was a splash that spun forever.  This
+    # suite reads painted pixels, so it also catches the case where the reason
+    # is on screen but a 74-character path is clipped by the box it sits in.
+    r"_probe\probe_startup_failure.py",
 ]
 
 # Suites that are not Python.  The screen's script is JavaScript and no Python

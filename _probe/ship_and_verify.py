@@ -37,8 +37,42 @@ import urllib.request
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 OUT = r"D:\Software\AI\AoE2ModWorkshop"
+BUILT = r"D:\Software\AI\AGE2\desktop\src-tauri\target\release\aoe2-mod-workshop.exe"
 GOLDEN = ["stat_offsets.json", "entity_names.json", "ai_grammar.json",
           "tech_offsets.json", "effect_offsets.json", "command_cards.json", "class_names.json", "sprite_pairs.json"]
+
+
+def check_exe_is_the_built_one(out):
+    """Refuse when the bundle holds a different binary from the one just built.
+
+    This gate installs the TABLES and then launches whatever exe the folder
+    already has. On 2026-10-27 21:22 that made it print ALL ROUTES OK while
+    running a 20:34 binary -- every route passed because every route it asked
+    about existed in the old build too. A suite that verifies a copy of the
+    program instead of the program is the "all green, wrong artefact" failure
+    this project has already paid for once.
+    """
+    exe = os.path.join(out, "aoe2-mod-workshop.exe")
+    if not os.path.isfile(exe):
+        print("REFUSING: no exe in the bundle at", exe)
+        return None
+    if not os.path.isfile(BUILT):
+        print("REFUSING: the shell is not built at", BUILT)
+        return None
+    a, b = os.path.getsize(exe), os.path.getsize(BUILT)
+    if a != b:
+        print("REFUSING: the bundle's exe is not the built one.")
+        print("  bundle %d bytes  %s" % (a, exe))
+        print("  built  %d bytes  %s" % (b, BUILT))
+        print("  run _probe/make_bundle_native.py to copy it in.")
+        return None
+    same = open(exe, "rb").read() == open(BUILT, "rb").read()
+    if not same:
+        print("REFUSING: same size, different bytes -- the bundle predates the build.")
+        print("  run _probe/make_bundle_native.py to copy it in.")
+        return None
+    print("  exe %d bytes, byte-identical to the build" % a)
+    return exe
 
 
 def install_tables(app_dir):
@@ -182,7 +216,9 @@ def main():
         return 1
     print("  all %d tables present" % len(GOLDEN))
 
-    exe = os.path.join(OUT, "aoe2-mod-workshop.exe")
+    exe = check_exe_is_the_built_one(OUT)
+    if not exe:
+        return 1
     subprocess.run(["taskkill", "/IM", "aoe2-mod-workshop.exe", "/F"],
                    capture_output=True)
     time.sleep(1)

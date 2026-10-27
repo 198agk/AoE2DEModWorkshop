@@ -1,0 +1,13 @@
+const fs = require("fs");
+const html = fs.readFileSync("aoe2mod/ui/static/index.html", "utf8");
+const zh = JSON.parse(fs.readFileSync("aoe2mod/schema/locales/zh.json", "utf8"));
+const S = zh.strings || zh;
+const keys = new Set();
+for (const m of html.matchAll(/data-i18n(?:-ph|-title)?="([^"]+)"/g)) keys.add(m[1]);
+const missing = [...keys].filter((k) => !(k in S));
+const used = new Set();
+for (const m of html.matchAll(/T\("([^"]+)"/g)) used.add(m[1]);
+const missingT = [...used].filter((k) => !(k in S));
+console.log("html keys", keys.size, "table keys", Object.keys(S).length);
+console.log("MISSING from table:", missing);
+console.log("T() missing:", missingT);

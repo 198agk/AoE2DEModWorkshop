@@ -24,8 +24,6 @@ use serde_json::Value;
 /// The box byte follows the train-time field by this many bytes
 /// (`aoe2mod/dat/newunit.py`).
 pub const TRAIN_BUTTON_OFF: usize = 4;
-/// The engine draws 25 boxes; a box number outside `0..24` is not a slot.
-pub const BUTTON_SLOTS: i64 = 25;
 
 pub struct MoveReport {
     pub offset: usize,
@@ -39,21 +37,28 @@ pub struct MoveReport {
 ///
 /// `entry_offset(unit)` must return the ABSOLUTE `_off_train_time` for that
 /// unit's entry naming `builder`, or `None` when the unit is not on that card.
+///
+/// `slots` is how many boxes the game draws, from `slots::card_slots` -- the
+/// panel layout, not the largest stored `button_id`. This used to be a
+/// `const BUTTON_SLOTS: i64 = 25` justified by "the data reaches 24"; the data
+/// does reach 24 (the Dock carries campaign heroes there), but that is one card
+/// out of 18 and 15 and 24 are not boxes the player drops onto.
 pub fn move_unit<F>(
     out: &mut [u8],
     unit: i16,
     builder: i16,
     target: u8,
+    slots: u8,
     mut entry_offset: F,
 ) -> Result<MoveReport, String>
 where
     F: FnMut(i16) -> Option<usize>,
 {
-    if !(0..BUTTON_SLOTS).contains(&(target as i64)) {
+    let slots = if slots == 0 { crate::slots::FALLBACK_SLOTS } else { slots };
+    if target >= slots {
         return Err(format!(
-            "格子号 {target} 超出 0..{}；引擎只画 {} 格",
-            BUTTON_SLOTS - 1,
-            BUTTON_SLOTS
+            "格子号 {target} 超出 0..{}；命令面板只画 {slots} 格（布局见 widgetui/commandpanel.json）",
+            slots - 1
         ));
     }
     let src_off = entry_offset(unit).ok_or_else(|| {
