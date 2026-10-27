@@ -346,6 +346,17 @@ fn route(
             (200, "application/json; charset=utf-8", json.into_bytes())
         }
         // The one write path, so the whole chain can be exercised end to end.
+        "/api/build" => {
+            let req: serde_json::Value = match serde_json::from_slice(body) {
+                Ok(v) => v,
+                Err(_) => return (400, "application/json; charset=utf-8", b"{\"ok\":false}".to_vec()),
+            };
+            let json = match crate::stat_edit::build_and_install(server, &req) {
+                Ok(j) => j,
+                Err(e) => format!("{{\"ok\":false,\"error\":\"{}\"}}", json_escape(&e)),
+            };
+            (200, "application/json; charset=utf-8", json.into_bytes())
+        }
         "/api/stat" => {
             let req: serde_json::Value = match serde_json::from_slice(body) {
                 Ok(v) => v,

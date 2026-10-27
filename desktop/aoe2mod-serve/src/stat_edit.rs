@@ -152,3 +152,111 @@ fn write_at(buf: &mut [u8], off: usize, kind: StatKind, value: f64) {
         }
     }
 }
+
+/// Compile one intent from the sentence layer, write the mod, install it.
+///
+/// The whole chain in one call, because each step alone is provable and the
+/// interesting failures live in the joins: an intent that resolves but cannot be
+/// compiled, a build that succeeds but installs nowhere, a title the engine will
+/// truncate.
+pub fn build_and_install(server: &Server, req: &serde_json::Value) -> Result<String, String> {
+    let stat = req.get("stat").and_then(|v| v.as_str()).unwrap_or("");
+    let unit = req.get("unit").and_then(|v| v.as_i64()).map(|v| v as i16);
+    let value = req.get("value").and_then(|v| v.as_f64());
+    let delta = req.get("delta").and_then(|v| v.as_f64());
+    let title = req
+        .get("title")
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.trim().is_empty())
+        .map(|s| s.to_string())
+        .unwrap_or_else(|| format!("{stat} {unit:?}"));
+    let install = req.get("install").and_then(|v| v.as_bool()).unwrap_or(false);
+
+    let unit = unit.ok_or("这句话没有说要改哪个单位")?;
+    if !server.parsed.lock().unwrap().is_some() {
+        return Err("游戏数据还没读完".into());
+    }
+
+    let root = crate::game_root().ok_or("找不到游戏目录")?;
+    let offsets_path = std::env::var("AOE2MOD_STAT_OFFSETS")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|_| std::path::PathBuf::from("_golden/stat_offsets.json"));
+    let table = StatTable::load(&offsets_path)
+        .map_err(|e| format!("读不到 {}：{e}", offsets_path.display()))?;
+    let kind = *table
+        .kinds
+        .get(stat)
+        .ok_or_else(|| format!("不认识的属性 {stat}"))?;
+
+    let dat = root.join("resources/_common/dat/empires2_x2_p1.dat");
+    let (raw, _how) = load_dat(&dat).map_err(|e| e.to_string())?;
+    let mut r = Reader::new(&raw);
+    let s1 = read_stage1(&mut r).map_err(|e| e.to_string())?;
+    let gv = s1.game_version;
+    let s23 = read_stages23(&mut r).map_err(|e| e.to_string())?;
+    let s47 = read_stages47(&mut r, gv).map_err(|e| e.to_string())?;
+    let s810 = read_stages810(&mut r, gv).map_err(|e| e.to_string())?;
+
+    // Resolve the target value: SET means the number, DELTA means old + delta.
+    let mut targets = Vec::new();
+    for (ci, c) in s810.civs.iter().enumerate() {
+        if !c.units.iter().any(|u| u.id == unit) {
+            continue;
+        }
+        if let Some(off) = table.offset(ci, stat, unit) {
+            targets.push((ci, off));
+        }
+    }
+    if targets.is_empty() {
+        return Err(format!("没有任何文明的单位 {unit} 带 {stat}"));
+    }
+    let old = read_at(&raw, targets[0].1, kind);
+    let new_value = match (value, delta) {
+        (Some(v), _) => v,
+        (None, Some(d)) => old + d,
+        (None, None) => return Err("这句话没有说要改成多少".into()),
+    };
+
+    let mut w = Writer::new(&raw);
+    write_stage1(&mut w, &s1).map_err(|e| e.to_string())?;
+    write_stages23(&mut w, &s23, &raw).map_err(|e| e.to_string())?;
+    write_stages47(&mut w, &s47, gv).map_err(|e| e.to_string())?;
+    write_stages810(&mut w, &s810).map_err(|e| e.to_string())?;
+    let mut out = w.out;
+    if out != raw {
+        return Err("未修改的往返不是逐字节相同，拒绝按绝对偏移写入".into());
+    }
+    for (_, off) in &targets {
+        write_at(&mut out, *off, kind, new_value);
+    }
+
+    let build_root = std::env::temp_dir().join("aoe2mod-native-build").join(&title);
+    let built = crate::build::build_data_mod(
+        &build_root,
+        &out,
+        &title,
+        "aoe2mod",
+        &format!("{stat} {unit} -> {new_value}"),
+        true,
+    )?;
+
+    let mut installed_to = String::new();
+    if install {
+        let prof = crate::mods::profile_root().ok_or("找不到玩家档案目录")?;
+        let dest = crate::build::install_local(&prof, &built, &title)?;
+        installed_to = dest.display().to_string();
+    }
+
+    Ok(format!(
+        "{{\"ok\":true,\"stat\":\"{}\",\"unit\":{},\"civs\":{},\"before\":{},\"value\":{},\"dat_bytes\":{},\"compressed\":{},\"built\":\"{}\",\"installed\":\"{}\"}}",
+        crate::server::json_escape(stat),
+        unit,
+        targets.len(),
+        old,
+        new_value,
+        built.dat_bytes,
+        built.compressed_bytes,
+        crate::server::json_escape(&built.dir.display().to_string()),
+        crate::server::json_escape(&installed_to)
+    ))
+}

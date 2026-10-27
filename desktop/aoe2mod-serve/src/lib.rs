@@ -10,6 +10,7 @@
 //! server must decide what to do when the spawn fails, and every answer to that
 //! ("wait 150 s", "show an error page") has already cost this project a round.
 
+pub mod build;
 pub mod mods;
 pub mod recipes;
 pub mod sentences;
