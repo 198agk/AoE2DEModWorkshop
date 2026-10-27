@@ -1,0 +1,15 @@
+[package]
+name = "aoe2mod-serve"
+version = "0.1.0"
+edition = "2021"
+description = "Native workshop server: the piece that replaces runtime\\python.exe"
+
+[dependencies]
+aoe2mod-dat = { path = "../aoe2mod-dat" }
+flate2 = "1"
+serde_json = "1"
+
+[profile.release]
+opt-level = 2
+lto = true
+codegen-units = 1
