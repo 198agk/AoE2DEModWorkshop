@@ -1022,6 +1022,60 @@
   .e { display: flex; gap: 8px; align-items: center; }
   .v { font-variant-numeric: tabular-nums; }
   .id { font-size: var(--fs-micro); color: var(--text-3); }
+  /* ---- command card --------------------------------------------------
+     The game's bottom-left panel. Five columns because the engine's card is a
+     fixed 5-wide grid; empty boxes are drawn so a drop target is visible. */
+  .cardgrid {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 8px;
+    margin: 16px 0;
+  }
+  .cardslot {
+    position: relative;
+    min-height: 76px;
+    padding: 8px;
+    background: var(--panel-2);
+    border: 1px solid var(--line);
+    border-radius: var(--r-control);
+    font-size: var(--fs-micro);
+    color: var(--text-2);
+    cursor: grab;
+    overflow: hidden;
+  }
+  .cardslot.free {
+    cursor: default;
+    border-style: dashed;
+    color: var(--line-strong);
+  }
+  .cardslot.dragover {
+    border-color: var(--accent);
+    background: var(--accent-soft);
+  }
+  .cardslot[aria-grabbed="true"] {
+    box-shadow: var(--shadow-lift);
+  }
+  .cardbox {
+    position: absolute;
+    top: 4px;
+    right: 8px;
+    font-size: var(--fs-micro);
+    color: var(--line-strong);
+  }
+  .cardname {
+    margin-top: 20px;
+    font-size: var(--fs-body);
+    color: var(--text);
+    line-height: 1.3;
+  }
+  .cardslot.free .cardname {
+    color: var(--line-strong);
+  }
+  .cardcount {
+    margin-top: 4px;
+    font-size: var(--fs-micro);
+    color: var(--accent);
+  }
 </style>
 </head>
 <body>
@@ -1038,6 +1092,7 @@
     <button class="navitem on" id="nav-home" data-i18n="nav.home"><svg class="ni" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.6 1.8 6.8v7.6h4.6v-4.2h3.2v4.2h4.6V6.8z"/></svg>主页</button>
     <button class="navitem" id="nav-editor" data-i18n="nav.editor"><svg class="ni" viewBox="0 0 16 16" aria-hidden="true"><path d="M11.7 1.6 14.4 4.3 5.6 13.1 1.9 14.1l1-3.7zM10.6 2.7 13.3 5.4"/></svg>编辑器</button>
     <button class="navitem" id="nav-mods" data-i18n="nav.mods"><svg class="ni" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 3.2h5.2v4.4H2zM8.8 3.2H14v4.4H8.8zM2 8.4h5.2V14H2zM8.8 8.4H14V14H8.8z"/></svg>模组</button>
+    <button class="navitem" id="nav-card" data-i18n="nav.card"><svg class="ni" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 4h4v4H2zM7 4h4v4H7zM12 4h2v4h-2zM2 9h4v4H2zM7 9h4v4H7z"/></svg>命令面板</button>
     <button class="navitem" id="nav-intents" data-i18n="nav.intents"><svg class="ni" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.9 14.1 8 8 14.1 1.9 8z"/></svg>能做的事</button>
   </div>
   <!-- Band three.  The rail used to jump from four nav rows straight to the
@@ -1189,7 +1244,25 @@
     </div>
 </section>
 
-<section class="view" id="view-editor">
+<section class="view" id="view-card">
+      <div class="box">
+        <h2>命令面板</h2>
+        <div class="hint">
+          这就是游戏左下角那块。一个格子可能是一整条升级链（兵营第 1 格是
+          民兵→武士→长剑士…），所以格子上写的是链里的第一个，右边数字是这一格有几个。
+          拖动格子会把两个单位换位置，不会覆盖掉别人。
+        </div>
+        <div class="row">
+          <button class="btn" id="card-prev" type="button">← 上一个建筑</button>
+          <span class="hint" id="card-title">兵营</span>
+          <button class="btn" id="card-next" type="button">下一个建筑 →</button>
+        </div>
+        <div class="cardgrid" id="cardgrid" aria-live="polite"><div class="empty">读取中…</div></div>
+        <div class="hint" id="card-note"></div>
+      </div>
+    </section>
+
+    <section class="view" id="view-editor">
       <div class="box">
         <h2>编辑一个单位</h2>
         <div class="hint">
@@ -1349,7 +1422,7 @@ function el(tag, cls, text) {
 // The four views never leave the DOM.  Switching is one class, because
 // `boot()` fills every panel on load and the harness reads them whether or not
 // they are on screen.
-const VIEWS = ["home", "editor", "mods", "intents"];
+const VIEWS = ["home", "card", "editor", "mods", "intents"];
 let VIEW = "home";
 let ED_LOADED = false;
 
@@ -1364,6 +1437,10 @@ function showView(name) {
   }
   // The editor's 400 rows are fetched the first time it is looked at, not on
   // the first paint: the sentence box is what the window is for.
+  if (name === "card" && !CARD_LOADED) {
+    CARD_LOADED = true;
+    loadCard(CARD_BUILDING);
+  }
   if (name === "editor" && !ED_LOADED) {
     ED_LOADED = true;
     }
@@ -2956,6 +3033,104 @@ $("#say").addEventListener("keydown", (e) => {
   if ((e.ctrlKey || e.metaKey) && e.key === "Enter") doParse();
 });
 boot();
+
+// ---- command card ------------------------------------------------------
+// The game's bottom-left panel. `/api/card` returns 25 boxes with the empty ones
+// included: an editor that only lists occupied boxes cannot show a player where
+// an empty target is. A box holding a CHAIN says so -- the Barracks' first box is
+// the whole militia upgrade line, and flattening that to one unit would misreport
+// 45 of its 49 entries.
+let CARD_BUILDING = 12;      // the Barracks: the documented example
+let CARD_LOADED = false;
+
+async function loadCard(building) {
+  const grid = $("#cardgrid");
+  if (!grid) return;
+  grid.textContent = "";
+  let j = null;
+  try {
+    j = await api("/api/card?building=" + building);
+  } catch (e) {
+    grid.appendChild(el("div", "empty", "读不到命令面板：" + e.message));
+    return;
+  }
+  if (!j.ok) {
+    grid.appendChild(el("div", "empty", j.error || "读不到"));
+    return;
+  }
+  CARD_BUILDING = building;
+  $("#card-title").textContent = j.name ? (j.name + "（" + j.building + "）")
+                                        : ("建筑 " + j.building);
+  $("#card-note").textContent = j.note || "";
+  const byBox = {};
+  for (const b of (j.boxes || [])) byBox[b.button] = b;
+  for (let i = 0; i < 25; i++) {
+    const b = byBox[i];
+    const cell = el("div", "cardslot" + (b ? "" : " free"), "");
+    cell.setAttribute("draggable", b ? "true" : "false");
+    cell.dataset.box = String(i);
+    const label = el("div", "cardbox", String(i));
+    cell.appendChild(label);
+    if (b) {
+      const first = b.units[0] || {};
+      cell.appendChild(el("div", "cardname", first.name || ("unit " + first.unit)));
+      if (b.count > 1) {
+        cell.appendChild(el("div", "cardcount", b.count + " 个"));
+        cell.title = "这一格是一条升级链：" + b.units.map(u => u.name).filter(Boolean).join(" → ");
+      } else {
+        cell.title = first.name || "";
+      }
+      cell.dataset.unit = String(first.unit);
+    } else {
+      cell.appendChild(el("div", "cardname", "空"));
+    }
+    // Drag: dropping onto another box exchanges the two units.
+    cell.ondragstart = (e) => {
+      if (!b) { e.preventDefault(); return; }
+      e.dataTransfer.setData("text/plain", String(b.units[0].unit));
+      e.dataTransfer.effectAllowed = "move";
+    };
+    cell.ondragover = (e) => {
+      if (!b) return;
+      e.preventDefault();
+      cell.classList.add("dragover");
+    };
+    cell.ondragleave = () => cell.classList.remove("dragover");
+    cell.ondrop = async (e) => {
+      e.preventDefault();
+      cell.classList.remove("dragover");
+      const unit = parseInt(e.dataTransfer.getData("text/plain"), 10);
+      if (!isFinite(unit)) return;
+      // The MOVE is a byte in the .dat, and the server refuses to invent an
+      // entry: dropping a unit that is not on this card changes the record's
+      // length, which is a different edit.
+      try {
+        const r = await api("/api/card-move", {
+          unit: unit, building: CARD_BUILDING, box: i,
+        });
+        if (!r.ok) { toast(r.error || "挪不了", "bad"); return; }
+        toast("挪好了", "ok");
+        loadCard(CARD_BUILDING);
+      } catch (err) {
+        toast("挪不了：" + err.message, "bad");
+      }
+    };
+    grid.appendChild(cell);
+  }
+}
+
+$("#card-prev").onclick = () => stepCard(-1);
+$("#card-next").onclick = () => stepCard(1);
+function stepCard(d) {
+  // The buildings that actually have a card, in id order, so the arrows never
+  // land on "建筑 4000 (empty)".
+  const list = window.CARD_BUILDINGS || [];
+  if (!list.length) return;
+  let at = list.indexOf(CARD_BUILDING);
+  if (at < 0) at = 0;
+  at = (at + d + list.length) % list.length;
+  loadCard(list[at]);
+}
 </script>
 </body>
 </html>

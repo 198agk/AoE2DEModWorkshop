@@ -169,6 +169,9 @@ pub fn build_and_install(server: &Server, req: &serde_json::Value) -> Result<Str
     if intent == "tech.effect" {
         return build_effect(server, req);
     }
+    if intent == "unit.card_move" || intent == "card_move" {
+        return build_card_move(server, req);
+    }
     let stat = req.get("stat").and_then(|v| v.as_str()).unwrap_or("");
     let unit = req.get("unit").and_then(|v| v.as_i64()).map(|v| v as i16);
     let value = req.get("value").and_then(|v| v.as_f64());
@@ -632,4 +635,154 @@ fn build_effect(server: &Server, req: &serde_json::Value) -> Result<String, Stri
         crate::server::json_escape(&built.dir.display().to_string()),
         crate::server::json_escape(&installed_to)
     ))
+}
+
+
+/// `unit.card_move`: exchange two units' boxes on one building's card.
+///
+/// Dragging a box in the engine is ONE BYTE: the `button_id` in that unit's
+/// `train_locations` entry. The byte sits `TRAIN_BUTTON_OFF` after the entry's
+/// absolute `_off_train_time`, which `command_cards.json` carries.
+///
+/// A move SWAPS. Two units on one box is a state the shipped data never
+/// contains, and the engine resolves it by drawing one of them -- so an editor
+/// that lets a drop overwrite deletes a unit and reports success.
+fn build_card_move(server: &Server, req: &serde_json::Value) -> Result<String, String> {
+    use crate::writer::Writer;
+    use crate::write23::{write_stage1, write_stages23};
+    use crate::write47::write_stages47;
+    use crate::write810::write_stages810;
+    use aoe2mod_dat::{
+        load_dat, read_stage1, read_stages23, read_stages47, read_stages810, Reader,
+    };
+
+    let unit = req
+        .get("unit")
+        .and_then(|v| v.as_i64())
+        .map(|v| v as i16)
+        .ok_or("没说要把哪个单位挪走")?;
+    let building = req
+        .get("building")
+        .and_then(|v| v.as_i64())
+        .map(|v| v as i16)
+        .ok_or("没说是哪座建筑的格子")?;
+    let target = req
+        .get("box")
+        .and_then(|v| v.as_u64())
+        .map(|v| v as u8)
+        .ok_or("没说要挪到第几格")?;
+    let title = req
+        .get("title")
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.trim().is_empty())
+        .map(|s| s.to_string())
+        .unwrap_or_else(|| format!("card {building}"));
+    let install = req.get("install").and_then(|v| v.as_bool()).unwrap_or(false);
+    if server.parsed.lock().unwrap().is_none() {
+        return Err("游戏数据还没读完".into());
+    }
+
+    let cards_json: serde_json::Value = {
+        let t = std::fs::read_to_string(crate::cards::table_path())
+            .map_err(|e| format!("读不到命令面板表：{e}"))?;
+        serde_json::from_str(t.trim_start_matches('\u{feff}'))
+            .map_err(|e| format!("命令面板表不是合法 JSON：{e}"))?
+    };
+    let lookup = crate::cardmove::entry_lookup(&cards_json, building, |_| None);
+    if !lookup.contains_key(&unit) {
+        return Err(format!(
+            "第 {unit} 号单位不在这座建筑（{building}）的训练表里，所以它没有格子可挪"
+        ));
+    }
+
+    let root = crate::game_root().ok_or("找不到游戏目录")?;
+    let dat = root.join("resources/_common/dat/empires2_x2_p1.dat");
+    let (raw, _how) = load_dat(&dat).map_err(|e| e.to_string())?;
+    let mut r = Reader::new(&raw);
+    let s1 = read_stage1(&mut r).map_err(|e| e.to_string())?;
+    let gv = s1.game_version;
+    let s23 = read_stages23(&mut r).map_err(|e| e.to_string())?;
+    let s47 = read_stages47(&mut r, gv).map_err(|e| e.to_string())?;
+    let s810 = read_stages810(&mut r, gv).map_err(|e| e.to_string())?;
+
+    let mut w = Writer::new(&raw);
+    write_stage1(&mut w, &s1).map_err(|e| e.to_string())?;
+    write_stages23(&mut w, &s23, &raw).map_err(|e| e.to_string())?;
+    write_stages47(&mut w, &s47, gv).map_err(|e| e.to_string())?;
+    write_stages810(&mut w, &s810).map_err(|e| e.to_string())?;
+    let mut out = w.out;
+    if out != raw {
+        return Err("未修改的往返不是逐字节相同，拒绝按绝对偏移写入".into());
+    }
+
+    // Offsets are ABSOLUTE in the table (locate stores cursor positions); the box
+    // byte is a fixed distance after the train-time field.
+    let table = lookup.clone();
+    let report = crate::cardmove::move_unit(&mut out, unit, building, target, |u| {
+        table.get(&u).copied()
+    })?;
+
+    let diffs = raw.iter().zip(out.iter()).filter(|(a, b)| a != b).count();
+    let build_root = std::env::temp_dir().join("aoe2mod-native-build").join(&title);
+    let built = crate::build::build_data_mod(
+        &build_root,
+        &out,
+        &title,
+        "aoe2mod",
+        &format!("card {building}: unit {unit} -> box {target}"),
+        true,
+    )?;
+
+    let mut installed_to = String::new();
+    if install {
+        let prof = crate::mods::profile_root().ok_or("找不到玩家档案目录")?;
+        let dest = crate::build::install_local(&prof, &built, &title)?;
+        installed_to = dest.display().to_string();
+    }
+
+    let (base_file_sha, base_raw_sha) = match crate::updates::fingerprint(&dat, true) {
+        Some((f, rr, _v)) => (f, rr),
+        None => (String::new(), None),
+    };
+    let dat_out_sha = sha256_bytes(&built.compressed);
+    crate::updates::remember_build(
+        &title,
+        "aoe2mod",
+        &format!("card {building}: unit {unit} -> box {target}"),
+        serde_json::json!([{
+            "intent": "unit.card_move",
+            "unit": unit,
+            "building": building,
+            "button": target
+        }]),
+        &base_file_sha,
+        base_raw_sha.as_deref(),
+        &dat_out_sha,
+        true,
+    )
+    .map_err(|e| format!("建好了但没能写构建记录：{e}"))?;
+
+    let moved: Vec<String> = report
+        .moved
+        .iter()
+        .map(|(u, from, to)| format!("{{\"unit\":{u},\"from\":{from},\"to\":{to}}}"))
+        .collect();
+    Ok(format!(
+        "{{\"ok\":true,\"building\":{},\"offset\":{},\"before\":{},\"after\":{},\"moved\":[{}],\"bytes_changed\":{},\"built\":\"{}\",\"installed\":\"{}\"}}",
+        building,
+        report.offset,
+        report.before,
+        report.after,
+        moved.join(","),
+        diffs,
+        crate::server::json_escape(&built.dir.display().to_string()),
+        crate::server::json_escape(&installed_to)
+    ))
+}
+
+
+/// Public wrapper: the server module calls this, and `build_card_move` stays
+/// private so its signature can change without touching the routing layer.
+pub fn build_card_move_pub(server: &Server, req: &serde_json::Value) -> Result<String, String> {
+    build_card_move(server, req)
 }

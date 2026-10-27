@@ -54,8 +54,13 @@ def main():
                 "unit": u["id"],
                 "button": t.get("button_id", 0),
                 "seconds": t.get("train_time", 0),
-                # Where the box number lives, so a later drag can write it.
-                "_off_button": t.get("_off_button"),
+                # Where the box number lives. `locate` records
+                # `_off_train_time` (ABSOLUTE) and the box byte sits
+                # TRAIN_BUTTON_OFF=4 bytes after it -- see
+                # aoe2mod/dat/newunit.py. `_off_button` does not exist on the
+                # record, so exporting that produced all-null and a drag would
+                # have had nowhere to write.
+                "_off_train_time": t.get("_off_train_time"),
             })
             entries += 1
 

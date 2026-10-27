@@ -569,6 +569,23 @@ fn route(
             let v = crate::ai::meta_json(&app_dir);
             (200, "application/json; charset=utf-8", v.to_string().into_bytes())
         }
+        "/api/card-move" => {
+            let req: serde_json::Value = match serde_json::from_slice(body) {
+                Ok(v) => v,
+                Err(_) => {
+                    return (
+                        400,
+                        "application/json; charset=utf-8",
+                        b"{\"ok\":false}".to_vec(),
+                    )
+                }
+            };
+            let json = match crate::stat_edit::build_card_move_pub(server, &req) {
+                Ok(j) => j,
+                Err(e) => format!("{{\"ok\":false,\"error\":\"{}\"}}", json_escape(&e)),
+            };
+            (200, "application/json; charset=utf-8", json.into_bytes())
+        }
         "/api/card" => {
             // `?building=12` -- one building's command card.
             let q: std::collections::HashMap<String, String> = _query

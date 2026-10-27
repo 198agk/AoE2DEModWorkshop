@@ -117,6 +117,11 @@ def check_routes(port):
     note("/api/card", cd.get("box_count") == 4 and cd.get("unit_count") == 49,
          " 兵营 %s 格 %s 单位" % (cd.get("box_count"), cd.get("unit_count")))
 
+    mv = post("/api/card-move", {"unit": 74, "building": 12, "box": 5,
+                                  "title": "gate-card-move"})
+    note("/api/card-move", mv.get("ok") is True and mv.get("bytes_changed") == 1,
+         " %s->%s" % (mv.get("before"), mv.get("after")))
+
     d = json.loads(get("/api/describe?kind=unit&id=1810"))
     note("/api/describe", (d.get("entity") or {}).get("name") == "村民")
 
