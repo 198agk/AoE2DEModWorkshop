@@ -233,3 +233,7 @@ _probe/width_report.json
 
 # cargo build output (Rust crate)
 target/
+
+# 19 MB of measured offsets, regenerated in ~40 s by _probe/make_stat_offsets.py
+_golden/stat_offsets.json
+_golden/unit0_trace.txt
