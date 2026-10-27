@@ -11,6 +11,7 @@
 //! ("wait 150 s", "show an error page") has already cost this project a round.
 
 pub mod build;
+pub mod ddstex;
 pub mod mods;
 pub mod recipes;
 pub mod sentences;

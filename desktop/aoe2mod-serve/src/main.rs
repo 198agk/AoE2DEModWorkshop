@@ -9,6 +9,23 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 fn main() {
+    let argv: Vec<String> = std::env::args().collect();
+    // A sidecar mode so the decoder can be diffed against the Python original
+    // without a window or a port: `aoe2mod-serve --dds <file>` writes PNG to
+    // stdout. test_dds_parity.py compares pixels through this.
+    if argv.len() >= 3 && argv[1] == "--dds" {
+        match aoe2mod_serve::ddstex::to_png(std::path::Path::new(&argv[2]), 0) {
+            Ok(bytes) => {
+                use std::io::Write;
+                let _ = std::io::stdout().write_all(&bytes);
+                return;
+            }
+            Err(e) => {
+                eprintln!("{e}");
+                std::process::exit(1);
+            }
+        }
+    }
     let mut args = std::env::args().skip(1);
     let mut port: u16 = 0;
     let mut root = PathBuf::from(".");
