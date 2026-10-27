@@ -97,7 +97,12 @@ def check_routes(port):
     note("/api/locale", len(l.get("strings") or {}) == 55,
          " keys=%d" % len(l.get("strings") or {}))
 
-    mods = json.loads(get("/api/mods"))
+    try:
+        mods = json.loads(get("/api/mods"))
+    except Exception as exc:
+        print("      /api/mods raised:", exc)
+        mods = {}
+        ok = False
     note("/api/mods", mods.get("ok") is True,
          " rows=%d" % len(mods.get("mods") or []))
 

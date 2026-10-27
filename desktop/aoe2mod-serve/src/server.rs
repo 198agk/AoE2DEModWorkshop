@@ -340,6 +340,101 @@ fn route(
                 b"{\"ok\":false,\"error\":\"\xe8\xbf\x98\xe5\x9c\xa8\xe8\xaf\xbb\xe5\x8f\x96\xe6\xb8\xb8\xe6\x88\x8f\xe6\x95\xb0\xe6\x8d\xae\",\"intents\":[],\"civs\":[],\"mods\":[],\"available\":false,\"model\":null}".to_vec(),
             ),
         },
+        "/api/mods" => match crate::mods::profile_root() {
+            Some(root) => match crate::mods::read_mods(&root) {
+                Ok(rows) => {
+                    let json = format!(
+                        "{{\"ok\":true,\"mods\":{}}}",
+                        crate::mods::to_json(&rows)
+                    );
+                    (200, "application/json; charset=utf-8", json.into_bytes())
+                }
+                Err(e) => (
+                    200,
+                    "application/json; charset=utf-8",
+                    format!(
+                        "{{\"ok\":false,\"error\":\"{}\"}}",
+                        json_escape(&e.to_string())
+                    )
+                    .into_bytes(),
+                ),
+            },
+            None => (
+                200,
+                "application/json; charset=utf-8",
+                format!(
+                    "{{\"ok\":false,\"error\":\"{}\"}}",
+                    json_escape("找不到玩家档案目录")
+                )
+                .into_bytes(),
+            ),
+        },
+        "/api/install" => {
+            // The page builds first (`/api/build`), then asks for the install as a
+            // SEPARATE step. That split is deliberate in this product: building is
+            // reversible and lives in the caller's own folder, while installing
+            // writes into the player's profile and changes what the game loads.
+            // Folding it into build (which this server also supports via
+            // `install: true`) must not remove the standalone step.
+            let req: serde_json::Value = match serde_json::from_slice(body) {
+                Ok(v) => v,
+                Err(_) => {
+                    return (
+                        400,
+                        "application/json; charset=utf-8",
+                        b"{\"ok\":false}".to_vec(),
+                    )
+                }
+            };
+            let dir = req.get("mod_dir").and_then(|v| v.as_str()).unwrap_or("");
+            let name = req
+                .get("name")
+                .and_then(|v| v.as_str())
+                .filter(|s| !s.trim().is_empty())
+                .map(|s| s.to_string())
+                .unwrap_or_else(|| {
+                    std::path::Path::new(dir)
+                        .file_name()
+                        .map(|f| f.to_string_lossy().into_owned())
+                        .unwrap_or_default()
+                });
+            let json = if dir.is_empty() || !std::path::Path::new(dir).is_dir() {
+                format!(
+                    "{{\"ok\":false,\"error\":\"{}\"}}",
+                    json_escape("要装的模组文件夹不存在；先生成再安装")
+                )
+            } else {
+                match crate::mods::profile_root() {
+                    None => format!(
+                        "{{\"ok\":false,\"error\":\"{}\"}}",
+                        json_escape("找不到玩家档案目录")
+                    ),
+                    Some(prof) => {
+                        let built = crate::build::Built {
+                            dir: std::path::PathBuf::from(dir),
+                            title: name.clone(),
+                            dat_bytes: 0,
+                            compressed: Vec::new(),
+                        };
+                        match crate::build::install_local(&prof, &built, &name) {
+                            Ok(dest) => {
+                                let rows = crate::mods::read_mods(&prof).unwrap_or_default();
+                                format!(
+                                    "{{\"ok\":true,\"installed\":\"{}\",\"mods\":{}}}",
+                                    json_escape(&dest.display().to_string()),
+                                    crate::mods::to_json(&rows)
+                                )
+                            }
+                            Err(e) => format!(
+                                "{{\"ok\":false,\"error\":\"{}\"}}",
+                                json_escape(&e)
+                            ),
+                        }
+                    }
+                }
+            };
+            (200, "application/json; charset=utf-8", json.into_bytes())
+        }
         "/api/forms" => {
             // `?intent=` narrows to one intent.  Read fresh per request: a
             // plugin can change the table while the tool runs.
