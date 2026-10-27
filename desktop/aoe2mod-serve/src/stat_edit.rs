@@ -169,6 +169,9 @@ pub fn build_and_install(server: &Server, req: &serde_json::Value) -> Result<Str
     if intent == "tech.effect" {
         return build_effect(server, req);
     }
+    if intent == "tech.toggle_group" {
+        return build_toggle_group(server, req);
+    }
     if intent == "unit.sprite" {
         return build_sprite(server, req);
     }
@@ -957,4 +960,118 @@ fn build_sprite(server: &Server, req: &serde_json::Value) -> Result<String, Stri
 /// Public wrapper for the routing layer.
 pub fn build_sprite_pub(server: &Server, req: &serde_json::Value) -> Result<String, String> {
     build_sprite(server, req)
+}
+
+
+/// `tech.toggle_group`: append one `MutuallyExclusive` entry to linkedTechs.json.
+///
+/// The mod ships an UNMODIFIED `.dat` beside the JSON: measured in this project,
+/// a mod writing under `resources/_common/dat/` without one makes the game fail to
+/// start, because that storage point is resolved as a unit rather than per file.
+/// `changes_dat` is therefore true even though no `.dat` byte moved -- the record
+/// says "this mod carries a .dat", which is what the update guard needs to know.
+fn build_toggle_group(server: &Server, req: &serde_json::Value) -> Result<String, String> {
+    use aoe2mod_dat::load_dat;
+
+    let techs: Vec<i16> = req
+        .get("techs")
+        .and_then(|v| v.as_array())
+        .map(|a| a.iter().filter_map(|x| x.as_i64().map(|n| n as i16)).collect())
+        .unwrap_or_default();
+    let title = req
+        .get("title")
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.trim().is_empty())
+        .map(|s| s.to_string())
+        .unwrap_or_else(|| "tech group".to_string());
+    let install = req.get("install").and_then(|v| v.as_bool()).unwrap_or(false);
+    if server.parsed.lock().unwrap().is_none() {
+        return Err("游戏数据还没读完".into());
+    }
+
+    let root = crate::game_root().ok_or("找不到游戏目录")?;
+    let dat = root.join("resources/_common/dat/empires2_x2_p1.dat");
+    let (raw, _how) = load_dat(&dat).map_err(|e| e.to_string())?;
+
+    let out_dir = std::env::temp_dir()
+        .join("aoe2mod-native-build")
+        .join(&title);
+    if out_dir.exists() {
+        std::fs::remove_dir_all(&out_dir).map_err(|e| e.to_string())?;
+    }
+    std::fs::create_dir_all(&out_dir).map_err(|e| e.to_string())?;
+
+    // 1. the JSON layer
+    let (entry, total) = crate::togglegroup::build(
+        &root.join("resources/_common/dat"),
+        &out_dir,
+        &techs,
+    )?;
+
+    // 2. the carrier .dat, copied verbatim
+    let dat_out = out_dir.join("resources/_common/dat/empires2_x2_p1.dat");
+    {
+        use flate2::write::DeflateEncoder;
+        use flate2::Compression;
+        use std::io::Write;
+        let f = std::fs::File::create(&dat_out).map_err(|e| e.to_string())?;
+        let mut e = DeflateEncoder::new(f, Compression::default());
+        e.write_all(&raw).map_err(|e| e.to_string())?;
+        e.finish().map_err(|e| e.to_string())?;
+    }
+
+    // 3. info.json, compact, four keys
+    let info = format!(
+        "{{\"Author\":\"aoe2mod\",\"CacheStatus\":0,\"Description\":\"{}\",\"Title\":\"{}\"}}",
+        crate::server::json_escape(&format!("mutually exclusive: {techs:?}")),
+        crate::server::json_escape(&title)
+    );
+    std::fs::write(out_dir.join("info.json"), info).map_err(|e| e.to_string())?;
+
+    let mut installed_to = String::new();
+    if install {
+        let prof = crate::mods::profile_root().ok_or("找不到玩家档案目录")?;
+        let built = crate::build::Built {
+            dir: out_dir.clone(),
+            title: title.clone(),
+            dat_bytes: raw.len(),
+            compressed: Vec::new(),
+        };
+        let dest = crate::build::install_local(&prof, &built, &title)?;
+        installed_to = dest.display().to_string();
+    }
+
+    let (base_file_sha, base_raw_sha) = match crate::updates::fingerprint(&dat, true) {
+        Some((f, rr, _v)) => (f, rr),
+        None => (String::new(), None),
+    };
+    crate::updates::remember_build(
+        &title,
+        "aoe2mod",
+        &format!("mutually exclusive: {techs:?}"),
+        serde_json::json!([{
+            "intent": "tech.toggle_group",
+            "techs": techs
+        }]),
+        &base_file_sha,
+        base_raw_sha.as_deref(),
+        // The emitted .dat is the factory one, so its hash is empty on purpose:
+        // `update-check` then treats this as a CARRIER, not as an edit that can go
+        // stale. Writing a hash here would make it look edited forever.
+        "",
+        true,
+    )
+    .map_err(|e| format!("建好了但没能写构建记录：{e}"))?;
+
+    Ok(format!(
+        "{{\"ok\":true,\"intent\":\"tech.toggle_group\",\"entry\":{},\"entries\":{},\"files\":2,\"built\":\"{}\",\"installed\":\"{}\"}}",
+        entry,
+        total,
+        crate::server::json_escape(&out_dir.display().to_string()),
+        crate::server::json_escape(&installed_to)
+    ))
+}
+
+pub fn build_toggle_group_pub(server: &Server, req: &serde_json::Value) -> Result<String, String> {
+    build_toggle_group(server, req)
 }
