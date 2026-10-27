@@ -1,0 +1,11 @@
+[package]
+name = "aoe2mod-dat"
+version = "0.1.0"
+edition = "2021"
+description = "Native reader for AoE2 DE .dat, measured against a frozen baseline"
+
+[dependencies]
+flate2 = "1"
+
+[profile.release]
+opt-level = 2
