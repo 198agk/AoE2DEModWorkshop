@@ -1,0 +1,192 @@
+{
+ "intents": [
+  {
+   "id": "unit.stat",
+   "title": "改变单位属性",
+   "fields": [
+    "unit",
+    "stat",
+    "delta",
+    "value",
+    "civs",
+    "unit_class"
+   ],
+   "by_sentence": true
+  },
+  {
+   "id": "unit.attack_class",
+   "title": "改变单位的攻击/护甲数值",
+   "fields": [
+    "unit",
+    "class_id",
+    "kind",
+    "delta",
+    "value",
+    "civs"
+   ],
+   "by_sentence": true
+  },
+  {
+   "id": "unit.cost",
+   "title": "改变单位造价",
+   "fields": [
+    "unit",
+    "resource",
+    "delta",
+    "value",
+    "civs"
+   ],
+   "by_sentence": true
+  },
+  {
+   "id": "tech.research_time",
+   "title": "改变科技研究时间",
+   "fields": [
+    "tech",
+    "delta",
+    "value"
+   ],
+   "by_sentence": true
+  },
+  {
+   "id": "tech.cost",
+   "title": "改变科技造价",
+   "fields": [
+    "tech",
+    "resource",
+    "delta",
+    "value"
+   ],
+   "by_sentence": true
+  },
+  {
+   "id": "tech.effect",
+   "title": "改变科技效果",
+   "fields": [
+    "tech",
+    "command",
+    "delta",
+    "value"
+   ],
+   "by_sentence": true
+  },
+  {
+   "id": "unit.availability",
+   "title": "改变某个文明能否建造某单位",
+   "fields": [
+    "unit",
+    "civ",
+    "action"
+   ],
+   "by_sentence": true
+  },
+  {
+   "id": "tech.availability",
+   "title": "改变某个文明能否研究某科技",
+   "fields": [
+    "tech",
+    "civ",
+    "action"
+   ],
+   "by_sentence": true
+  },
+  {
+   "id": "unit.sprite",
+   "title": "换掉单位的造型",
+   "fields": [
+    "unit",
+    "donor",
+    "civs",
+    "whole_family",
+    "fill",
+    "mode"
+   ],
+   "by_sentence": true
+  },
+  {
+   "id": "unit.art",
+   "title": "给单位画一张新图",
+   "fields": [
+    "unit",
+    "picture",
+    "civs",
+    "animations"
+   ],
+   "by_sentence": true
+  },
+  {
+   "id": "unit.create",
+   "title": "照着现成的单位做一个新单位",
+   "fields": [
+    "donor",
+    "civ",
+    "name",
+    "hp",
+    "button",
+    "builder",
+    "icon"
+   ],
+   "by_sentence": true
+  },
+  {
+   "id": "tech.toggle_group",
+   "title": "把几项科技做成只能研究其中一个",
+   "fields": [
+    "techs",
+    "type",
+    "comment"
+   ],
+   "by_sentence": true
+  },
+  {
+   "id": "tech.create",
+   "title": "做一项游戏里没有的科技",
+   "fields": [
+    "donor",
+    "name",
+    "building",
+    "research_time",
+    "button",
+    "effect",
+    "icon"
+   ],
+   "by_sentence": true
+  },
+  {
+   "id": "unit.replace_on_map",
+   "title": "让某个单位在地图上换成另一个",
+   "fields": [
+    "unit",
+    "replacement",
+    "chance",
+    "replace_existing",
+    "comment"
+   ],
+   "by_sentence": true
+  },
+  {
+   "id": "unit.card_move",
+   "title": "把单位挪到命令卡的另一格",
+   "fields": [
+    "unit",
+    "builder",
+    "button",
+    "civ"
+   ],
+   "by_sentence": false
+  }
+ ],
+ "examples": [
+  "村民血量改成 1000",
+  "弓箭手攻击力加 2",
+  "村民木材成本减 10",
+  "织布机研究时间减 5",
+  "给印加解锁蔷琵侦察兵",
+  "印加不能造蔷琵侦察兵",
+  "把织布机和铸币术做成只能选一个",
+  "不列颠照村民做一个新单位，叫铁匠学徒，放在第 5 格",
+  "照着织布机做一个新科技，就叫血祭",
+  "把村民的样子换成步弓手",
+  "给村民换张图 D:\\pics\\villager.png"
+ ]
+}

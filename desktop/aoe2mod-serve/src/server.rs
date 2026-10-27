@@ -384,6 +384,13 @@ fn route(
             (200, "application/json; charset=utf-8", json.into_bytes())
         }
         // The one write path, so the whole chain can be exercised end to end.
+        "/api/ai-meta" => {
+            // Keyless and makes no call: the page reads `available` to decide
+            // whether to draw the AI box at all.
+            let app_dir = app_dir_of(&server.root);
+            let v = crate::ai::meta_json(&app_dir);
+            (200, "application/json; charset=utf-8", v.to_string().into_bytes())
+        }
         "/api/icon" => {
             // `?kind=unit&id=83&section=Units&max=64`
             let q: std::collections::HashMap<String, String> = _query
