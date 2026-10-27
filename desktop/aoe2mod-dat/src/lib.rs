@@ -432,6 +432,7 @@ pub fn read_stages47(r: &mut Reader<'_>, gv: u32) -> io::Result<Stages47> {
 // Stages 8-10: civilizations, techs, tail
 // ---------------------------------------------------------------------------
 pub mod stage810;
+pub mod stats;
 pub mod writer;
 pub mod write810;
 pub mod write23;
