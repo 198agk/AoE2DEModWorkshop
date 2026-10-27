@@ -94,30 +94,15 @@ pub fn grammar(app_dir: &std::path::Path) -> String {
 }
 
 fn grammar_data(app_dir: &std::path::Path) -> Value {
-    // Walk up from the app dir AND from the current dir: the shell starts this
-    // wherever the exe lives, `cargo run` starts it in the crate dir, and a test
-    // starts it wherever pytest is. A fixed relative path is a guess about the
-    // caller's cwd.
-    let mut roots: Vec<std::path::PathBuf> = Vec::new();
-    let mut p = Some(app_dir.to_path_buf());
-    while let Some(d) = p {
-        roots.push(d.clone());
-        p = d.parent().map(|x| x.to_path_buf());
-    }
-    if let Ok(cwd) = std::env::current_dir() {
-        let mut p = Some(cwd);
-        while let Some(d) = p {
-            roots.push(d.clone());
-            p = d.parent().map(|x| x.to_path_buf());
-        }
-    }
-    for root in roots {
-        for rel in ["_golden/ai_grammar.json", "ai_grammar.json"] {
-            let path = root.join(rel);
-            if let Ok(t) = std::fs::read_to_string(&path) {
-                if let Ok(v) = serde_json::from_str::<Value>(&t) {
-                    return v;
-                }
+    let mut candidates = vec![app_dir.join("_golden/ai_grammar.json")];
+    candidates.extend(crate::sentences::table_paths(
+        "AOE2MOD_AI_GRAMMAR",
+        "ai_grammar.json",
+    ));
+    for p in candidates {
+        if let Ok(t) = std::fs::read_to_string(&p) {
+            if let Ok(v) = serde_json::from_str::<Value>(&t) {
+                return v;
             }
         }
     }

@@ -109,17 +109,8 @@ fn read_at(buf: &[u8], off: usize, kind: StatKind) -> Option<f64> {
 
 /// Locate `_golden/entity_names.json` by walking up, same as the grammar table.
 pub fn entity_names() -> Value {
-    let mut roots: Vec<std::path::PathBuf> = Vec::new();
-    if let Ok(cwd) = std::env::current_dir() {
-        let mut p = Some(cwd);
-        while let Some(d) = p {
-            roots.push(d.clone());
-            p = d.parent().map(|x| x.to_path_buf());
-        }
-    }
-    for root in roots {
-        let path = root.join("_golden/entity_names.json");
-        if let Ok(t) = std::fs::read_to_string(&path) {
+    for p in crate::sentences::table_paths("AOE2MOD_ENTITY_NAMES", "entity_names.json") {
+        if let Ok(t) = std::fs::read_to_string(&p) {
             if let Ok(v) = serde_json::from_str::<Value>(&t) {
                 return v;
             }

@@ -116,10 +116,12 @@ fn global_names() -> &'static OnceLock<Option<Names>> {
 /// the vocabulary was not shipped.
 pub fn names() -> &'static Option<Names> {
     global_names().get_or_init(|| {
-        let path = std::env::var("AOE2MOD_ENTITY_NAMES")
-            .map(std::path::PathBuf::from)
-            .unwrap_or_else(|_| std::path::PathBuf::from("_golden/entity_names.json"));
-        Names::load(&path).ok()
+        for path in table_paths("AOE2MOD_ENTITY_NAMES", "entity_names.json") {
+            if let Ok(n) = Names::load(&path) {
+                return Some(n);
+            }
+        }
+        None
     })
 }
 
@@ -412,4 +414,37 @@ pub fn stat_word(text: &str) -> Option<String> {
         }
     }
     best.map(|(_, s)| s)
+}
+
+/// Candidate locations for a shipped table, in priority order.
+///
+/// `<root>/_golden/<file>` is where the bundler puts it; the upward walk is what
+/// finds the repo during development. Both are needed: a shipped folder has no
+/// repo above it, and a development run has no `_golden` beside the exe.
+pub fn table_paths(env: &str, file: &str) -> Vec<std::path::PathBuf> {
+    let mut out = Vec::new();
+    if let Ok(v) = std::env::var(env) {
+        out.push(std::path::PathBuf::from(v));
+    }
+    for key in ["AOE2MOD_ROOT", "AOE2MOD_APP"] {
+        if let Ok(root) = std::env::var(key) {
+            out.push(std::path::PathBuf::from(root).join("_golden").join(file));
+        }
+    }
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(dir) = exe.parent() {
+            for base in [dir.to_path_buf(), dir.join("app"), dir.join("..").join("app")] {
+                out.push(base.join("_golden").join(file));
+            }
+        }
+    }
+    if let Ok(cwd) = std::env::current_dir() {
+        let mut p = Some(cwd);
+        while let Some(d) = p {
+            out.push(d.join("_golden").join(file));
+            out.push(d.join("app").join("_golden").join(file));
+            p = d.parent().map(|x| x.to_path_buf());
+        }
+    }
+    out
 }

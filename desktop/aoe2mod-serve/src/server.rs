@@ -420,9 +420,7 @@ fn route(
                     json_escape("游戏数据还没读完")
                 ),
                 Some(parsed) => {
-                    let offsets_path = std::env::var("AOE2MOD_STAT_OFFSETS")
-                        .map(std::path::PathBuf::from)
-                        .unwrap_or_else(|_| std::path::PathBuf::from("_golden/stat_offsets.json"));
+                    let offsets_path = crate::stats_path();
                     match crate::stats::StatTable::load(&offsets_path) {
                         Err(e) => format!(
                             "{{\"ok\":false,\"error\":\"{}\"}}",

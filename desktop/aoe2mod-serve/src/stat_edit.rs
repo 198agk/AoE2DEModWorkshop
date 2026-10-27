@@ -178,9 +178,7 @@ pub fn build_and_install(server: &Server, req: &serde_json::Value) -> Result<Str
     }
 
     let root = crate::game_root().ok_or("找不到游戏目录")?;
-    let offsets_path = std::env::var("AOE2MOD_STAT_OFFSETS")
-        .map(std::path::PathBuf::from)
-        .unwrap_or_else(|_| std::path::PathBuf::from("_golden/stat_offsets.json"));
+    let offsets_path = crate::stats_path();
     let table = StatTable::load(&offsets_path)
         .map_err(|e| format!("读不到 {}：{e}", offsets_path.display()))?;
     let kind = *table

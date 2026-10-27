@@ -149,3 +149,20 @@ pub fn game_root() -> Option<PathBuf> {
     .map(PathBuf::from)
     .find(|p| p.join("resources/_common/dat/empires2_x2_p1.dat").is_file())
 }
+
+
+/// Where `stat_offsets.json` lives: the first candidate that exists.
+///
+/// Three call sites used to build this path by hand with an `unwrap_or` onto a
+/// repo-relative default, which works only when the cwd happens to be the repo.
+/// In a shipped folder it produced `os error 3` for a path nobody had, and the
+/// route reported "读不到属性偏移表" -- correct, useless, and invisible until the
+/// bundle was tested rather than the development binary.
+pub fn stats_path() -> std::path::PathBuf {
+    for p in sentences::table_paths("AOE2MOD_STAT_OFFSETS", "stat_offsets.json") {
+        if p.is_file() {
+            return p;
+        }
+    }
+    std::path::PathBuf::from("_golden/stat_offsets.json")
+}
