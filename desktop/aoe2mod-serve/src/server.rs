@@ -384,6 +384,21 @@ fn route(
             (200, "application/json; charset=utf-8", json.into_bytes())
         }
         // The one write path, so the whole chain can be exercised end to end.
+        "/api/rebuild" => {
+            let req: serde_json::Value = match serde_json::from_slice(body) {
+                Ok(v) => v,
+                Err(_) => return (400, "application/json; charset=utf-8", b"{\"ok\":false}".to_vec()),
+            };
+            let title = req.get("title").and_then(|v| v.as_str()).unwrap_or("");
+            let json = match crate::rebuild::rebuild(server, title) {
+                Ok(v) => v.to_string(),
+                Err(e) => format!(
+                    "{{\"ok\":false,\"error\":\"{}\"}}",
+                    json_escape(&e)
+                ),
+            };
+            (200, "application/json; charset=utf-8", json.into_bytes())
+        }
         "/api/ai-meta" => {
             // Keyless and makes no call: the page reads `available` to decide
             // whether to draw the AI box at all.

@@ -240,12 +240,48 @@ pub fn build_and_install(server: &Server, req: &serde_json::Value) -> Result<Str
         true,
     )?;
 
+    // Remember the origin BEFORE installing: the record is what makes the mod
+    // visible to /api/update-check and replayable by /api/rebuild, and a mod
+    // that exists while both guards have never heard of it is the failure this
+    // project's provenance layer exists to prevent.
+    let (base_file_sha, base_raw_sha) = match crate::updates::fingerprint(&dat, true) {
+        Some((f, r, _v)) => (f, r),
+        None => (String::new(), None),
+    };
+    let dat_out_sha = {
+        // The bytes we emit, hashed the way the mod's installed copy will be.
+        use sha2::{Digest, Sha256};
+        let mut h = Sha256::new();
+        h.update(&out);
+        format!("{:x}", h.finalize())
+    };
+
     let mut installed_to = String::new();
     if install {
         let prof = crate::mods::profile_root().ok_or("找不到玩家档案目录")?;
         let dest = crate::build::install_local(&prof, &built, &title)?;
         installed_to = dest.display().to_string();
     }
+
+    // The record. `changes_dat: true` because this build genuinely rewrites the
+    // .dat, which is what lets the update guard call it `stale` later instead of
+    // `no_dat`.
+    crate::updates::remember_build(
+        &title,
+        "aoe2mod",
+        &format!("{stat} {unit} -> {new_value}"),
+        serde_json::json!([{
+            "intent": "unit.stat",
+            "unit": unit,
+            "stat": stat,
+            "value": new_value
+        }]),
+        &base_file_sha,
+        base_raw_sha.as_deref(),
+        &dat_out_sha,
+        true,
+    )
+    .map_err(|e| format!("建好了但没能写构建记录：{e}"))?;
 
     Ok(format!(
         "{{\"ok\":true,\"stat\":\"{}\",\"unit\":{},\"civs\":{},\"before\":{},\"value\":{},\"dat_bytes\":{},\"compressed\":{},\"built\":\"{}\",\"installed\":\"{}\"}}",

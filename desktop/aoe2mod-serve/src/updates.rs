@@ -294,3 +294,68 @@ pub fn to_json(rows: &[Row], attention: usize, state_dir: &str) -> String {
         attention
     )
 }
+
+
+/// Record one build: what was asked for, and which bytes it was built from.
+///
+/// `intents` is stored so a rebuild is the same REQUEST rather than a copy of the
+/// bytes it produced -- a saved `.dat` is a snapshot of data the game can update
+/// underneath it, while a saved intent is rebuilt against today's file.
+///
+/// Failures here are returned, not swallowed: a build that succeeded while its
+/// record did not is a mod both guard routes cannot see.
+#[allow(clippy::too_many_arguments)]
+pub fn remember_build(
+    title: &str,
+    author: &str,
+    description: &str,
+    intents: serde_json::Value,
+    base_file_sha: &str,
+    base_raw_sha: Option<&str>,
+    dat_out_sha: &str,
+    changes_dat: bool,
+) -> Result<(), String> {
+    let path = state_file().ok_or("找不到状态目录")?;
+    if let Some(dir) = path.parent() {
+        std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+    }
+    let mut doc: serde_json::Value = if path.is_file() {
+        let text = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
+        serde_json::from_str(text.trim_start_matches('\u{feff}'))
+            .unwrap_or_else(|_| serde_json::json!({"builds": {}}))
+    } else {
+        serde_json::json!({"builds": {}})
+    };
+    if !doc.get("builds").map(|b| b.is_object()).unwrap_or(false) {
+        doc["builds"] = serde_json::json!({});
+    }
+    let entry = serde_json::json!({
+        "title": title,
+        "author": author,
+        "description": description,
+        "built_at": now_stamp(),
+        "base_version": version_of(&std::path::PathBuf::from("")),
+        "base_file_sha256": base_file_sha,
+        "base_raw_sha256": base_raw_sha,
+        "dat_file_sha256": dat_out_sha,
+        "changes_dat": changes_dat,
+        "dat_is_carrier": false,
+        "intents": intents,
+    });
+    doc["builds"][title] = entry;
+    let text = serde_json::to_string_pretty(&doc).map_err(|e| e.to_string())?;
+    // Write beside, then rename: a half-written record file loses every mod the
+    // guard knows about.
+    let tmp = path.with_extension("json.tmp");
+    std::fs::write(&tmp, text).map_err(|e| e.to_string())?;
+    std::fs::rename(&tmp, &path).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+fn now_stamp() -> String {
+    let secs = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    format!("{secs}")
+}
