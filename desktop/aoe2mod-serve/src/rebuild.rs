@@ -68,7 +68,16 @@ pub fn record(title: &str) -> Result<BuildRecord, String> {
 ///
 /// Returns the JSON body the stat editor produced, or a refusal naming the
 /// intent. Only stat edits are replayable today; everything else says so.
-pub fn replay(server: &crate::server::Server, intent: &Value) -> Result<Value, String> {
+///
+/// A replayed intent must be the SAME edit, scope included: `civs` is copied
+/// through, because dropping it turns 「只改不列颠」 into all 63 civilizations
+/// and reports success.
+pub fn replay(
+    server: &crate::server::Server,
+    intent: &Value,
+    title: &str,
+    install: bool,
+) -> Result<Value, String> {
     let kind = intent
         .get("intent")
         .and_then(|v| v.as_str())
@@ -91,6 +100,21 @@ pub fn replay(server: &crate::server::Server, intent: &Value) -> Result<Value, S
             if let Some(d) = delta {
                 req["delta"] = serde_json::json!(d);
             }
+            // Replay the scope too.  Without it the rebuild reproduces a WIDER
+            // edit than the one that was recorded, which is the quietest way to
+            // undo the player's "只改不列颠" without ever contradicting them.
+            if let Some(c) = intent.get("civs") {
+                if !c.is_null() {
+                    req["civs"] = c.clone();
+                }
+            }
+            // The rebuild has to land under the SAME title and go through
+            // install, or it produces a second folder and leaves the stale one
+            // in place while reporting a fresh build.
+            req["title"] = serde_json::json!(title);
+            if install {
+                req["install"] = serde_json::json!(true);
+            }
             let body = crate::stat_edit::build_and_install(server, &req)?;
             let v: Value = serde_json::from_str(&body)
                 .map_err(|e| format!("重建结果不是 JSON：{e}"))?;
@@ -112,9 +136,9 @@ pub fn rebuild(server: &crate::server::Server, title: &str) -> Result<Value, Str
             rec.intents.len()
         ));
     }
-    let built = replay(server, &rec.intents[0])?;
-    // The build already installed itself; re-register under the ORIGINAL name and
-    // description so the player's list does not acquire a second entry.
+    // `install: true` because the whole point is replacing the stale folder; the
+    // title so the replacement goes to the same place instead of beside it.
+    let built = replay(server, &rec.intents[0], &rec.title, true)?;
     let prof = crate::mods::profile_root().ok_or("找不到玩家档案目录")?;
     let _ = crate::mods::set_enabled(&prof, title, true);
     Ok(serde_json::json!({

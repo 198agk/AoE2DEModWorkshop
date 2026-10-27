@@ -50,6 +50,26 @@ fn civ_filter(req: &serde_json::Value) -> Option<Vec<String>> {
     }
 }
 
+/// The intent a build record keeps, so that a later rebuild reproduces THIS
+/// edit and not a wider one.
+///
+/// `civs` was left out of the record the first time round.  Rebuilding
+/// 「不列颠村民血量改成100」 then replayed an intent with no scope and silently
+/// widened the mod to all 63 civilizations -- the file existed, the count was
+/// plausible, and the edit that came back was not the edit that was asked for.
+fn recorded_intent(fields: serde_json::Value, req: &serde_json::Value) -> serde_json::Value {
+    let mut obj = match fields {
+        serde_json::Value::Object(m) => m,
+        _ => serde_json::Map::new(),
+    };
+    if let Some(c) = req.get("civs") {
+        if !c.is_null() {
+            obj.insert("civs".to_string(), c.clone());
+        }
+    }
+    serde_json::json!([serde_json::Value::Object(obj)])
+}
+
 /// Whether a civilisation record is in scope.
 ///
 /// A name that matches nothing is a REFUSAL at the call site, not a silent empty
@@ -435,12 +455,15 @@ pub fn build_one(server: &Server, req: &serde_json::Value) -> Result<String, Str
         &title,
         "aoe2mod",
         &format!("{stat} {unit} -> {new_value}"),
-        serde_json::json!([{
-            "intent": "unit.stat",
-            "unit": unit,
-            "stat": stat,
-            "value": new_value
-        }]),
+        recorded_intent(
+            serde_json::json!({
+                "intent": "unit.stat",
+                "unit": unit,
+                "stat": stat,
+                "value": new_value
+            }),
+            req,
+        ),
         &base_file_sha,
         base_raw_sha.as_deref(),
         &dat_out_sha,
@@ -580,13 +603,16 @@ fn build_unit_field(
         &title,
         "aoe2mod",
         &format!("{} {unit} -> {new_value}", resolved.label),
-        serde_json::json!([{
-            "intent": intent,
-            "unit": unit,
-            "resource": req.get("resource").cloned().unwrap_or(serde_json::Value::Null),
-            "attack_kind": req.get("attack_kind").cloned().unwrap_or(serde_json::Value::Null),
-            "value": new_value
-        }]),
+        recorded_intent(
+            serde_json::json!({
+                "intent": intent,
+                "unit": unit,
+                "resource": req.get("resource").cloned().unwrap_or(serde_json::Value::Null),
+                "attack_kind": req.get("attack_kind").cloned().unwrap_or(serde_json::Value::Null),
+                "value": new_value
+            }),
+            req,
+        ),
         &base_file_sha,
         base_raw_sha.as_deref(),
         &dat_out_sha,
@@ -821,12 +847,15 @@ fn build_tech(server: &Server, req: &serde_json::Value) -> Result<String, String
         &title,
         "aoe2mod",
         &format!("{intent} {tech} -> {new_value}"),
-        serde_json::json!([{
-            "intent": intent,
-            "tech": tech,
-            "resource": req.get("resource").cloned().unwrap_or(serde_json::Value::Null),
-            "value": new_value
-        }]),
+        recorded_intent(
+            serde_json::json!({
+                "intent": intent,
+                "tech": tech,
+                "resource": req.get("resource").cloned().unwrap_or(serde_json::Value::Null),
+                "value": new_value
+            }),
+            req,
+        ),
         &base_file_sha,
         base_raw_sha.as_deref(),
         &dat_out_sha,

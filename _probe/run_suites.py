@@ -561,6 +561,10 @@ SUITES = [
     # whether the bytes match what the sentence asked for, which this does by
     # building the same edit in Python and comparing hashes.
     r"_probe\test_civ_scope.py",
+    # Does `/api/rebuild` put the rebuilt bytes back where the mod lives?  It
+    # answered ok with a fresh edit count while the installed file kept the old
+    # bytes, because the replay neither installed nor reused the record's title.
+    r"_probe\test_rebuild_installs.py",
 ]
 
 # Suites that are not Python.  The screen's script is JavaScript and no Python
