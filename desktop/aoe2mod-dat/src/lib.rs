@@ -161,6 +161,11 @@ pub struct SoundItem {
     pub probability: i16,
     pub civilization: i16,
     pub iconset: i16,
+    /// The u16 marker and the width the INPUT used for the text.  Both are
+    /// needed to re-emit the string without shifting the cursor, and the marker
+    /// is NOT constant -- inventing one writes bytes the input never had.
+    pub marker: u16,
+    pub file_len: u16,
 }
 
 #[derive(Debug, Clone)]
@@ -173,13 +178,15 @@ pub struct Sound {
 }
 
 fn read_sound_item(r: &mut Reader<'_>) -> io::Result<SoundItem> {
-    let (_m, file, _n) = r.debug_string()?;
+    let (marker, file, file_len) = r.debug_string()?;
     Ok(SoundItem {
         file,
         resource_id: r.i32()?,
         probability: r.i16()?,
         civilization: r.i16()?,
         iconset: r.i16()?,
+        marker,
+        file_len,
     })
 }
 
@@ -222,6 +229,11 @@ pub struct Graphic {
     pub name_len: u16,
     pub file_len: u16,
     pub particle_len: u16,
+    /// The markers in front of each string.  Not constant, and not decoration:
+    /// re-emitting a different one changes bytes the game will read.
+    pub name_marker: u16,
+    pub file_marker: u16,
+    pub particle_marker: u16,
     pub slp: i32,
     pub is_loaded: u8,
     pub old_color_flag: u8,
@@ -253,9 +265,9 @@ fn read_graphic_angle_sound(r: &mut Reader<'_>) -> io::Result<AngleSound> {
 }
 
 pub fn read_graphic(r: &mut Reader<'_>) -> io::Result<Graphic> {
-    let (_m1, name, name_len) = r.debug_string()?;
-    let (_m2, file, file_len) = r.debug_string()?;
-    let (_m3, particle_effect, particle_len) = r.debug_string()?;
+    let (name_marker, name, name_len) = r.debug_string()?;
+    let (file_marker, file, file_len) = r.debug_string()?;
+    let (particle_marker, particle_effect, particle_len) = r.debug_string()?;
 
     let slp = r.i32()?;
     let is_loaded = r.u8()?;
@@ -300,6 +312,9 @@ pub fn read_graphic(r: &mut Reader<'_>) -> io::Result<Graphic> {
         name_len,
         file_len,
         particle_len,
+        name_marker,
+        file_marker,
+        particle_marker,
         slp,
         is_loaded,
         old_color_flag,
@@ -325,6 +340,9 @@ pub fn read_graphic(r: &mut Reader<'_>) -> io::Result<Graphic> {
 // ---------------------------------------------------------------------------
 pub struct Stages23 {
     pub sounds: Vec<Sound>,
+    /// `graphic_count` from the stream: the number of POINTER SLOTS, which is
+    /// the record count only when every slot is occupied.  A writer needs both.
+    pub graphic_count: i16,
     pub graphic_pointers_nonzero: usize,
     pub graphics: Vec<Graphic>,
 }
@@ -354,6 +372,7 @@ pub fn read_stages23(r: &mut Reader<'_>) -> io::Result<Stages23> {
     }
     Ok(Stages23 {
         sounds,
+        graphic_count,
         graphic_pointers_nonzero: nonzero,
         graphics,
     })
@@ -414,6 +433,7 @@ pub fn read_stages47(r: &mut Reader<'_>, gv: u32) -> io::Result<Stages47> {
 // ---------------------------------------------------------------------------
 pub mod stage810;
 pub mod writer;
+pub mod write23;
 
 pub use stage810::{
     read_civ, read_stages810, read_tech, read_tech_tree, read_unit, Civ, Stages810,
