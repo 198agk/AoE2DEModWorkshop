@@ -77,6 +77,9 @@ pub struct Intent {
     pub value: Option<f64>,
     pub delta: Option<f64>,
     pub civs: Option<String>,
+    /// `tech.effect` only: which command of the effect, and which of its fields.
+    pub command: Option<usize>,
+    pub field: Option<String>,
 }
 
 impl Intent {
@@ -105,6 +108,12 @@ impl Intent {
         }
         if let Some(v) = &self.civs {
             parts.push(format!("\"civs\":\"{}\"", crate::server::json_escape(v)));
+        }
+        if let Some(v) = self.command {
+            parts.push(format!("\"command\":{v}"));
+        }
+        if let Some(v) = &self.field {
+            parts.push(format!("\"field\":\"{}\"", crate::server::json_escape(v)));
         }
         format!("{{{}}}", parts.join(","))
     }
@@ -363,7 +372,55 @@ pub fn read_clause(text: &str) -> Clause {
         .map(|(k, _)| k.to_string());
     let says_cost = text.contains("成本") || text.contains("花费") || text.contains("造价");
 
+    // "织布机的第2条效果改成 …" / "织布机效果第1条的血量改成 100".
+    // Checked before the stat branch, because the same sentence also contains
+    // 血量 -- and 血量 alone would send it down the unit.stat path, where the
+    // offset table has no entry and the build would refuse a sentence the reader
+    // had just claimed to understand.
     let mut it = Intent::default();
+    if kind == "tech" && eid.is_some() {
+        let has_effect_word = text.contains("效果") || text.contains("effect");
+        if has_effect_word {
+            let idx = ordinal_in(text).unwrap_or(1);
+            // The VALUE is the number that is not the ordinal. `find_number`
+            // returns the first run of digits, and in this sentence that is the
+            // command index -- so re-read with the ordinal's digits removed.
+            // Measured: without this, "第1条效果改成100" produced `value: 1`.
+            let value = {
+                let stripped = strip_ordinal(text);
+                match find_number(&stripped) {
+                    Some((v, _)) => v,
+                    None => value,
+                }
+            };
+            let field = if text.contains("类型") || text.contains("type") {
+                "t"
+            } else if text.contains("血量") || text.contains("生命") {
+                "b"
+            } else if text.contains("攻击") || text.contains("攻击力") {
+                "b"
+            } else if text.contains("护甲") || text.contains("防御") {
+                "b"
+            } else {
+                // `d` is the command's numeric argument in every effect shape
+                // this project has read; the UI names the phrase, so default to
+                // it rather than refusing a sentence whose shape is right.
+                "d"
+            };
+            it.intent = "tech.effect".to_string();
+            it.tech = eid;
+            it.command = Some(idx);
+            it.field = Some(field.to_string());
+            match op {
+                "set" => it.value = Some(value),
+                "sub" => it.delta = Some(-value),
+                _ => it.delta = Some(value),
+            }
+            cl.intent = Some(it);
+            return cl;
+        }
+    }
+
     if let Some(stat) = stat {
         if eid.is_none() {
             cl.why = Some("没听出要改哪个单位。".into());
@@ -488,6 +545,65 @@ pub fn table_paths(env: &str, file: &str) -> Vec<std::path::PathBuf> {
             out.push(d.join("app").join("_golden").join(file));
             p = d.parent().map(|x| x.to_path_buf());
         }
+    }
+    out
+}
+
+
+/// The ordinal the player wrote, 1-based: "第2条" -> 2.
+///
+/// Only ASCII digits are read, for the same reason `find_number` does not accept
+/// Chinese numerals: "第二条" would be a second numeral vocabulary with its own
+/// set of mistakes, and guessing it is how a wrong command gets edited.
+fn ordinal_in(text: &str) -> Option<usize> {
+    let b: Vec<char> = text.chars().collect();
+    for i in 0..b.len() {
+        if b[i] == '第' {
+            let mut j = i + 1;
+            while j < b.len() && !b[j].is_ascii_digit() {
+                j += 1;
+            }
+            let start = j;
+            while j < b.len() && b[j].is_ascii_digit() {
+                j += 1;
+            }
+            if start < j {
+                let s: String = b[start..j].iter().collect();
+                if let Ok(v) = s.parse::<usize>() {
+                    return Some(v);
+                }
+            }
+        }
+    }
+    None
+}
+
+
+/// `text` with the ordinal ("第12条") removed, so the next number found is the
+/// value. Keeps the surrounding words intact -- the stat and resource words are
+/// read from the original string.
+fn strip_ordinal(text: &str) -> String {
+    let b: Vec<char> = text.chars().collect();
+    let mut out = String::with_capacity(text.len());
+    let mut i = 0usize;
+    while i < b.len() {
+        if b[i] == '第' {
+            let mut j = i + 1;
+            while j < b.len() && !b[j].is_ascii_digit() {
+                j += 1;
+            }
+            let num_start = j;
+            while j < b.len() && b[j].is_ascii_digit() {
+                j += 1;
+            }
+            if num_start < j {
+                // Skip "第" and the digits; keep whatever follows.
+                i = j;
+                continue;
+            }
+        }
+        out.push(b[i]);
+        i += 1;
     }
     out
 }

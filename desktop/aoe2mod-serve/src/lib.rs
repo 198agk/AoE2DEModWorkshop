@@ -9,6 +9,7 @@
 //! The second is what "a folder you double-click" needs. A shell that spawns a
 //! server must decide what to do when the spawn fails, and every answer to that
 //! ("wait 150 s", "show an error page") has already cost this project a round.
+pub mod effectedit;
 pub use aoe2mod_dat::{write23, write47, write810, writer};
 pub mod techedit;
 pub use aoe2mod_dat::stats;

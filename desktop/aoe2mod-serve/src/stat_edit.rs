@@ -166,6 +166,9 @@ pub fn build_and_install(server: &Server, req: &serde_json::Value) -> Result<Str
     if intent == "tech.research_time" || intent == "tech.cost" {
         return build_tech(server, req);
     }
+    if intent == "tech.effect" {
+        return build_effect(server, req);
+    }
     let stat = req.get("stat").and_then(|v| v.as_str()).unwrap_or("");
     let unit = req.get("unit").and_then(|v| v.as_i64()).map(|v| v as i16);
     let value = req.get("value").and_then(|v| v.as_f64());
@@ -456,4 +459,177 @@ fn sha256_bytes(b: &[u8]) -> String {
     let mut h = Sha256::new();
     h.update(b);
     format!("{:x}", h.finalize())
+}
+
+
+/// `tech.effect`: write ONE field of ONE command inside a technology's effect.
+///
+/// What it refuses, and why refusing is the right answer:
+///
+///   * a command index that does not exist -- adding a command changes the
+///     record's LENGTH, which shifts every following effect and invalidates
+///     `effect_id` everywhere;
+///   * a field name that is not `t`/`a`/`b`/`c`/`d` -- those are the five the
+///     format has, and inventing one would write at an offset that means
+///     something else.
+fn build_effect(server: &Server, req: &serde_json::Value) -> Result<String, String> {
+    use crate::writer::Writer;
+    use crate::write23::{write_stage1, write_stages23};
+    use crate::write47::write_stages47;
+    use crate::write810::write_stages810;
+    use aoe2mod_dat::{
+        load_dat, read_stage1, read_stages23, read_stages47, read_stages810, Reader,
+    };
+
+    // A tech's effect_id names the effect record. The sentence layer returns the
+    // TECH id, so it has to be resolved through the tech record -- editing the
+    // effect whose index happens to equal the tech id would be right for Loom
+    // (tech 22, effect 22) and wrong for most others, which is the worst kind of
+    // coincidence to rely on.
+    let tech = req
+        .get("tech")
+        .and_then(|v| v.as_i64())
+        .map(|v| v as i16)
+        .ok_or("这句话没有说要改哪个科技")?;
+    let command = req
+        .get("command")
+        .and_then(|v| v.as_u64())
+        .map(|v| v as usize)
+        .ok_or("这句话没有说是第几条效果")?;
+    let field = req
+        .get("field")
+        .and_then(|v| v.as_str())
+        .unwrap_or("d")
+        .to_string();
+    let value = req.get("value").and_then(|v| v.as_f64());
+    let delta = req.get("delta").and_then(|v| v.as_f64());
+    let title = req
+        .get("title")
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.trim().is_empty())
+        .map(|s| s.to_string())
+        .unwrap_or_else(|| format!("tech {tech} effect"));
+    let install = req.get("install").and_then(|v| v.as_bool()).unwrap_or(false);
+    if server.parsed.lock().unwrap().is_none() {
+        return Err("游戏数据还没读完".into());
+    }
+    let (kind_name, width) = crate::effectedit::field_kind(&field)
+        .ok_or_else(|| format!("没有 {field} 这个字段（只有 t/a/b/c/d）"))?;
+
+    let root = crate::game_root().ok_or("找不到游戏目录")?;
+    let dat = root.join("resources/_common/dat/empires2_x2_p1.dat");
+    let (raw, _how) = load_dat(&dat).map_err(|e| e.to_string())?;
+    let mut r = Reader::new(&raw);
+    let s1 = read_stage1(&mut r).map_err(|e| e.to_string())?;
+    let gv = s1.game_version;
+    let s23 = read_stages23(&mut r).map_err(|e| e.to_string())?;
+    let s47 = read_stages47(&mut r, gv).map_err(|e| e.to_string())?;
+    let s810 = read_stages810(&mut r, gv).map_err(|e| e.to_string())?;
+
+    let effect_id = s810
+        .techs
+        .get(tech as usize)
+        .map(|t| t.effect_id)
+        .ok_or_else(|| format!("没有编号 {tech} 的科技"))?;
+    if effect_id < 0 {
+        return Err(format!("科技 {tech} 没有效果记录"));
+    }
+
+    let table = crate::effectedit::EffectTable::load(&crate::effectedit::table_path())
+        .map_err(|e| format!("读不到效果偏移表：{e}"))?;
+    let cmd = table
+        .command(effect_id as i32, command - 1)
+        .ok_or_else(|| {
+            format!(
+                "效果 {effect_id} 没有第 {command} 条命令（加一条是另一件事，会让后面所有效果错位）"
+            )
+        })?;
+    let off = *cmd
+        .get(&field)
+        .ok_or_else(|| format!("效果 {effect_id} 第 {command} 条没有 {field} 字段"))?;
+
+    let mut w = Writer::new(&raw);
+    write_stage1(&mut w, &s1).map_err(|e| e.to_string())?;
+    write_stages23(&mut w, &s23, &raw).map_err(|e| e.to_string())?;
+    write_stages47(&mut w, &s47, gv).map_err(|e| e.to_string())?;
+    write_stages810(&mut w, &s810).map_err(|e| e.to_string())?;
+    let mut out = w.out;
+    if out != raw {
+        return Err("未修改的往返不是逐字节相同，拒绝按绝对偏移写入".into());
+    }
+
+    let old = match width {
+        1 => raw.get(off).map(|b| *b as f64).unwrap_or(f64::NAN),
+        2 => read_at(&raw, off, aoe2mod_dat::stats::StatKind::I16),
+        _ => read_at(&raw, off, aoe2mod_dat::stats::StatKind::F32),
+    };
+    let new_value = match (value, delta) {
+        (Some(v), _) => v,
+        (None, Some(d)) => old + d,
+        (None, None) => return Err("这句话没有说要改成多少".into()),
+    };
+    match width {
+        1 => {
+            if off < out.len() {
+                out[off] = new_value as u8;
+            }
+        }
+        2 => write_at(&mut out, off, aoe2mod_dat::stats::StatKind::I16, new_value),
+        _ => write_at(&mut out, off, aoe2mod_dat::stats::StatKind::F32, new_value),
+    }
+    let diffs = raw.iter().zip(out.iter()).filter(|(a, b)| a != b).count();
+
+    let build_root = std::env::temp_dir().join("aoe2mod-native-build").join(&title);
+    let built = crate::build::build_data_mod(
+        &build_root,
+        &out,
+        &title,
+        "aoe2mod",
+        &format!("effect {effect_id} cmd {command} {field} -> {new_value}"),
+        true,
+    )?;
+
+    let mut installed_to = String::new();
+    if install {
+        let prof = crate::mods::profile_root().ok_or("找不到玩家档案目录")?;
+        let dest = crate::build::install_local(&prof, &built, &title)?;
+        installed_to = dest.display().to_string();
+    }
+
+    let (base_file_sha, base_raw_sha) = match crate::updates::fingerprint(&dat, true) {
+        Some((f, rr, _v)) => (f, rr),
+        None => (String::new(), None),
+    };
+    let dat_out_sha = sha256_bytes(&built.compressed);
+    crate::updates::remember_build(
+        &title,
+        "aoe2mod",
+        &format!("effect {effect_id} cmd {command} {field} -> {new_value}"),
+        serde_json::json!([{
+            "intent": "tech.effect",
+            "tech": tech,
+            "command": command,
+            "field": field,
+            "value": new_value
+        }]),
+        &base_file_sha,
+        base_raw_sha.as_deref(),
+        &dat_out_sha,
+        true,
+    )
+    .map_err(|e| format!("建好了但没能写构建记录：{e}"))?;
+
+    Ok(format!(
+        "{{\"ok\":true,\"tech\":{},\"effect\":{},\"command\":{},\"field\":\"{}\",\"field_kind\":\"{}\",\"before\":{},\"value\":{},\"bytes_changed\":{},\"built\":\"{}\",\"installed\":\"{}\"}}",
+        tech,
+        effect_id,
+        command,
+        crate::server::json_escape(&field),
+        kind_name,
+        old,
+        new_value,
+        diffs,
+        crate::server::json_escape(&built.dir.display().to_string()),
+        crate::server::json_escape(&installed_to)
+    ))
 }
