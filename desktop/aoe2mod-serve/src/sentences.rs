@@ -80,6 +80,9 @@ pub struct Intent {
     /// `tech.effect` only: which command of the effect, and which of its fields.
     pub command: Option<usize>,
     pub field: Option<String>,
+    /// `unit.card_move` only: which building's card, and which box on it.
+    pub building: Option<i16>,
+    pub button: Option<u8>,
 }
 
 impl Intent {
@@ -114,6 +117,12 @@ impl Intent {
         }
         if let Some(v) = &self.field {
             parts.push(format!("\"field\":\"{}\"", crate::server::json_escape(v)));
+        }
+        if let Some(v) = self.building {
+            parts.push(format!("\"builder\":{v}"));
+        }
+        if let Some(v) = self.button {
+            parts.push(format!("\"button\":{v}"));
         }
         format!("{{{}}}", parts.join(","))
     }
@@ -308,6 +317,64 @@ pub fn read(text: &str) -> Vec<Clause> {
 
 /// Read one sentence.
 pub fn read_clause(text: &str) -> Clause {
+    // --- command-card move, before anything else -------------------------
+    // "把民兵放在第5格" / "把民兵挪到兵营的第5格".
+    //
+    // FIRST, because the box is the number and boxes go past ten (shipped data
+    // uses 0..15 and 24) while `find_number` reads ASCII digits only -- correct
+    // for VALUES, wrong here. Measured: below the number gate,
+    // "把民兵放在第十二格" was refused with "这句话里没有数字".
+    //
+    // It resolves its own names because it needs the RIGHT part of the sentence:
+    // taking the global longest match over "把民兵挪到兵营" picked 498 as the unit
+    // instead of 民兵 (74), since the building name is longer.
+    if let Some(slot) = slot_in(text) {
+        if let Some(n) = names().as_ref() {
+            // 的 sits AFTER the building: "把民兵挪到兵营的|第5格". So the part
+            // before 的 holds BOTH nouns, and the part after it is just the box.
+            let before_de = match text.split_once('的') {
+                Some((a, _)) => a,
+                None => text,
+            };
+            // The building is named only when the sentence has a 的: without it
+            // ("把民兵放在第5格") the whole text is the unit and there IS no
+            // building, so the server resolves which card the unit is on. Reading
+            // a building out of the no-的 case made the unit and the building the
+            // same record, and every such sentence then refused.
+            let builder = if text.contains('的') {
+                canonical_name_id(n, before_de)
+            } else {
+                None
+            };
+            // The unit is the rightmost name AFTER removing the building's own
+            // text, otherwise the building wins both slots: measured, this
+            // returned unit 498 (Barracks) for a sentence about the militia.
+            let mut unit_scan = before_de.to_string();
+            if let Some(bid) = builder {
+                if let Some(names_b) = n.units.get(&bid) {
+                    for nm in names_b {
+                        if !nm.is_empty() {
+                            unit_scan = unit_scan.replacen(nm.as_str(), " ", 1);
+                        }
+                    }
+                }
+            }
+            if let Some(u) = rightmost_name(n, &unit_scan) {
+                let mut it = Intent::default();
+                it.intent = "unit.card_move".to_string();
+                it.unit = Some(u);
+                it.building = builder;
+                it.button = Some(slot);
+                return Clause {
+                    text: text.to_string(),
+                    intent: Some(it),
+                    why: None,
+                    entity_name: None,
+                    entity_id: Some(u),
+                };
+            }
+        }
+    }
     let mut cl = Clause {
         text: text.to_string(),
         intent: None,
@@ -378,6 +445,7 @@ pub fn read_clause(text: &str) -> Clause {
     // offset table has no entry and the build would refuse a sentence the reader
     // had just claimed to understand.
     let mut it = Intent::default();
+
     if kind == "tech" && eid.is_some() {
         let has_effect_word = text.contains("效果") || text.contains("effect");
         if has_effect_word {
@@ -623,4 +691,154 @@ pub fn intent_is_reachable(id: &str) -> bool {
         id,
         "unit.stat" | "unit.cost" | "tech.research_time" | "tech.cost" | "tech.effect"
     )
+}
+
+
+/// The command-card box the sentence names ("放在第5格" -> 5), or `None`.
+///
+/// `格`/`格子` is REQUIRED. "第5" on its own is the hit-points phrase as often as
+/// a box ("...叫铁匠学徒 500"), so a bare ordinal would read a stat as a box.
+/// Box numbers are 0-based and the shipped data uses 0..15 and 24, so Chinese
+/// numerals up to 二十四 are accepted here (unlike `find_number`, which stays
+/// ASCII-only for values).
+fn slot_in(text: &str) -> Option<u8> {
+    let b: Vec<char> = text.chars().collect();
+    let mut i = 0usize;
+    while i < b.len() {
+        if b[i] == '第' {
+            let mut j = i + 1;
+            // digits or Chinese numerals
+            while j < b.len()
+                && (b[j].is_ascii_digit()
+                    || "一二三四五六七八九十".contains(b[j]))
+            {
+                j += 1;
+            }
+            if j > i + 1 {
+                // must be followed by 格 (allowing one space)
+                let mut k = j;
+                while k < b.len() && b[k] == ' ' {
+                    k += 1;
+                }
+                if k < b.len() && b[k] == '格' {
+                    let raw: String = b[i + 1..j].iter().collect();
+                    if let Some(v) = parse_slot(&raw) {
+                        return Some(v);
+                    }
+                }
+            }
+        }
+        i += 1;
+    }
+    None
+}
+
+fn parse_slot(raw: &str) -> Option<u8> {
+    if raw.chars().all(|c| c.is_ascii_digit()) {
+        return raw.parse::<u8>().ok().filter(|v| *v < 25);
+    }
+    let val = |c: char| -> Option<u32> {
+        Some(match c {
+            '一' => 1,
+            '二' => 2,
+            '三' => 3,
+            '四' => 4,
+            '五' => 5,
+            '六' => 6,
+            '七' => 7,
+            '八' => 8,
+            '九' => 9,
+            _ => return None,
+        })
+    };
+    if raw == "十" {
+        return Some(10);
+    }
+    if let Some((head, tail)) = raw.split_once('十') {
+        let tens = if head.is_empty() {
+            1
+        } else {
+            val(head.chars().next()?)?
+        };
+        let ones = if tail.is_empty() {
+            0
+        } else {
+            val(tail.chars().next()?)?
+        };
+        let n = tens * 10 + ones;
+        return if n < 25 { Some(n as u8) } else { None };
+    }
+    let n = val(raw.chars().next()?)?;
+    Some(n as u8)
+}
+
+/// The building whose card the sentence means.
+///
+/// `None` when the sentence names no building: the caller then uses the unit's
+/// own card, which is the common case ("把民兵放在第5格" -- on the barracks,
+/// where the militia already is). Resolving "which building trains this unit"
+/// is a data question, so it is left to the server rather than guessed here.
+fn builder_in(text: &str, unit: Option<i16>, kind: &str) -> Option<i16> {
+    let n = names().as_ref()?;
+    // The building is the name directly before 的 in "...兵营的第5格".
+    let (before, _) = text.split_once('的')?;
+    let (bid, _name) = n.longest_unit(before)?;
+    if Some(bid) == unit && kind != "unit" {
+        return None;
+    }
+    Some(bid)
+}
+
+
+/// The name that ENDS latest in `text` -- the unit the player last wrote.
+///
+/// Plain longest-span is wrong here: "把民兵挪到兵营" has 兵营 as the longest
+/// match, and the sentence means the militia (the earlier noun) moved onto the
+/// barracks' card.
+fn rightmost_name(n: &Names, text: &str) -> Option<i16> {
+    let mut best: Option<(usize, i16)> = None;
+    for (id, names) in n.units.iter() {
+        for nm in names {
+            if nm.is_empty() {
+                continue;
+            }
+            if let Some(pos) = text.rfind(nm.as_str()) {
+                let end = pos + nm.len();
+                if best.map(|(e, _)| end > e).unwrap_or(true) {
+                    best = Some((end, *id));
+                }
+            }
+        }
+    }
+    best.map(|(_, id)| id)
+}
+
+
+/// The canonical record for a name: the LOWEST id that carries it.
+///
+/// Building names are not unique in this data. Measured: 兵营 is four ids
+/// (498, 132, 20, 12); picking "whichever the table visited last" returned 20 for
+/// a sentence about the Barracks, and the build then refused with "第 20 号单位
+/// 不在这座建筑（20）的训练表里" -- a self-consistent message about the wrong
+/// building.
+fn canonical_name_id(n: &Names, text: &str) -> Option<i16> {
+    let mut best: Option<(usize, i16)> = None;
+    for (id, names) in n.units.iter() {
+        for nm in names {
+            if nm.is_empty() || !text.contains(nm.as_str()) {
+                continue;
+            }
+            let len = nm.chars().count();
+            // Longest match wins; on a tie the LOWEST id wins, because that is
+            // the record the game itself treats as the building.
+            let better = match best {
+                None => true,
+                Some((blen, bid)) => len > blen || (len == blen && *id < bid),
+            };
+            if better {
+                best = Some((len, *id));
+            }
+        }
+    }
+    best.map(|(_, id)| id)
 }

@@ -661,11 +661,15 @@ fn build_card_move(server: &Server, req: &serde_json::Value) -> Result<String, S
         .and_then(|v| v.as_i64())
         .map(|v| v as i16)
         .ok_or("没说要把哪个单位挪走")?;
-    let building = req
+    // The sentence may omit the building ("把民兵放在第5格"), and the server
+    // reads it from the TABLE: the card the unit is already on. That is what the
+    // sentence means -- "move it within its own card" -- and inventing a
+    // different building would either fail or move it somewhere the player did
+    // not ask for.
+    let mut building = req
         .get("building")
         .and_then(|v| v.as_i64())
-        .map(|v| v as i16)
-        .ok_or("没说是哪座建筑的格子")?;
+        .map(|v| v as i16);
     let target = req
         .get("box")
         .and_then(|v| v.as_u64())
@@ -676,7 +680,7 @@ fn build_card_move(server: &Server, req: &serde_json::Value) -> Result<String, S
         .and_then(|v| v.as_str())
         .filter(|s| !s.trim().is_empty())
         .map(|s| s.to_string())
-        .unwrap_or_else(|| format!("card {building}"));
+        .unwrap_or_else(|| format!("card {}", building.map(|b| b.to_string()).unwrap_or_else(|| "auto".into())));
     let install = req.get("install").and_then(|v| v.as_bool()).unwrap_or(false);
     if server.parsed.lock().unwrap().is_none() {
         return Err("游戏数据还没读完".into());
@@ -688,6 +692,27 @@ fn build_card_move(server: &Server, req: &serde_json::Value) -> Result<String, S
         serde_json::from_str(t.trim_start_matches('\u{feff}'))
             .map_err(|e| format!("命令面板表不是合法 JSON：{e}"))?
     };
+    if building.is_none() {
+        // First card in id order that lists this unit. Deterministic, and the
+        // common case for a villager is the town centre / barracks it starts on.
+        if let Some(cards) = cards_json.get("cards").and_then(|c| c.as_object()) {
+            let mut ids: Vec<i16> = cards.keys().filter_map(|k| k.parse().ok()).collect();
+            ids.sort();
+            for id in ids {
+                if let Some(list) = cards.get(&id.to_string()).and_then(|v| v.as_array()) {
+                    if list.iter().any(|e| {
+                        e.get("unit").and_then(|v| v.as_i64()) == Some(unit as i64)
+                    }) {
+                        building = Some(id);
+                        break;
+                    }
+                }
+            }
+        }
+    }
+    let building = building.ok_or_else(|| {
+        format!("第 {unit} 号单位不在任何建筑的训练表里，所以它没有格子可挪")
+    })?;
     let lookup = crate::cardmove::entry_lookup(&cards_json, building, |_| None);
     if !lookup.contains_key(&unit) {
         return Err(format!(
