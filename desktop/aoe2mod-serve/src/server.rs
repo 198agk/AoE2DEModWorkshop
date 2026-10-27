@@ -542,6 +542,43 @@ fn route(
             );
             (200, "application/json; charset=utf-8", json.into_bytes())
         }
+        "/api/plan" => {
+            // The reference answers `/api/plan` with a plan for ONE intent the
+            // caller already holds (`aoe2mod/ui/server.py:890`).  Without it, a
+            // page that keeps an intent across a re-render has to re-parse the
+            // sentence -- and a re-parse can read differently if a table changed
+            // in between, which would plan a different edit than the caller is
+            // looking at.
+            let req: serde_json::Value = match serde_json::from_slice(body) {
+                Ok(v) => v,
+                Err(_) => {
+                    return (
+                        400,
+                        "application/json; charset=utf-8",
+                        b"{\"ok\":false,\"error\":\"bad json\"}".to_vec(),
+                    )
+                }
+            };
+            let intent = match req.get("intent") {
+                Some(v) if v.is_object() => crate::sentences::Intent::from_json(v),
+                _ => {
+                    return (
+                        200,
+                        "application/json; charset=utf-8",
+                        "{\"ok\":false,\"error\":\"没有要预览的改动\"}"
+                            .as_bytes()
+                            .to_vec(),
+                    )
+                }
+            };
+            let (buildable, plan) = crate::preview::plan(server, &intent);
+            let json = format!(
+                "{{\"ok\":true,\"buildable\":{},\"plan\":{}}}",
+                buildable,
+                serde_json::to_string(&plan).unwrap_or_else(|_| "null".into())
+            );
+            (200, "application/json; charset=utf-8", json.into_bytes())
+        }
         "/api/recipes" => {
             let json = match crate::recipes::rows() {
                 Ok(rows) => {

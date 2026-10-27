@@ -1505,6 +1505,7 @@ fn build_sprite(server: &Server, req: &serde_json::Value) -> Result<String, Stri
 \"file_count\":{},\"civ_count\":{},\
 \"target_names\":{},\"donor_names\":{},\
 \"civ_names\":[{}],\
+\"writes\":\"resources/_common/dat/empires2_x2_p1.dat\",\"changes_dat\":true,\
 \"unmapped\":[{}],\"warnings\":[{}],\"moved\":[{}]",
         stems_json(&plan.target_stems),
         stems_json(&plan.donor_stems),

@@ -282,12 +282,25 @@ pub fn plan(server: &crate::server::Server, it: &Intent) -> (bool, Value) {
         }
     };
     let num = |k: &str| report.get(k).and_then(|v| v.as_i64());
+    // Which file the edit lands in is the BUILDER's answer when it gives one.
+    // `unit.sprite` used to write 20 `.sld` files and now re-points `.dat`
+    // records instead, so a table here would have kept claiming the old target
+    // -- and `writes` is the one field a person reads to decide whether to trust
+    // the edit with their game folder.
+    let writes = match report.get("writes").and_then(|v| v.as_str()) {
+        Some(w) => w.to_string(),
+        None => writes_of(it).to_string(),
+    };
+    let changes_dat = report
+        .get("changes_dat")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(true);
     let mut plan = json!({
         "description": description,
         "kind": kind,
         "editable": true,
-        "changes_dat": true,
-        "writes": writes_of(it),
+        "changes_dat": changes_dat,
+        "writes": writes,
         "shape": it.intent,
         // Which civilization the edit reaches.  `civ_labels` is what the page
         // prints; `civ_count` is the fallback when the server could not name them.
@@ -318,9 +331,32 @@ pub fn plan(server: &crate::server::Server, it: &Intent) -> (bool, Value) {
         ("before", "before"),
         ("value", "value"),
         ("bytes_changed", "bytes_changed"),
+        ("file_count", "file_count"),
     ] {
         if let Some(v) = report.get(from) {
             plan[to] = v.clone();
+        }
+    }
+    // A sprite edit's description has to carry numbers the DECISION produced, so
+    // it cannot be written from the sentence alone: how many pictures the
+    // decision covers is not visible in 「让弓兵的样子换成长弓兵」.  The count
+    // is the decision's, and the civilization count is how far it reached.
+    if it.intent == "unit.sprite" {
+        if let (Some(files), Some(civs)) = (num("file_count"), num("civ_count")) {
+            plan["description"] = json!(format!(
+                "把 {} 的 {} 个动画文件名改指 {}，覆盖 {} 个文明",
+                entity(it, "unit"),
+                files,
+                it.donor
+                    .map(|d| entity_of(&names(), "unit", d))
+                    .unwrap_or_else(|| "别的单位".into()),
+                civs
+            ));
+        }
+    }
+    if let Some(list) = report.get("warnings").and_then(|v| v.as_array()) {
+        if !list.is_empty() {
+            plan["warnings"] = Value::Array(list.clone());
         }
     }
     if let Some(m) = it.techs.as_ref() {

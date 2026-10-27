@@ -273,6 +273,60 @@ impl Intent {
         }
         format!("{{{}}}", parts.join(","))
     }
+
+    /// Read back the shape `to_json` writes.
+    ///
+    /// `/api/plan` takes an intent (the page may hold one it got from
+    /// `/api/parse` and want a fresh plan for it without re-parsing the
+    /// sentence), so the round trip has to be exact or the plan describes a
+    /// different edit than the one the caller holds.  Anything unparsable is
+    /// left as `None` rather than defaulted: a plan built from a guessed field is
+    /// a promise about bytes that were never decided.
+    pub fn from_json(v: &serde_json::Value) -> Intent {
+        let s = |k: &str| v.get(k).and_then(|x| x.as_str()).map(|x| x.to_string());
+        let i = |k: &str| v.get(k).and_then(|x| x.as_i64()).map(|x| x as i16);
+        let f = |k: &str| v.get(k).and_then(|x| x.as_f64());
+        let mut it = Intent {
+            intent: s("intent").unwrap_or_default(),
+            unit: i("unit"),
+            tech: i("tech"),
+            stat: s("stat"),
+            resource: s("resource"),
+            value: f("value"),
+            delta: f("delta"),
+            command: v.get("command").and_then(|x| x.as_u64()).map(|x| x as usize),
+            field: s("field"),
+            building: i("builder").or_else(|| i("building")),
+            button: v.get("button").and_then(|x| x.as_u64()).map(|x| x as u8),
+            donor: i("donor"),
+            class_id: i("class_id"),
+            attack_kind: s("kind"),
+            group_type: s("type"),
+            ..Default::default()
+        };
+        if let Some(a) = v.get("civs").and_then(|x| x.as_array()) {
+            it.civs = Some(
+                a.iter()
+                    .filter_map(|x| x.as_str().map(|s| s.to_string()))
+                    .collect(),
+            );
+        }
+        if let Some(a) = v.get("class_candidates").and_then(|x| x.as_array()) {
+            it.class_candidates = Some(
+                a.iter()
+                    .filter_map(|x| x.as_i64().map(|n| n as i16))
+                    .collect(),
+            );
+        }
+        if let Some(a) = v.get("techs").and_then(|x| x.as_array()) {
+            it.techs = Some(
+                a.iter()
+                    .filter_map(|x| x.as_i64().map(|n| n as i16))
+                    .collect(),
+            );
+        }
+        it
+    }
 }
 
 fn global_names() -> &'static OnceLock<Option<Names>> {
