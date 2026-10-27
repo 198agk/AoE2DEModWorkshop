@@ -203,6 +203,37 @@ fn app_dir_of(static_root: &std::path::Path) -> std::path::PathBuf {
     p
 }
 
+
+/// Percent-decode a query value, which is how a Chinese filter arrives.
+fn percent_decode(s: &str) -> String {
+    let b = s.as_bytes();
+    let mut out = Vec::with_capacity(b.len());
+    let mut i = 0;
+    while i < b.len() {
+        if b[i] == b'%' && i + 2 < b.len() {
+            if let Ok(v) = u8::from_str_radix(&s[i + 1..i + 3], 16) {
+                out.push(v);
+                i += 3;
+                continue;
+            }
+        }
+        if b[i] == b'+' {
+            out.push(b' ');
+        } else {
+            out.push(b[i]);
+        }
+        i += 1;
+    }
+    String::from_utf8_lossy(&out).into_owned()
+}
+
+fn empty_stat_table() -> crate::stats::StatTable {
+    crate::stats::StatTable {
+        kinds: std::collections::HashMap::new(),
+        civs: Vec::new(),
+    }
+}
+
 fn reason(code: u16) -> &'static str {
     match code {
         200 => "OK",
@@ -404,6 +435,38 @@ fn route(
             // whether to draw the AI box at all.
             let app_dir = app_dir_of(&server.root);
             let v = crate::ai::meta_json(&app_dir);
+            (200, "application/json; charset=utf-8", v.to_string().into_bytes())
+        }
+        "/api/browse" => {
+            // `?kind=unit&limit=400&q=...&offset=0`
+            let q: std::collections::HashMap<String, String> = _query
+                .split('&')
+                .filter_map(|kv| kv.split_once('='))
+                .map(|(k, v)| (k.to_string(), percent_decode(v)))
+                .collect();
+            let kind = q.get("kind").cloned().unwrap_or_else(|| "unit".into());
+            let query = q.get("q").cloned().unwrap_or_default();
+            let limit: usize = q.get("limit").and_then(|v| v.parse().ok()).unwrap_or(60);
+            let offset: usize = q.get("offset").and_then(|v| v.parse().ok()).unwrap_or(0);
+            let names = crate::describe::entity_names();
+            let icon_ids = {
+                let root = crate::game_root();
+                match root {
+                    Some(r) => {
+                        let dat = r.join("resources/_common/dat/empires2_x2_p1.dat");
+                        match aoe2mod_dat::load_dat(&dat) {
+                            Ok((raw, _)) => {
+                                let table = crate::stats::StatTable::load(&crate::stats_path())
+                                    .unwrap_or_else(|_| empty_stat_table());
+                                crate::browse::icon_ids_from_dat(&raw, &table)
+                            }
+                            Err(_) => std::collections::HashMap::new(),
+                        }
+                    }
+                    None => std::collections::HashMap::new(),
+                }
+            };
+            let v = crate::browse::browse(&names, &icon_ids, &kind, &query, limit, offset);
             (200, "application/json; charset=utf-8", v.to_string().into_bytes())
         }
         "/api/describe" => {

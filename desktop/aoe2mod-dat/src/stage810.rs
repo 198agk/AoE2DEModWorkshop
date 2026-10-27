@@ -70,6 +70,10 @@ pub struct Unit {
     pub id: i16,
     pub class: i16,
     pub hit_points: i16,
+    /// `IconID`: which picture represents this unit. Reported, not skipped --
+    /// the browse grid needs it to say `has_icon` honestly, and many units carry
+    /// none at all (a grid that silently rendered holes would look broken).
+    pub icon_id: Option<i16>,
     /// Byte offset of `hit_points` inside `image`.  An edit is expressed as a
     /// write at a named offset into the captured span, which is precise: the
     /// parser measured the offset, nothing here guesses it.
@@ -279,7 +283,7 @@ pub fn read_unit(r: &mut Reader<'_>, gv: u32) -> io::Result<Unit> {
     r.skip(2)?; // DeadUnitID
     r.skip(2)?; // BloodUnitID
     r.skip(1 + 1)?; // SortNumber, CanBeBuiltOn
-    r.skip(2)?; // IconID
+    u.icon_id = Some(r.i16()?); // IconID
     r.skip(1)?; // HideInEditor
     r.skip(2)?; // OldPortraitPict
     r.skip(1)?; // Enabled

@@ -38,7 +38,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 OUT = r"D:\Software\AI\AoE2ModWorkshop"
 GOLDEN = ["stat_offsets.json", "entity_names.json", "ai_grammar.json",
-          "tech_offsets.json"]
+          "tech_offsets.json", "effect_offsets.json"]
 
 
 def install_tables(app_dir):
@@ -103,6 +103,10 @@ def check_routes(port):
 
     ic = get("/api/icon?kind=unit&id=15&section=Units&max=64")
     note("/api/icon", ic[:4] == b"\x89PNG", " %d bytes" % len(ic))
+
+    br = json.loads(get("/api/browse?kind=unit&limit=5"))
+    note("/api/browse", (br.get("browse") or {}).get("total") == 1651,
+         " total=%s" % (br.get("browse") or {}).get("total"))
 
     d = json.loads(get("/api/describe?kind=unit&id=1810"))
     note("/api/describe", (d.get("entity") or {}).get("name") == "村民")
