@@ -1,0 +1,33 @@
+{
+ "fields": {
+  "displayed_attack": {
+   "classes": [
+    3,
+    4
+   ],
+   "source": "attack"
+  },
+  "displayed_melee_armour": {
+   "classes": [
+    4,
+    3
+   ],
+   "source": "armour"
+  },
+  "displayed_pierce_armour": {
+   "classes": [
+    3,
+    4
+   ],
+   "source": "armour"
+  },
+  "displayed_range": {
+   "name": "max_range",
+   "source": "mark"
+  },
+  "displayed_reload_time": {
+   "name": "reload_time",
+   "source": "mark"
+  }
+ }
+}

@@ -84,6 +84,60 @@ pub struct Unit {
     /// what makes a villager reskin keep applying after the player assigns a
     /// job.  Zero for every record with no bird block.
     pub task_swap_group: u8,
+    /// The three `ResourceCost` slots of the `Creatable` block, with the offset
+    /// of each amount.  A cost edit is a write at one of these offsets: which
+    /// slot answers "木材成本" is a lookup (`type_ == 1`), not a guess.
+    pub costs: Vec<CostSlot>,
+    /// Type50's attack and armour lists.  Every entry carries its own class, so
+    /// "对平民攻击加2" resolves to the entry whose class is the schema's first
+    /// candidate that this unit actually carries -- not to a fixed slot.
+    pub type50: Option<Type50>,
+    /// `Creatable.DisplayedPierceArmour` lives at the end of the Creatable tail,
+    /// two bytes before the block ends (`locate.py:297` derives it the same way).
+    /// It is a panel field that mirrors an armour entry, so it needs its own
+    /// mark to stay in step.
+    pub displayed_pierce_armour: Option<Mark<i16>>,
+}
+
+/// One `ResourceCost` slot: `i16 type, i16 amount, i16 flag`.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct CostSlot {
+    pub type_: i16,
+    pub amount: i16,
+    /// Absolute file offset of `amount`.  Absolute, not record-relative, because
+    /// that is what every write path in `aoe2mod-serve` speaks.
+    pub amount_offset: usize,
+}
+
+/// One entry of Type50's attack or armour list: `i16 class, i16 amount`.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct DamageEntry {
+    pub class: i16,
+    pub amount: i16,
+    pub amount_offset: usize,
+}
+
+/// A field the game renders on the unit panel, plus where it lives.  AoE2 keeps
+/// several of these twice -- the displayed number and the raw entry the damage
+/// maths actually reads -- so an edit has to move both or the panel starts
+/// lying.  `stat_mirrors.json` records which pairs exist.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct Mark<T> {
+    pub value: T,
+    pub offset: usize,
+}
+
+/// The Type50 block: damage lists plus the panel fields they mirror.
+#[derive(Debug, Clone, Default)]
+pub struct Type50 {
+    pub attacks: Vec<DamageEntry>,
+    pub armors: Vec<DamageEntry>,
+    pub displayed_melee_armour: Mark<i16>,
+    pub displayed_attack: Mark<i16>,
+    pub max_range: Mark<f32>,
+    pub reload_time: Mark<f32>,
+    pub displayed_range: Mark<f32>,
+    pub displayed_reload_time: Mark<f32>,
 }
 
 fn read_resource_storage(r: &mut Reader<'_>) -> io::Result<()> {
@@ -124,23 +178,43 @@ fn read_bird(r: &mut Reader<'_>, gv: u32) -> io::Result<u8> {
     Ok(tsg)
 }
 
-fn read_attack_or_armor(r: &mut Reader<'_>) -> io::Result<()> {
-    r.skip(4)
+/// Reads one `i16 class, i16 amount` pair, keeping where the amount sits.
+///
+/// The class is kept because it is the *selector*: a sentence that names a
+/// damage class ("对平民") has to find the entry whose class the schema's
+/// candidates point at, and a list without classes cannot answer that.
+fn read_damage_entry(r: &mut Reader<'_>) -> io::Result<DamageEntry> {
+    let class = r.i16()?;
+    let amount_offset = r.pos;
+    let amount = r.i16()?;
+    Ok(DamageEntry {
+        class,
+        amount,
+        amount_offset,
+    })
 }
 
-fn read_type50(r: &mut Reader<'_>, gv: u32) -> io::Result<()> {
+fn read_damage_list(r: &mut Reader<'_>) -> io::Result<Vec<DamageEntry>> {
+    let n = r.i16()?;
+    let mut out = Vec::with_capacity(n.max(0) as usize);
+    for _ in 0..n.max(0) {
+        out.push(read_damage_entry(r)?);
+    }
+    Ok(out)
+}
+
+fn read_type50(r: &mut Reader<'_>, gv: u32) -> io::Result<Type50> {
+    let mut t = Type50::default();
     r.skip(2)?; // BaseArmor
-    let n = r.i16()?;
-    for _ in 0..n.max(0) {
-        read_attack_or_armor(r)?;
-    }
-    let n = r.i16()?;
-    for _ in 0..n.max(0) {
-        read_attack_or_armor(r)?;
-    }
+    t.attacks = read_damage_list(r)?;
+    t.armors = read_damage_list(r)?;
     r.skip(2)?; // DefenseTerrainBonus
     r.skip(4)?; // BonusDamageResistance
-    r.skip(4 * 3)?; // MaxRange, BlastWidth, ReloadTime
+    t.max_range.offset = r.pos;
+    t.max_range.value = r.f32()?;
+    r.skip(4)?; // BlastWidth
+    t.reload_time.offset = r.pos;
+    t.reload_time.value = r.f32()?;
     r.skip(2 + 2)?; // ProjectileUnitID, AccuracyPercent
     r.skip(1)?; // BreakOffCombat
     r.skip(2)?; // FrameDelay
@@ -149,8 +223,14 @@ fn read_type50(r: &mut Reader<'_>, gv: u32) -> io::Result<()> {
     r.skip(4)?; // MinRange
     r.skip(4)?; // AccuracyDispersion
     r.skip(2)?; // AttackGraphic
-    r.skip(2 + 2)?; // DisplayedMeleeArmour, DisplayedAttack
-    r.skip(4 + 4)?; // DisplayedRange, DisplayedReloadTime
+    t.displayed_melee_armour.offset = r.pos;
+    t.displayed_melee_armour.value = r.i16()?;
+    t.displayed_attack.offset = r.pos;
+    t.displayed_attack.value = r.i16()?;
+    t.displayed_range.offset = r.pos;
+    t.displayed_range.value = r.f32()?;
+    t.displayed_reload_time.offset = r.pos;
+    t.displayed_reload_time.value = r.f32()?;
     if in_de2(gv, GV_C20) {
         r.skip(4)?; // BlastDamage
     }
@@ -160,7 +240,7 @@ fn read_type50(r: &mut Reader<'_>, gv: u32) -> io::Result<()> {
     if in_de2(gv, GV_C27) {
         r.skip(2 + 4 + 2)?; // InterruptFrame, GarrisonFirepower, AttackGraphic2
     }
-    Ok(())
+    Ok(t)
 }
 
 fn read_projectile(r: &mut Reader<'_>) -> io::Result<()> {
@@ -176,13 +256,23 @@ fn read_train_location(r: &mut Reader<'_>, gv: u32) -> io::Result<()> {
     Ok(())
 }
 
-fn read_resource_cost(r: &mut Reader<'_>) -> io::Result<()> {
-    r.skip(2 + 2 + 2)
+fn read_resource_cost(r: &mut Reader<'_>) -> io::Result<CostSlot> {
+    let type_ = r.i16()?;
+    let amount_offset = r.pos;
+    let amount = r.i16()?;
+    r.skip(2)?; // Flag
+    Ok(CostSlot {
+        type_,
+        amount,
+        amount_offset,
+    })
 }
 
-fn read_creatable(r: &mut Reader<'_>, gv: u32) -> io::Result<()> {
+/// Returns the three cost slots and where `DisplayedPierceArmour` sits.
+fn read_creatable(r: &mut Reader<'_>, gv: u32) -> io::Result<(Vec<CostSlot>, usize)> {
+    let mut costs = Vec::with_capacity(3);
     for _ in 0..3 {
-        read_resource_cost(r)?;
+        costs.push(read_resource_cost(r)?);
     }
     // Creatable.cpp:58 -- DE stores an explicit count; before C29 exactly one
     // entry is written with no count in front of it.
@@ -228,7 +318,13 @@ fn read_creatable(r: &mut Reader<'_>, gv: u32) -> io::Result<()> {
     r.skip(4)?; // SecondaryProjectileUnit
     r.skip(4)?; // SpecialGraphic
     r.skip(1)?; // SpecialAbility
-    r.skip(2) // DisplayedPierceArmour
+    // Creatable.cpp ends with DisplayedPierceArmour; the tail below is the last
+    // field, which is why `locate.py:297` derives it as `_creatable_end - 2`
+    // rather than reading a stored offset.  Recording the position directly is
+    // the same fact measured instead of reconstructed.
+    let dpa = r.pos;
+    r.skip(2)?; // DisplayedPierceArmour
+    Ok((costs, dpa))
 }
 
 fn read_building(r: &mut Reader<'_>) -> io::Result<()> {
@@ -346,14 +442,19 @@ pub fn read_unit(r: &mut Reader<'_>, gv: u32) -> io::Result<Unit> {
     }
     trace(r, "after bird");
     if t >= UNIT_TYPE_COMBATANT {
-        read_type50(r, gv)?;
+        u.type50 = Some(read_type50(r, gv)?);
     }
     trace(r, "after type50");
     if t == UNIT_TYPE_PROJECTILE {
         read_projectile(r)?;
     }
     if t >= UNIT_TYPE_CREATABLE {
-        read_creatable(r, gv)?;
+        let (costs, dpa_off) = read_creatable(r, gv)?;
+        u.costs = costs;
+        u.displayed_pierce_armour = Some(Mark {
+            value: i16::from_le_bytes([r.buf[dpa_off], r.buf[dpa_off + 1]]),
+            offset: dpa_off,
+        });
     }
     trace(r, "after creatable");
     if t == UNIT_TYPE_BUILDING {
