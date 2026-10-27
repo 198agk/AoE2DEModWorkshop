@@ -47,6 +47,10 @@ pub const STAT_WORDS: &[(&str, &[&str])] = &[
     ("min_range", &["最小射程"]),
     ("accuracy", &["命中率", "命中"]),
     ("garrison_capacity", &["驻扎容量", "驻扎", "容量"]),
+    // Tech-side words. `research_time` already has 训练时间/造兵时间 above for
+    // units; a player talking about a technology says 研究时间 or 研发时间, and
+    // without these the sentence falls through to "没听出要改哪个属性".
+    ("research_time", &["研究时间", "研发时间", "研究速度", "研发速度"]),
 ];
 
 /// One readable sentence and what it asks for.
@@ -167,6 +171,13 @@ const SUB_WORDS: &[&str] = &["减少", "降低", "减", "少给"];
 
 /// Which stat an `intent` id maps to, for the two families this file handles.
 fn intent_for_stat(stat: &str) -> &'static str {
+    // A research time belongs to a TECHNOLOGY, and the intent id has to say so:
+    // `unit.stat` would send the edit down the per-unit path, where the offset
+    // table has no entry for it and the build would refuse a sentence it had
+    // just claimed to understand.
+    if stat == "research_time" {
+        return "tech.research_time";
+    }
     match stat {
         "hit_points" | "displayed_attack" | "displayed_melee_armour"
         | "displayed_pierce_armour" | "movement_speed" | "line_of_sight"
@@ -359,13 +370,45 @@ pub fn read_clause(text: &str) -> Clause {
             return cl;
         }
         it.intent = intent_for_stat(&stat).to_string();
-        it.stat = Some(stat);
+        //  carries no  key in the reference: the intent
+        // id already names the field, and a redundant key would make the two
+        // implementations produce different dicts for the same sentence.
+        if it.intent != "tech.research_time" {
+            it.stat = Some(stat);
+        }
         if kind == "tech" {
             it.tech = eid;
         } else {
             it.unit = eid;
         }
-    } else if says_cost || (resource.is_some() && eid.is_some() && kind == "unit") {
+    } else if says_cost || (resource.is_some() && eid.is_some()) {
+        if kind == "tech" {
+            // A technology's cost is three slots of (type, amount, flag) and the
+            // slot is chosen by the resource word, not guessed. `resource` is a
+            // word the player used; the slot mapping is the same order the file
+            // stores (food, wood, gold/stone per record).
+            let res = match resource.clone() {
+                Some(r) => r,
+                None => {
+                    cl.why = Some("说的是成本，但没说是木材、食物、黄金还是石头。".into());
+                    return cl;
+                }
+            };
+            if eid.is_none() {
+                cl.why = Some("没听出要改哪个科技。".into());
+                return cl;
+            }
+            it.intent = "tech.cost".to_string();
+            it.resource = Some(res);
+            it.tech = eid;
+            match op {
+                "set" => it.value = Some(value),
+                "sub" => it.delta = Some(-value),
+                _ => it.delta = Some(value),
+            }
+            cl.intent = Some(it);
+            return cl;
+        }
         if eid.is_none() {
             cl.why = Some("没听出要改哪个单位。".into());
             return cl;
