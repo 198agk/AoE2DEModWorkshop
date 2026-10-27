@@ -30,6 +30,8 @@
 use aoe2mod_dat::stage810::{Stages810, Unit};
 use aoe2mod_dat::stats::StatKind;
 
+use crate::stat_edit::civ_in_scope;
+
 /// One write to perform: which civilisation (for the report) and where.
 #[derive(Debug, Clone, Copy)]
 pub struct Hit {
@@ -222,6 +224,7 @@ fn linked_row_offset(u: &Unit, spec: &MirrorSpec) -> Option<usize> {
 pub fn cost_targets(
     s810: &Stages810,
     family: &[i16],
+    wanted: &Option<Vec<String>>,
     resource: &str,
     unit: i16,
 ) -> Result<Resolved, String> {
@@ -229,6 +232,9 @@ pub fn cost_targets(
     let mut hits = Vec::new();
     let mut before = None;
     for (ci, c) in s810.civs.iter().enumerate() {
+        if !civ_in_scope(&c.name, wanted) {
+            continue;
+        }
         for u in c.units.iter() {
             if !family.contains(&u.id) {
                 continue;
@@ -251,6 +257,7 @@ pub fn cost_targets(
 pub fn damage_targets(
     s810: &Stages810,
     family: &[i16],
+    wanted: &Option<Vec<String>>,
     kind: &str,
     classes: &[i16],
     unit: i16,
@@ -259,6 +266,9 @@ pub fn damage_targets(
     let mut hits = Vec::new();
     let mut before = None;
     for (ci, c) in s810.civs.iter().enumerate() {
+        if !civ_in_scope(&c.name, wanted) {
+            continue;
+        }
         for u in c.units.iter() {
             if !family.contains(&u.id) {
                 continue;
@@ -333,7 +343,12 @@ pub struct MirrorHit {
 /// Only the five pairs in `_golden/stat_mirrors.json` take part.  Every other
 /// stat has one number, and inventing a second one for it would corrupt an
 /// unrelated field.
-pub fn stat_mirrors(s810: &Stages810, family: &[i16], stat: &str) -> Vec<MirrorHit> {
+pub fn stat_mirrors(
+    s810: &Stages810,
+    family: &[i16],
+    stat: &str,
+    wanted: &Option<Vec<String>>,
+) -> Vec<MirrorHit> {
     // Which offsets the edit has to mirror, expressed as "the raw row" or "the
     // panel mark" -- both directions exist in the schema.
     enum Want {
@@ -356,6 +371,9 @@ pub fn stat_mirrors(s810: &Stages810, family: &[i16], stat: &str) -> Vec<MirrorH
     };
     let mut out = Vec::new();
     for (ci, c) in s810.civs.iter().enumerate() {
+        if !civ_in_scope(&c.name, wanted) {
+            continue;
+        }
         for u in c.units.iter() {
             if !family.contains(&u.id) {
                 continue;

@@ -9,7 +9,6 @@ use aoe2mod_dat::write810::write_stages810;
 use aoe2mod_dat::{
     load_dat, read_stage1, read_stages23, read_stages47, read_stages810, Reader,
 };
-use std::path::Path;
 
 /// Every record id that an edit named after `unit` has to touch.
 ///
@@ -25,12 +24,56 @@ fn family_ids(unit: i16) -> Vec<i16> {
     }
 }
 
+/// Which civilizations a request scopes the edit to.
+///
+/// `None` means every civilization, which is the default and the only reading
+/// available when the sentence names none.  A named civilization narrows the
+/// write list, and the two must never be conflated: 「不列颠村民血量改成100」
+/// that writes all 63 records reports `civ_count: 63` and looks like a success
+/// while it edits sixty-two civilizations nobody asked about.
+///
+/// The spellings are the .dat's own (`British`), which is what the sentence
+/// layer stores; matching is case-insensitive because a sentence may write
+/// `BRITONS` and the file writes `Britons`.
+fn civ_filter(req: &serde_json::Value) -> Option<Vec<String>> {
+    let arr = req.get("civs").and_then(|v| v.as_array())?;
+    let words: Vec<String> = arr
+        .iter()
+        .filter_map(|v| v.as_str())
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .collect();
+    if words.is_empty() {
+        None
+    } else {
+        Some(words)
+    }
+}
+
+/// Whether a civilisation record is in scope.
+///
+/// A name that matches nothing is a REFUSAL at the call site, not a silent empty
+/// list: an edit that writes zero bytes and reports success is worse than one
+/// that says the name was not recognised.
+pub(crate) fn civ_in_scope(name: &str, want: &Option<Vec<String>>) -> bool {
+    match want {
+        None => true,
+        Some(list) => list.iter().any(|w| w.eq_ignore_ascii_case(name)),
+    }
+}
+
 /// Edit `stat` on `unit` in every civilization, and describe what changed.
 ///
 /// Editing every civ is not a convenience: a villager exists in all 63, and
 /// touching one of them is the "it worked in the game I tested" failure this
 /// project has already paid for.
-pub fn apply(server: &Server, stat: &str, unit: i16, value: f64) -> Result<String, String> {
+pub fn apply(
+    server: &Server,
+    stat: &str,
+    unit: i16,
+    value: f64,
+    wanted: &Option<Vec<String>>,
+) -> Result<String, String> {
     let parsed = server
         .parsed
         .lock()
@@ -55,9 +98,12 @@ pub fn apply(server: &Server, stat: &str, unit: i16, value: f64) -> Result<Strin
         })
         .ok_or("找不到游戏目录")?;
 
-    let offsets_path = std::env::var("AOE2MOD_STAT_OFFSETS")
-        .map(std::path::PathBuf::from)
-        .unwrap_or_else(|_| Path::new("_golden/stat_offsets.json").to_path_buf());
+    //  is the one place that knows how to find this table.
+    // Building the path here by hand worked only when the cwd was the repo, and
+    // in a shipped folder it answered os error 3 for a file that was right
+    // there in app/_golden/ -- the same defect already fixed for the other
+    // three call sites.
+    let offsets_path = crate::stats_path();
     let table = StatTable::load(&offsets_path)
         .map_err(|e| format!("读不到 {}：{e}", offsets_path.display()))?;
     let kind = *table
@@ -78,7 +124,12 @@ pub fn apply(server: &Server, stat: &str, unit: i16, value: f64) -> Result<Strin
     // `/api/build` must never write different scopes for the same sentence.
     let family = family_ids(unit);
     let mut targets = Vec::new();
+    let mut seen_civ = false;
     for (ci, c) in s810.civs.iter().enumerate() {
+        if !civ_in_scope(&c.name, wanted) {
+            continue;
+        }
+        seen_civ = true;
         for u in c.units.iter() {
             if !family.contains(&u.id) {
                 continue;
@@ -87,6 +138,13 @@ pub fn apply(server: &Server, stat: &str, unit: i16, value: f64) -> Result<Strin
                 targets.push((ci, off));
             }
         }
+    }
+    // "matched no civilization" and "the civilization has no such unit" are
+    // different failures. Reporting the second for the first sends the player to
+    // look for the wrong problem, so the name is checked before the unit is.
+    if !seen_civ {
+        let names = wanted.clone().unwrap_or_default();
+        return Err(format!("认不出「{}」是哪个文明", names.join("、")));
     }
     if targets.is_empty() {
         return Err(format!("没有任何文明的单位 {unit} 带 {stat}"));
@@ -112,7 +170,7 @@ pub fn apply(server: &Server, stat: &str, unit: i16, value: f64) -> Result<Strin
     // Same mirror rule as `build_one`: `/api/stat` and `/api/build` must never
     // write different bytes for the same sentence, and a stat that is stored
     // twice (panel number + the raw row the engine reads) has to move both.
-    let mirrors = crate::unitfield::stat_mirrors(&s810, &family, stat);
+    let mirrors = crate::unitfield::stat_mirrors(&s810, &family, stat, wanted);
     let mirrors_len = mirrors.len();
     for m in &mirrors {
         let m_before = read_at(&raw, m.offset, m.kind);
@@ -274,8 +332,14 @@ pub fn build_one(server: &Server, req: &serde_json::Value) -> Result<String, Str
     // and leaves the female one alone, while the screen reports "63 处改动": a
     // number that is really the extent of the loop, not of the edit.
     let family = family_ids(unit);
+    let wanted = civ_filter(req);
     let mut targets = Vec::new();
+    let mut seen_civ = false;
     for (ci, c) in s810.civs.iter().enumerate() {
+        if !civ_in_scope(&c.name, &wanted) {
+            continue;
+        }
+        seen_civ = true;
         for u in c.units.iter() {
             if !family.contains(&u.id) {
                 continue;
@@ -284,6 +348,13 @@ pub fn build_one(server: &Server, req: &serde_json::Value) -> Result<String, Str
                 targets.push((ci, off));
             }
         }
+    }
+    // "matched no civilization" and "the civilization has no such unit" are
+    // different failures. Reporting the second for the first sends the player to
+    // look for the wrong problem, so the name is checked before the unit is.
+    if !seen_civ {
+        let names = wanted.clone().unwrap_or_default();
+        return Err(format!("认不出「{}」是哪个文明", names.join("、")));
     }
     if targets.is_empty() {
         return Err(format!("没有任何文明的单位 {unit} 带 {stat}"));
@@ -302,7 +373,7 @@ pub fn build_one(server: &Server, req: &serde_json::Value) -> Result<String, Str
     // damage maths actually reads did not, so the panel would show 10 while the
     // arrow still hit for 5.  The mirror carries the DELTA, never the value,
     // because 20 shipped records keep the two numbers apart on purpose.
-    let mirrors = crate::unitfield::stat_mirrors(&s810, &family, stat);
+    let mirrors = crate::unitfield::stat_mirrors(&s810, &family, stat, &wanted);
     let mirror_delta = match (value, delta) {
         (Some(v), _) => v - old,
         (None, Some(d)) => d,
@@ -421,6 +492,7 @@ fn build_unit_field(
         &aoe2mod_dat::stage810::Stages810,
         &[i16],
         i16,
+        &Option<Vec<String>>,
     ) -> Result<crate::unitfield::Resolved, String>,
 ) -> Result<String, String> {
     let intent = req.get("intent").and_then(|v| v.as_str()).unwrap_or("");
@@ -450,7 +522,10 @@ fn build_unit_field(
     // writing only the one the sentence named leaves the female villager alone
     // while the screen reports the loop's extent as if it were the edit's.
     let family = family_ids(unit);
-    let resolved = resolve(&s810, &family, unit)?;
+    // Same scope as the two byte-patch paths: `/api/build`, `/api/stat` and the
+    // preview all have to touch the same civilizations for the same sentence.
+    let wanted = civ_filter(req);
+    let resolved = resolve(&s810, &family, unit, &wanted)?;
 
     let new_value = match (value, delta) {
         (Some(v), _) => v,
@@ -543,8 +618,8 @@ fn build_unit_cost(server: &Server, req: &serde_json::Value) -> Result<String, S
         .and_then(|v| v.as_str())
         .unwrap_or("")
         .to_string();
-    build_unit_field(server, req, |s810, family, unit| {
-        crate::unitfield::cost_targets(s810, family, &resource, unit)
+    build_unit_field(server, req, |s810, family, unit, wanted| {
+        crate::unitfield::cost_targets(s810, family, wanted, &resource, unit)
     })
 }
 
@@ -572,8 +647,8 @@ fn build_unit_attack_class(server: &Server, req: &serde_json::Value) -> Result<S
                 vec![3, 4]
             }
         });
-    build_unit_field(server, req, |s810, family, unit| {
-        crate::unitfield::damage_targets(s810, family, &kind, &classes, unit)
+    build_unit_field(server, req, |s810, family, unit, wanted| {
+        crate::unitfield::damage_targets(s810, family, wanted, &kind, &classes, unit)
     })
 }
 

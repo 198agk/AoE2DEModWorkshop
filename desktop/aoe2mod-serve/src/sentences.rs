@@ -153,6 +153,12 @@ pub struct Clause {
     /// The entity the sentence names, for the icon and detail routes.
     pub entity_name: Option<String>,
     pub entity_id: Option<i16>,
+    /// Things the player should know about how the sentence was read, in their
+    /// language.  Not a refusal -- the edit still happens.  The page has always
+    /// rendered `c.notes`; until now nothing on this side filled it in, so a
+    /// sentence scoped to one civilization looked exactly like one that hits all
+    /// sixty-three.
+    pub notes: Vec<String>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -164,7 +170,15 @@ pub struct Intent {
     pub resource: Option<String>,
     pub value: Option<f64>,
     pub delta: Option<f64>,
-    pub civs: Option<String>,
+    /// The civilizations the sentence scoped itself to, in the .dat's own
+    /// spelling, in the order the sentence named them.  `None` (not an empty
+    /// vector) is what "all 63" means, so the two can never be confused: an empty
+    /// vector would say "no civilization", which is not an edit anyone can make.
+    ///
+    /// This field existed for weeks and nothing ever set it, so
+    /// `不列颠村民血量改成100` edited all 63 civilizations and reported 1,701
+    /// edits -- a 200, a plausible `intent`, and the wrong 62 civilizations.
+    pub civs: Option<Vec<String>>,
     /// `tech.effect` only: which command of the effect, and which of its fields.
     pub command: Option<usize>,
     pub field: Option<String>,
@@ -216,7 +230,14 @@ impl Intent {
             parts.push(format!("\"delta\":{v}"));
         }
         if let Some(v) = &self.civs {
-            parts.push(format!("\"civs\":\"{}\"", crate::server::json_escape(v)));
+            // An ARRAY, not a string.  The page reads `plan.civs` as a list of
+            // .dat indices and `plan.civ_labels` as the names; a string here
+            // would arrive as one long name and the page would print it as one.
+            let list: Vec<String> = v
+                .iter()
+                .map(|s| format!("\"{}\"", crate::server::json_escape(s)))
+                .collect();
+            parts.push(format!("\"civs\":[{}]", list.join(",")));
         }
         if let Some(v) = self.command {
             parts.push(format!("\"command\":{v}"));
@@ -342,10 +363,16 @@ fn intent_for_stat(stat: &str) -> &'static str {
     }
 }
 
-/// `id -> names`, loaded once from `_golden/entity_names.json`.
+/// `id -> names`, loaded once from `_golden/entity_names.json`, plus the
+/// civilization spellings from `_golden/civ_names.json`.
 pub struct Names {
     pub units: HashMap<i16, Vec<String>>,
     pub techs: HashMap<i16, Vec<String>>,
+    /// `(Chinese label, the .dat's own spelling)`, both from the shipped name
+    /// table.  A civilization name is ALSO a technology name -- 「不列颠」 is
+    /// tech 529 and the British civilization at the same time -- so the two have
+    /// to be read separately, not with one scanner that finds the longer string.
+    pub civs: Vec<(String, String)>,
 }
 
 impl Names {
@@ -361,7 +388,112 @@ impl Names {
         Ok(Names {
             units: table_from(&v, "units"),
             techs: table_from(&v, "techs"),
+            civs: civ_table().unwrap_or_default(),
         })
+    }
+
+    /// The civilization's printable Chinese name, given the .dat's own spelling.
+    ///
+    /// The notes handed back to the player are in their own language, so this
+    /// reverse lookup lives with the table instead of being retyped per caller.
+    pub fn civ_label(&self, dat_name: &str) -> Option<String> {
+        self.civs
+            .iter()
+            .find(|(_l, n)| n.eq_ignore_ascii_case(dat_name))
+            .map(|(l, _n)| l.clone())
+    }
+
+    /// Every civilization the sentence names, in the order it named them, in the
+    /// .dat's own spelling.
+    ///
+    /// More than one is real: 「不列颠和法兰克的村民血量改成1000」 means BOTH.
+    /// Reading only the first one edits one civilization and silently drops the
+    /// other, which is the exact wrong-answer shape this reader exists to avoid.
+    ///
+    /// The nested-name rule matters: 「不列颠人」 contains 「不列颠」 and the two
+    /// must not both count, so a name already covered by a longer match is
+    /// dropped rather than added twice.
+    pub fn civs_in(&self, text: &str) -> Vec<String> {
+        let low = text.to_lowercase();
+        // (position, -length, spelling) so a longer name at the same position
+        // sorts first.
+        let mut hits: Vec<(usize, i32, String)> = Vec::new();
+        for (label, dat_name) in &self.civs {
+            if !label.is_empty() {
+                if let Some(at) = low.find(&label.to_lowercase()) {
+                    hits.push((at, -(label.chars().count() as i32), dat_name.clone()));
+                }
+            }
+            // The English spellings are matched only when longer than two
+            // characters: 「蜀」/「吴」/「魏」 are one character in Chinese but
+            // `Shu`/`Wu`/`Wei` fold into the middle of ordinary words, and a
+            // two-letter ASCII name would match half the file.
+            if dat_name.chars().count() > 2 {
+                if let Some(at) = low.find(&dat_name.to_lowercase()) {
+                    hits.push((at, -(dat_name.chars().count() as i32), dat_name.clone()));
+                }
+            }
+        }
+        hits.sort();
+        let mut out: Vec<String> = Vec::new();
+        for (_at, _neg, name) in hits {
+            if out.iter().any(|seen| seen.contains(&name) || name.contains(seen)) {
+                continue;
+            }
+            out.push(name);
+        }
+        out
+    }
+
+    /// The text with every civilization name cut out.
+    ///
+    /// NOT used by the reader: cutting a name out would also break
+    /// 「不列颠研究时间改成5」, where the sentence really does name technology
+    /// 529.  The tie between a civilization name and a technology name is broken
+    /// by the sentence's own hint word (see `prefer_tech` in `read_clause`), which
+    /// is what the reference does.  This helper exists for callers that need the
+    /// remaining words, not for disambiguation.
+    pub fn without_civs(&self, text: &str) -> String {
+        let mut names: Vec<String> = Vec::new();
+        for (label, dat_name) in &self.civs {
+            if !label.is_empty() {
+                names.push(label.clone());
+            }
+            if dat_name.chars().count() > 2 {
+                names.push(dat_name.clone());
+            }
+        }
+        names.sort_by(|a, b| b.chars().count().cmp(&a.chars().count()));
+        let mut out = text.to_string();
+        for n in names {
+            // Case-insensitive replace, done by scanning lower-case positions:
+            // `String::replace` is exact-case only, and 「BRITONS」 / 「British」
+            // both arrive in practice.
+            let low_out = out.to_lowercase();
+            let low_n = n.to_lowercase();
+            if !low_out.contains(&low_n) {
+                continue;
+            }
+            let mut rebuilt = String::new();
+            let mut i = 0usize;
+            let hay: Vec<char> = out.chars().collect();
+            let needle: Vec<char> = low_n.chars().collect();
+            while i < hay.len() {
+                let fits = i + needle.len() <= hay.len()
+                    && hay[i..i + needle.len()]
+                        .iter()
+                        .zip(needle.iter())
+                        .all(|(a, b)| a.to_lowercase().eq(b.to_lowercase()));
+                if fits {
+                    i += needle.len();
+                } else {
+                    rebuilt.push(hay[i]);
+                    i += 1;
+                }
+            }
+            out = rebuilt;
+        }
+        out
     }
 
     /// Longest name that occurs in `text`, and the id it belongs to.
@@ -376,6 +508,94 @@ impl Names {
     pub fn longest_tech(&self, text: &str) -> Option<(i16, String)> {
         longest(&self.techs, text)
     }
+
+    /// The entity the sentence is about, unit or technology.
+    ///
+    /// The hint word decides the KIND before length is considered, and that
+    /// ordering is load-bearing: 「不列颠兵营攻击力加5」 names technology 529
+    /// (不列颠 is a technology name too) but the sentence has no 科技/研究 word,
+    /// so the unit reading wins and the barracks is the target.  Ranking by
+    /// length alone would pick whichever name is longer and edit the wrong kind
+    /// of record -- a confident, wrong answer.
+    ///
+    /// Within one kind, longest still wins, because 「剑士」 and 「长剑士」 are
+    /// different units.
+    pub fn resolve(&self, text: &str) -> Option<(i16, String, &'static str)> {
+        let prefer_tech = TECH_HINTS.iter().any(|w| text.contains(w))
+            && !(text.contains("单位") || text.contains("兵种"));
+        let mut best: Option<(u8, usize, i16, String, &'static str)> = None;
+        let mut consider = |table: &HashMap<i16, Vec<String>>, kind: &'static str| {
+            for (id, names) in table {
+                for n in names {
+                    if n.is_empty() || !text.contains(n.as_str()) {
+                        continue;
+                    }
+                    let rank = if (kind == "tech") == prefer_tech { 0u8 } else { 1u8 };
+                    let len = n.chars().count();
+                    let better = match &best {
+                        None => true,
+                        Some((br, bl, bi, _, _)) => {
+                            (rank, std::cmp::Reverse(len), *id)
+                                < (*br, std::cmp::Reverse(*bl), *bi)
+                        }
+                    };
+                    if better {
+                        best = Some((rank, len, *id, n.clone(), kind));
+                    }
+                }
+            }
+        };
+        consider(&self.units, "unit");
+        consider(&self.techs, "tech");
+        best.map(|(_r, _l, id, nm, k)| (id, nm, k))
+    }
+}
+
+/// Words that make a sentence about a TECHNOLOGY rather than a unit.
+///
+/// 「不列颠」 is both a civilization name and technology 529, so a sentence that
+/// merely mentions it is ambiguous until the verb says which: 「研究时间」 means
+/// the technology, 「攻击力」 means the unit.
+const TECH_HINTS: [&str; 4] = ["科技", "研究", "研发", "技术"];
+
+fn civ_table() -> Option<Vec<(String, String)>> {
+    for path in table_paths("AOE2MOD_CIV_NAMES", "civ_names.json") {
+        let text = match std::fs::read_to_string(&path) {
+            Ok(t) => t,
+            Err(_) => continue,
+        };
+        let v: serde_json::Value = match serde_json::from_str(&text) {
+            Ok(v) => v,
+            Err(_) => continue,
+        };
+        let names: Vec<String> = v
+            .get("names")
+            .and_then(|x| x.as_array())
+            .map(|a| a.iter().filter_map(|s| s.as_str().map(|s| s.to_string())).collect())
+            .unwrap_or_default();
+        let labels: Vec<String> = v
+            .get("labels")
+            .and_then(|x| x.as_array())
+            .map(|a| a.iter().filter_map(|s| s.as_str().map(|s| s.to_string())).collect())
+            .unwrap_or_default();
+        if names.len() != labels.len() || names.is_empty() {
+            continue;
+        }
+        // `Gaia` is index 0 and is NOT a playable civilization: it is the
+        // neutral owner of trees and sheep.  Leaving it in the table would let
+        // 「Gaia」 scope a sentence to a civilization no player picks, so it is
+        // dropped here rather than special-cased at every call site.
+        let out: Vec<(String, String)> = names
+            .iter()
+            .zip(labels.iter())
+            .filter(|(n, _l)| n.as_str() != "Gaia")
+            .map(|(n, l)| (l.clone(), n.clone()))
+            .collect();
+        if !out.is_empty() {
+            return Some(out);
+        }
+    }
+    None
 }
 
 fn table_from(v: &serde_json::Value, key: &str) -> HashMap<i16, Vec<String>> {
@@ -451,8 +671,46 @@ pub fn read(text: &str) -> Vec<Clause> {
     pieces(text).iter().map(|p| read_clause(p)).collect()
 }
 
+/// Attach a civilization scope to an intent, and say so in words.
+///
+/// The note is not decoration.  Without it a sentence scoped to one civilization
+/// looks exactly like one that hits all sixty-three -- the page prints
+/// `civ_count` either way, and 1 versus 63 is the difference between the edit
+/// the player asked for and one they will find in eleven other civilizations.
+fn apply_civs(it: &mut Intent, notes: &mut Vec<String>, civs: &[String]) {
+    if civs.is_empty() {
+        return;
+    }
+    it.civs = Some(civs.to_vec());
+    let n = names();
+    let labels: Vec<String> = civs
+        .iter()
+        .map(|c| {
+            n.as_ref()
+                .and_then(|nm| nm.civ_label(c))
+                .unwrap_or_else(|| c.clone())
+        })
+        .collect();
+    notes.push(format!("只改「{}」，不是全部文明", labels.join("、")));
+}
+
 /// Read one sentence.
 pub fn read_clause(text: &str) -> Clause {
+    // The civilizations the sentence names, resolved ONCE and applied only where
+    // the reference applies them.
+    //
+    // Measured, which intents carry a civilization scope and which do not:
+    //   unit.stat / unit.cost / tech.research_time / tech.cost   yes
+    //   unit.attack_class / unit.sprite                          yes
+    //   tech.effect / tech.toggle_group / unit.card_move          no
+    // A technology's effect lives in one shared effect table and a group is a
+    // relationship between technologies, so neither has a per-civilization copy
+    // to scope; a card slot IS per civilization but the reference reader routes
+    // that sentence to the card path before it looks for civilizations.
+    let civs_named: Vec<String> = match names().as_ref() {
+        Some(n) => n.civs_in(text),
+        None => Vec::new(),
+    };
     // --- command-card move, before anything else -------------------------
     // "把民兵放在第5格" / "把民兵挪到兵营的第5格".
     //
@@ -507,6 +765,7 @@ pub fn read_clause(text: &str) -> Clause {
                     why: None,
                     entity_name: None,
                     entity_id: Some(u),
+                    notes: Vec::new(),
                 };
             }
         }
@@ -535,6 +794,7 @@ pub fn read_clause(text: &str) -> Clause {
                         why: None,
                         entity_name: None,
                         entity_id: None,
+                    notes: Vec::new(),
                     };
                 }
                 // A STRONG hint with fewer than two technologies is half a group,
@@ -555,6 +815,7 @@ pub fn read_clause(text: &str) -> Clause {
                         )),
                         entity_name: None,
                         entity_id: None,
+                    notes: Vec::new(),
                     };
                     cl.why = cl.why.take();
                     return cl;
@@ -569,6 +830,7 @@ pub fn read_clause(text: &str) -> Clause {
         why: None,
         entity_name: None,
         entity_id: None,
+                    notes: Vec::new(),
     };
 
     // --- unit.sprite: "把村民的样子换成绵羊" (no number involved) ----------
@@ -604,12 +866,15 @@ pub fn read_clause(text: &str) -> Clause {
                     it.donor = Some(d);
                     // Rename mode is the default here: it ships no pictures and
                     // is the 12 MB answer. Copy mode is a separate choice.
+                    let mut out_notes: Vec<String> = Vec::new();
+                    apply_civs(&mut it, &mut out_notes, &civs_named);
                     return Clause {
                         text: text.to_string(),
                         intent: Some(it),
                         why: None,
                         entity_name: None,
                         entity_id: Some(t),
+                        notes: out_notes,
                     };
                 }
                 (Some(t), Some(d)) if t == d => {
@@ -695,12 +960,15 @@ pub fn read_clause(text: &str) -> Clause {
                 "sub" => it.delta = Some(-num),
                 _ => it.delta = Some(num),
             }
+            let mut out_notes: Vec<String> = Vec::new();
+            apply_civs(&mut it, &mut out_notes, &civs_named);
             return Clause {
                 text: text.to_string(),
                 intent: Some(it),
                 why: None,
                 entity_name: Some(cname),
                 entity_id: Some(u),
+                notes: out_notes,
             };
         }
         cl.why = Some("没听出要改哪个单位。".into());
@@ -741,17 +1009,10 @@ pub fn read_clause(text: &str) -> Clause {
                 return cl;
             }
         };
-        match (n.longest_unit(text), n.longest_tech(text)) {
-            (Some((id, nm)), Some((tid, tnm))) => {
-                if tnm.chars().count() > nm.chars().count() {
-                    (Some(tid), Some(tnm), "tech")
-                } else {
-                    (Some(id), Some(nm), "unit")
-                }
-            }
-            (Some((id, nm)), None) => (Some(id), Some(nm), "unit"),
-            (None, Some((tid, tnm))) => (Some(tid), Some(tnm), "tech"),
-            (None, None) => (None, None, "none"),
+        match n.resolve(text) {
+            Some((id, nm, "tech")) => (Some(id), Some(nm), "tech"),
+            Some((id, nm, _)) => (Some(id), Some(nm), "unit"),
+            None => (None, None, "none"),
         }
     };
     cl.entity_id = eid;
@@ -856,6 +1117,7 @@ pub fn read_clause(text: &str) -> Clause {
                 "sub" => it.delta = Some(-value),
                 _ => it.delta = Some(value),
             }
+            apply_civs(&mut it, &mut cl.notes, &civs_named);
             cl.intent = Some(it);
             return cl;
         }
@@ -884,6 +1146,7 @@ pub fn read_clause(text: &str) -> Clause {
         _ => it.delta = Some(value),
     }
 
+    apply_civs(&mut it, &mut cl.notes, &civs_named);
     cl.intent = Some(it);
     cl
 }

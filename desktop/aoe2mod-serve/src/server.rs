@@ -477,7 +477,7 @@ fn route(
                     )),
                 }
                 rows.push(format!(
-                    "{{\"text\":\"{}\",\"entity\":{},\"entity_id\":{},\"why\":{}}}",
+                    "{{\"text\":\"{}\",\"entity\":{},\"entity_id\":{},\"why\":{},\"notes\":[{}]}}",
                     json_escape(&cl.text),
                     match &cl.entity_name {
                         Some(n) => format!("\"{}\"", json_escape(n)),
@@ -490,7 +490,12 @@ fn route(
                     match &cl.why {
                         Some(w) => format!("\"{}\"", json_escape(w)),
                         None => "null".into(),
-                    }
+                    },
+                    cl.notes
+                        .iter()
+                        .map(|n| format!("\"{}\"", json_escape(n)))
+                        .collect::<Vec<String>>()
+                        .join(",")
                 ));
             }
             let json = format!(
@@ -987,7 +992,18 @@ fn route(
             let stat = req.get("stat").and_then(|v| v.as_str()).unwrap_or("");
             let unit = req.get("unit").and_then(|v| v.as_i64()).unwrap_or(-1) as i16;
             let value = req.get("value").and_then(|v| v.as_f64()).unwrap_or(0.0);
-            let json = match crate::stat_edit::apply(server, stat, unit, value) {
+            // The preview must scope exactly like the build, so the scope comes
+            // from the same field of the same request.
+            let wanted: Option<Vec<String>> =
+                req.get("civs").and_then(|v| v.as_array()).map(|a| {
+                    a.iter()
+                        .filter_map(|v| v.as_str())
+                        .map(|s| s.trim().to_string())
+                        .filter(|s| !s.is_empty())
+                        .collect::<Vec<String>>()
+                });
+            let wanted = wanted.filter(|w| !w.is_empty());
+            let json = match crate::stat_edit::apply(server, stat, unit, value, &wanted) {
                 Ok(report) => report,
                 Err(e) => format!("{{\"ok\":false,\"error\":\"{}\"}}", json_escape(&e)),
             };

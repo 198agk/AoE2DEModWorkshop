@@ -555,6 +555,12 @@ SUITES = [
     # neither asks this -- and three intents accepted a sentence and then refused
     # it at build time.
     r"_probe\test_parse_build_agreement.py",
+    # Does a sentence that names a civilisation still edit all 63 of them?  It
+    # did, and nothing observable said so: `/api/parse` returned 200, the intent
+    # looked right, the edit count was plausible.  The only witness is asking
+    # whether the bytes match what the sentence asked for, which this does by
+    # building the same edit in Python and comparing hashes.
+    r"_probe\test_civ_scope.py",
 ]
 
 # Suites that are not Python.  The screen's script is JavaScript and no Python
