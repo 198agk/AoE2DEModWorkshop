@@ -384,6 +384,34 @@ fn route(
             (200, "application/json; charset=utf-8", json.into_bytes())
         }
         // The one write path, so the whole chain can be exercised end to end.
+        "/api/update-check" => {
+            let json = match (crate::mods::profile_root(), crate::game_root()) {
+                (Some(prof), Some(root)) => {
+                    let dat = root.join("resources/_common/dat/empires2_x2_p1.dat");
+                    match crate::updates::check(&prof, &dat, true) {
+                        Ok((rows, attention)) => {
+                            let state = crate::updates::state_file()
+                                .map(|p| {
+                                    p.parent()
+                                        .map(|d| d.display().to_string())
+                                        .unwrap_or_default()
+                                })
+                                .unwrap_or_default();
+                            crate::updates::to_json(&rows, attention, &state)
+                        }
+                        Err(e) => format!(
+                            "{{\"ok\":false,\"error\":\"{}\"}}",
+                            json_escape(&e)
+                        ),
+                    }
+                }
+                _ => format!(
+                    "{{\"ok\":false,\"error\":\"{}\"}}",
+                    json_escape("找不到游戏目录或玩家档案目录")
+                ),
+            };
+            (200, "application/json; charset=utf-8", json.into_bytes())
+        }
         "/api/mod" => {
             let req: serde_json::Value = match serde_json::from_slice(body) {
                 Ok(v) => v,

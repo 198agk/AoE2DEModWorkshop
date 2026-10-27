@@ -17,6 +17,7 @@ pub mod sentences;
 pub mod server;
 pub mod stat_edit;
 pub mod tables;
+pub mod updates;
 
 use server::{ParseResult, Progress, Server};
 use std::path::PathBuf;
