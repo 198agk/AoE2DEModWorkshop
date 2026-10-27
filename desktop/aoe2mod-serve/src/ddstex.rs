@@ -7,9 +7,11 @@
 //! Only the layouts the shipped icons actually use are handled, which is a
 //! measurement, not a guess -- over all 4,550 texture entries in materials.json:
 //!
-//!     uncompressed BGRA 8:8:8:8   pitch == width*4, empty fourcc   (539/794 unit icons)
-//!     DXT5 / BC3                                                  (most of the rest)
-//!     DXT1 / BC1
+//! ```text
+//! uncompressed BGRA 8:8:8:8   pitch == width*4, empty fourcc   (539/794 unit icons)
+//! DXT5 / BC3                                                  (most of the rest)
+//! DXT1 / BC1
+//! ```
 //!
 //! Two facts that are easy to "optimise" wrongly, both measured:
 //!

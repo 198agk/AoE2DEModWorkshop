@@ -40,7 +40,7 @@ OUT = r"D:\Software\AI\AoE2ModWorkshop"
 BUILT = r"D:\Software\AI\AGE2\desktop\src-tauri\target\release\aoe2-mod-workshop.exe"
 GOLDEN = ["stat_offsets.json", "entity_names.json", "ai_grammar.json",
           "tech_offsets.json", "effect_offsets.json", "command_cards.json", "class_names.json", "sprite_pairs.json",
-          "civ_trees.json"]
+          "civ_trees.json", "unit_families.json"]
 
 
 def check_exe_is_the_built_one(out):

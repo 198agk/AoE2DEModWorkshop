@@ -6,8 +6,8 @@ The defect this exists for
 On 2026-10-28 the shipped binary answered three sentences with a confident
 intent and then could not build any of them:
 
-  「民兵木材成本减少10」   -> unit.cost          -- `build_one` has no branch
-  「步弓手对骑兵攻击加2」  -> unit.attack_class  -- `build_one` has no branch
+  「民兵人口成本设为0」    -> unit.cost          -- `build_one` has no branch
+  「民兵对平民攻击加2」    -> unit.attack_class  -- `build_one` has no branch
   「把民兵放在第5格」      -> unit.card_move     -- reads `box`, reader sends `button`
 
 All three looked fine to every gate this project had. `check_routes.py` compares
@@ -51,12 +51,18 @@ PORT = 7814
 # One sentence per intent the reader claims.  Written the way a player would.
 CASES = [
     ("unit.stat", "村民血量改成100"),
-    ("unit.cost", "民兵木材成本减少10"),
+    # NOT 「民兵木材成本减少10」: a militia's three cost slots are 0/3/4 and none
+    # of them is wood, so that sentence is refused for a fact about the game and
+    # would never exercise the branch.  Population IS slot 4 here.
+    ("unit.cost", "民兵人口成本设为0"),
     ("tech.research_time", "织布机研究时间改成5"),
     ("tech.cost", "织布机黄金成本改成5"),
     ("tech.effect", "织布机第1条效果改成100"),
     ("unit.card_move", "把民兵放在第5格"),
-    ("unit.attack_class", "步弓手对骑兵攻击加2"),
+    # NOT 「步弓手对骑兵攻击加2」: 骑兵 is a unit class (12) and the file holds
+    # zero attack rows of class 12, so that sentence can never build.  「对平民」
+    # resolves to attack class 4, which a militia actually carries.
+    ("unit.attack_class", "民兵对平民攻击加2"),
     ("unit.sprite", "让弓兵长得像长弓兵"),
     ("tech.toggle_group", "把织布机和铸币术做成只能选一个"),
 ]

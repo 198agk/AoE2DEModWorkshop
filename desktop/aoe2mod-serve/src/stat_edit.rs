@@ -214,6 +214,12 @@ pub fn build_one(server: &Server, req: &serde_json::Value) -> Result<String, Str
     if intent == "unit.card_move" || intent == "card_move" {
         return build_card_move(server, req);
     }
+    if intent == "unit.cost" {
+        return build_unit_cost(server, req);
+    }
+    if intent == "unit.attack_class" {
+        return build_unit_attack_class(server, req);
+    }
     let stat = req.get("stat").and_then(|v| v.as_str()).unwrap_or("");
     let unit = req.get("unit").and_then(|v| v.as_i64()).map(|v| v as i16);
     let value = req.get("value").and_then(|v| v.as_f64());
@@ -369,6 +375,177 @@ fn civ_count(targets: &[(usize, usize)]) -> usize {
     seen.sort_unstable();
     seen.dedup();
     seen.len()
+}
+
+/// The shared body of `unit.cost` and `unit.attack_class`.
+///
+/// Both write `i16`s into a unit record at offsets the parser measured, both
+/// have to expand to the variant family, and both produce the same report.  The
+/// only difference is how a sentence becomes offsets, so that is the closure --
+/// one copy of the write/install/remember chain, which is where a divergence
+/// would be invisible: a cost edit that installed and a damage edit that only
+/// reported would each look correct from its own JSON.
+fn build_unit_field(
+    server: &Server,
+    req: &serde_json::Value,
+    resolve: impl FnOnce(
+        &aoe2mod_dat::stage810::Stages810,
+        &[i16],
+        i16,
+    ) -> Result<crate::unitfield::Resolved, String>,
+) -> Result<String, String> {
+    let intent = req.get("intent").and_then(|v| v.as_str()).unwrap_or("");
+    let unit = req
+        .get("unit")
+        .and_then(|v| v.as_i64())
+        .map(|v| v as i16)
+        .ok_or("这句话没有说要改哪个单位")?;
+    let value = req.get("value").and_then(|v| v.as_f64());
+    let delta = req.get("delta").and_then(|v| v.as_f64());
+    let install = req.get("install").and_then(|v| v.as_bool()).unwrap_or(false);
+    if server.parsed.lock().unwrap().is_none() {
+        return Err("游戏数据还没读完".into());
+    }
+
+    let root = crate::game_root().ok_or("找不到游戏目录")?;
+    let dat = root.join("resources/_common/dat/empires2_x2_p1.dat");
+    let (raw, _how) = load_dat(&dat).map_err(|e| e.to_string())?;
+    let mut r = Reader::new(&raw);
+    let s1 = read_stage1(&mut r).map_err(|e| e.to_string())?;
+    let gv = s1.game_version;
+    let s23 = read_stages23(&mut r).map_err(|e| e.to_string())?;
+    let s47 = read_stages47(&mut r, gv).map_err(|e| e.to_string())?;
+    let s810 = read_stages810(&mut r, gv).map_err(|e| e.to_string())?;
+
+    // Family, not the named id: `村民` is 27 records per civilisation, and
+    // writing only the one the sentence named leaves the female villager alone
+    // while the screen reports the loop's extent as if it were the edit's.
+    let family = family_ids(unit);
+    let resolved = resolve(&s810, &family, unit)?;
+
+    let new_value = match (value, delta) {
+        (Some(v), _) => v,
+        (None, Some(d)) => resolved.before + d,
+        (None, None) => return Err("这句话没有说要改成多少".into()),
+    };
+
+    let mut w = Writer::new(&raw);
+    write_stage1(&mut w, &s1).map_err(|e| e.to_string())?;
+    write_stages23(&mut w, &s23, &raw).map_err(|e| e.to_string())?;
+    write_stages47(&mut w, &s47, gv).map_err(|e| e.to_string())?;
+    write_stages810(&mut w, &s810).map_err(|e| e.to_string())?;
+    let mut out = w.out;
+    if out != raw {
+        return Err("未修改的往返不是逐字节相同，拒绝按绝对偏移写入".into());
+    }
+    let kind = resolved.kind();
+    for hit in &resolved.hits {
+        write_at(&mut out, hit.offset, kind, new_value);
+    }
+
+    let title = req
+        .get("title")
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.trim().is_empty())
+        .map(|s| s.to_string())
+        .unwrap_or_else(|| format!("{intent} {unit}"));
+
+    let build_root = std::env::temp_dir().join("aoe2mod-native-build").join(&title);
+    let built = crate::build::build_data_mod(
+        &build_root,
+        &out,
+        &title,
+        "aoe2mod",
+        &format!("{} {unit} -> {new_value}", resolved.label),
+        true,
+    )?;
+
+    let mut installed_to = String::new();
+    if install {
+        let prof = crate::mods::profile_root().ok_or("找不到玩家档案目录")?;
+        let dest = crate::build::install_local(&prof, &built, &title)?;
+        installed_to = dest.display().to_string();
+    }
+
+    let (base_file_sha, base_raw_sha) = match crate::updates::fingerprint(&dat, true) {
+        Some((f, rr, _v)) => (f, rr),
+        None => (String::new(), None),
+    };
+    let dat_out_sha = sha256_bytes(&built.compressed);
+    crate::updates::remember_build(
+        &title,
+        "aoe2mod",
+        &format!("{} {unit} -> {new_value}", resolved.label),
+        serde_json::json!([{
+            "intent": intent,
+            "unit": unit,
+            "resource": req.get("resource").cloned().unwrap_or(serde_json::Value::Null),
+            "attack_kind": req.get("attack_kind").cloned().unwrap_or(serde_json::Value::Null),
+            "value": new_value
+        }]),
+        &base_file_sha,
+        base_raw_sha.as_deref(),
+        &dat_out_sha,
+        true,
+    )
+    .map_err(|e| format!("建好了但没能写构建记录：{e}"))?;
+
+    Ok(format!(
+        "{{\"ok\":true,\"intent\":\"{}\",\"unit\":{},\"field\":\"{}\",\"civs\":{},\"variants\":{},\"edit_count\":{},\"before\":{},\"value\":{},\"dat_bytes\":{},\"compressed\":{},\"built\":\"{}\",\"installed\":\"{}\"}}",
+        crate::server::json_escape(intent),
+        unit,
+        crate::server::json_escape(&resolved.label),
+        resolved.civ_count(),
+        family.len(),
+        resolved.hits.len(),
+        resolved.before,
+        new_value,
+        built.dat_bytes,
+        built.compressed.len(),
+        crate::server::json_escape(&built.dir.display().to_string()),
+        crate::server::json_escape(&installed_to)
+    ))
+}
+
+/// `unit.cost`: the amount in one of the unit's three cost slots.
+fn build_unit_cost(server: &Server, req: &serde_json::Value) -> Result<String, String> {
+    let resource = req
+        .get("resource")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+    build_unit_field(server, req, |s810, family, unit| {
+        crate::unitfield::cost_targets(s810, family, &resource, unit)
+    })
+}
+
+/// `unit.attack_class`: one row of Type50's attack or armour list, plus the
+/// panel number that tracks it.
+fn build_unit_attack_class(server: &Server, req: &serde_json::Value) -> Result<String, String> {
+    let kind = req
+        .get("attack_kind")
+        .and_then(|v| v.as_str())
+        .or_else(|| req.get("kind").and_then(|v| v.as_str()))
+        .unwrap_or("attack")
+        .to_string();
+    // The candidate list comes from the sentence layer when it has one, so a
+    // sentence that names a class can narrow it.  The default is the schema's
+    // `attack_classes.attack|armour.class_candidates`, tried in order.
+    let classes: Vec<i16> = req
+        .get("class_candidates")
+        .and_then(|v| v.as_array())
+        .map(|a| a.iter().filter_map(|x| x.as_i64().map(|v| v as i16)).collect())
+        .filter(|v: &Vec<i16>| !v.is_empty())
+        .unwrap_or_else(|| {
+            if kind == "armour" {
+                vec![4, 3]
+            } else {
+                vec![3, 4]
+            }
+        });
+    build_unit_field(server, req, |s810, family, unit| {
+        crate::unitfield::damage_targets(s810, family, &kind, &classes, unit)
+    })
 }
 
 
@@ -778,10 +955,18 @@ fn build_card_move(server: &Server, req: &serde_json::Value) -> Result<String, S
     // not ask for.
     let mut building = req
         .get("building")
+        .or_else(|| req.get("builder"))
         .and_then(|v| v.as_i64())
         .map(|v| v as i16);
+    // TWO spellings, deliberately.  The page's own drag handler posts `box`, and
+    // the sentence reader emits `button` (`sentences.rs:230`) because that is
+    // what the schema calls the slot.  Reading only `box` meant every sentence
+    // this program said it understood came back "没说要挪到第几格" -- the
+    // reader and the builder disagreed about a field name, and only the
+    // parse→build path crossed the join.
     let target = req
         .get("box")
+        .or_else(|| req.get("button"))
         .and_then(|v| v.as_u64())
         .map(|v| v as u8)
         .ok_or("没说要挪到第几格")?;

@@ -111,8 +111,16 @@ def copy_app(dst):
             # ships no Python.  Leaving it in would make the "no .py" assertion
             # below fail on a file that could never be imported anyway --
             # which is exactly what happened the first time this ran.
+            # Dev-only artefacts are left behind as well.   is
+            # 20 MB whose whole purpose is comparing the native reader against
+            # Python;  and  are golden data for
+            # the same comparison.  Copying them doubled the installed folder
+            # (20 MB -> 40 MB of tables) while the shipped engine reads none of
+            # them -- a size regression in the deliverable, not a safety margin.
             ignore=shutil.ignore_patterns("__pycache__", "*.pyc", "*.pyo",
-                                          "__init__.py", "dat_baseline.json"))
+                                          "__init__.py", "dat_baseline.json",
+                                          "unit_slots.json", "unit_spans.json",
+                                          "unit0_trace.txt"))
     return size_of(dst)
 
 
@@ -169,7 +177,12 @@ def main(argv=None):
     # (`dat_baseline.json` is a test fixture, not a runtime input, hence absent.)
     required = ["ai_grammar.json", "class_names.json", "command_cards.json",
                 "effect_offsets.json", "entity_names.json", "sprite_pairs.json",
-                "stat_offsets.json", "tech_offsets.json", "civ_trees.json"]
+                "stat_offsets.json", "tech_offsets.json", "civ_trees.json",
+                # Without this one, every family edit silently writes ONE record
+                # (the villager becomes 63 writes instead of 1,701) and the
+                # screen still says "built ok" -- a missing table that reads as a
+                # narrower edit, not as a failure.
+                "unit_families.json"]
     golden_dir = os.path.join(out, "app", "_golden")
     missing = [f for f in required
                if not os.path.isfile(os.path.join(golden_dir, f))]

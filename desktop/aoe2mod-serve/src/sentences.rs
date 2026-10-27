@@ -301,12 +301,22 @@ fn find_number(text: &str) -> Option<(f64, (usize, usize))> {
     None
 }
 
-/// Resource words for `unit.cost`.
+/// Resource words for the cost intents.
+///
+/// Copied from the reference's `RESOURCE_WORDS` (`aoe2mod/ui/nl.py:188`), which
+/// says why: `resource_labels_zh.json` names 150 slots with the game's own
+/// vocabulary, but a player types "食物/木头/黄金", not "食物储备".
+///
+/// `population` is here because a unit's third cost slot is the population it
+/// occupies -- `民兵人口成本设为0` is a real edit with 63 writes.  It was missing,
+/// so that sentence was refused with a message that did not even list it as an
+/// option, which is a worse answer than a wrong one.
 const RESOURCE_WORDS: &[(&str, &[&str])] = &[
     ("wood", &["木材", "木头", "木"]),
-    ("food", &["食物", "粮", "食物"]),
-    ("gold", &["黄金", "金", "金币"]),
-    ("stone", &["石头", "石"]),
+    ("food", &["食物", "粮食", "粮", "食"]),
+    ("gold", &["黄金", "金子", "金币", "金"]),
+    ("stone", &["石料", "石头", "石"]),
+    ("population", &["人口", "占人口"]),
 ];
 
 const SET_WORDS: &[&str] = &["改成", "改为", "改到", "设成", "设为", "调成", "调到", "变成"];
