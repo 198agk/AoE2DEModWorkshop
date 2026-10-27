@@ -159,7 +159,22 @@ fn write_at(buf: &mut [u8], off: usize, kind: StatKind, value: f64) {
 /// interesting failures live in the joins: an intent that resolves but cannot be
 /// compiled, a build that succeeds but installs nowhere, a title the engine will
 /// truncate.
-pub fn build_and_install(server: &Server, req: &serde_json::Value) -> Result<String, String> {
+/// `/api/build` takes an intent LIST (`{"intents":[{...},{...}]}`) because one mod
+/// carries every sentence the player typed: splitting them turns "tougher
+/// villagers AND faster loom" into two mods of which the engine loads only the
+/// higher-priority one.
+///
+/// Measured 2026-10-27: reading the field as `intent` (singular) meant the
+/// Build button never worked for ANY intent -- every call fell through to the
+/// stat branch and refused with "这句话没有说要改哪个单位", including the ones this
+/// server implemented. The end-to-end probes missed it because they posted a flat
+/// `{stat,unit,value}` body that the page never sends.
+///
+/// A bundle is still all-or-nothing: the first intent that fails to compile stops
+/// the build, because a mod that applied two of the player's three sentences does
+/// less than it says. Several intents that each want their own files are refused
+/// by name rather than silently keeping the last one.
+pub fn build_one(server: &Server, req: &serde_json::Value) -> Result<String, String> {
     // Tech edits take a different path: a technology is ONE record (not 63), its
     // research time is a list of locations, and its cost is a slot index.
     let intent = req.get("intent").and_then(|v| v.as_str()).unwrap_or("");
@@ -313,6 +328,50 @@ pub fn build_and_install(server: &Server, req: &serde_json::Value) -> Result<Str
 
 
 /// `tech.research_time` / `tech.cost`: one global record, one or more offsets.
+
+/// The `/api/build` entry point: an intent ARRAY, or a single flat intent.
+///
+/// One intent is the whole story for every current strategy -- each writes its
+/// own files under its own `<build>/<title>/`, so two of them in one folder would
+/// each recreate the folder and drop the other's file. That is a real limitation
+/// and it is said out loud instead of returning the last build as if it were the
+/// bundle the player asked for.
+pub fn build_and_install(server: &Server, req: &serde_json::Value) -> Result<String, String> {
+    let list = match req.get("intents").and_then(|v| v.as_array()) {
+        Some(a) if !a.is_empty() => a.clone(),
+        _ => return build_one(server, req),
+    };
+    if list.len() > 1 {
+        let names: Vec<String> = list
+            .iter()
+            .map(|it| {
+                it.get("intent")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("?")
+                    .to_string()
+            })
+            .collect();
+        return Err(format!(
+            "这一步一个 mod 只能装一件事：现在收到 {} 句（{}）。每句话各写自己的文件、各自建目录，装进同一个 mod 会互相覆盖。先做一句，或把它们分成几步。",
+            list.len(),
+            names.join("、")
+        ));
+    }
+    let mut one = list[0].clone();
+    // Carry the bundle-level fields onto the single intent: the title says what
+    // the mod is CALLED, and every builder reads it from the intent it is given.
+    if let Some(obj) = one.as_object_mut() {
+        for key in ["title", "author", "description", "install", "title_auto"] {
+            if !obj.contains_key(key) {
+                if let Some(v) = req.get(key) {
+                    obj.insert(key.to_string(), v.clone());
+                }
+            }
+        }
+    }
+    build_one(server, &one)
+}
+
 fn build_tech(server: &Server, req: &serde_json::Value) -> Result<String, String> {
     use crate::writer::Writer;
     use crate::write23::{write_stage1, write_stages23};

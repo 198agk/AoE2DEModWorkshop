@@ -117,6 +117,17 @@ def check_routes(port):
     note("/api/card", cd.get("box_count") == 4 and cd.get("unit_count") == 49,
          " 兵营 %s 格 %s 单位" % (cd.get("box_count"), cd.get("unit_count")))
 
+    # The page posts an intent ARRAY. Posting a flat {stat,unit,value} body -- which
+    # is what the earlier probes did -- passes while the button is broken, because
+    # the flat shape IS what the single-intent fallback reads.
+    pa = post("/api/parse", {"text": "村民血量改成1000"})
+    bt = post("/api/build", {"intents": pa.get("intents") or [], "title": "gate-page-build"})
+    note("/api/build (page shape, 1)", bt.get("ok") is True, " %s" % (bt.get("error") or ""))
+    pa2 = post("/api/parse", {"text": "村民血量改成1000。把织布机和铸币术做成只能选一个"})
+    bt2 = post("/api/build", {"intents": pa2.get("intents") or [], "title": "gate-page-two"})
+    note("/api/build (page shape, 2)", bt2.get("ok") is False,
+         " 拒绝而非悄悄只装一句")
+
     tg = post("/api/toggle-group", {"techs": [22, 23], "title": "gate-toggle"})
     note("/api/toggle-group", tg.get("ok") is True and tg.get("entries") == 21,
          " %s 条" % tg.get("entries"))

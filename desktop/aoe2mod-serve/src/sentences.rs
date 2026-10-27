@@ -53,6 +53,94 @@ pub const STAT_WORDS: &[(&str, &[&str])] = &[
     ("research_time", &["研究时间", "研发时间", "研究速度", "研发速度"]),
 ];
 
+/// Where the sentence says it is about a RELATIONSHIP between records, and which
+/// kind.  The words are taken from the reference reader verbatim: they were
+/// arrived at by ordinary play, and inventing a different set would only move
+/// which sentences are refused without making the reader better.
+const GROUP_HINTS: &[&str] = &[
+    "只能选一个", "只能研究一个", "只能研究其中一个", "只能选择其中一个",
+    "二选一", "互斥", "互相排斥",
+    "做成一组", "归成一组", "分成一组", "同一组", "一组里",
+    "可以互相开关", "互相开关", "互相切换", "开关组",
+    "按顺序循环", "循环切换", "轮流", "做成循环", "循环",
+];
+
+/// Words that only mean "a relationship" when the sentence really does name two
+/// records.  「其中一个」 as a STRONG hint also swallowed 「其中一个村民血量改成1000」,
+/// a sentence with nothing to do with groups, so it is weak: with two technology
+/// spans it is a group, and without them the reader carries on instead of
+/// refusing.
+const GROUP_HINTS_WEAK: &[&str] = &["其中一个"];
+
+/// The three `Type` spellings are the FILE's own, so the sentence maps onto them
+/// rather than onto Chinese names the engine has never heard of.  The more
+/// specific phrase must be tested first: a sentence can name two relationships,
+/// and the one it stated first is the one the player meant.
+const GROUP_KIND_WORDS: &[(&[&str], &str)] = &[
+    (&["可以互相开关", "互相开关", "互相切换", "开关组"], "Toggleable"),
+    (&["按顺序循环", "循环切换", "轮流", "做成循环", "循环"], "Cycle"),
+];
+
+fn group_hint(text: &str) -> Option<usize> {
+    let mut best: Option<usize> = None;
+    for w in GROUP_HINTS {
+        if let Some(pos) = text.find(w) {
+            if best.map_or(true, |b| pos < b) {
+                best = Some(pos);
+            }
+        }
+    }
+    best
+}
+
+/// `Toggleable` / `Cycle`, else the file's default `MutuallyExclusive` -- a
+/// sentence saying "一组" without naming a relationship gets the default the
+/// schema declares, because that is what the shipped groups are and what a player
+/// means by "only one of them".
+fn group_kind(text: &str) -> &'static str {
+    for (words, kind) in GROUP_KIND_WORDS {
+        if words.iter().any(|w| text.contains(w)) {
+            return kind;
+        }
+    }
+    "MutuallyExclusive"
+}
+
+/// Every distinct technology named in `text`, in the order they appear.
+///
+/// A group is the only intent that takes more than one record, so this cannot
+/// reuse `rightmost_name`: that returns ONE id and the act of choosing it is the
+/// bug.  Longest-match-wins at each position keeps 「铸币」 from being read as a
+/// prefix of a longer technology name.
+fn tech_names_in(n: &Names, text: &str) -> Vec<i16> {
+    let mut hits: Vec<(usize, usize, i16)> = Vec::new();
+    for (id, names) in n.techs.iter() {
+        for nm in names {
+            if nm.is_empty() {
+                continue;
+            }
+            if let Some(pos) = text.find(nm.as_str()) {
+                hits.push((pos, nm.chars().count(), *id));
+            }
+        }
+    }
+    // Longest first, so a short name sitting inside a long one loses.
+    hits.sort_by(|a, b| a.0.cmp(&b.0).then(b.1.cmp(&a.1)));
+    let mut out: Vec<i16> = Vec::new();
+    let mut taken_until = 0usize;
+    for (pos, len, id) in hits {
+        if pos < taken_until {
+            continue;
+        }
+        taken_until = pos + len;
+        if !out.contains(&id) {
+            out.push(id);
+        }
+    }
+    out
+}
+
+
 /// One readable sentence and what it asks for.
 #[derive(Debug, Clone)]
 pub struct Clause {
@@ -92,6 +180,15 @@ pub struct Intent {
     /// sentence names -- those are two different id spaces.
     pub class_candidates: Option<Vec<i16>>,
     pub attack_kind: Option<String>,
+    /// `tech.toggle_group` only: every technology the sentence named, in the order
+    /// it named them.  A group is the one intent that takes MORE THAN ONE record
+    /// on purpose, so it cannot ride on the single-entity `tech` field: reading
+    /// "把织布机和铸币术做成只能选一个" through that field keeps 织布机 and drops
+    /// 铸币术, which is a confident edit of half the sentence.
+    pub techs: Option<Vec<i16>>,
+    /// `tech.toggle_group` only: the FILE's own `Type` spelling --
+    /// `MutuallyExclusive` / `Toggleable` / `Cycle`.
+    pub group_type: Option<String>,
 }
 
 impl Intent {
@@ -145,6 +242,13 @@ impl Intent {
         }
         if let Some(v) = &self.attack_kind {
             parts.push(format!("\"kind\":\"{}\"", crate::server::json_escape(v)));
+        }
+        if let Some(v) = &self.techs {
+            let list: Vec<String> = v.iter().map(|x| x.to_string()).collect();
+            parts.push(format!("\"techs\":[{}]", list.join(",")));
+        }
+        if let Some(v) = &self.group_type {
+            parts.push(format!("\"type\":\"{}\"", crate::server::json_escape(v)));
         }
         format!("{{{}}}", parts.join(","))
     }
@@ -397,6 +501,58 @@ pub fn read_clause(text: &str) -> Clause {
             }
         }
     }
+    // --- tech.toggle_group: SEVERAL technologies, not one ------------------
+    // Before everything below, because this sentence names more than one
+    // technology ON PURPOSE.  Read through the single-entity path it keeps the
+    // first name and silently drops the rest -- a confident edit of half the
+    // sentence, which is the exact shape of wrong answer this reader exists to
+    // avoid.
+    {
+        let hinted = group_hint(text).is_some()
+            || GROUP_HINTS_WEAK.iter().any(|w| text.contains(w));
+        if hinted {
+            if let Some(n) = names().as_ref() {
+                let techs = tech_names_in(n, text);
+                if techs.len() >= 2 {
+                    let mut it = Intent::default();
+                    it.intent = "tech.toggle_group".to_string();
+                    it.tech = Some(techs[0]);
+                    it.group_type = Some(group_kind(text).to_string());
+                    it.techs = Some(techs);
+                    return Clause {
+                        text: text.to_string(),
+                        intent: Some(it),
+                        why: None,
+                        entity_name: None,
+                        entity_id: None,
+                    };
+                }
+                // A STRONG hint with fewer than two technologies is half a group,
+                // so it is refused BY NAME -- "这句话里没有数字" names the wrong
+                // problem, and the player's sentence very likely has no number at
+                // all because none is needed.
+                //
+                // A WEAK hint is not: 「其中一个村民血量改成1000」 says nothing
+                // about a relationship, so the ordinary reader gets the sentence
+                // instead of turning it into a refusal.
+                if group_hint(text).is_some() {
+                    let mut cl = Clause {
+                        text: text.to_string(),
+                        intent: None,
+                        why: Some(format!(
+                            "做成一组要说出至少两项科技，这句里只认出 {} 项。可以写「把A和B做成只能选一个」",
+                            techs.len()
+                        )),
+                        entity_name: None,
+                        entity_id: None,
+                    };
+                    cl.why = cl.why.take();
+                    return cl;
+                }
+            }
+        }
+    }
+
     let mut cl = Clause {
         text: text.to_string(),
         intent: None,
