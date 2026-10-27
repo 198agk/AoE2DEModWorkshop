@@ -38,7 +38,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 OUT = r"D:\Software\AI\AoE2ModWorkshop"
 GOLDEN = ["stat_offsets.json", "entity_names.json", "ai_grammar.json",
-          "tech_offsets.json", "effect_offsets.json", "command_cards.json", "class_names.json"]
+          "tech_offsets.json", "effect_offsets.json", "command_cards.json", "class_names.json", "sprite_pairs.json"]
 
 
 def install_tables(app_dir):

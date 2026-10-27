@@ -169,6 +169,9 @@ pub fn build_and_install(server: &Server, req: &serde_json::Value) -> Result<Str
     if intent == "tech.effect" {
         return build_effect(server, req);
     }
+    if intent == "unit.sprite" {
+        return build_sprite(server, req);
+    }
     if intent == "unit.card_move" || intent == "card_move" {
         return build_card_move(server, req);
     }
@@ -810,4 +813,148 @@ fn build_card_move(server: &Server, req: &serde_json::Value) -> Result<String, S
 /// private so its signature can change without touching the routing layer.
 pub fn build_card_move_pub(server: &Server, req: &serde_json::Value) -> Result<String, String> {
     build_card_move(server, req)
+}
+
+
+/// `unit.sprite` in RENAME mode: re-point graphics records, ship no pictures.
+///
+/// Copy mode would ship 466 `.sld` files (438 MB). Rename mode ships none: the
+/// `.dat` already says which file to load per graphics record, so re-pointing
+/// them is the whole edit -- ~12 MB.
+///
+/// The hazard is the one this project paid for: a graphics record's `file` string
+/// has a STORED WIDTH, and re-emitting it at a different length must advance the
+/// input cursor by the OLD width or every later verbatim read shifts. That is
+/// what `Graphic::file_len` is for, and it is passed through here.
+fn build_sprite(server: &Server, req: &serde_json::Value) -> Result<String, String> {
+    use crate::write23::{write_stage1, write_stages23};
+    use crate::write47::write_stages47;
+    use crate::write810::write_stages810;
+    use crate::writer::Writer;
+    use aoe2mod_dat::{
+        load_dat, read_stage1, read_stages23, read_stages47, read_stages810, Reader,
+    };
+
+    let title = req
+        .get("title")
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.trim().is_empty())
+        .map(|s| s.to_string())
+        .unwrap_or_else(|| "sprite".to_string());
+    let install = req.get("install").and_then(|v| v.as_bool()).unwrap_or(false);
+    if server.parsed.lock().unwrap().is_none() {
+        return Err("游戏数据还没读完".into());
+    }
+
+    let pairs = crate::spritemap::SpritePairs::load(&crate::spritemap::table_path())
+        .map_err(|e| format!("读不到贴图对照表：{e}"))?;
+    if pairs.pairs.is_empty() {
+        return Err("贴图对照表是空的".into());
+    }
+
+    let root = crate::game_root().ok_or("找不到游戏目录")?;
+    let dat = root.join("resources/_common/dat/empires2_x2_p1.dat");
+    let (raw, _how) = load_dat(&dat).map_err(|e| e.to_string())?;
+    let mut r = Reader::new(&raw);
+    let s1 = read_stage1(&mut r).map_err(|e| e.to_string())?;
+    let gv = s1.game_version;
+    let mut s23 = read_stages23(&mut r).map_err(|e| e.to_string())?;
+    let s47 = read_stages47(&mut r, gv).map_err(|e| e.to_string())?;
+    let s810 = read_stages810(&mut r, gv).map_err(|e| e.to_string())?;
+
+    // Re-point the graphics records. `file_len` is left ALONE on purpose: it is
+    // the width the INPUT used, and the writer needs it to advance the cursor.
+    let mut touched = 0usize;
+    for g in s23.graphics.iter_mut() {
+        if let Some(donor) = crate::spritemap::donor_for(&pairs, &g.file) {
+            if &g.file != donor {
+                g.file = donor.clone();
+                touched += 1;
+            }
+        }
+    }
+    if touched == 0 {
+        return Err("没有任何图形记录需要改指向".into());
+    }
+
+    let mut w = Writer::new(&raw);
+    write_stage1(&mut w, &s1).map_err(|e| e.to_string())?;
+    write_stages23(&mut w, &s23, &raw).map_err(|e| e.to_string())?;
+    write_stages47(&mut w, &s47, gv).map_err(|e| e.to_string())?;
+    write_stages810(&mut w, &s810).map_err(|e| e.to_string())?;
+    let out = w.out;
+    // NOT `mismatches != 0`: this edit changes the LENGTH of a string, so every
+    // byte after it legitimately differs from the input. The round-trip check
+    // applies to unmodified builds, where the whole stream must be identical.
+    // Here the gate is the RE-PARSE below: if the cursor bookkeeping is right the
+    // output parses to its own EOF, and if it is wrong it will not.
+    let _ = w.mismatches;
+
+    // Re-parse the OUTPUT: the whole point of rename mode is that the records say
+    // what we asked and nothing else moved.
+    let mut r2 = Reader::new(&out);
+    let o1 = read_stage1(&mut r2).map_err(|e| e.to_string())?;
+    let _ = read_stages23(&mut r2).map_err(|e| e.to_string())?;
+    let _ = read_stages47(&mut r2, o1.game_version).map_err(|e| e.to_string())?;
+    let _ = read_stages810(&mut r2, o1.game_version).map_err(|e| e.to_string())?;
+    if r2.pos != out.len() {
+        return Err(format!(
+            "改完之后重新解析停在 {}，文件长 {}",
+            r2.pos,
+            out.len()
+        ));
+    }
+
+    let build_root = std::env::temp_dir().join("aoe2mod-native-build").join(&title);
+    let built = crate::build::build_data_mod(
+        &build_root,
+        &out,
+        &title,
+        "aoe2mod",
+        &format!("sprite rename: {touched} records"),
+        true,
+    )?;
+
+    let mut installed_to = String::new();
+    if install {
+        let prof = crate::mods::profile_root().ok_or("找不到玩家档案目录")?;
+        let dest = crate::build::install_local(&prof, &built, &title)?;
+        installed_to = dest.display().to_string();
+    }
+
+    let (base_file_sha, base_raw_sha) = match crate::updates::fingerprint(&dat, true) {
+        Some((f, rr, _v)) => (f, rr),
+        None => (String::new(), None),
+    };
+    let dat_out_sha = sha256_bytes(&built.compressed);
+    crate::updates::remember_build(
+        &title,
+        "aoe2mod",
+        &format!("sprite rename: {touched} records"),
+        serde_json::json!([{
+            "intent": "unit.sprite",
+            "unit": pairs.unit,
+            "donor": pairs.donor,
+            "mode": "rename"
+        }]),
+        &base_file_sha,
+        base_raw_sha.as_deref(),
+        &dat_out_sha,
+        true,
+    )
+    .map_err(|e| format!("建好了但没能写构建记录：{e}"))?;
+
+    Ok(format!(
+        "{{\"ok\":true,\"intent\":\"unit.sprite\",\"mode\":\"rename\",\"records\":{},\"dat_bytes\":{},\"compressed\":{},\"built\":\"{}\",\"installed\":\"{}\"}}",
+        touched,
+        built.dat_bytes,
+        built.compressed.len(),
+        crate::server::json_escape(&built.dir.display().to_string()),
+        crate::server::json_escape(&installed_to)
+    ))
+}
+
+/// Public wrapper for the routing layer.
+pub fn build_sprite_pub(server: &Server, req: &serde_json::Value) -> Result<String, String> {
+    build_sprite(server, req)
 }
