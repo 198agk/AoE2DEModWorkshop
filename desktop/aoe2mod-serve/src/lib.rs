@@ -10,6 +10,7 @@
 //! server must decide what to do when the spawn fails, and every answer to that
 //! ("wait 150 s", "show an error page") has already cost this project a round.
 pub mod togglegroup;
+pub mod spriteart;
 pub mod spritemap;
 pub mod attack_class;
 pub mod cardmove;
@@ -29,6 +30,7 @@ pub mod build;
 pub mod ddstex;
 pub mod icons;
 pub mod mods;
+pub mod preview;
 pub mod recipes;
 pub mod sentences;
 pub mod slots;

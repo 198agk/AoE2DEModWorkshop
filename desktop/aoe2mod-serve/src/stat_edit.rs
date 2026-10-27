@@ -10,6 +10,15 @@ use aoe2mod_dat::{
     load_dat, read_stage1, read_stages23, read_stages47, read_stages810, Reader,
 };
 
+/// "Tell me what you would do; change nothing."
+///
+/// The preview calls the builders with this set so it reports the build's own
+/// numbers instead of a second calculation.  Every builder honours it at exactly
+/// one place: the line before it creates the mod folder.
+pub fn is_dry(req: &serde_json::Value) -> bool {
+    req.get("dry").and_then(|v| v.as_bool()).unwrap_or(false)
+}
+
 /// Every record id that an edit named after `unit` has to touch.
 ///
 /// Reads the exported family table, so the preview and the build answer this
@@ -417,6 +426,21 @@ pub fn build_one(server: &Server, req: &serde_json::Value) -> Result<String, Str
         write_at(&mut out, m.offset, m.kind, before + mirror_delta);
     }
 
+    let head = format!(
+        "{{\"ok\":true,\"stat\":\"{}\",\"unit\":{},\"civs\":{},\"variants\":{},\"edit_count\":{},\"mirror_count\":{},\"before\":{},\"value\":{}",
+        crate::server::json_escape(stat),
+        unit,
+        civ_count(&targets),
+        family.len(),
+        targets.len() + mirrors.len(),
+        mirrors.len(),
+        old,
+        new_value
+    );
+    if is_dry(req) {
+        return Ok(format!("{head},\"dry\":true,\"dat_bytes\":0,\"compressed\":0,\"built\":\"\",\"installed\":\"\"}}"));
+    }
+
     let build_root = std::env::temp_dir().join("aoe2mod-native-build").join(&title);
     let built = crate::build::build_data_mod(
         &build_root,
@@ -471,20 +495,12 @@ pub fn build_one(server: &Server, req: &serde_json::Value) -> Result<String, Str
     )
     .map_err(|e| format!("建好了但没能写构建记录：{e}"))?;
 
+    // Distinct civilizations, not writes: `targets.len()` under the name `civs`
+    // says 1701 civilizations exist after family expansion.  The two numbers
+    // answer different questions and the reference calls them `civ_count` and
+    // `edit_count`.
     Ok(format!(
-        "{{\"ok\":true,\"stat\":\"{}\",\"unit\":{},\"civs\":{},\"variants\":{},\"edit_count\":{},\"mirror_count\":{},\"before\":{},\"value\":{},\"dat_bytes\":{},\"compressed\":{},\"built\":\"{}\",\"installed\":\"{}\"}}",
-        crate::server::json_escape(stat),
-        unit,
-        // Distinct civilizations, not writes.  `targets.len()` used to be
-        // reported here under the name `civs`, which after family expansion says
-        // 1701 civilizations exist.  The two numbers answer different questions
-        // and the reference calls them `civ_count` and `edit_count`.
-        civ_count(&targets),
-        family.len(),
-        targets.len() + mirrors.len(),
-        mirrors.len(),
-        old,
-        new_value,
+        "{head},\"dat_bytes\":{},\"compressed\":{},\"built\":\"{}\",\"installed\":\"{}\"}}",
         built.dat_bytes,
         built.compressed.len(),
         crate::server::json_escape(&built.dir.display().to_string()),
@@ -577,6 +593,21 @@ fn build_unit_field(
         .map(|s| s.to_string())
         .unwrap_or_else(|| format!("{intent} {unit}"));
 
+    let head = format!(
+        "{{\"ok\":true,\"intent\":\"{}\",\"unit\":{},\"field\":\"{}\",\"civs\":{},\"variants\":{},\"edit_count\":{},\"before\":{},\"value\":{}",
+        crate::server::json_escape(intent),
+        unit,
+        crate::server::json_escape(&resolved.label),
+        resolved.civ_count(),
+        family.len(),
+        resolved.hits.len(),
+        resolved.before,
+        new_value
+    );
+    if is_dry(req) {
+        return Ok(format!("{head},\"dry\":true,\"dat_bytes\":0,\"compressed\":0,\"built\":\"\",\"installed\":\"\"}}"));
+    }
+
     let build_root = std::env::temp_dir().join("aoe2mod-native-build").join(&title);
     let built = crate::build::build_data_mod(
         &build_root,
@@ -621,15 +652,7 @@ fn build_unit_field(
     .map_err(|e| format!("建好了但没能写构建记录：{e}"))?;
 
     Ok(format!(
-        "{{\"ok\":true,\"intent\":\"{}\",\"unit\":{},\"field\":\"{}\",\"civs\":{},\"variants\":{},\"edit_count\":{},\"before\":{},\"value\":{},\"dat_bytes\":{},\"compressed\":{},\"built\":\"{}\",\"installed\":\"{}\"}}",
-        crate::server::json_escape(intent),
-        unit,
-        crate::server::json_escape(&resolved.label),
-        resolved.civ_count(),
-        family.len(),
-        resolved.hits.len(),
-        resolved.before,
-        new_value,
+        "{head},\"dat_bytes\":{},\"compressed\":{},\"built\":\"{}\",\"installed\":\"{}\"}}",
         built.dat_bytes,
         built.compressed.len(),
         crate::server::json_escape(&built.dir.display().to_string()),
@@ -661,18 +684,27 @@ fn build_unit_attack_class(server: &Server, req: &serde_json::Value) -> Result<S
     // The candidate list comes from the sentence layer when it has one, so a
     // sentence that names a class can narrow it.  The default is the schema's
     // `attack_classes.attack|armour.class_candidates`, tried in order.
-    let classes: Vec<i16> = req
-        .get("class_candidates")
-        .and_then(|v| v.as_array())
-        .map(|a| a.iter().filter_map(|x| x.as_i64().map(|v| v as i16)).collect())
-        .filter(|v: &Vec<i16>| !v.is_empty())
-        .unwrap_or_else(|| {
-            if kind == "armour" {
-                vec![4, 3]
-            } else {
-                vec![3, 4]
-            }
-        });
+    // A class the sentence named is the ONLY candidate, exactly as the
+    // reference's `_class_selectors` does it (`compiler.py:2100`: `if "class_id"
+    // in b: return [b["class_id"]]`).  Keeping the schema's list as a fallback
+    // would make a sentence that asked for a class the unit does not carry
+    // silently edit a different class instead of refusing -- measured on
+    // 「民兵对建筑攻击加2」, which asked for 3 and used to write 4.
+    let classes: Vec<i16> = match req.get("class_id").and_then(|v| v.as_i64()) {
+        Some(c) => vec![c as i16],
+        None => req
+            .get("class_candidates")
+            .and_then(|v| v.as_array())
+            .map(|a| a.iter().filter_map(|x| x.as_i64().map(|v| v as i16)).collect())
+            .filter(|v: &Vec<i16>| !v.is_empty())
+            .unwrap_or_else(|| {
+                if kind == "armour" {
+                    vec![4, 3]
+                } else {
+                    vec![3, 4]
+                }
+            }),
+    };
     build_unit_field(server, req, |s810, family, unit, wanted| {
         crate::unitfield::damage_targets(s810, family, wanted, &kind, &classes, unit)
     })
@@ -817,6 +849,22 @@ fn build_tech(server: &Server, req: &serde_json::Value) -> Result<String, String
     }
     let diffs = raw.iter().zip(out.iter()).filter(|(a, b)| a != b).count();
 
+    let head = format!(
+        "{{\"ok\":true,\"intent\":\"{}\",\"tech\":{},\"locations\":{},\"edit_count\":{},\"before\":{},\"value\":{},\"bytes_changed\":{}",
+        crate::server::json_escape(intent),
+        tech,
+        offsets.len(),
+        // Every copy is written, so the reach IS the location count.  A tech
+        // with one location says "1 处", which is what the reference says.
+        offsets.len(),
+        old,
+        new_value,
+        diffs
+    );
+    if is_dry(req) {
+        return Ok(format!("{head},\"dry\":true,\"dat_bytes\":0,\"compressed\":0,\"built\":\"\",\"installed\":\"\"}}"));
+    }
+
     let build_root = std::env::temp_dir().join("aoe2mod-native-build").join(&title);
     let built = crate::build::build_data_mod(
         &build_root,
@@ -864,13 +912,7 @@ fn build_tech(server: &Server, req: &serde_json::Value) -> Result<String, String
     .map_err(|e| format!("建好了但没能写构建记录：{e}"))?;
 
     Ok(format!(
-        "{{\"ok\":true,\"intent\":\"{}\",\"tech\":{},\"locations\":{},\"before\":{},\"value\":{},\"bytes_changed\":{},\"built\":\"{}\",\"installed\":\"{}\"}}",
-        crate::server::json_escape(intent),
-        tech,
-        offsets.len(),
-        old,
-        new_value,
-        diffs,
+        "{head},\"built\":\"{}\",\"installed\":\"{}\"}}",
         crate::server::json_escape(&built.dir.display().to_string()),
         crate::server::json_escape(&installed_to)
     ))
@@ -960,16 +1002,25 @@ fn build_effect(server: &Server, req: &serde_json::Value) -> Result<String, Stri
 
     let table = crate::effectedit::EffectTable::load(&crate::effectedit::table_path())
         .map_err(|e| format!("读不到效果偏移表：{e}"))?;
+    // `command` is 0-BASED, which is what the reference's intent carries
+    // (`nl.py:1769`: `"command": idx`, and `idx` already had one subtracted).
+    // The sentence layer therefore must not subtract, and this side must not
+    // either.  Measured both ways: with `- 1` here and `idx = ordv` there the
+    // two cancelled out, so 「第2条」 wrote the THIRD command and looked fine;
+    // removing only the sentence side made 「第1条」 ask for command 0 minus one,
+    // which `as u64` had already wrapped past the end and reported as "没有第 0
+    // 条命令".  Both numbers are positions, so exactly one of them converts.
     let cmd = table
-        .command(effect_id as i32, command - 1)
+        .command(effect_id as i32, command)
         .ok_or_else(|| {
             format!(
-                "效果 {effect_id} 没有第 {command} 条命令（加一条是另一件事，会让后面所有效果错位）"
+                "效果 {effect_id} 没有第 {} 条命令（加一条是另一件事，会让后面所有效果错位）",
+                command + 1
             )
         })?;
     let off = *cmd
         .get(&field)
-        .ok_or_else(|| format!("效果 {effect_id} 第 {command} 条没有 {field} 字段"))?;
+        .ok_or_else(|| format!("效果 {effect_id} 第 {} 条没有 {field} 字段", command + 1))?;
 
     let mut w = Writer::new(&raw);
     write_stage1(&mut w, &s1).map_err(|e| e.to_string())?;
@@ -1001,6 +1052,21 @@ fn build_effect(server: &Server, req: &serde_json::Value) -> Result<String, Stri
         _ => write_at(&mut out, off, aoe2mod_dat::stats::StatKind::F32, new_value),
     }
     let diffs = raw.iter().zip(out.iter()).filter(|(a, b)| a != b).count();
+
+    let head = format!(
+        "{{\"ok\":true,\"tech\":{},\"effect\":{},\"command\":{},\"edit_count\":1,\"field\":\"{}\",\"field_kind\":\"{}\",\"before\":{},\"value\":{},\"bytes_changed\":{}",
+        tech,
+        effect_id,
+        command,
+        crate::server::json_escape(&field),
+        kind_name,
+        old,
+        new_value,
+        diffs
+    );
+    if is_dry(req) {
+        return Ok(format!("{head},\"dry\":true,\"dat_bytes\":0,\"compressed\":0,\"built\":\"\",\"installed\":\"\"}}"));
+    }
 
     let build_root = std::env::temp_dir().join("aoe2mod-native-build").join(&title);
     let built = crate::build::build_data_mod(
@@ -1043,15 +1109,7 @@ fn build_effect(server: &Server, req: &serde_json::Value) -> Result<String, Stri
     .map_err(|e| format!("建好了但没能写构建记录：{e}"))?;
 
     Ok(format!(
-        "{{\"ok\":true,\"tech\":{},\"effect\":{},\"command\":{},\"field\":\"{}\",\"field_kind\":\"{}\",\"before\":{},\"value\":{},\"bytes_changed\":{},\"built\":\"{}\",\"installed\":\"{}\"}}",
-        tech,
-        effect_id,
-        command,
-        crate::server::json_escape(&field),
-        kind_name,
-        old,
-        new_value,
-        diffs,
+        "{head},\"built\":\"{}\",\"installed\":\"{}\"}}",
         crate::server::json_escape(&built.dir.display().to_string()),
         crate::server::json_escape(&installed_to)
     ))
@@ -1177,6 +1235,28 @@ fn build_card_move(server: &Server, req: &serde_json::Value) -> Result<String, S
     })?;
 
     let diffs = raw.iter().zip(out.iter()).filter(|(a, b)| a != b).count();
+    let moved: Vec<String> = report
+        .moved
+        .iter()
+        .map(|(u, from, to)| format!("{{\"unit\":{u},\"from\":{from},\"to\":{to}}}"))
+        .collect();
+    let head = format!(
+        "{{\"ok\":true,\"building\":{},\"offset\":{},\"before\":{},\"after\":{},\"moved\":[{}],\"edit_count\":{},\"bytes_changed\":{}",
+        building,
+        report.offset,
+        report.before,
+        report.after,
+        moved.join(","),
+        // A move that rearranged nothing is still one card slot changed, but
+        // reporting 0 would read as "nothing will happen" for a sentence that
+        // does something.  The moved list already tells the true story.
+        report.moved.len().max(1),
+        diffs
+    );
+    if is_dry(req) {
+        return Ok(format!("{head},\"dry\":true,\"dat_bytes\":0,\"compressed\":0,\"built\":\"\",\"installed\":\"\"}}"));
+    }
+
     let build_root = std::env::temp_dir().join("aoe2mod-native-build").join(&title);
     let built = crate::build::build_data_mod(
         &build_root,
@@ -1216,19 +1296,8 @@ fn build_card_move(server: &Server, req: &serde_json::Value) -> Result<String, S
     )
     .map_err(|e| format!("建好了但没能写构建记录：{e}"))?;
 
-    let moved: Vec<String> = report
-        .moved
-        .iter()
-        .map(|(u, from, to)| format!("{{\"unit\":{u},\"from\":{from},\"to\":{to}}}"))
-        .collect();
     Ok(format!(
-        "{{\"ok\":true,\"building\":{},\"offset\":{},\"before\":{},\"after\":{},\"moved\":[{}],\"bytes_changed\":{},\"built\":\"{}\",\"installed\":\"{}\"}}",
-        building,
-        report.offset,
-        report.before,
-        report.after,
-        moved.join(","),
-        diffs,
+        "{head},\"built\":\"{}\",\"installed\":\"{}\"}}",
         crate::server::json_escape(&built.dir.display().to_string()),
         crate::server::json_escape(&installed_to)
     ))
@@ -1272,14 +1341,37 @@ fn build_sprite(server: &Server, req: &serde_json::Value) -> Result<String, Stri
         return Err("游戏数据还没读完".into());
     }
 
-    let pairs = crate::spritemap::SpritePairs::load(&crate::spritemap::table_path())
-        .map_err(|e| format!("读不到贴图对照表：{e}"))?;
-    if pairs.pairs.is_empty() {
-        return Err("贴图对照表是空的".into());
+    // Which unit and which donor the sentence named.  Absent means the request
+    // came from a path that had no sentence (the page's own sprite form), and in
+    // that case there is nothing to decide: refuse rather than pick a pair, which
+    // is exactly how this function used to edit the villager for an archer
+    // sentence.
+    let target = req.get("unit").and_then(|v| v.as_i64());
+    let donor = req.get("donor").and_then(|v| v.as_i64());
+    let (Some(target), Some(donor)) = (target, donor) else {
+        return Err("没说要换成哪个单位的图".into());
+    };
+    let target = target as i16;
+    let donor = donor as i16;
+    if target == donor {
+        return Err("目标单位和捐赠方是同一个，改了等于没改".into());
+    }
+
+    let art = crate::spriteart::SpriteArt::load(&crate::spriteart::table_path())
+        .map_err(|e| format!("读不到贴图艺术表：{e}"))?;
+    if art.arts.is_empty() || art.units.is_empty() {
+        return Err("贴图艺术表是空的".into());
     }
 
     let root = crate::game_root().ok_or("找不到游戏目录")?;
     let dat = root.join("resources/_common/dat/empires2_x2_p1.dat");
+    let gdir = root.join("resources/_common/drs/graphics");
+    let wanted = civ_filter(req);
+    let plan = art.plan(target, donor, &wanted, Some(&gdir))?;
+    if wanted.is_some() && plan.civs == 0 {
+        return Err("这些文明里没有这个单位的散图".into());
+    }
+
     let (raw, _how) = load_dat(&dat).map_err(|e| e.to_string())?;
     let mut r = Reader::new(&raw);
     let s1 = read_stage1(&mut r).map_err(|e| e.to_string())?;
@@ -1288,19 +1380,29 @@ fn build_sprite(server: &Server, req: &serde_json::Value) -> Result<String, Stri
     let s47 = read_stages47(&mut r, gv).map_err(|e| e.to_string())?;
     let s810 = read_stages810(&mut r, gv).map_err(|e| e.to_string())?;
 
-    // Re-point the graphics records. `file_len` is left ALONE on purpose: it is
-    // the width the INPUT used, and the writer needs it to advance the cursor.
+    // Re-point the graphics records whose file the decision named. `file_len` is
+    // left ALONE on purpose: it is the width the INPUT used, and the writer needs
+    // it to advance the cursor.
     let mut touched = 0usize;
+    let mut moved_by_name: std::collections::BTreeMap<String, usize> =
+        std::collections::BTreeMap::new();
     for g in s23.graphics.iter_mut() {
-        if let Some(donor) = crate::spritemap::donor_for(&pairs, &g.file) {
-            if &g.file != donor {
-                g.file = donor.clone();
+        if let Some(donor_file) = plan.want.get(&g.file) {
+            if &g.file != donor_file {
+                *moved_by_name.entry(g.file.clone()).or_insert(0) += 1;
+                g.file = donor_file.clone();
                 touched += 1;
             }
         }
     }
     if touched == 0 {
-        return Err("没有任何图形记录需要改指向".into());
+        // The decision named files no record uses.  That is not a success with a
+        // small number: it is a rename of nothing, and the reference refuses it in
+        // the same words.
+        return Err(format!(
+            "没有任何图像记录用这 {} 个目标文件名，改名等于什么也没做",
+            plan.want.len()
+        ));
     }
 
     let mut w = Writer::new(&raw);
@@ -1331,6 +1433,98 @@ fn build_sprite(server: &Server, req: &serde_json::Value) -> Result<String, Stri
         ));
     }
 
+    // What the decision came to, so the preview can describe THIS edit rather
+    // than a generic one.  `file_count` is the number of distinct filenames the
+    // decision covers (both resolutions), which is what a person means by "how
+    // many pictures"; `edit_count` is how many records actually moved.
+    let stems_json = |v: &[String]| {
+        v.iter()
+            .map(|s| format!("\"{}\"", json_escape(s)))
+            .collect::<Vec<String>>()
+            .join(",")
+    };
+    let unmapped_json = plan
+        .unmapped
+        .iter()
+        .map(|(t, f)| format!("{{\"token\":\"{}\",\"file\":\"{}\"}}", json_escape(t), json_escape(f)))
+        .collect::<Vec<String>>()
+        .join(",");
+    let mut warnings: Vec<String> = Vec::new();
+    for (anim, tg, dg) in plan.grid_mismatches.iter() {
+        let grid = |g: &Vec<Vec<i64>>| {
+            g.first()
+                .map(|r| format!("{}x{}", r[0], r[1]))
+                .unwrap_or_else(|| "?".into())
+        };
+        warnings.push(format!(
+            "换来的「{}」动画帧格子和原来的不一样（{} 对 {}），游戏可能照着错的行列去播，而不是报错",
+            anim,
+            grid(dg),
+            grid(tg)
+        ));
+    }
+    if !plan.unmapped.is_empty() {
+        let mut words: Vec<String> = plan.unmapped.iter().map(|(t, _f)| t.clone()).collect();
+        words.sort();
+        words.dedup();
+        warnings.push(format!(
+            "捐赠方没有这些动画，{}张原图会留着：{}",
+            words.len(),
+            words.join("、")
+        ));
+    }
+    let warnings_json = warnings
+        .iter()
+        .map(|w| format!("\"{}\"", json_escape(w)))
+        .collect::<Vec<String>>()
+        .join(",");
+    // The whole-map report, for a caller that wants to know which names moved.
+    let moved_json = moved_by_name
+        .iter()
+        .map(|(k, n)| format!("{{\"was\":\"{}\",\"count\":{}}}", json_escape(k), n))
+        .collect::<Vec<String>>()
+        .join(",");
+
+    // Which civilizations the decision actually reached, by their `.dat` name, so
+    // a scoped rename can say so instead of claiming all 63.
+    let scope_names: Vec<String> = match &wanted {
+        Some(list) => list.clone(),
+        None => art.civ_names.clone(),
+    };
+    let scope_json = scope_names
+        .iter()
+        .filter(|n| !n.is_empty())
+        .map(|n| format!("\"{}\"", json_escape(n)))
+        .collect::<Vec<String>>()
+        .join(",");
+
+    let head = format!(
+        "{{\"ok\":true,\"intent\":\"unit.sprite\",\"mode\":\"rename\",\"records\":{touched},\"edit_count\":{touched},\
+\"target\":{target},\"donor\":{donor},\
+\"target_stems\":[{}],\"donor_stems\":[{}],\
+\"file_count\":{},\"civ_count\":{},\
+\"target_names\":{},\"donor_names\":{},\
+\"civ_names\":[{}],\
+\"unmapped\":[{}],\"warnings\":[{}],\"moved\":[{}]",
+        stems_json(&plan.target_stems),
+        stems_json(&plan.donor_stems),
+        plan.want.len(),
+        plan.civs,
+        plan.want.len(),
+        plan
+            .want
+            .values()
+            .collect::<std::collections::BTreeSet<&String>>()
+            .len(),
+        scope_json,
+        unmapped_json,
+        warnings_json,
+        moved_json
+    );
+    if is_dry(req) {
+        return Ok(format!("{head},\"dry\":true,\"dat_bytes\":0,\"compressed\":0,\"built\":\"\",\"installed\":\"\"}}"));
+    }
+
     let build_root = std::env::temp_dir().join("aoe2mod-native-build").join(&title);
     let built = crate::build::build_data_mod(
         &build_root,
@@ -1359,8 +1553,8 @@ fn build_sprite(server: &Server, req: &serde_json::Value) -> Result<String, Stri
         &format!("sprite rename: {touched} records"),
         serde_json::json!([{
             "intent": "unit.sprite",
-            "unit": pairs.unit,
-            "donor": pairs.donor,
+            "unit": target,
+            "donor": donor,
             "mode": "rename"
         }]),
         &base_file_sha,
@@ -1371,8 +1565,7 @@ fn build_sprite(server: &Server, req: &serde_json::Value) -> Result<String, Stri
     .map_err(|e| format!("建好了但没能写构建记录：{e}"))?;
 
     Ok(format!(
-        "{{\"ok\":true,\"intent\":\"unit.sprite\",\"mode\":\"rename\",\"records\":{},\"dat_bytes\":{},\"compressed\":{},\"built\":\"{}\",\"installed\":\"{}\"}}",
-        touched,
+        "{head},\"dat_bytes\":{},\"compressed\":{},\"built\":\"{}\",\"installed\":\"{}\"}}",
         built.dat_bytes,
         built.compressed.len(),
         crate::server::json_escape(&built.dir.display().to_string()),
@@ -1419,6 +1612,30 @@ fn build_toggle_group(server: &Server, req: &serde_json::Value) -> Result<String
     let out_dir = std::env::temp_dir()
         .join("aoe2mod-native-build")
         .join(&title);
+    if is_dry(req) {
+        // The JSON layer is the whole edit, and it is refused or accepted by
+        // `add_group` -- so the preview has to run it, not guess.  Run it against
+        // a COPY of the document and throw the copy away.
+        let src = root.join("resources/_common/dat/linkedTechs.json");
+        let text = std::fs::read_to_string(&src)
+            .map_err(|e| format!("读不到 {}：{e}", src.display()))?;
+        let mut doc: serde_json::Value = serde_json::from_str(text.trim_start_matches('\u{feff}'))
+            .map_err(|e| format!("{} 不是合法 JSON：{e}", src.display()))?;
+        let entry = crate::togglegroup::add_group(&mut doc, &techs)?;
+        let total = doc
+            .get("LinkedTechs")
+            .and_then(|v| v.as_array())
+            .map(|a| a.len())
+            .unwrap_or(0);
+        return Ok(format!(
+            // `edit_count` must be here too: the preview reads the builder's own
+            // report, and a dry run that omits the field previews "0 edits" for
+            // an edit that writes one entry.  A zero meaning "not reported" is
+            // indistinguishable from a zero meaning "nothing will happen".
+            "{{\"ok\":true,\"intent\":\"tech.toggle_group\",\"entry\":{},\"entries\":{},\"edit_count\":1,\"files\":2,\"dry\":true,\"built\":\"\",\"installed\":\"\"}}",
+            entry, total
+        ));
+    }
     if out_dir.exists() {
         std::fs::remove_dir_all(&out_dir).map_err(|e| e.to_string())?;
     }
@@ -1487,7 +1704,10 @@ fn build_toggle_group(server: &Server, req: &serde_json::Value) -> Result<String
     .map_err(|e| format!("建好了但没能写构建记录：{e}"))?;
 
     Ok(format!(
-        "{{\"ok\":true,\"intent\":\"tech.toggle_group\",\"entry\":{},\"entries\":{},\"files\":2,\"built\":\"{}\",\"installed\":\"{}\"}}",
+        // One entry, not one per member: the array it lands in is keyed by
+        // group, and 「2 项做成一组」 changes that array once.  The reference
+        // reports edit_count 1 for the same sentence.
+        "{{\"ok\":true,\"intent\":\"tech.toggle_group\",\"entry\":{},\"entries\":{},\"edit_count\":1,\"files\":2,\"built\":\"{}\",\"installed\":\"{}\"}}",
         entry,
         total,
         crate::server::json_escape(&out_dir.display().to_string()),

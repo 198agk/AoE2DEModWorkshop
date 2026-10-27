@@ -176,8 +176,9 @@ def main(argv=None):
     # list derived from the same walk that produced the copy could not fail.
     # (`dat_baseline.json` is a test fixture, not a runtime input, hence absent.)
     required = ["ai_grammar.json", "class_names.json", "command_cards.json",
-                "effect_offsets.json", "entity_names.json", "sprite_pairs.json",
+                "effect_offsets.json", "entity_names.json", "sprite_art.json",
                 "stat_offsets.json", "tech_offsets.json", "civ_trees.json",
+                "tech_effects.json", "stat_mirrors.json",
                 # Without this one, every family edit silently writes ONE record
                 # (the villager becomes 63 writes instead of 1,701) and the
                 # screen still says "built ok" -- a missing table that reads as a

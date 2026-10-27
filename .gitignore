@@ -247,3 +247,5 @@ desktop/src-tauri/gen/
 # They are copies of the game's own data with a few bytes changed -- 23 MB of
 # it -- and any probe regenerates them in seconds.
 _out/
+_golden/sprite_art.json
+_golden/sprite_pairs.json

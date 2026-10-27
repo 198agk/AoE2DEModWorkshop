@@ -565,6 +565,23 @@ SUITES = [
     # answered ok with a fresh edit count while the installed file kept the old
     # bytes, because the replay neither installed nor reused the record's title.
     r"_probe\test_rebuild_installs.py",
+    # Does the reader put the target on the same BYTE as the reference?  Two
+    # implementations agreeing on the intent is not agreement: `tech.effect`
+    # subtracted one from the ordinal on both sides, so the report looked right
+    # while the writer edited the second command instead of the first.  Only a
+    # comparison of the resolved offset catches that.
+    r"_probe\test_reader_matches_reference.py",
+    # Does `unit.sprite` rewrite the unit the sentence named?  It walked one
+    # frozen pair table (villager -> sheep), so every sprite sentence edited the
+    # villager's 244 records no matter which unit was asked about -- and the
+    # preview described the sentence rather than the edit.
+    r"_probe\test_sprite_target.py",
+    # Does the count the preview promises equal the count the build reports?
+    # Three of the seven builders emitted no `edit_count` from their dry path, so
+    # `织布机研究时间改成5` previewed 0 for an edit that writes one.  A zero that
+    # means "this shape does not report" reads exactly like a zero that means
+    # "nothing will happen".
+    r"_probe\test_preview_counts.py",
 ]
 
 # Suites that are not Python.  The screen's script is JavaScript and no Python

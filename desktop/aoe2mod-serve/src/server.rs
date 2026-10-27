@@ -467,15 +467,39 @@ fn route(
             let mut intents: Vec<String> = Vec::new();
             let mut refusals: Vec<String> = Vec::new();
             let mut rows: Vec<String> = Vec::new();
+            let mut previews: Vec<String> = Vec::new();
+            let mut buildable: Vec<String> = Vec::new();
+            let mut kinds: Vec<String> = Vec::new();
             for cl in &clauses {
+                // The preview runs the BUILDER (with `dry`), so its numbers are
+                // the build's numbers.  A sentence the builder refuses cannot
+                // preview as buildable, because there is only one decision.
+                let mut prev = "null".to_string();
+                let mut can = false;
+                let mut kind = "null".to_string();
                 match &cl.intent {
-                    Some(it) => intents.push(it.to_json()),
+                    Some(it) => {
+                        intents.push(it.to_json());
+                        let (ok, plan) = crate::preview::plan(server, it);
+                        can = ok;
+                        kind = match it.intent.split('.').next() {
+                            Some("tech") => "\"tech\"".to_string(),
+                            _ => "\"unit\"".to_string(),
+                        };
+                        prev = format!(
+                            "{{\"ok\":true,\"plan\":{}}}",
+                            serde_json::to_string(&plan).unwrap_or_else(|_| "null".into())
+                        );
+                    }
                     None => refusals.push(format!(
                         "{{\"text\":\"{}\",\"why\":\"{}\"}}",
                         json_escape(&cl.text),
                         json_escape(cl.why.as_deref().unwrap_or(""))
                     )),
                 }
+                previews.push(prev);
+                buildable.push(can.to_string());
+                kinds.push(kind);
                 rows.push(format!(
                     "{{\"text\":\"{}\",\"entity\":{},\"entity_id\":{},\"why\":{},\"notes\":[{}]}}",
                     json_escape(&cl.text),
@@ -498,6 +522,20 @@ fn route(
                         .join(",")
                 ));
             }
+            // The three extra arrays are spliced into `clauses` by index: the
+            // rows were already built above and rebuilding them here would be a
+            // second place that formats a clause.
+            let rows: Vec<String> = rows
+                .iter()
+                .enumerate()
+                .map(|(i, r)| {
+                    let body = r.trim_end_matches('}');
+                    format!(
+                        "{body},\"preview\":{},\"buildable\":{},\"kind\":{}}}",
+                        previews[i], buildable[i], kinds[i]
+                    )
+                })
+                .collect();
             let json = format!(
                 "{{\"ok\":true,\"intents\":[{}],\"refusals\":[{}],\"clauses\":[{}]}}",
                 intents.join(","), refusals.join(","), rows.join(",")
