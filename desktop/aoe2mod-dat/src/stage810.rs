@@ -70,6 +70,10 @@ pub struct Unit {
     pub id: i16,
     pub class: i16,
     pub hit_points: i16,
+    /// Byte offset of `hit_points` inside `image`.  An edit is expressed as a
+    /// write at a named offset into the captured span, which is precise: the
+    /// parser measured the offset, nothing here guesses it.
+    pub hit_points_offset: usize,
     pub name: String,
     /// `Bird.TaskSwapGroup`.  The engine swaps an object's record pointer to
     /// another unit in the same group when a villager is retasked, so this is
@@ -264,6 +268,7 @@ pub fn read_unit(r: &mut Reader<'_>, gv: u32) -> io::Result<Unit> {
     r.skip(2)?; // DyingGraphic
     r.skip(2)?; // UndeadGraphic
     r.skip(1)?; // UndeadMode
+    u.hit_points_offset = r.pos - start;
     u.hit_points = r.i16()?;
     trace(r, "after hp");
     r.skip(4)?; // LineOfSight
