@@ -255,6 +255,54 @@ fn route(
                 format!("{{\"ok\":false,\"error\":\"{}\"}}", json_escape("找不到玩家档案目录")).into_bytes(),
             ),
         },
+        "/api/recipes" => {
+            let json = match crate::recipes::rows() {
+                Ok(rows) => {
+                    let items: Vec<String> = rows.iter().map(|r| {
+                        let sents: Vec<String> = r.sentences.iter()
+                            .map(|x| format!("\"{}\"", json_escape(x))).collect();
+                        format!("{{\"name\":\"{}\",\"sentences\":[{}],\"count\":{},\"saved_at\":\"{}\",\"note\":\"{}\"}}",
+                            json_escape(&r.name), sents.join(","), r.sentences.len(),
+                            json_escape(&r.saved_at), json_escape(&r.note))
+                    }).collect();
+                    format!("{{\"ok\":true,\"recipes\":[{}]}}", items.join(","))
+                }
+                Err(e) => format!("{{\"ok\":false,\"error\":\"{}\"}}", json_escape(&e.to_string())),
+            };
+            (200, "application/json; charset=utf-8", json.into_bytes())
+        }
+        "/api/recipe" => {
+            let req: serde_json::Value = match serde_json::from_slice(body) {
+                Ok(v) => v,
+                Err(e) => {
+                    let m = format!("{{\"ok\":false,\"error\":\"{}\"}}", json_escape(&e.to_string()));
+                    return (400, "application/json; charset=utf-8", m.into_bytes());
+                }
+            };
+            let name = req.get("name").and_then(|v| v.as_str()).unwrap_or("");
+            let sents: Vec<String> = req.get("sentences")
+                .and_then(|v| v.as_array())
+                .map(|a| a.iter().filter_map(|x| x.as_str().map(|s| s.to_string())).collect())
+                .unwrap_or_default();
+            let note = req.get("note").and_then(|v| v.as_str()).unwrap_or("");
+            let json = match crate::recipes::remember(name, sents, note) {
+                Ok(_) => "{\"ok\":true}".to_string(),
+                Err(e) => format!("{{\"ok\":false,\"error\":\"{}\"}}", json_escape(&e)),
+            };
+            (200, "application/json; charset=utf-8", json.into_bytes())
+        }
+        "/api/recipe-forget" => {
+            let req: serde_json::Value = match serde_json::from_slice(body) {
+                Ok(v) => v,
+                Err(_) => return (400, "application/json; charset=utf-8", b"{\"ok\":false}".to_vec()),
+            };
+            let name = req.get("name").and_then(|v| v.as_str()).unwrap_or("");
+            let json = match crate::recipes::forget(name) {
+                Ok(_) => "{\"ok\":true}".to_string(),
+                Err(e) => format!("{{\"ok\":false,\"error\":\"{}\"}}", json_escape(&e)),
+            };
+            (200, "application/json; charset=utf-8", json.into_bytes())
+        }
         // The one write path, so the whole chain can be exercised end to end.
         "/api/stat" => {
             let req: serde_json::Value = match serde_json::from_slice(body) {

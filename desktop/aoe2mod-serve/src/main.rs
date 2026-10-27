@@ -6,6 +6,7 @@
 //! is exercised rather than assumed.
 
 pub mod mods;
+pub mod recipes;
 pub mod server;
 pub mod stat_edit;
 
