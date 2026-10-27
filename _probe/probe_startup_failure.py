@@ -1,20 +1,23 @@
 # -*- coding: utf-8 -*-
-"""Does the error page actually appear now that `webview-data-url` is on?
+"""Does the failure reason reach the SCREEN, or only the log?
 
-Before the feature, this exact directory produced:
-    failed: 找不到工具目录：… tools/run_ui.py
+Before `webview-data-url` was on, this exact directory produced:
+    failed: 找不到界面目录…
     opening data:text/html;charset=utf-8,…
     window build failed: invalid window url: data URLs are not supported …
-i.e. the loading splash stayed up forever and no reason reached the screen.
+i.e. the splash stayed up forever and no reason reached the player.
 
-Now the same directory must show the error page.  "It logged the right line"
-proves nothing -- the last attempt logged the right line too -- so this probe
-reads the window's own text through the accessibility tree and asserts the
-reason is IN it.
+Now the same directory must SHOW the reason. "It logged the right line" proves
+nothing -- the broken build logged the right line too. So this probe reads the
+window's own text out of the accessibility tree and asserts the reason is IN it.
 
 Two cases:
   no_app   exe + WebView2Loader.dll, no app\\  -> find_root() fails -> error page
   bundle   the real bundle                      -> control: must still reach ready
+
+An empty directory and a real one differ by `app\\` only; there is no `runtime\\`
+any more, which is why the earlier version of this probe died on
+`FileNotFoundError: …\\runtime` -- it was written against the Python child.
 """
 import json
 import os
@@ -25,13 +28,40 @@ import sys
 import time
 
 NEW_EXE = r"D:\Software\AI\AGE2\desktop\src-tauri\target\release\aoe2-mod-workshop.exe"
-OLD_EXE = r"D:\Software\AI\AGE2\target\release\aoe2-mod-workshop.exe"
 BUNDLE = r"D:\Software\AI\AoE2ModWorkshop"
 DLL = os.path.join(BUNDLE, "WebView2Loader.dll")
 SANDBOX = r"D:\Software\AI\_pkgtest"
 LOG = os.path.join(os.environ.get("TEMP", r"C:\Windows\Temp"), "aoe2-mod-workshop.log")
 WAIT = 45.0
 
+# UIA out of PowerShell: dump every visible string inside the process's window.
+# Used instead of MainWindowTitle because a WebView2 page has no title worth
+# reading -- the whole point is the BODY text.
+UIA_PS = r"""
+$ErrorActionPreference = 'Stop'
+Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes
+$cond = New-Object System.Windows.Automation.PropertyCondition(
+  [System.Windows.Automation.AutomationElement]::ProcessIdProperty, __PID__)
+# The process owns SEVERAL top-level windows: the real one AND a 4x4 invisible
+# helper. FindFirst returned the helper, which has no descendants, so the probe
+# reported "0 chars" while the reason was plainly on screen. Collect them all
+# and keep the one that actually carries text.
+$wins = [System.Windows.Automation.AutomationElement]::RootElement.FindAll(
+  [System.Windows.Automation.TreeScope]::Children, $cond)
+$best = ''
+foreach ($w in $wins) {
+  $out = @()
+  if ($w.Current.Name) { $out += $w.Current.Name }
+  $all = $w.FindAll([System.Windows.Automation.TreeScope]::Descendants,
+    [System.Windows.Automation.Condition]::TrueCondition)
+  foreach ($e in $all) {
+    if ($e.Current.Name) { $out += $e.Current.Name }
+  }
+  $joined = $out -join "`n"
+  if ($joined.Length -gt $best.Length) { $best = $joined }
+}
+Write-Output $best
+"""
 
 def log_size():
     try:
@@ -56,26 +86,37 @@ def port_open(p):
 
 
 def stage(name, exe, with_app):
-    d = os.path.join(SANDBOX, name)
-    if os.path.isdir(d):
-        shutil.rmtree(d, ignore_errors=True)
+    # A UNIQUE directory per run: a previous run leaves its own exe running with
+    # the sandbox as its cwd, and  then fails on the open handle -- with
+    # ignore_errors swallowing the reason, the next line reported it as
+    # FileExistsError instead of "still in use".
+    d = os.path.join(SANDBOX, "%s_%d" % (name, int(time.time())))
     os.makedirs(d)
     shutil.copy2(exe, os.path.join(d, "aoe2-mod-workshop.exe"))
     shutil.copy2(DLL, os.path.join(d, "WebView2Loader.dll"))
     if with_app:
         shutil.copytree(os.path.join(BUNDLE, "app"), os.path.join(d, "app"))
-        shutil.copytree(os.path.join(BUNDLE, "runtime"), os.path.join(d, "runtime"))
     return d
 
 
-def read_window_text(pid_hint=None):
-    """Ask Windows for the visible window titles + child text of our exe."""
-    ps = subprocess.run(
-        ["powershell", "-NoProfile", "-Command",
-         "Get-Process -Name aoe2-mod-workshop -ErrorAction SilentlyContinue | "
-         "Select-Object Id,MainWindowTitle | ConvertTo-Json -Compress"],
-        capture_output=True, text=True, timeout=30)
-    return (ps.stdout or "").strip()
+def window_text(pid):
+    """Every visible string inside the window, joined by newlines."""
+    script = os.path.join(SANDBOX, "uia_%d.ps1" % pid)
+    os.makedirs(SANDBOX, exist_ok=True)
+    with open(script, "w", encoding="utf-8") as fh:
+        fh.write(UIA_PS.replace("__PID__", str(pid)))
+    try:
+        ps = subprocess.run(
+            ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", script],
+            capture_output=True, text=True, timeout=60)
+        return (ps.stdout or "").strip()
+    except subprocess.TimeoutExpired:
+        return ""
+    finally:
+        try:
+            os.remove(script)
+        except OSError:
+            pass
 
 
 def run(name, exe, with_app, port):
@@ -93,35 +134,40 @@ def run(name, exe, with_app, port):
         if m_port is not None or p.poll() is not None:
             break
         time.sleep(0.1)
-    # let the webview paint the error page
-    time.sleep(3.0)
+    # let the webview paint
+    time.sleep(4.0)
     text = log_from(off)
+    seen = window_text(p.pid)
     alive = p.poll() is None
     print("=" * 74)
-    print("CASE %s   exe=%s" % (name, "NEW" if exe == NEW_EXE else "OLD"))
-    print("  log_at=%s port_at=%s alive=%s exit=%s" % (m_log, m_port, alive, p.poll()))
+    print("CASE %s" % name)
+    print("  log_at=%s port_at=%s alive=%s" % (m_log, m_port, alive))
     for ln in text.strip().splitlines():
         print("  | " + ln[:180])
-    bad = "invalid window url" in text
-    good = "opening data:text/html" in text or m_port is not None
-    print("  data-url refusal present : %s" % bad)
-    return {"case": name, "log": text, "refused": bad, "port": m_port,
-            "alive": alive, "pid": p.pid}
+    print("  --- window text (%d chars) ---" % len(seen))
+    for ln in seen.splitlines()[:14]:
+        print("  > " + ln[:180])
+    refused = "invalid window url" in text or "data URLs are not supported" in text
+    return {"case": name, "log": text, "screen": seen, "refused": refused,
+            "port": m_port, "alive": alive, "pid": p.pid}
 
 
 if __name__ == "__main__":
     out = []
-    # 1. the failure path: no app\ next to the exe
     out.append(run("no_app_new", NEW_EXE, False, 3451))
-    # 2. control: a real bundle must still work
     out.append(run("bundle_new", NEW_EXE, True, 3452))
 
     for pid in [r["pid"] for r in out]:
         subprocess.run(["taskkill", "/PID", str(pid), "/T", "/F"], capture_output=True)
+
+    reason_on_screen = "找不到界面目录" in out[0]["screen"]
+    control_ok = out[1]["port"] is not None
     print("=" * 74)
     print("VERDICT")
-    print("  no_app_new  data-url refused = %s (must be False)" % out[0]["refused"])
-    print("  bundle_new  reached a port   = %s (must be True)" % (out[1]["port"] is not None))
+    print("  no_app   data-url refused    = %s (must be False)" % out[0]["refused"])
+    print("  no_app   reason ON SCREEN    = %s (must be True)" % reason_on_screen)
+    print("  bundle   reached a port      = %s (must be True)" % control_ok)
     with open(os.path.join(os.path.dirname(os.path.abspath(__file__)),
                            "tmp_verify_errorpage.json"), "w", encoding="utf-8") as fh:
         json.dump(out, fh, ensure_ascii=False, indent=1)
+    sys.exit(0 if (not out[0]["refused"] and reason_on_screen and control_ok) else 1)

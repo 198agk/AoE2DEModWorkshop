@@ -188,8 +188,14 @@ fn main() {
             startup_failure = Some((
                 "找不到界面目录：exe 旁边没有 app\\，从 exe 和当前目录向上也没有 aoe2mod/ui/static/index.html。"
                     .to_string(),
-                "装好的文件夹里应该有 app\\ 和 runtime 无关的东西；如果你是从仓库运行，\
-                 请确认 exe 在仓库内部。".to_string(),
+                // The second line used to say "装好的文件夹里应该有 app\\ 和 runtime
+                // 无关的东西". Half of that sentence was deleted along with the
+                // Python child and nobody reread it -- "和 runtime 无关的东西" parses
+                // as "things unrelated to runtime", which is not something the
+                // player can act on. A failure page is read once, by someone
+                // already annoyed, so it says only what to do next.
+                "装好的文件夹里要有 app\\；如果是从仓库直接运行，请确认 exe 在仓库内部。"
+                    .to_string(),
             ));
             None
         }

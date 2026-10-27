@@ -81,11 +81,23 @@ def size_of(path):
 
 
 def copy_app(dst):
-    """Only the two directories the exe reads at run time, and only their data."""
+    """Only the directories the exe reads at run time, and only their data."""
     os.makedirs(dst, exist_ok=True)
     pairs = [
         ("aoe2mod/ui/static", "aoe2mod/ui/static"),
         ("aoe2mod/schema", "aoe2mod/schema"),
+        # `_golden/` is DATA the engine cannot invent: the offset tables are the
+        # measured positions of every stat/tech/effect inside the retail `.dat`,
+        # and the name/grammar tables are exports of the reader.  The engine
+        # only ever sees the installed folder, so if this is not copied here the
+        # tables do not exist on the player's disk either.
+        #
+        # It was not in this list.  `--force` wipes the output folder, so one
+        # rebuild silently deleted the 19.8 MB of tables that an earlier manual
+        # step had dropped in, and every route that needs them started
+        # answering "no table".  The run still printed a tidy summary.  Hence
+        # REQUIRED_GOLDEN below: the list is checked, not assumed.
+        ("_golden", "_golden"),
     ]
     for rel_src, rel_dst in pairs:
         src = os.path.join(REPO, rel_src)
@@ -100,7 +112,7 @@ def copy_app(dst):
             # below fail on a file that could never be imported anyway --
             # which is exactly what happened the first time this ran.
             ignore=shutil.ignore_patterns("__pycache__", "*.pyc", "*.pyo",
-                                          "__init__.py"))
+                                          "__init__.py", "dat_baseline.json"))
     return size_of(dst)
 
 
@@ -151,6 +163,27 @@ def main(argv=None):
 
     # The claim is "no Python needed".  Assert it rather than trusting the copy:
     # if a python.exe or a .py ever reappears here, this is the place to notice.
+    # The 8 tables the engine reads at run time.  Listed by hand on purpose: the
+    # check is "every path some Rust file asks for actually exists here", and a
+    # list derived from the same walk that produced the copy could not fail.
+    # (`dat_baseline.json` is a test fixture, not a runtime input, hence absent.)
+    required = ["ai_grammar.json", "class_names.json", "command_cards.json",
+                "effect_offsets.json", "entity_names.json", "sprite_pairs.json",
+                "stat_offsets.json", "tech_offsets.json"]
+    golden_dir = os.path.join(out, "app", "_golden")
+    missing = [f for f in required
+               if not os.path.isfile(os.path.join(golden_dir, f))]
+    if missing:
+        print("FAILED: %d runtime table(s) did not land in app\\_golden\\:" % len(missing))
+        for f in missing:
+            print("   %s" % f)
+        print("   Without them /api/toggle-group, /api/card-move, /api/effects and")
+        print("   the sentence reader answer \"no table\" while the app still opens.")
+        return 1
+    tables_mb = size_of(golden_dir)[0] / (1024.0 ** 2)
+    print("golden   %7.1f MB  %5d files  (%d/%d runtime tables present)"
+          % (tables_mb, size_of(golden_dir)[1], len(required), len(required)))
+
     py_exes = []
     py_files = []
     for base, _dirs, files in os.walk(out):

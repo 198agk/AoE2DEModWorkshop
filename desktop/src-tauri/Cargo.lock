@@ -51,10 +51,29 @@ checksum = "330a5ed07fa54e4702c9d6c4174f74427fc0ef6e214bbd677ae50a5099946470"
 name = "aoe2-mod-workshop"
 version = "0.1.0"
 dependencies = [
+ "aoe2mod-serve",
+ "flate2",
  "serde",
  "serde_json",
  "tauri",
  "tauri-build",
+]
+
+[[package]]
+name = "aoe2mod-dat"
+version = "0.1.0"
+dependencies = [
+ "flate2",
+]
+
+[[package]]
+name = "aoe2mod-serve"
+version = "0.1.0"
+dependencies = [
+ "aoe2mod-dat",
+ "flate2",
+ "serde_json",
+ "sha2",
 ]
 
 [[package]]
