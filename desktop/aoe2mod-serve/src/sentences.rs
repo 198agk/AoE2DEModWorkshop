@@ -1002,6 +1002,22 @@ fn strip_ordinal(text: &str) -> String {
 /// This is a LIST, not a guess: it grows as the reader does, and an intent that
 /// is not here simply refuses with "这个改动还只能用原来的引擎".
 pub fn intent_is_reachable(id: &str) -> bool {
+    hand_list(id) || reads_its_own_sentence(id)
+}
+
+
+/// Intents that definitely have a branch, listed by hand.
+///
+/// This list is the half of the answer that cannot be wrong, and it is NOT the
+/// only half: keep it beside `reads_its_own_sentence` and never as the sole
+/// source. Measured 2026-10-27: this list was the sole source, and adding the
+/// `tech.toggle_group` branch without adding the id made the screen say
+/// "can't type that" about a sentence the reader had just answered correctly.
+/// `report_typable.py` caught it as `DISAGREES WITH THE SCREEN`. The same class of
+/// drift had already produced one lie in the other direction
+/// (`unit.attack_class` claimed typable while the bundle refused it, because
+/// `class_names.json` was not shipped), which is why the probe compares both ways.
+fn hand_list(id: &str) -> bool {
     matches!(
         id,
         "unit.stat"
@@ -1012,7 +1028,104 @@ pub fn intent_is_reachable(id: &str) -> bool {
             | "unit.card_move"
             | "unit.attack_class"
             | "unit.sprite"
+            | "tech.toggle_group"
     )
+}
+
+
+/// Does the reader answer this intent when given the sentence the SCHEMA
+/// declares for it?
+///
+/// This is a derivation, not a second hand list: `sentences.json` already says how
+/// each intent is SAID (`forms[].template` plus a `sample` for every slot), so the
+/// reader can be asked whether it can read back what the schema claims to emit.
+/// A plugin that adds an intent and a template therefore gets a correct answer
+/// with no code change here.
+///
+/// Only the FIRST form is tried, and only as a positive signal: a sample name
+/// that this data does not carry would make the derivation say "unreachable" for
+/// an intent that a real sentence reaches. So the caller ORs this with the hand
+/// list -- a false negative costs nothing, a false positive would be another lie
+/// on the screen.
+fn reads_its_own_sentence(id: &str) -> bool {
+    let table = match schema_sentences() {
+        Some(t) => t,
+        None => return false,
+    };
+    let spec = match table.get("intents").and_then(|v| v.get(id)) {
+        Some(s) => s,
+        None => return false,
+    };
+    let form = match spec.get("forms").and_then(|v| v.as_array()).and_then(|a| a.first()) {
+        Some(f) => f,
+        None => return false,
+    };
+    let template = match form.get("template").and_then(|v| v.as_str()) {
+        Some(t) => t,
+        None => return false,
+    };
+    // Fill every slot with its own sample, exactly the way the form preview does.
+    let mut filled = template.to_string();
+    if let Some(slots) = form.get("slots").and_then(|v| v.as_array()) {
+        for sl in slots {
+            let name = sl.get("name").and_then(|v| v.as_str()).unwrap_or("");
+            let sample = sl.get("sample").and_then(|v| v.as_str()).unwrap_or("");
+            if !name.is_empty() && !sample.is_empty() {
+                filled = filled.replace(&format!("{{{name}}}"), sample);
+            }
+        }
+    }
+    if filled.contains('{') {
+        return false;
+    }
+    read_clause(&filled)
+        .intent
+        .map(|it| it.intent == id)
+        .unwrap_or(false)
+}
+
+
+/// `aoe2mod/schema/sentences.json`, found the same way the golden tables are.
+///
+/// Loaded here rather than through `tables::load_sentences`, because that function
+/// takes an app directory the caller has to derive from the served static root --
+/// an answer that does not exist on every code path that asks this question. The
+/// candidates below are the two shapes this project actually has: a repo checkout
+/// (`aoe2mod/schema/`) and a shipped bundle (`app/aoe2mod/schema/`).
+fn schema_sentences() -> Option<serde_json::Value> {
+    let mut candidates: Vec<std::path::PathBuf> = Vec::new();
+    if let Ok(v) = std::env::var("AOE2MOD_SENTENCES") {
+        candidates.push(std::path::PathBuf::from(v));
+    }
+    for key in ["AOE2MOD_ROOT", "AOE2MOD_APP"] {
+        if let Ok(root) = std::env::var(key) {
+            candidates.push(std::path::PathBuf::from(root).join("aoe2mod/schema/sentences.json"));
+        }
+    }
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(dir) = exe.parent() {
+            for base in [dir.to_path_buf(), dir.join("app")] {
+                candidates.push(base.join("aoe2mod/schema/sentences.json"));
+            }
+        }
+    }
+    if let Ok(cwd) = std::env::current_dir() {
+        let mut p = Some(cwd);
+        while let Some(d) = p {
+            candidates.push(d.join("aoe2mod/schema/sentences.json"));
+            candidates.push(d.join("app/aoe2mod/schema/sentences.json"));
+            p = d.parent().map(|x| x.to_path_buf());
+        }
+    }
+    for path in candidates {
+        if let Ok(text) = std::fs::read_to_string(&path) {
+            let clean = text.trim_start_matches('\u{feff}');
+            if let Ok(v) = serde_json::from_str::<serde_json::Value>(clean) {
+                return Some(v);
+            }
+        }
+    }
+    None
 }
 
 
