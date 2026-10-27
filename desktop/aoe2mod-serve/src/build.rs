@@ -35,7 +35,11 @@ pub struct Built {
     pub dir: PathBuf,
     pub title: String,
     pub dat_bytes: usize,
-    pub compressed_bytes: usize,
+    /// The raw-deflated bytes actually written to disk. Kept on the struct
+    /// because the provenance record must hash THESE, not the uncompressed
+    /// stream:  compares against the file, and hashing the wrong
+    /// one made every fresh build look overwritten.
+    pub compressed: Vec<u8>,
 }
 
 /// Write a data mod folder.
@@ -116,7 +120,7 @@ pub fn build_data_mod(
         dir: out_dir.to_path_buf(),
         title: title.to_string(),
         dat_bytes: dat_out.len(),
-        compressed_bytes: compressed.len(),
+        compressed,
     })
 }
 

@@ -252,13 +252,11 @@ pub fn build_and_install(server: &Server, req: &serde_json::Value) -> Result<Str
         Some((f, r, _v)) => (f, r),
         None => (String::new(), None),
     };
-    let dat_out_sha = {
-        // The bytes we emit, hashed the way the mod's installed copy will be.
-        use sha2::{Digest, Sha256};
-        let mut h = Sha256::new();
-        h.update(&out);
-        format!("{:x}", h.finalize())
-    };
+    // Hash the bytes that LAND ON DISK, which are raw-deflated -- the same file
+    // `update-check` will hash later. Hashing the uncompressed stream here made
+    // every freshly built mod report `edited`, i.e. "something else overwrote
+    // this", about the file this tool had just written itself.
+    let dat_out_sha = sha256_bytes(&built.compressed);
 
     let mut installed_to = String::new();
     if install {
@@ -295,7 +293,7 @@ pub fn build_and_install(server: &Server, req: &serde_json::Value) -> Result<Str
         old,
         new_value,
         built.dat_bytes,
-        built.compressed_bytes,
+        built.compressed.len(),
         crate::server::json_escape(&built.dir.display().to_string()),
         crate::server::json_escape(&installed_to)
     ))
@@ -417,12 +415,11 @@ fn build_tech(server: &Server, req: &serde_json::Value) -> Result<String, String
         Some((f, rr, _v)) => (f, rr),
         None => (String::new(), None),
     };
-    let dat_out_sha = {
-        use sha2::{Digest, Sha256};
-        let mut h = Sha256::new();
-        h.update(&out);
-        format!("{:x}", h.finalize())
-    };
+    // Hash the bytes that LAND ON DISK, which are raw-deflated -- the same file
+    // `update-check` will hash later. Hashing the uncompressed stream here made
+    // every freshly built mod report `edited`, i.e. "something else overwrote
+    // this", about the file this tool had just written itself.
+    let dat_out_sha = sha256_bytes(&built.compressed);
     crate::updates::remember_build(
         &title,
         "aoe2mod",
@@ -451,4 +448,12 @@ fn build_tech(server: &Server, req: &serde_json::Value) -> Result<String, String
         crate::server::json_escape(&built.dir.display().to_string()),
         crate::server::json_escape(&installed_to)
     ))
+}
+
+
+fn sha256_bytes(b: &[u8]) -> String {
+    use sha2::{Digest, Sha256};
+    let mut h = Sha256::new();
+    h.update(b);
+    format!("{:x}", h.finalize())
 }

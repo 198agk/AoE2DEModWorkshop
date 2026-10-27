@@ -37,7 +37,8 @@ import urllib.request
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 OUT = r"D:\Software\AI\AoE2ModWorkshop"
-GOLDEN = ["stat_offsets.json", "entity_names.json", "ai_grammar.json"]
+GOLDEN = ["stat_offsets.json", "entity_names.json", "ai_grammar.json",
+          "tech_offsets.json"]
 
 
 def install_tables(app_dir):
@@ -109,6 +110,11 @@ def check_routes(port):
     ai = json.loads(get("/api/ai-meta"))
     note("/api/ai-meta", len(ai.get("grammar") or "") > 500,
          " grammar=%d chars" % len(ai.get("grammar") or ""))
+
+    tp = post("/api/parse", {"text": "织布机研究时间改成5"})
+    ti = (tp.get("intents") or [])
+    note("/api/parse (tech)", bool(ti) and ti[0].get("intent") == "tech.research_time",
+         " %r" % (ti[0] if ti else tp.get("refusals")))
 
     u = json.loads(get("/api/update-check"))
     note("/api/update-check", u.get("ok") is True,
