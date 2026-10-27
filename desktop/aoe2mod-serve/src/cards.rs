@@ -84,8 +84,46 @@ pub fn card(
     names: &Value,
     unit_icons: &HashMap<i16, i16>,
     slots: u8,
+    narrow: Option<(&crate::civtree::CivTrees, &str)>,
 ) -> Value {
-    let entries = cards.cards.get(&building).cloned().unwrap_or_default();
+    let all_entries = cards.cards.get(&building).cloned().unwrap_or_default();
+
+    // Narrowing: keep the `.dat` truth in `unit_count`, report the civilisation's
+    // slice separately.
+    //
+    // Two different reasons send a unit out of the card, and they are reported
+    // separately because they mean different things:
+    //
+    //   "excluded"  the civ's tree lists this node as NotAvailable. The game
+    //               says no, in writing.
+    //   "unlisted"  the civ's tree does not mention the node at all.
+    //
+    // Measured on the shipped data, `unlisted` is how regional units disappear:
+    // the Eagle line (751/753) appears in 2 of 62 trees and Britons is not one
+    // of them, and Britons cannot train an Eagle Scout. So absence narrows too.
+    // But absence is ALSO how the campaign and chronicle units disappear --
+    // 希腊步兵, 北欧剑士, 亨利二世 and 13 others are in no tree at all -- and
+    // those belong to game modes these files may not cover. Collapsing the two
+    // would let a chronicle unit read as "this civ was denied it", so both lists
+    // are returned and neither is silently merged into the other.
+    let (entries, excluded, unlisted) = match narrow {
+        None => (all_entries.clone(), Vec::new(), Vec::new()),
+        Some((trees, civ)) => {
+            let mut keep = Vec::new();
+            let mut no = Vec::new();
+            let mut absent = Vec::new();
+            for e in &all_entries {
+                let unit = e.get("unit").and_then(|v| v.as_i64()).unwrap_or(-1);
+                let status = trees.status(civ, "u", unit);
+                match status {
+                    "unavailable" => no.push(unit),
+                    "unknown" => absent.push(unit),
+                    _ => keep.push(e.clone()),
+                }
+            }
+            (keep, no, absent)
+        }
+    };
 
     // Group by box, keeping first-seen order: the chain order matters.
     let mut order: Vec<i64> = Vec::new();
@@ -163,20 +201,38 @@ pub fn card(
         .unwrap_or("")
         .to_string();
 
-    json!({
+    let mut body = json!({
         "ok": true,
         "building": building,
         "name": bname,
         "has_data": cards.has_data(building),
         "slots": slots,
         "box_count": boxes.len(),
-        "unit_count": entries.len(),
+        // `unit_count` stays the .dat total even when narrowed, so a caller can
+        // see how much was filtered instead of being handed a smaller number
+        // with no way to know it was ever larger.
+        "unit_count": all_entries.len(),
+        "shown_count": entries.len(),
         "boxes": boxes,
         "off_grid": off,
-        "note": if cards.has_data(building) {
-            "这是 .dat 里的全部：某个文明实际能造的会少一些，收窄在树/面板那一层"
-        } else {
+        "note": if !cards.has_data(building) {
             "这个建筑在 .dat 里没有训练条目"
+        } else if narrow.is_some() {
+            "已按这个文明的科技树收窄；hidden 是这个文明确实没有的单位"
+        } else {
+            "这是 .dat 里的全部：带上 civ= 参数就按那个文明收窄"
         },
-    })
+    });
+    if let Some((_, civ)) = narrow {
+        body["civ"] = json!(civ);
+        // `hidden` is the union, for a caller that only wants "what is not on the
+        // card"; the two reasons stay available for a caller that must explain it.
+        let mut all_hidden: Vec<i64> = excluded.clone();
+        all_hidden.extend(unlisted.iter().copied());
+        body["hidden"] = json!(all_hidden);
+        body["hidden_count"] = json!(all_hidden.len());
+        body["excluded"] = json!(excluded);
+        body["unlisted"] = json!(unlisted);
+    }
+    body
 }

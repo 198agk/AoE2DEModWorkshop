@@ -39,7 +39,8 @@ ROOT = os.path.dirname(HERE)
 OUT = r"D:\Software\AI\AoE2ModWorkshop"
 BUILT = r"D:\Software\AI\AGE2\desktop\src-tauri\target\release\aoe2-mod-workshop.exe"
 GOLDEN = ["stat_offsets.json", "entity_names.json", "ai_grammar.json",
-          "tech_offsets.json", "effect_offsets.json", "command_cards.json", "class_names.json", "sprite_pairs.json"]
+          "tech_offsets.json", "effect_offsets.json", "command_cards.json", "class_names.json", "sprite_pairs.json",
+          "civ_trees.json"]
 
 
 def check_exe_is_the_built_one(out):
@@ -150,6 +151,63 @@ def check_routes(port):
     cd = json.loads(get("/api/card?building=12"))
     note("/api/card", cd.get("box_count") == 4 and cd.get("unit_count") == 49,
          " 兵营 %s 格 %s 单位" % (cd.get("box_count"), cd.get("unit_count")))
+
+    # /api/civ answers what the .dat cannot: per-civilisation availability.
+    # Asserted on the split that motivated the route -- 23 civilisations can
+    # research Hand Cannoneer, 38 cannot -- because "the route returned JSON" is
+    # not evidence that it returned the right answer.
+    c1 = json.loads(get("/api/civ?civ=BRITONS&units=5,4"))
+    ans = {a.get("id"): a.get("status") for a in (c1.get("answers") or [])}
+    note("/api/civ hand cannoneer", c1.get("ok") is True and ans.get(5) == "unavailable",
+         " BRITONS 手炮=%s 步弓=%s" % (ans.get(5), ans.get(4)))
+    c2 = json.loads(get("/api/civ?civ=FRANKS&units=5"))
+    note("/api/civ gated", (c2.get("answers") or [{}])[0].get("status") == "gated",
+         " FRANKS 手炮=%s" % (c2.get("answers") or [{}])[0].get("status"))
+    c3 = json.loads(get("/api/civ?civ=NOSUCH&units=5"))
+    note("/api/civ unknown civ", c3.get("ok") is False and len(c3.get("known") or []) == 62,
+         " known=%d" % len(c3.get("known") or []))
+    c4 = json.loads(get("/api/civ?civ=BRITONS"))
+    tree = c4.get("tree") or {}
+    note("/api/civ whole tree", c4.get("asked") == "everything"
+         and sum(len(v) for v in (tree.get("u") or {}).values()) > 0,
+         " units=%d" % len(tree.get("u") or {}))
+
+    # The card must narrow, and `unit_count` must stay the .dat total so the
+    # caller can tell a small card from a filtered one. A narrowed card that
+    # reported 8 units with no trace of 49 would be indistinguishable from a
+    # building that only has 8.
+    cb = json.loads(get("/api/card?building=12&civ=BRITONS"))
+    note("/api/card?civ", cb.get("civ") == "BRITONS"
+         and cb.get("shown_count") == 8 and cb.get("unit_count") == 49,
+         " 兵营 .dat 49 -> 英文明 %s（隐藏 %s）"
+         % (cb.get("shown_count"), cb.get("hidden_count")))
+    unlisted = cb.get("unlisted") or []
+    excluded = cb.get("excluded") or []
+    # The Eagle line is a regional unit 2 of 62 civs have; Britons is not one.
+    # It disappears because the tree does not mention it, so it must land in
+    # `unlisted`, not `excluded` -- the game did not write "NotAvailable" for it.
+    note("/api/card?civ unlisted", 751 in unlisted and 753 in unlisted,
+         " 鹰勇士 751/753 unlisted=%s excluded=%s"
+         % (751 in unlisted, 751 in excluded))
+    # A not-listed-anywhere chronicle unit must be reported too, not dropped
+    # silently: 361 北欧剑士 is in no tree at all.
+    note("/api/card?civ unlisted chronicle", 361 in unlisted,
+         " 北欧剑士 361 unlisted=%s" % (361 in unlisted))
+    note("/api/card?civ reasons sum", len(unlisted) + len(excluded) == cb.get("hidden_count"),
+         " unlisted %d + excluded %d = %s"
+         % (len(unlisted), len(excluded), cb.get("hidden_count")))
+
+    # The other reason, on a real case: ACHAEMENIDS cannot train the Crossbowman
+    # and its tree says so in writing (NotAvailable). Asserting `excluded` is
+    # non-empty somewhere is not enough -- Britons has no such row at all, so a
+    # broken `excluded` path would never show up on the card above.
+    ca = json.loads(get("/api/card?building=87&civ=ACHAEMENIDS"))
+    note("/api/card?civ excluded", 492 in (ca.get("excluded") or [])
+         and 492 not in (ca.get("unlisted") or []),
+         " 靶场 劲弩手 492 excluded（明写 NotAvailable）")
+    cbad = json.loads(get("/api/card?building=12&civ=NOSUCH"))
+    note("/api/card?civ unknown", cbad.get("ok") is False,
+         " 未知文明不出未过滤的卡")
 
     # The page posts an intent ARRAY. Posting a flat {stat,unit,value} body -- which
     # is what the earlier probes did -- passes while the button is broken, because

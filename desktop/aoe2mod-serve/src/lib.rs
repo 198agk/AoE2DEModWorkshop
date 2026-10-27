@@ -14,6 +14,7 @@ pub mod spritemap;
 pub mod attack_class;
 pub mod cardmove;
 pub mod cards;
+pub mod civtree;
 pub mod browse;
 pub mod effectedit;
 pub use aoe2mod_dat::{write23, write47, write810, writer};

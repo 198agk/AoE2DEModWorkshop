@@ -632,6 +632,10 @@ fn route(
                 .get("building")
                 .and_then(|v| v.parse().ok())
                 .unwrap_or(12);
+            // `?civ=BRITONS` narrows the card to that civilisation's tree. Absent
+            // means the `.dat` superset, which is a different question and is
+            // labelled as such in the response.
+            let civ = q.get("civ").cloned().unwrap_or_default();
             let json = match crate::cards::Cards::load(&crate::cards::table_path()) {
                 Err(e) => format!(
                     "{{\"ok\":false,\"error\":\"{}\"}}",
@@ -663,7 +667,79 @@ fn route(
                         Some(r) => crate::slots::card_slots(&r).0,
                         None => crate::slots::FALLBACK_SLOTS,
                     };
-                    crate::cards::card(&cards, building, &names, &icons, slots).to_string()
+                    let trees = if civ.is_empty() {
+                        None
+                    } else {
+                        match crate::civtree::CivTrees::load(&crate::civtree::table_path()) {
+                            Ok(t) if t.has(&civ) => Some(t),
+                            // A civ the table does not know must not silently
+                            // produce the unfiltered card: that reads as "this
+                            // civ can build everything".
+                            Ok(t) => {
+                                return (
+                                    200,
+                                    "application/json; charset=utf-8",
+                                    format!(
+                                        "{{\"ok\":false,\"error\":\"{}\",\"known\":{}}}",
+                                        json_escape(&format!("没有这个文明：{civ}")),
+                                        serde_json::to_string(&t.civ_names()).unwrap_or_default()
+                                    )
+                                    .into_bytes(),
+                                )
+                            }
+                            Err(e) => {
+                                return (
+                                    200,
+                                    "application/json; charset=utf-8",
+                                    format!(
+                                        "{{\"ok\":false,\"error\":\"{}\"}}",
+                                        json_escape(&format!("读不到文明树表：{e}"))
+                                    )
+                                    .into_bytes(),
+                                )
+                            }
+                        }
+                    };
+                    let narrow = trees.as_ref().map(|t| (t, civ.as_str()));
+                    crate::cards::card(&cards, building, &names, &icons, slots, narrow).to_string()
+                }
+            };
+            (200, "application/json; charset=utf-8", json.into_bytes())
+        }
+        "/api/civ" => {
+            // `?civ=BRITONS&units=5,6&techs=93` -- what one civilisation can build.
+            //
+            // Without the id lists this returns the whole tree (10,734 rows).
+            // That is the right answer to "show me this civilisation" and the
+            // wrong answer to "can I train this unit", so the two shapes are
+            // distinguishable in the response (`asked`), not only in its size.
+            let q: std::collections::HashMap<String, String> = _query
+                .split('&')
+                .filter_map(|kv| kv.split_once('='))
+                .map(|(k, v)| (k.to_string(), percent_decode(v)))
+                .collect();
+            let civ = q.get("civ").cloned().unwrap_or_default();
+            let ids = |key: &str| -> Vec<i64> {
+                q.get(key)
+                    .map(|v| v.split(',').filter_map(|x| x.trim().parse::<i64>().ok()).collect())
+                    .unwrap_or_default()
+            };
+            let json = match crate::civtree::CivTrees::load(&crate::civtree::table_path()) {
+                Err(e) => format!(
+                    "{{\"ok\":false,\"error\":\"{}\"}}",
+                    json_escape(&format!("读不到文明树表：{e}"))
+                ),
+                Ok(trees) => {
+                    let names = crate::describe::entity_names();
+                    crate::civtree::civ(
+                        &trees,
+                        &civ,
+                        &ids("units"),
+                        &ids("techs"),
+                        &ids("buildings"),
+                        &names,
+                    )
+                    .to_string()
                 }
             };
             (200, "application/json; charset=utf-8", json.into_bytes())

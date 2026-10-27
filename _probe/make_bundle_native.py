@@ -169,7 +169,7 @@ def main(argv=None):
     # (`dat_baseline.json` is a test fixture, not a runtime input, hence absent.)
     required = ["ai_grammar.json", "class_names.json", "command_cards.json",
                 "effect_offsets.json", "entity_names.json", "sprite_pairs.json",
-                "stat_offsets.json", "tech_offsets.json"]
+                "stat_offsets.json", "tech_offsets.json", "civ_trees.json"]
     golden_dir = os.path.join(out, "app", "_golden")
     missing = [f for f in required
                if not os.path.isfile(os.path.join(golden_dir, f))]
