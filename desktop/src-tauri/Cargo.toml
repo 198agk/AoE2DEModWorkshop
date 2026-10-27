@@ -8,7 +8,18 @@ description = "AoE2 DE local mod workshop"
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = [] }
+# `webview-data-url` is not cosmetic.  Every failure path in `main.rs` ends in
+# `data_url(&error_page(...))`, and without this feature the window refuses the
+# URL with:
+#
+#   invalid window url: data URLs are not supported without the
+#   `webview-data-url` feature.
+#
+# Measured 2026-10-27: the process then keeps running with the loading window
+# still up and nothing written but those two lines, so a player whose bundle is
+# broken sees a splash that never advances and has to end the task by hand.
+# With the feature on, the same directory prints the reason instead.
+tauri = { version = "2", features = ["webview-data-url"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 
