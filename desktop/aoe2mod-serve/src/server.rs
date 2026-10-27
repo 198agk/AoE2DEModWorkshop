@@ -186,6 +186,23 @@ fn handle(server: Arc<Server>, mut stream: TcpStream) -> std::io::Result<()> {
     stream.flush()
 }
 
+
+/// The folder that holds `aoe2mod/schema`, derived from the static dir.
+///
+/// `root` is `<app>/aoe2mod/ui/static`, so the app dir is THREE levels up.
+/// Two levels gives `<app>/aoe2mod`, where `aoe2mod/schema` does not exist and
+/// every table comes back EMPTY -- which reads on screen as "no forms, no
+/// wording" rather than as an error.
+fn app_dir_of(static_root: &std::path::Path) -> std::path::PathBuf {
+    let mut p = static_root.to_path_buf();
+    for _ in 0..3 {
+        if let Some(parent) = p.parent() {
+            p = parent.to_path_buf();
+        }
+    }
+    p
+}
+
 fn reason(code: u16) -> &'static str {
     match code {
         200 => "OK",
@@ -255,6 +272,27 @@ fn route(
                 format!("{{\"ok\":false,\"error\":\"{}\"}}", json_escape("找不到玩家档案目录")).into_bytes(),
             ),
         },
+        "/api/forms" => {
+            // `?intent=` narrows to one intent.  Read fresh per request: a
+            // plugin can change the table while the tool runs.
+            let want = _query
+                .split('&')
+                .find_map(|kv| kv.strip_prefix("intent="))
+                .filter(|s| !s.is_empty());
+            let app_dir = app_dir_of(&server.root);
+            let v = crate::tables::forms(&app_dir, want);
+            (200, "application/json; charset=utf-8", v.to_string().into_bytes())
+        }
+        "/api/locale" => {
+            let name = _query
+                .split('&')
+                .find_map(|kv| kv.strip_prefix("locale="))
+                .filter(|s| !s.is_empty())
+                .unwrap_or("zh");
+            let app_dir = app_dir_of(&server.root);
+            let v = crate::tables::locale(&app_dir, name);
+            (200, "application/json; charset=utf-8", v.to_string().into_bytes())
+        }
         "/api/parse" => {
             let req: serde_json::Value = match serde_json::from_slice(body) {
                 Ok(v) => v,
