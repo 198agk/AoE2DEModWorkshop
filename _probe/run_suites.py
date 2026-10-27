@@ -544,6 +544,17 @@ SUITES = [
     # suite reads painted pixels, so it also catches the case where the reason
     # is on screen but a 74-character path is clipped by the box it sits in.
     r"_probe\probe_startup_failure.py",
+    # Is the native build's .dat the same BYTES as the reference's?  Every
+    # cheaper check stayed green while `城堡攻击加5` shipped half the writes it
+    # should have, because AoE2 stores several numbers twice and only one of the
+    # two was moving.  A count of one's own writes cannot see that; a byte
+    # comparison of two independent builds can.
+    r"_probe\test_stat_mirrors.py",
+    # Can every sentence the parser accepts also be built?  `check_routes.py`
+    # compares route names and `report_typable.py` compares parse output, so
+    # neither asks this -- and three intents accepted a sentence and then refused
+    # it at build time.
+    r"_probe\test_parse_build_agreement.py",
 ]
 
 # Suites that are not Python.  The screen's script is JavaScript and no Python

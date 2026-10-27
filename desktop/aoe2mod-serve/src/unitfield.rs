@@ -134,10 +134,10 @@ fn pick_cost_slot(costs: &[aoe2mod_dat::stage810::CostSlot], want: i16) -> Optio
 /// ordering is what makes `民兵` (classes 29,21,4,8,30,15 attack) have
 /// `displayed_attack` tracking class 4 while `步弓手` (…,3,…) has it tracking
 /// class 3.
-struct MirrorSpec {
-    classes: &'static [i16],
+struct MirrorSpec<'a> {
+    classes: &'a [i16],
     /// Which list on the unit the linked row lives in.
-    source: &'static str,
+    source: &'a str,
 }
 
 /// The five `Displayed*` fields and their mirror links, from
@@ -149,7 +149,7 @@ struct MirrorSpec {
 /// They are still listed so that the table is the schema's table rather than a
 /// hand-picked subset -- an entry that cannot match is a no-op, while a missing
 /// entry silently skips a mirror.
-fn mirror_specs() -> Vec<(&'static str, MirrorSpec)> {
+fn mirror_specs() -> Vec<(&'static str, MirrorSpec<'static>)> {
     vec![
         (
             "displayed_attack",
@@ -182,6 +182,14 @@ fn mark_offset(u: &Unit, field: &str) -> Option<usize> {
         "displayed_attack" => u.type50.as_ref().map(|t| t.displayed_attack.offset),
         "displayed_melee_armour" => u.type50.as_ref().map(|t| t.displayed_melee_armour.offset),
         "displayed_pierce_armour" => u.displayed_pierce_armour.map(|m| m.offset),
+        // The four numbers that make up the range/reload pair.  `max_range` and
+        // `reload_time` are what the engine reads; `displayed_range` and
+        // `displayed_reload_time` are what the panel prints, and the two differ
+        // on purpose for 7 and 32 shipped records respectively.
+        "max_range" => u.type50.as_ref().map(|t| t.max_range.offset),
+        "reload_time" => u.type50.as_ref().map(|t| t.reload_time.offset),
+        "displayed_range" => u.type50.as_ref().map(|t| t.displayed_range.offset),
+        "displayed_reload_time" => u.type50.as_ref().map(|t| t.displayed_reload_time.offset),
         _ => None,
     }
 }
@@ -302,6 +310,70 @@ pub fn damage_targets(
     }
     let label = if kind == "attack" { "基础攻击" } else { "基础护甲" };
     finish(hits, before, label.to_string(), unit)
+}
+
+/// A second number that a `unit.stat` edit has to move, and which kind it is.
+///
+/// The delta, not the value: see the module note.  Two numbers that agree on
+/// purpose-kept offsets must stay that far apart after the edit.
+pub struct MirrorHit {
+    pub civ: usize,
+    pub offset: usize,
+    pub kind: StatKind,
+}
+
+/// The `Displayed*`/raw pairs a plain `unit.stat` edit has to keep in step.
+///
+/// `unit.stat` reaches the panel fields directly, and the reference moves their
+/// raw counterpart by the same delta (and the other way round: editing
+/// `max_range` moves `displayed_range`).  Without this, `城堡攻击加5` wrote 126
+/// bytes where the reference writes 252 -- the panel would read 10 while the
+/// arrow still hit for 5.
+///
+/// Only the five pairs in `_golden/stat_mirrors.json` take part.  Every other
+/// stat has one number, and inventing a second one for it would corrupt an
+/// unrelated field.
+pub fn stat_mirrors(s810: &Stages810, family: &[i16], stat: &str) -> Vec<MirrorHit> {
+    // Which offsets the edit has to mirror, expressed as "the raw row" or "the
+    // panel mark" -- both directions exist in the schema.
+    enum Want {
+        Damage { source: &'static str, classes: &'static [i16] },
+        Mark(&'static str, StatKind),
+        None,
+    }
+    let want = match stat {
+        // FORWARD: the binding IS a panel field, so the mirror is the raw row.
+        "displayed_attack" => Want::Damage { source: "attack", classes: &[3, 4] },
+        "displayed_melee_armour" => Want::Damage { source: "armour", classes: &[4, 3] },
+        "displayed_pierce_armour" => Want::Damage { source: "armour", classes: &[3, 4] },
+        "displayed_range" => Want::Mark("max_range", StatKind::F32),
+        "displayed_reload_time" => Want::Mark("reload_time", StatKind::F32),
+        // REVERSE: the binding is the raw number the engine reads, and the panel
+        // field that renders it follows.
+        "max_range" => Want::Mark("displayed_range", StatKind::F32),
+        "reload_time" => Want::Mark("displayed_reload_time", StatKind::F32),
+        _ => Want::None,
+    };
+    let mut out = Vec::new();
+    for (ci, c) in s810.civs.iter().enumerate() {
+        for u in c.units.iter() {
+            if !family.contains(&u.id) {
+                continue;
+            }
+            let hit = match &want {
+                Want::None => None,
+                Want::Damage { source, classes } => {
+                    let spec = MirrorSpec { classes, source };
+                    linked_row_offset(u, &spec).map(|off| (off, StatKind::I16))
+                }
+                Want::Mark(name, kind) => mark_offset(u, name).map(|off| (off, *kind)),
+            };
+            if let Some((offset, kind)) = hit {
+                out.push(MirrorHit { civ: ci, offset, kind });
+            }
+        }
+    }
+    out
 }
 
 /// Turn "nothing to write" into the reference's sentence.

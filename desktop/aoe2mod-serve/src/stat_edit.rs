@@ -109,6 +109,15 @@ pub fn apply(server: &Server, stat: &str, unit: i16, value: f64) -> Result<Strin
     for (_, off) in &targets {
         write_at(&mut out, *off, kind, value);
     }
+    // Same mirror rule as `build_one`: `/api/stat` and `/api/build` must never
+    // write different bytes for the same sentence, and a stat that is stored
+    // twice (panel number + the raw row the engine reads) has to move both.
+    let mirrors = crate::unitfield::stat_mirrors(&s810, &family, stat);
+    let mirrors_len = mirrors.len();
+    for m in &mirrors {
+        let m_before = read_at(&raw, m.offset, m.kind);
+        write_at(&mut out, m.offset, m.kind, m_before + (value - before));
+    }
 
     let diffs = raw
         .iter()
@@ -131,12 +140,13 @@ pub fn apply(server: &Server, stat: &str, unit: i16, value: f64) -> Result<Strin
     }
 
     Ok(format!(
-        "{{\"ok\":true,\"stat\":\"{}\",\"unit\":{},\"civs\":{},\"variants\":{},\"edit_count\":{},\"before\":{},\"value\":{},\"bytes_changed\":{},\"out\":\"{}\"}}",
+        "{{\"ok\":true,\"stat\":\"{}\",\"unit\":{},\"civs\":{},\"variants\":{},\"edit_count\":{},\"mirror_count\":{},\"before\":{},\"value\":{},\"bytes_changed\":{},\"out\":\"{}\"}}",
         json_escape(stat),
         unit,
         civ_count(&targets),
         family.len(),
-        targets.len(),
+        targets.len() + mirrors_len,
+        mirrors_len,
         before,
         value,
         diffs,
@@ -285,6 +295,20 @@ pub fn build_one(server: &Server, req: &serde_json::Value) -> Result<String, Str
         (None, None) => return Err("这句话没有说要改成多少".into()),
     };
 
+    // The second number, wherever AoE2 stores this property twice.
+    //
+    // `城堡攻击加5` used to write 126 bytes where the reference writes 252: the
+    // panel's `displayed_attack` moved and the raw class-3 attack row that the
+    // damage maths actually reads did not, so the panel would show 10 while the
+    // arrow still hit for 5.  The mirror carries the DELTA, never the value,
+    // because 20 shipped records keep the two numbers apart on purpose.
+    let mirrors = crate::unitfield::stat_mirrors(&s810, &family, stat);
+    let mirror_delta = match (value, delta) {
+        (Some(v), _) => v - old,
+        (None, Some(d)) => d,
+        (None, None) => 0.0,
+    };
+
     let mut w = Writer::new(&raw);
     write_stage1(&mut w, &s1).map_err(|e| e.to_string())?;
     write_stages23(&mut w, &s23, &raw).map_err(|e| e.to_string())?;
@@ -296,6 +320,10 @@ pub fn build_one(server: &Server, req: &serde_json::Value) -> Result<String, Str
     }
     for (_, off) in &targets {
         write_at(&mut out, *off, kind, new_value);
+    }
+    for m in &mirrors {
+        let before = read_at(&raw, m.offset, m.kind);
+        write_at(&mut out, m.offset, m.kind, before + mirror_delta);
     }
 
     let build_root = std::env::temp_dir().join("aoe2mod-native-build").join(&title);
@@ -350,7 +378,7 @@ pub fn build_one(server: &Server, req: &serde_json::Value) -> Result<String, Str
     .map_err(|e| format!("建好了但没能写构建记录：{e}"))?;
 
     Ok(format!(
-        "{{\"ok\":true,\"stat\":\"{}\",\"unit\":{},\"civs\":{},\"variants\":{},\"edit_count\":{},\"before\":{},\"value\":{},\"dat_bytes\":{},\"compressed\":{},\"built\":\"{}\",\"installed\":\"{}\"}}",
+        "{{\"ok\":true,\"stat\":\"{}\",\"unit\":{},\"civs\":{},\"variants\":{},\"edit_count\":{},\"mirror_count\":{},\"before\":{},\"value\":{},\"dat_bytes\":{},\"compressed\":{},\"built\":\"{}\",\"installed\":\"{}\"}}",
         crate::server::json_escape(stat),
         unit,
         // Distinct civilizations, not writes.  `targets.len()` used to be
@@ -359,7 +387,8 @@ pub fn build_one(server: &Server, req: &serde_json::Value) -> Result<String, Str
         // and the reference calls them `civ_count` and `edit_count`.
         civ_count(&targets),
         family.len(),
-        targets.len(),
+        targets.len() + mirrors.len(),
+        mirrors.len(),
         old,
         new_value,
         built.dat_bytes,
