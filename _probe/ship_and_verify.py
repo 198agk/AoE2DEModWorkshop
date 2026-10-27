@@ -38,7 +38,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 OUT = r"D:\Software\AI\AoE2ModWorkshop"
 GOLDEN = ["stat_offsets.json", "entity_names.json", "ai_grammar.json",
-          "tech_offsets.json", "effect_offsets.json"]
+          "tech_offsets.json", "effect_offsets.json", "command_cards.json"]
 
 
 def install_tables(app_dir):
@@ -112,6 +112,10 @@ def check_routes(port):
     br = json.loads(get("/api/browse?kind=unit&limit=5"))
     note("/api/browse", (br.get("browse") or {}).get("total") == 1651,
          " total=%s" % (br.get("browse") or {}).get("total"))
+
+    cd = json.loads(get("/api/card?building=12"))
+    note("/api/card", cd.get("box_count") == 4 and cd.get("unit_count") == 49,
+         " 兵营 %s 格 %s 单位" % (cd.get("box_count"), cd.get("unit_count")))
 
     d = json.loads(get("/api/describe?kind=unit&id=1810"))
     note("/api/describe", (d.get("entity") or {}).get("name") == "村民")
