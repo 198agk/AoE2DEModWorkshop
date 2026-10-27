@@ -12,6 +12,7 @@
 
 pub mod build;
 pub mod ddstex;
+pub mod icons;
 pub mod mods;
 pub mod recipes;
 pub mod sentences;

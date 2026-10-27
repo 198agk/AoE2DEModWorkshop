@@ -384,6 +384,55 @@ fn route(
             (200, "application/json; charset=utf-8", json.into_bytes())
         }
         // The one write path, so the whole chain can be exercised end to end.
+        "/api/icon" => {
+            // `?kind=unit&id=83&section=Units&max=64`
+            let q: std::collections::HashMap<String, String> = _query
+                .split('&')
+                .filter_map(|kv| kv.split_once('='))
+                .map(|(k, v)| (k.to_string(), v.to_string()))
+                .collect();
+            let section = q.get("section").cloned().unwrap_or_else(|| "Units".into());
+            let id: u32 = q.get("id").and_then(|v| v.parse().ok()).unwrap_or(0);
+            let max_side: u32 = q.get("max").and_then(|v| v.parse().ok()).unwrap_or(64);
+            match crate::game_root() {
+                None => (
+                    200,
+                    "application/json; charset=utf-8",
+                    b"{\"ok\":false,\"error\":\"no game root\"}".to_vec(),
+                ),
+                Some(root) => match crate::icons::Icons::load(&root) {
+                    None => (
+                        200,
+                        "application/json; charset=utf-8",
+                        b"{\"ok\":false,\"error\":\"icons.json unreadable\"}".to_vec(),
+                    ),
+                    Some(ic) => match ic.file_for(&section, id) {
+                        Err(why) => {
+                            let m = format!(
+                                "{{\"ok\":false,\"error\":\"{}\"}}",
+                                json_escape(&why)
+                            );
+                            (200, "application/json; charset=utf-8", m.into_bytes())
+                        }
+                        Ok((rel, material)) => {
+                            let path = ic.path_of(&rel);
+                            match crate::ddstex::to_png(&path, max_side) {
+                                Ok(png) => (200, "image/png", png),
+                                Err(e) => {
+                                    let m = format!(
+                                        "{{\"ok\":false,\"error\":\"{}\",\"file\":\"{}\",\"material\":\"{}\"}}",
+                                        json_escape(&e.to_string()),
+                                        json_escape(&rel),
+                                        json_escape(&material)
+                                    );
+                                    (200, "application/json; charset=utf-8", m.into_bytes())
+                                }
+                            }
+                        }
+                    },
+                },
+            }
+        }
         "/api/update-check" => {
             let json = match (crate::mods::profile_root(), crate::game_root()) {
                 (Some(prof), Some(root)) => {

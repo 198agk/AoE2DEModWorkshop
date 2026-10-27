@@ -247,37 +247,44 @@ pub fn decode(path: &Path) -> io::Result<(u32, u32, Vec<u8>)> {
 /// Icons are drawn at 32-64 px and the files are 256x256; shipping the full
 /// texture per icon is ~100x the bytes for no visible gain.
 pub fn shrink(w: u32, h: u32, rgba: &[u8], max_side: u32) -> (u32, u32, Vec<u8>) {
-    let (mut nw, mut nh) = (w, h);
-    while nw.max(nh) / 2 >= max_side && nw > 1 && nh > 1 {
-        nw /= 2;
-        nh /= 2;
+    // One N x N box filter, not repeated halving. Repeated 2x2 rounds at every
+    // step, so a 4x reduction averages 2x2, rounds, then averages again -- which
+    // differs from a single 4x4 average by a level or two per channel.
+    let mut factor = 1u32;
+    while w / (factor * 2) >= 1
+        && h / (factor * 2) >= 1
+        && w.max(h) / factor > max_side
+    {
+        factor += 1;
     }
-    let mut cur: Vec<u8> = rgba.to_vec();
-    let (mut cw, mut ch) = (w, h);
-    while cw > nw && ch > nh {
-        let (dw, dh) = (cw / 2, ch / 2);
-        let mut out = vec![0u8; (dw * dh * 4) as usize];
-        for y in 0..dh {
-            for x in 0..dw {
-                for c in 0..4 {
-                    let mut sum = 0u32;
-                    for dy in 0..2 {
-                        for dx in 0..2 {
-                            let sx = x * 2 + dx;
-                            let sy = y * 2 + dy;
-                            let i = ((sy * cw + sx) * 4 + c) as usize;
-                            sum += cur.get(i).copied().unwrap_or(0) as u32;
+    if factor == 1 {
+        return (w, h, rgba.to_vec());
+    }
+    let nw = (w / factor).max(1);
+    let nh = (h / factor).max(1);
+    let mut out = vec![0u8; (nw * nh * 4) as usize];
+    let area = (factor * factor) as u32;
+    for y in 0..nh {
+        for x in 0..nw {
+            let mut acc = [0u32; 4];
+            for dy in 0..factor {
+                let row = (y * factor + dy) * w;
+                for dx in 0..factor {
+                    let o = ((row + x * factor + dx) * 4) as usize;
+                    if o + 3 < rgba.len() {
+                        for c in 0..4 {
+                            acc[c] += rgba[o + c] as u32;
                         }
                     }
-                    out[((y * dw + x) * 4 + c) as usize] = (sum / 4) as u8;
                 }
             }
+            let p = ((y * nw + x) * 4) as usize;
+            for c in 0..4 {
+                out[p + c] = (acc[c] / area) as u8;
+            }
         }
-        cur = out;
-        cw = dw;
-        ch = dh;
     }
-    (cw, ch, cur)
+    (nw, nh, out)
 }
 
 /// RGBA -> PNG bytes. Uncompressed deflate, which is legal PNG and keeps this
