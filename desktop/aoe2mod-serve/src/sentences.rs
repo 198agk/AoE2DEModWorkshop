@@ -83,6 +83,8 @@ pub struct Intent {
     /// `unit.card_move` only: which building's card, and which box on it.
     pub building: Option<i16>,
     pub button: Option<u8>,
+    /// `unit.sprite` only: the unit whose picture is borrowed.
+    pub donor: Option<i16>,
     /// `unit.attack_class` only: the target CLASS and whether it is attack or armour.
     pub class_id: Option<i16>,
     /// : the ATTACK classes to try in order (see the
@@ -130,6 +132,9 @@ impl Intent {
         }
         if let Some(v) = self.button {
             parts.push(format!("\"button\":{v}"));
+        }
+        if let Some(v) = self.donor {
+            parts.push(format!("\"donor\":{v}"));
         }
         if let Some(v) = self.class_id {
             parts.push(format!("\"class_id\":{v}"));
@@ -399,6 +404,73 @@ pub fn read_clause(text: &str) -> Clause {
         entity_name: None,
         entity_id: None,
     };
+
+    // --- unit.sprite: "把村民的样子换成绵羊" (no number involved) ----------
+    // Runs BEFORE the number gate: the intent carries no value, so the gate
+    // would refuse a sentence whose shape is exactly right. The reference reader
+    // has this branch below the gate and answers "这句话里没有数字" for it, which
+    // names the wrong problem.
+    if let Some(n) = names().as_ref() {
+        let says_sprite = text.contains("样子") || text.contains("长得像")
+            || text.contains("外观") || text.contains("造型");
+        let says_change = text.contains("换成") || text.contains("变成")
+            || text.contains("改成") || text.contains("长得像");
+        if says_sprite && says_change {
+            // [target] 的样子 换成 [donor]
+            let (target_part, donor_part) = match text.split_once("换成") {
+                Some((a, b)) => (a.to_string(), b.to_string()),
+                None => match text.split_once("长得像") {
+                    Some((a, b)) => (a.to_string(), b.to_string()),
+                    None => (text.to_string(), String::new()),
+                },
+            };
+            let target = rightmost_name(n, &target_part);
+            let donor = if donor_part.is_empty() {
+                None
+            } else {
+                rightmost_name(n, &donor_part)
+            };
+            match (target, donor) {
+                (Some(t), Some(d)) if t != d => {
+                    let mut it = Intent::default();
+                    it.intent = "unit.sprite".to_string();
+                    it.unit = Some(t);
+                    it.donor = Some(d);
+                    // Rename mode is the default here: it ships no pictures and
+                    // is the 12 MB answer. Copy mode is a separate choice.
+                    return Clause {
+                        text: text.to_string(),
+                        intent: Some(it),
+                        why: None,
+                        entity_name: None,
+                        entity_id: Some(t),
+                    };
+                }
+                (Some(t), Some(d)) if t == d => {
+                    cl.why = Some("目标和它是同一个单位，换完还是它自己。".into());
+                    return cl;
+                }
+                (None, _) => {
+                    cl.why = Some("没听出要换哪个单位的样子。".into());
+                    return cl;
+                }
+                (_, None) => {
+                    cl.why = Some("没听出要换成谁的样子。说「把村民的样子换成绵羊」这样。".into());
+                    return cl;
+                }
+                // Reachable only if both names resolve to the same id twice; the
+                // guarded arms above handle every real case.
+                _ => {
+                    cl.why = Some("这句话没读懂：目标单位和参照单位分不开。".into());
+                    return cl;
+                }
+            }
+        }
+        if let Some(bad) = text.strip_prefix("让").and_then(|_| Some(text)) {
+            let _ = bad;
+        }
+    }
+
 
     // --- unit.attack_class: "步弓手对骑兵攻击加2" -------------------------
     // BEFORE the stat branch: "攻击" alone would read as displayed_attack and
@@ -783,6 +855,7 @@ pub fn intent_is_reachable(id: &str) -> bool {
             | "tech.effect"
             | "unit.card_move"
             | "unit.attack_class"
+            | "unit.sprite"
     )
 }
 
@@ -889,7 +962,7 @@ fn builder_in(text: &str, unit: Option<i16>, kind: &str) -> Option<i16> {
 /// match, and the sentence means the militia (the earlier noun) moved onto the
 /// barracks' card.
 fn rightmost_name(n: &Names, text: &str) -> Option<i16> {
-    let mut best: Option<(usize, i16)> = None;
+    let mut best: Option<(usize, usize, i16)> = None;
     for (id, names) in n.units.iter() {
         for nm in names {
             if nm.is_empty() {
@@ -897,13 +970,24 @@ fn rightmost_name(n: &Names, text: &str) -> Option<i16> {
             }
             if let Some(pos) = text.rfind(nm.as_str()) {
                 let end = pos + nm.len();
-                if best.map(|(e, _)| end > e).unwrap_or(true) {
-                    best = Some((end, *id));
+                // On a TIE the LONGER name wins: 长弓兵 and 弓兵 both end at the
+                // same character (弓兵 is a name of the archer, 长弓兵 of the
+                // longbowman), so "ending latest" alone picks whichever the map
+                // visited first -- measured: "把步弓手的样子换成长弓兵" read the
+                // donor as unit 4 instead of 8.
+                let better = match best {
+                    None => true,
+                    Some((be, blen, _)) => {
+                        end > be || (end == be && nm.chars().count() > blen)
+                    }
+                };
+                if better {
+                    best = Some((end, nm.chars().count(), *id));
                 }
             }
         }
     }
-    best.map(|(_, id)| id)
+    best.map(|(_, _, id)| id)
 }
 
 
