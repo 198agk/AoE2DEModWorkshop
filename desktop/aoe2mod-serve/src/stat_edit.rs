@@ -11,6 +11,20 @@ use aoe2mod_dat::{
 };
 use std::path::Path;
 
+/// Every record id that an edit named after `unit` has to touch.
+///
+/// Reads the exported family table, so the preview and the build answer this
+/// question from one source.  A missing table is not fatal: the fallback is the
+/// one-member family, which is correct for every lone unit and is what this
+/// server did before the table existed.
+fn family_ids(unit: i16) -> Vec<i16> {
+    let path = crate::families::table_path();
+    match crate::families::Families::load(&path) {
+        Ok(f) => f.of(unit),
+        Err(_) => vec![unit],
+    }
+}
+
 /// Edit `stat` on `unit` in every civilization, and describe what changed.
 ///
 /// Editing every civ is not a convenience: a villager exists in all 63, and
@@ -60,13 +74,18 @@ pub fn apply(server: &Server, stat: &str, unit: i16, value: f64) -> Result<Strin
     let s47 = read_stages47(&mut r, gv).map_err(|e| e.to_string())?;
     let s810 = read_stages810(&mut r, gv).map_err(|e| e.to_string())?;
 
+    // Same family expansion as `build_one`, from the same table: `/api/stat` and
+    // `/api/build` must never write different scopes for the same sentence.
+    let family = family_ids(unit);
     let mut targets = Vec::new();
     for (ci, c) in s810.civs.iter().enumerate() {
-        if !c.units.iter().any(|u| u.id == unit) {
-            continue;
-        }
-        if let Some(off) = table.offset(ci, stat, unit) {
-            targets.push((ci, off));
+        for u in c.units.iter() {
+            if !family.contains(&u.id) {
+                continue;
+            }
+            if let Some(off) = table.offset(ci, stat, u.id) {
+                targets.push((ci, off));
+            }
         }
     }
     if targets.is_empty() {
@@ -112,9 +131,11 @@ pub fn apply(server: &Server, stat: &str, unit: i16, value: f64) -> Result<Strin
     }
 
     Ok(format!(
-        "{{\"ok\":true,\"stat\":\"{}\",\"unit\":{},\"civs\":{},\"before\":{},\"value\":{},\"bytes_changed\":{},\"out\":\"{}\"}}",
+        "{{\"ok\":true,\"stat\":\"{}\",\"unit\":{},\"civs\":{},\"variants\":{},\"edit_count\":{},\"before\":{},\"value\":{},\"bytes_changed\":{},\"out\":\"{}\"}}",
         json_escape(stat),
         unit,
+        civ_count(&targets),
+        family.len(),
         targets.len(),
         before,
         value,
@@ -229,13 +250,23 @@ pub fn build_one(server: &Server, req: &serde_json::Value) -> Result<String, Str
     let s810 = read_stages810(&mut r, gv).map_err(|e| e.to_string())?;
 
     // Resolve the target value: SET means the number, DELTA means old + delta.
+    //
+    // `family_of` is not a nicety.  `村民血量改成100` names ONE id (83) but the
+    // game ships 27 villager records per civilization -- age variants for the
+    // trained unit and separate male/female baskets joined through
+    // `objreplacement.json`.  Writing only the named id changes the male villager
+    // and leaves the female one alone, while the screen reports "63 处改动": a
+    // number that is really the extent of the loop, not of the edit.
+    let family = family_ids(unit);
     let mut targets = Vec::new();
     for (ci, c) in s810.civs.iter().enumerate() {
-        if !c.units.iter().any(|u| u.id == unit) {
-            continue;
-        }
-        if let Some(off) = table.offset(ci, stat, unit) {
-            targets.push((ci, off));
+        for u in c.units.iter() {
+            if !family.contains(&u.id) {
+                continue;
+            }
+            if let Some(off) = table.offset(ci, stat, u.id) {
+                targets.push((ci, off));
+            }
         }
     }
     if targets.is_empty() {
@@ -313,9 +344,15 @@ pub fn build_one(server: &Server, req: &serde_json::Value) -> Result<String, Str
     .map_err(|e| format!("建好了但没能写构建记录：{e}"))?;
 
     Ok(format!(
-        "{{\"ok\":true,\"stat\":\"{}\",\"unit\":{},\"civs\":{},\"before\":{},\"value\":{},\"dat_bytes\":{},\"compressed\":{},\"built\":\"{}\",\"installed\":\"{}\"}}",
+        "{{\"ok\":true,\"stat\":\"{}\",\"unit\":{},\"civs\":{},\"variants\":{},\"edit_count\":{},\"before\":{},\"value\":{},\"dat_bytes\":{},\"compressed\":{},\"built\":\"{}\",\"installed\":\"{}\"}}",
         crate::server::json_escape(stat),
         unit,
+        // Distinct civilizations, not writes.  `targets.len()` used to be
+        // reported here under the name `civs`, which after family expansion says
+        // 1701 civilizations exist.  The two numbers answer different questions
+        // and the reference calls them `civ_count` and `edit_count`.
+        civ_count(&targets),
+        family.len(),
         targets.len(),
         old,
         new_value,
@@ -324,6 +361,14 @@ pub fn build_one(server: &Server, req: &serde_json::Value) -> Result<String, Str
         crate::server::json_escape(&built.dir.display().to_string()),
         crate::server::json_escape(&installed_to)
     ))
+}
+
+/// How many distinct civilizations the write list touches.
+fn civ_count(targets: &[(usize, usize)]) -> usize {
+    let mut seen: Vec<usize> = targets.iter().map(|(ci, _)| *ci).collect();
+    seen.sort_unstable();
+    seen.dedup();
+    seen.len()
 }
 
 

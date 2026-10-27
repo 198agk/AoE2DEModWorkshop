@@ -21,6 +21,7 @@ pub use aoe2mod_dat::{write23, write47, write810, writer};
 pub mod techedit;
 pub use aoe2mod_dat::stats;
 pub mod describe;
+pub mod families;
 pub mod rebuild;
 pub mod ai;
 
