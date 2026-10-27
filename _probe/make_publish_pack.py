@@ -14,8 +14,13 @@ Output: 发布包/*.zip
 import os as _os
 _HERE_PATH = lambda *p: _os.path.join(
     _os.path.dirname(_os.path.abspath(__file__)), *p)
+# Commit 8066c2b made this derive every path from `__file__`, but it made the
+# two lambdas identical: `_ROOT_PATH` pointed at `_probe/` like `_HERE_PATH`
+# does, so every source path came out as `_probe/_probe/out_dshtest_v12` and the
+# script raised FileNotFoundError before writing anything.  The repo root is the
+# PARENT of this file's directory.
 _ROOT_PATH = lambda *p: _os.path.join(
-    _os.path.dirname(_os.path.abspath(__file__)), *p)
+    _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))), *p)
 import json
 import os
 import shutil
@@ -23,7 +28,9 @@ import zipfile
 
 from PIL import Image
 
-ROOT = _HERE_PATH()
+# One level up from `_probe/` is the repo root, which is what every path below
+# wants (`_probe/out_dshtest_v12`, `<repo>/发布包`).
+ROOT = _ROOT_PATH()
 OUT_DIR = os.path.join(ROOT, "发布包")
 STAGE = os.path.join(ROOT, "_probe", "out_publish")
 
