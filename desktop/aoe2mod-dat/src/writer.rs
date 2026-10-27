@@ -233,3 +233,12 @@ impl RoundTrip {
         s
     }
 }
+
+impl<'a> Writer<'a> {
+    /// Push raw bytes taken from the model (a captured record image) and move
+    /// the input cursor past the same span.  Used for records whose tail is
+    /// type-dependent and therefore not modeled field by field.
+    pub fn push_bytes(&mut self, bytes: &[u8]) {
+        self.push(bytes);
+    }
+}

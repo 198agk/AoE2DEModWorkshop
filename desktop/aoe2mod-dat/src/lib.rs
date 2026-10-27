@@ -433,6 +433,7 @@ pub fn read_stages47(r: &mut Reader<'_>, gv: u32) -> io::Result<Stages47> {
 // ---------------------------------------------------------------------------
 pub mod stage810;
 pub mod writer;
+pub mod write810;
 pub mod write23;
 pub mod write47;
 

@@ -61,6 +61,11 @@ fn in_de2(gv: u32, lo: u32) -> bool {
 /// cannot be wrong.
 #[derive(Debug, Clone, Default)]
 pub struct Unit {
+    /// The bytes this record occupied in the input.  A unit's tail is
+    /// type-dependent (Type50 / Projectile / Creatable / Building, each with its
+    /// own version guards), so re-emitting it field by field would be one guess
+    /// per field.  Emitting the captured span is exactly right by construction.
+    pub image: Option<Vec<u8>>,
     pub unit_type: u8,
     pub id: i16,
     pub class: i16,
@@ -242,7 +247,13 @@ fn read_building(r: &mut Reader<'_>) -> io::Result<()> {
     r.skip(LOOTABLE_RES_COUNT) // LootingTable[6]
 }
 
+fn finish(mut u: Unit, r: &Reader<'_>, start: usize) -> Unit {
+    u.image = Some(r.buf[start..r.pos].to_vec());
+    u
+}
+
 pub fn read_unit(r: &mut Reader<'_>, gv: u32) -> io::Result<Unit> {
+    let start = r.pos;
     let mut u = Unit::default();
     u.unit_type = r.u8()?;
     u.id = r.i16()?;
@@ -310,12 +321,12 @@ pub fn read_unit(r: &mut Reader<'_>, gv: u32) -> io::Result<Unit> {
 
     let t = u.unit_type;
     if t == UNIT_TYPE_AOE_TREES {
-        return Ok(u);
+        return Ok(finish(u, r, start));
     }
     if t >= UNIT_TYPE_FLAG {
         r.skip(4)?; // Speed
     } else {
-        return Ok(u);
+        return Ok(finish(u, r, start));
     }
     if t >= UNIT_TYPE_DEAD_FISH {
         read_dead_fish(r)?;
@@ -339,7 +350,7 @@ pub fn read_unit(r: &mut Reader<'_>, gv: u32) -> io::Result<Unit> {
     if t == UNIT_TYPE_BUILDING {
         read_building(r)?;
     }
-    Ok(u)
+    Ok(finish(u, r, start))
 }
 
 /// Debug aid: prints the cursor after a named block.  Silent unless
@@ -354,6 +365,9 @@ fn trace(r: &Reader<'_>, what: &str) {
 pub struct Civ {
     pub player_type: u8,
     pub name: String,
+    pub name_marker: u16,
+    pub name_len: u16,
+    pub resources: Vec<f32>,
     pub tech_tree_id: i16,
     pub team_bonus_id: i16,
     pub icon_set: u8,
@@ -365,11 +379,16 @@ pub struct Civ {
 pub fn read_civ(r: &mut Reader<'_>, gv: u32) -> io::Result<Civ> {
     let mut c = Civ::default();
     c.player_type = r.u8()?;
-    c.name = r.debug_string()?.1;
+    let (nm, name, nl) = r.debug_string()?;
+    c.name = name;
+    c.name_marker = nm;
+    c.name_len = nl;
     let n = r.i16()?;
     c.tech_tree_id = r.i16()?;
     c.team_bonus_id = r.i16()?;
-    r.skip(4 * n.max(0) as usize)?; // resources: f32[n]
+    for _ in 0..n.max(0) {
+        c.resources.push(r.f32()?);
+    }
     c.icon_set = r.u8()?;
     let m = r.i16()?;
     let mut ptrs = Vec::with_capacity(m.max(0) as usize);
@@ -391,6 +410,7 @@ pub fn read_civ(r: &mut Reader<'_>, gv: u32) -> io::Result<Civ> {
 // ---------------------------------------------------------------------------
 #[derive(Debug, Clone, Default)]
 pub struct Tech {
+    pub image: Option<Vec<u8>>,
     pub civ: i16,
     pub effect_id: i16,
     pub tech_type: i16,
@@ -408,6 +428,7 @@ fn read_research_location(r: &mut Reader<'_>) -> io::Result<()> {
 }
 
 pub fn read_tech(r: &mut Reader<'_>, gv: u32) -> io::Result<Tech> {
+    let start = r.pos;
     let mut t = Tech::default();
     r.skip(2 * 6)?; // RequiredTechs
     for _ in 0..3 {
@@ -450,6 +471,7 @@ pub fn read_tech(r: &mut Reader<'_>, gv: u32) -> io::Result<Tech> {
             read_research_location(r)?;
         }
     }
+    t.image = Some(r.buf[start..r.pos].to_vec());
     Ok(t)
 }
 
@@ -567,6 +589,7 @@ pub fn read_tech_tree(r: &mut Reader<'_>, gv: u32) -> io::Result<TechTree> {
 // ---------------------------------------------------------------------------
 pub struct Stages810 {
     pub civs: Vec<Civ>,
+    pub tech_tree_image: Option<Vec<u8>>,
     pub techs: Vec<Tech>,
     pub time_slice: i32,
     pub tech_tree: TechTree,
@@ -585,10 +608,12 @@ pub fn read_stages810(r: &mut Reader<'_>, gv: u32) -> io::Result<Stages810> {
     }
     let time_slice = r.i32()?;
     r.skip(4 * 6)?; // unit_kill_rate .. razing_kill_total
+    let tt_start = r.pos;
     let tech_tree = read_tech_tree(r, gv)?;
     Ok(Stages810 {
         civs,
         techs,
+        tech_tree_image: Some(r.buf[tt_start..r.pos].to_vec()),
         time_slice,
         tech_tree,
     })
