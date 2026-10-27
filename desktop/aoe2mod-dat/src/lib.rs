@@ -409,6 +409,16 @@ pub fn read_stages47(r: &mut Reader<'_>, gv: u32) -> io::Result<Stages47> {
     })
 }
 
+// ---------------------------------------------------------------------------
+// Stages 8-10: civilizations, techs, tail
+// ---------------------------------------------------------------------------
+pub mod stage810;
+
+pub use stage810::{
+    read_civ, read_stages810, read_tech, read_tech_tree, read_unit, Civ, Stages810,
+    Tech, TechTree, Unit,
+};
+
 /// `VER 8.9` -> the ordinal the C++ `GameVersion` enum gives it.
 ///
 /// Mirrors `gv_from_version_string` in the Python original.  Only the versions
