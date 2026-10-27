@@ -25,11 +25,19 @@ pub struct Terrain {
     pub string_id: i32,
     pub name: String,
     pub name2: String,
+    /// Markers + stored widths for the three strings.  See `Graphic`: the
+    /// marker is not constant, and a re-emit needs the INPUT width.
+    pub name_marker: u16,
+    pub name_len: u16,
+    pub name2_marker: u16,
+    pub name2_len: u16,
     pub slp: i32,
     pub sound_id: i32,
     pub blend_priority: i32,
     pub blend_type: i32,
     pub overlay_mask_name: String,
+    pub overlay_marker: u16,
+    pub overlay_len: u16,
     pub passable_terrain: u8,
     pub impassable_terrain: u8,
     pub is_animated: u8,
@@ -46,8 +54,14 @@ pub fn read_terrain(r: &mut Reader<'_>) -> io::Result<Terrain> {
     t.is_water = r.u8()?;
     t.hide_in_editor = r.u8()?;
     t.string_id = r.i32()?;
-    t.name = r.debug_string()?.1;
-    t.name2 = r.debug_string()?.1;
+    let (name_marker, name, name_len) = r.debug_string()?;
+    t.name = name;
+    t.name_marker = name_marker;
+    t.name_len = name_len;
+    let (name2_marker, name2, name2_len) = r.debug_string()?;
+    t.name2 = name2;
+    t.name2_marker = name2_marker;
+    t.name2_len = name2_len;
     t.slp = r.i32()?;
     let _shape_ptr = r.i32()?;
     t.sound_id = r.i32()?;
@@ -55,7 +69,10 @@ pub fn read_terrain(r: &mut Reader<'_>) -> io::Result<Terrain> {
     let _wwise_stop = r.u32()?;
     t.blend_priority = r.i32()?;
     t.blend_type = r.i32()?;
-    t.overlay_mask_name = r.debug_string()?.1;
+    let (overlay_marker, overlay, overlay_len) = r.debug_string()?;
+    t.overlay_mask_name = overlay;
+    t.overlay_marker = overlay_marker;
+    t.overlay_len = overlay_len;
     r.skip(3)?; // Colors[3]
     r.skip(2)?; // CliffColors
     t.passable_terrain = r.u8()?;
@@ -210,18 +227,28 @@ pub fn read_random_maps(r: &mut Reader<'_>) -> io::Result<usize> {
 #[derive(Debug, Clone)]
 pub struct Effect {
     pub name: String,
+    /// Marker + stored width, for the same reason every other string carries
+    /// them: the writer must advance by the INPUT width, and the marker is not
+    /// constant.
+    pub name_marker: u16,
+    pub name_len: u16,
     /// `(u8, i16, i16, i16, f32)` -- 11 bytes.
     pub commands: Vec<(u8, i16, i16, i16, f32)>,
 }
 
 pub fn read_effect(r: &mut Reader<'_>) -> io::Result<Effect> {
-    let name = r.debug_string()?.1;
+    let (name_marker, name, name_len) = r.debug_string()?;
     let n = r.i16()?;
     let mut commands = Vec::with_capacity(n.max(0) as usize);
     for _ in 0..n {
         commands.push((r.u8()?, r.i16()?, r.i16()?, r.i16()?, r.f32()?));
     }
-    Ok(Effect { name, commands })
+    Ok(Effect {
+        name,
+        name_marker,
+        name_len,
+        commands,
+    })
 }
 
 // ---------------------------------------------------------------------------
