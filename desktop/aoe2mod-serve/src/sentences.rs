@@ -83,6 +83,13 @@ pub struct Intent {
     /// `unit.card_move` only: which building's card, and which box on it.
     pub building: Option<i16>,
     pub button: Option<u8>,
+    /// `unit.attack_class` only: the target CLASS and whether it is attack or armour.
+    pub class_id: Option<i16>,
+    /// : the ATTACK classes to try in order (see the
+    ///  block in dat_bindings.json). Not the unit class the
+    /// sentence names -- those are two different id spaces.
+    pub class_candidates: Option<Vec<i16>>,
+    pub attack_kind: Option<String>,
 }
 
 impl Intent {
@@ -123,6 +130,16 @@ impl Intent {
         }
         if let Some(v) = self.button {
             parts.push(format!("\"button\":{v}"));
+        }
+        if let Some(v) = self.class_id {
+            parts.push(format!("\"class_id\":{v}"));
+        }
+        if let Some(v) = &self.class_candidates {
+            let list: Vec<String> = v.iter().map(|x| x.to_string()).collect();
+            parts.push(format!("\"class_candidates\":[{}]", list.join(",")));
+        }
+        if let Some(v) = &self.attack_kind {
+            parts.push(format!("\"kind\":\"{}\"", crate::server::json_escape(v)));
         }
         format!("{{{}}}", parts.join(","))
     }
@@ -382,6 +399,76 @@ pub fn read_clause(text: &str) -> Clause {
         entity_name: None,
         entity_id: None,
     };
+
+    // --- unit.attack_class: "步弓手对骑兵攻击加2" -------------------------
+    // BEFORE the stat branch: "攻击" alone would read as displayed_attack and
+    // the "对骑兵" half would be dropped, which is a confident wrong answer.
+    if let Some((cid, cname)) = class_after_dui(text) {
+        let is_attack = text.contains("攻击") || text.contains("攻");
+        let is_armour =
+            text.contains("护甲") || text.contains("防御") || text.contains("甲");
+        if !(is_attack || is_armour) {
+            cl.why = Some(format!(
+                "「对{cname}」要改的是攻击还是护甲？说「攻击」或「护甲」"
+            ));
+            return cl;
+        }
+        let (unit, stat_part) = match text.split_once('对') {
+            Some((a, _b)) => (rightmost_name_of(n_ref(), a), a),
+            None => (None, text),
+        };
+        let _ = stat_part;
+        if let Some(u) = unit {
+            let mut it = Intent::default();
+            it.intent = "unit.attack_class".to_string();
+            it.unit = Some(u);
+            // NOT : that number is a UNIT class (骑兵 = 12),
+            // while the record stores ATTACK classes (3 = generic base attack,
+            // 4 = the other base attack). Passing 12 made every build refuse
+            // with "没有「基础攻击」这项可以改", because no record carries an
+            // attack row of class 12. The bindings say it directly:
+            // `attack_classes.attack.class_candidates = [3, 4]`, tried in order,
+            // first one the unit actually carries wins.
+            //
+            // The class NAME the player typed still matters for the refusal
+            // message, so it is kept in entity_name.
+            let _ = cid;
+            it.class_candidates = Some(vec![3i16, 4i16]);
+            it.attack_kind = Some(if is_attack { "attack" } else { "armour" }.to_string());
+            // Read the number HERE: this branch runs before the number gate
+            // (it must, or "对骑兵" would be consumed by the stat branch).
+            let num = match find_number(text) {
+                Some((v, _)) => v,
+                None => {
+                    cl.why = Some("这句话里没有数字，没有说要改成多少。".into());
+                    return cl;
+                }
+            };
+            // SET vs DELTA, same words as everywhere else.
+            let op2 = if contains_any(text, SET_WORDS) {
+                "set"
+            } else if contains_any(text, SUB_WORDS) {
+                "sub"
+            } else {
+                "add"
+            };
+            match op2 {
+                "set" => it.value = Some(num),
+                "sub" => it.delta = Some(-num),
+                _ => it.delta = Some(num),
+            }
+            return Clause {
+                text: text.to_string(),
+                intent: Some(it),
+                why: None,
+                entity_name: Some(cname),
+                entity_id: Some(u),
+            };
+        }
+        cl.why = Some("没听出要改哪个单位。".into());
+        return cl;
+    }
+
 
     // 1. Number first: it is the only unambiguous token in an unspaced sentence.
     let (value, _span) = match find_number(text) {
@@ -841,4 +928,37 @@ fn canonical_name_id(n: &Names, text: &str) -> Option<i16> {
         }
     }
     best.map(|(_, id)| id)
+}
+
+
+fn n_ref() -> Option<&'static Names> {
+    names().as_ref()
+}
+
+fn rightmost_name_of(n: Option<&Names>, text: &str) -> Option<i16> {
+    n.and_then(|t| rightmost_name(t, text))
+}
+
+/// `(class id, matched name)` for the class named right after 对.
+///
+/// The position rule is load-bearing: matching a class name anywhere would fire
+/// on "骑兵的血量改成1000", where the class is the ENTITY rather than the target
+/// of a bonus. Longest name wins, so 攻城武器 does not lose to a prefix.
+fn class_after_dui(text: &str) -> Option<(u32, String)> {
+    let pos = text.find('对')?;
+    let tail: String = text[pos + '对'.len_utf8()..].to_string();
+    let table = crate::attack_class::class_names();
+    let mut best: Option<(usize, u32, String)> = None;
+    for (id, names) in table.iter() {
+        for nm in names {
+            if nm.is_empty() || !tail.starts_with(nm.as_str()) {
+                continue;
+            }
+            let len = nm.chars().count();
+            if best.as_ref().map(|(b, _, _)| len > *b).unwrap_or(true) {
+                best = Some((len, *id, nm.clone()));
+            }
+        }
+    }
+    best.map(|(_, id, nm)| (id, nm))
 }
