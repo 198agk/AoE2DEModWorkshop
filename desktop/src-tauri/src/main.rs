@@ -55,6 +55,17 @@ fn find_root() -> Option<PathBuf> {
             return Some(p);
         }
     }
+    // The installed layout wins even when the exe happens to sit inside
+    // a checkout: whoever shipped this folder meant this folder.
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(d) = exe.parent() {
+            let bundle = d.join("app");
+            if looks_like_root(&bundle) {
+                log(&format!("root: {} (bundled)", bundle.display()));
+                return Some(bundle);
+            }
+        }
+    }
     let mut seeds: Vec<PathBuf> = Vec::new();
     if let Ok(exe) = std::env::current_exe() {
         if let Some(d) = exe.parent() {
@@ -77,10 +88,13 @@ fn find_root() -> Option<PathBuf> {
             cur = dir.parent();
         }
     }
-    // The installed layout: the tool sits next to this exe.
+    // A bundle whose engine folder is spelled differently, for symmetry
+    // with the probe above.  Kept because a hand-built folder is common
+    // while someone is testing a package.
     if let Ok(exe) = std::env::current_exe() {
         if let Some(d) = exe.parent() {
             if looks_like_root(&d.join("workshop")) {
+                log(&format!("root: {} (workshop)", d.join("workshop").display()));
                 return Some(d.join("workshop"));
             }
         }
@@ -93,11 +107,26 @@ fn python_candidates() -> Vec<PathBuf> {
     if let Ok(v) = std::env::var("AOE2MOD_PYTHON") {
         out.push(PathBuf::from(v));
     }
+    // The shipped interpreter.  This is the only candidate that exists on
+    // a machine that merely installed the app; the two below are for the
+    // development checkout.
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(d) = exe.parent() {
+            out.push(d.join("runtime").join("python.exe"));
+        }
+    }
+    if let Ok(dir) = std::env::var("AOE2MOD_RUNTIME") {
+        out.push(PathBuf::from(dir).join("python.exe"));
+    }
     if let Ok(home) = std::env::var("USERPROFILE") {
         out.push(PathBuf::from(home).join(
             r".dsh\dsh-runtimes\dsh-primary-runtime\dependencies\python\python.exe",
         ));
     }
+    // Last resort: whatever is on PATH.  A machine with Python installed
+    // should not need our copy, and a machine with neither gets the error
+    // page rather than a silent failure.
+    out.push(PathBuf::from("python"));
     out
 }
 
@@ -199,6 +228,7 @@ fn spawn_server(root: &Path, port: u16) -> Result<std::process::Child, String> {
         match child {
             Ok(c) => {
                 log(&format!("started {} on port {}", py.display(), port));
+                log(&format!("root for the child: {}", root.display()));
                 return Ok(c);
             }
             Err(e) => tried.push(format!("{} ({})", py.display(), e)),
