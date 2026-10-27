@@ -262,3 +262,304 @@ fn field_bool(obj: &str, name: &str) -> Option<bool> {
         None
     }
 }
+
+
+// ---------------------------------------------------------------------------
+// Writing: enable / disable, move in load order, uninstall
+// ---------------------------------------------------------------------------
+
+/// Turn an installed mod on or off without moving it in the list.
+///
+/// Disabling is not deleting: the entry stays (the engine keeps a disabled mod in
+/// the list, greyed out) and its position is preserved, so re-enabling restores
+/// exactly the conflict order the player had.
+///
+/// A name that matches NOTHING is REFUSED instead of created. `upsert` creates an
+/// entry when it finds none, which is what installing wants and the opposite of
+/// what toggling means: measured 2026-10-20, toggling a name that did not exist
+/// inserted a phantom entry at Priority 1 of the player's real list, pointing at
+/// a folder that is not there, reported to the caller as ok. A folder the player
+/// dropped into `mods/local` by hand still works, because the game registers
+/// those itself -- so the folder on disk is the second half of "does this exist".
+pub fn set_enabled(profile: &Path, name: &str, enabled: bool) -> Result<ModRow, String> {
+    let rows = read_mods(profile).map_err(|e| e.to_string())?;
+    let (fname, fkind, ftitle) = match rows.iter().find(|r| r.name == name || r.title == name) {
+        Some(r) => (r.name.clone(), r.kind.clone(), r.title.clone()),
+        None => {
+            let dir = profile.join("mods/local").join(name);
+            if !dir.is_dir() {
+                return Err(format!(
+                    "没找到叫「{name}」的模组：模组列表里没有它，模组文件夹里也没有这个文件夹。它可能已经被删掉或者改名了，刷新一下列表再试。"
+                ));
+            }
+            (name.to_string(), "local".to_string(), name.to_string())
+        }
+    };
+    let path = profile.join("mods/mod-status.json");
+    let text = fs::read_to_string(&path).map_err(|e| e.to_string())?;
+    let rel = format!("{}//{}", if fkind.is_empty() { "local" } else { &fkind }, fname);
+    let doc = if text.contains(&format!("\"{rel}\"")) {
+        set_bool_in_entry(&text, &rel, enabled)
+    } else {
+        insert_status_entry(&text, &rel, &ftitle, enabled)?
+    };
+    write_status(&path, &doc)?;
+    Ok(ModRow {
+        name: fname,
+        title: ftitle,
+        kind: fkind,
+        enabled,
+        ..Default::default()
+    })
+}
+
+/// Move a mod one step in load order. `delta = -1` is up (higher priority, wins
+/// a shared path), `+1` is down.
+pub fn move_mod(profile: &Path, name: &str, delta: i64) -> Result<(), String> {
+    let path = profile.join("mods/mod-status.json");
+    let text = fs::read_to_string(&path).map_err(|e| e.to_string())?;
+    let mut entries = parse_entries(&text);
+    let pos = entries
+        .iter()
+        .position(|e| e.name == name || e.title == name)
+        .ok_or_else(|| format!("模组列表里没有「{name}」。"))?;
+    let target = pos as i64 + delta;
+    if target < 0 || target as usize >= entries.len() {
+        // Already at an end: nothing to do, and not an error.
+        return Ok(());
+    }
+    let e = entries.remove(pos);
+    entries.insert(target as usize, e);
+    let doc = rebuild_status(&text, &entries);
+    write_status(&path, &doc)
+}
+
+/// Remove a mod folder and its entry.
+///
+/// A split build is TWO folders (`<base>` and `<base>（界面）`), and that suffix is
+/// the only thing on disk tying them together. Deleting one half of an installed
+/// pair leaves a folder that renders an empty command card, so both go.
+pub fn uninstall(profile: &Path, name: &str) -> Result<Vec<String>, String> {
+    let rows = read_mods(profile).map_err(|e| e.to_string())?;
+    let mut targets: Vec<String> = vec![name.to_string()];
+    if let Some(base) = name.strip_suffix("（界面）") {
+        targets.push(base.to_string());
+    } else {
+        let ui = format!("{name}（界面）");
+        if rows.iter().any(|r| r.name == ui || r.title == ui) {
+            targets.push(ui);
+        }
+    }
+    let mut removed = Vec::new();
+    let path = profile.join("mods/mod-status.json");
+    let mut text = fs::read_to_string(&path).map_err(|e| e.to_string())?;
+    for t in &targets {
+        let row = rows.iter().find(|r| &r.name == t || &r.title == t);
+        let kind = row.map(|r| r.kind.clone()).unwrap_or_else(|| "local".into());
+        let dir = profile
+            .join("mods")
+            .join(if kind.is_empty() { "local".to_string() } else { kind.clone() })
+            .join(t);
+        if dir.is_dir() {
+            fs::remove_dir_all(&dir).map_err(|e| format!("删不掉 {}：{e}", dir.display()))?;
+            removed.push(t.clone());
+        }
+        let mut entries = parse_entries(&text);
+        entries.retain(|e| &e.name != t && &e.title != t);
+        text = rebuild_status(&text, &entries);
+    }
+    write_status(&path, &text)?;
+    Ok(removed)
+}
+
+/// One entry, as the status file spells it.
+#[derive(Debug, Clone)]
+pub struct Entry {
+    pub name: String,
+    pub title: String,
+    pub kind: String,
+    pub enabled: bool,
+    pub priority: i64,
+}
+
+fn parse_entries(text: &str) -> Vec<Entry> {
+    let mut out = Vec::new();
+    let at = match text.find("\"Mods\"") {
+        Some(a) => a,
+        None => return out,
+    };
+    let lb = match text[at..].find('[') {
+        Some(v) => v + at,
+        None => return out,
+    };
+    let rb = match matching_brace_or_bracket(text, lb) {
+        Some(v) => v,
+        None => return out,
+    };
+    let body = &text[lb + 1..rb];
+    let mut i = 0usize;
+    while let Some(open) = body[i..].find('{') {
+        let s = i + open;
+        let e = match matching_brace_or_bracket(body, s) {
+            Some(v) => v,
+            None => break,
+        };
+        let obj = &body[s + 1..e];
+        let raw_path = field_str(obj, "Path").unwrap_or_default();
+        let (kind, name) = match raw_path.split_once("//") {
+            Some((k, n)) => (k.to_string(), n.to_string()),
+            None => (String::new(), raw_path.clone()),
+        };
+        out.push(Entry {
+            name: name.clone(),
+            title: field_str(obj, "Title").unwrap_or(name),
+            kind,
+            enabled: field_bool(obj, "Enabled").unwrap_or(false),
+            priority: field_int(obj, "Priority").unwrap_or(0),
+        });
+        i = e + 1;
+    }
+    out
+}
+
+fn rebuild_status(template: &str, entries: &[Entry]) -> String {
+    let at = match template.find("\"Mods\"") {
+        Some(a) => a,
+        None => return template.to_string(),
+    };
+    let lb = match template[at..].find('[') {
+        Some(v) => v + at,
+        None => return template.to_string(),
+    };
+    let rb = match matching_brace_or_bracket(template, lb) {
+        Some(v) => v,
+        None => return template.to_string(),
+    };
+    let items: Vec<String> = entries
+        .iter()
+        .enumerate()
+        .map(|(i, e)| {
+            format!(
+                "{{\"CheckSum\":\"0\",\"Enabled\":{},\"LastUpdate\":\"{}\",\"Path\":\"{}//{}\",\"Priority\":{},\"PublishID\":0,\"Title\":\"{}\",\"WorkshopID\":0}}",
+                e.enabled,
+                now_ms(),
+                if e.kind.is_empty() { "local" } else { &e.kind },
+                crate::server::json_escape(&e.name),
+                i + 1,
+                crate::server::json_escape(&e.title)
+            )
+        })
+        .collect();
+    format!("{}{}{}", &template[..lb + 1], items.join(","), &template[rb..])
+}
+
+fn insert_status_entry(
+    text: &str,
+    rel: &str,
+    title: &str,
+    enabled: bool,
+) -> Result<String, String> {
+    let at = text.find("\"Mods\"").ok_or("mod-status.json 里没有 Mods")?;
+    let lb = text[at..].find('[').ok_or("Mods 不是数组")? + at;
+    let entry = format!(
+        "{{\"CheckSum\":\"0\",\"Enabled\":{},\"LastUpdate\":\"{}\",\"Path\":\"{}\",\"Priority\":1,\"PublishID\":0,\"Title\":\"{}\",\"WorkshopID\":0}}",
+        enabled,
+        now_ms(),
+        rel,
+        crate::server::json_escape(title)
+    );
+    let mut out = String::new();
+    out.push_str(&text[..lb + 1]);
+    out.push_str(&entry);
+    let rest = &text[lb + 1..];
+    if rest.trim_start().starts_with(']') {
+        out.push_str(rest);
+    } else {
+        out.push(',');
+        out.push_str(rest);
+    }
+    let entries = parse_entries(&out);
+    Ok(rebuild_status(&out, &entries))
+}
+
+fn set_bool_in_entry(text: &str, rel: &str, value: bool) -> String {
+    let rel_q = format!("\"{rel}\"");
+    let p = match text.find(&rel_q) {
+        Some(v) => v,
+        None => return text.to_string(),
+    };
+    let obj_start = match text[..p].rfind('{') {
+        Some(v) => v,
+        None => return text.to_string(),
+    };
+    let obj_end = match matching_brace_or_bracket(text, obj_start) {
+        Some(v) => v,
+        None => return text.to_string(),
+    };
+    let obj = &text[obj_start..obj_end];
+    let pat = "\"Enabled\":";
+    let q = match obj.find(pat) {
+        Some(v) => v,
+        None => return text.to_string(),
+    };
+    let after = q + pat.len();
+    let tail = &obj[after..];
+    let trimmed = tail.trim_start();
+    let lead = tail.len() - trimmed.len();
+    let rest = if trimmed.starts_with("true") {
+        &trimmed[4..]
+    } else if trimmed.starts_with("false") {
+        &trimmed[5..]
+    } else {
+        return text.to_string();
+    };
+    let mut fixed = String::new();
+    fixed.push_str(&obj[..after]);
+    fixed.push_str(&obj[after..after + lead]);
+    fixed.push_str(if value { "true" } else { "false" });
+    fixed.push_str(rest);
+    format!("{}{}{}", &text[..obj_start], fixed, &text[obj_end..])
+}
+
+fn write_status(path: &Path, doc: &str) -> Result<(), String> {
+    // Write beside, then rename: a half-written status file loses the player's
+    // whole mod list, and that is not recoverable from anywhere.
+    let tmp = path.with_extension("json.tmp");
+    fs::write(&tmp, doc).map_err(|e| e.to_string())?;
+    fs::rename(&tmp, path).map_err(|e| e.to_string())
+}
+
+fn now_ms() -> String {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis().to_string())
+        .unwrap_or_else(|_| "0".into())
+}
+
+fn matching_brace_or_bracket(s: &str, open: usize) -> Option<usize> {
+    let b = s.as_bytes();
+    if open >= b.len() {
+        return None;
+    }
+    let (o, c) = match b[open] {
+        b'{' => (b'{', b'}'),
+        b'[' => (b'[', b']'),
+        _ => return None,
+    };
+    let mut depth = 0i32;
+    let mut in_str = false;
+    for i in open..b.len() {
+        match b[i] {
+            b'"' if i == 0 || b[i - 1] != b'\\' => in_str = !in_str,
+            x if x == o && !in_str => depth += 1,
+            x if x == c && !in_str => {
+                depth -= 1;
+                if depth == 0 {
+                    return Some(i);
+                }
+            }
+            _ => {}
+        }
+    }
+    None
+}

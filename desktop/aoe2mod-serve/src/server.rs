@@ -384,6 +384,68 @@ fn route(
             (200, "application/json; charset=utf-8", json.into_bytes())
         }
         // The one write path, so the whole chain can be exercised end to end.
+        "/api/mod" => {
+            let req: serde_json::Value = match serde_json::from_slice(body) {
+                Ok(v) => v,
+                Err(_) => return (400, "application/json; charset=utf-8", b"{\"ok\":false}".to_vec()),
+            };
+            let name = req.get("name").and_then(|v| v.as_str()).unwrap_or("");
+            let enabled = req.get("enabled").and_then(|v| v.as_bool()).unwrap_or(false);
+            let json = match crate::mods::profile_root() {
+                None => format!("{{\"ok\":false,\"error\":\"{}\"}}", json_escape("找不到玩家档案目录")),
+                Some(prof) => match crate::mods::set_enabled(&prof, name, enabled) {
+                    Ok(row) => {
+                        let rows = crate::mods::read_mods(&prof).unwrap_or_default();
+                        format!("{{\"ok\":true,\"mod\":{{\"name\":\"{}\",\"enabled\":{}}},\"mods\":{}}}",
+                            json_escape(&row.name), row.enabled, crate::mods::to_json(&rows))
+                    }
+                    Err(e) => format!("{{\"ok\":false,\"error\":\"{}\"}}", json_escape(&e)),
+                },
+            };
+            (200, "application/json; charset=utf-8", json.into_bytes())
+        }
+        "/api/mod-move" => {
+            let req: serde_json::Value = match serde_json::from_slice(body) {
+                Ok(v) => v,
+                Err(_) => return (400, "application/json; charset=utf-8", b"{\"ok\":false}".to_vec()),
+            };
+            let name = req.get("name").and_then(|v| v.as_str()).unwrap_or("");
+            let delta = req.get("delta").and_then(|v| v.as_i64()).unwrap_or(0);
+            let json = match crate::mods::profile_root() {
+                None => format!("{{\"ok\":false,\"error\":\"{}\"}}", json_escape("找不到玩家档案目录")),
+                Some(prof) => match crate::mods::move_mod(&prof, name, delta) {
+                    Ok(()) => {
+                        let rows = crate::mods::read_mods(&prof).unwrap_or_default();
+                        format!("{{\"ok\":true,\"mods\":{}}}", crate::mods::to_json(&rows))
+                    }
+                    Err(e) => format!("{{\"ok\":false,\"error\":\"{}\"}}", json_escape(&e)),
+                },
+            };
+            (200, "application/json; charset=utf-8", json.into_bytes())
+        }
+        "/api/uninstall" => {
+            let req: serde_json::Value = match serde_json::from_slice(body) {
+                Ok(v) => v,
+                Err(_) => return (400, "application/json; charset=utf-8", b"{\"ok\":false}".to_vec()),
+            };
+            let name = req.get("name").and_then(|v| v.as_str()).unwrap_or("");
+            let json = match crate::mods::profile_root() {
+                None => format!("{{\"ok\":false,\"error\":\"{}\"}}", json_escape("找不到玩家档案目录")),
+                Some(prof) => match crate::mods::uninstall(&prof, name) {
+                    Ok(removed) => {
+                        let rows = crate::mods::read_mods(&prof).unwrap_or_default();
+                        let names: Vec<String> = removed
+                            .iter()
+                            .map(|r| format!("\"{}\"", json_escape(r)))
+                            .collect();
+                        format!("{{\"ok\":true,\"removed\":[{}],\"mods\":{}}}",
+                            names.join(","), crate::mods::to_json(&rows))
+                    }
+                    Err(e) => format!("{{\"ok\":false,\"error\":\"{}\"}}", json_escape(&e)),
+                },
+            };
+            (200, "application/json; charset=utf-8", json.into_bytes())
+        }
         "/api/build" => {
             let req: serde_json::Value = match serde_json::from_slice(body) {
                 Ok(v) => v,
