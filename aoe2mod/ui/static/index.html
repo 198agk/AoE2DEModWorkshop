@@ -157,23 +157,26 @@
   .content { min-width: 0; }
 
   /* The rail.  Three bands, not one stack: identity / navigation / objects +
-     status.  The middle band is the only one that grows, and it is a LIST --
-     a rail whose middle band is empty is a rail that was never finished
-     (DESIGN.md §12.2.6).
+     status, and the status band sits ON the window's bottom edge, the way
+     every desktop sidebar ends (DESIGN.md §12.2.6).
 
-     `max-height`, not `height`: a fixed height forces the rail to 848px even
-     when its content ends at 430px, and the leftover comes out as the exact
-     dead band this section exists to remove (measured with 0 saved sentences:
-     451px list, 50px of it text).  With `max-height` the `1fr` row is content
-     sized while the rail is short, and only shrinks -- giving the list a
-     scrollbar -- once the content would exceed the window. */
+     This is a fixed `height`, not `max-height`.  The earlier version used
+     `max-height` to kill a 543px dead band, but that only moved the hole: the
+     rail ended wherever its content ended, so the status card floated up into
+     the middle of the left column and the column had no bottom edge at all.
+     The band exists because the middle row is `1fr` -- it absorbs the slack,
+     and while the list is empty that slack is drawn as a centred sentence
+     instead of a gap (see `.rlist:has(.railempty)`).  Measured in the real
+     1264x821 window: rail 16..805, rows 41 / 208 / 354 / 116, footer bottom
+     788 against a rail bottom of 805 -- that 17px is padding plus border, so
+     the status card is genuinely flush, not "roughly near the bottom". */
   .rail {
     position: sticky;
     top: 16px;
     display: grid;
     grid-template-rows: auto auto minmax(0, 1fr) auto;
     gap: 12px;
-    max-height: calc(100dvh - 32px);
+    height: calc(100dvh - 32px);
     padding: 16px 12px;
     background: var(--panel);
     border: 1px solid var(--line);
@@ -185,19 +188,26 @@
      with different sizes and weights is what every tool's masthead looks like,
      and it costs one span. */
   .brand { display: flex; align-items: center; gap: 12px; padding: 0 4px 4px; }
+  /* The mark is the product icon itself, not a coloured square with initials.
+     BRAND.md rule 5: a logo slot uses brand/app-icon.png scaled
+     proportionally -- no derived glyph, no recolour, no crop.  The icon is the
+     same file the exe and the installer carry, so the window and the taskbar
+     show one identity instead of two.
+     No container box around it: the mark has a transparent ground of its own,
+     and painting a panel behind it would put a visible square inside a
+     rounded square.  `object-fit:contain` keeps the 1:1 art uncropped at any
+     size a rail might ask for. */
   .mark {
-    display: grid;
-    place-items: center;
-    width: 32px;
-    height: 32px;
+    display: block;
+    width: 36px;
+    height: 36px;
     flex: none;
-    border-radius: var(--r-control);
-    background: var(--accent);
-    color: var(--on-dark);
-    font-size: var(--fs-micro);
-    font-weight: 600;
-    letter-spacing: .04em;
-    box-shadow: 0 1px 2px rgba(21, 128, 61, .35);
+  }
+  .mark img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
   }
   .brandtext { display: flex; flex-direction: column; min-width: 0; }
   .wordmark {
@@ -294,6 +304,11 @@
     line-height: 1.55;
     color: var(--text-3);
   }
+  /* With the rail at full window height the object band is now 400px tall and
+     usually empty.  An empty list is a sentence, and a sentence pinned to the
+     top of a 400px box reads as "the list failed to load"; centred, it reads
+     as "there is nothing here yet".  Same words, opposite meaning. */
+  .rlist:has(> .railempty) { justify-content: center; }
   /* The object list itself.  `overflow-y:auto` plus `min-height:0` is what makes
      the 1fr row scroll instead of pushing the footer off the bottom; `flex:1`
      is what makes the scroll region claim that row, so the list grows into the
@@ -455,7 +470,7 @@
       flex-direction: row;
       flex-wrap: wrap;
       align-items: center;
-      max-height: none;
+      height: auto;
       padding: 12px;
       gap: 12px;
     }
@@ -1082,7 +1097,7 @@
 <div class="shell">
 <nav class="rail" aria-label="主导航">
   <div class="brand">
-    <span class="mark" aria-hidden="true">II</span>
+    <span class="mark"><img src="/static/app-icon.png" alt="" aria-hidden="true" width="36" height="36"></span>
     <span class="brandtext">
       <span class="wordmark" data-i18n="rail.brand">模组工坊</span>
       <span class="brandsub">AoE2 DE</span>
