@@ -1,0 +1,19 @@
+{
+ "dat": {
+  "raw_bytes": 93272287,
+  "raw_sha256": "82eb7d148f8c6ee53f4dfa93210c3ce7dfb63194b65692ae51bfc780d62980fe"
+ },
+ "tables": {
+  "stat_offsets.json": "237dbf7ff5bf61a88f6fc8cf94c8b074583e03ed4f8ec8d63bdd2b081ba6e7bb",
+  "tech_offsets.json": "47f0ed8b274984ba3b336b60e738ea6ec30cdbbd5eee02ce48da76ca1713ff54",
+  "effect_offsets.json": "0fbbdc0adb6c8ccf5d9c24a2ec902bf33d34f1b92dde3d6dcf16217c9acda2c7",
+  "entity_names.json": "71ee7ba7b7e9b8b8fecf62c119847fa313839159755229b8b3384f3a0cfbf4c2",
+  "civ_names.json": "b027f0cccf465e9178fbec0e1af93f3e34c762176d860a8e9771def280607e9f",
+  "unit_families.json": "12da3cb527a7a5f06261511ec74b8995504b354fb9bb074efde382687a0ca992",
+  "tech_effects.json": "960c2c235e7c638f092eac78562d71377bd2e2918ce581e655c63073ba54f603",
+  "command_cards.json": "9d6e2a79b0b21d08bc3f80793d771773284d8f8c704e7e10b28dcee74d2e5fe3",
+  "class_names.json": "0a565cb4316adc54d082e1f10e59e5ab605b2452723be43d707321498df81e6b",
+  "sprite_art.json": "a391474ba9860b4e97627c9f6c927a4857296aa4c4455e2b71b7aab9d484f739",
+  "dat_baseline.json": "dfa531d00db1ee994b6ddafac6abe268fd4f3ae10415158c1172a5984cb5dd76"
+ }
+}
