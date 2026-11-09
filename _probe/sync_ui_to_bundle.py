@@ -15,9 +15,10 @@ import io
 import os
 import shutil
 import sys
+import _paths as P
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-BUNDLE = r"D:\Software\AI\AoE2ModWorkshop"
+BUNDLE = P.BUNDLE
 PAIRS = [("aoe2mod/ui/static", "app/aoe2mod/ui/static"),
          ("aoe2mod/schema", "app/aoe2mod/schema")]
 

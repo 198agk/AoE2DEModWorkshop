@@ -6,9 +6,12 @@ does not report" is indistinguishable from a zero that means "nothing will
 happen", so this prints both numbers side by side.
 """
 import json, os, subprocess, sys, time, urllib.request
+import _paths as P
+import os
 
-sys.path.insert(0, "D:/Software/AI/帝国项目")
-BUNDLE = r"D:\Software\AI\AoE2ModWorkshop"
+sys.path.insert(0, os.path.abspath(os.path.join(
+    os.path.dirname(__file__), "..", "..")))
+BUNDLE = P.BUNDLE
 EXE = os.path.join(BUNDLE, "aoe2-mod-workshop.exe")
 PORT = 7853
 

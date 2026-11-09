@@ -20,7 +20,8 @@ import os
 import struct
 import sys
 
-sys.path.insert(0, r"D:\Software\AI\帝国项目")
+sys.path.insert(0, os.path.abspath(os.path.join(
+    os.path.dirname(__file__), "..")))
 
 GAME = r"D:\Games\Steam\steamapps\common\AoE2DE"
 EXE = os.path.join(GAME, "AoE2DE_s.exe")

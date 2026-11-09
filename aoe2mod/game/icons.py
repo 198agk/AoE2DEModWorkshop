@@ -115,21 +115,42 @@ class IconBook(object):
         return self._icons
 
     def _load_materials(self):
+        """`{material: def}`, merged from whichever atlas files this root has.
+
+        TWO FILE NAMES, BECAUSE THE INSTALL HAS TWO.  The base game splits its
+        atlas across `widgetui/materials.json` (2.4 MB) only; the Rome at War
+        mode ships `modes/Pompeii/widgetui/morematerials.json` (0.99 MB) and
+        **no materials.json at all**.  Reading just the name the base game uses
+        returned "no material named ..." for every one of the mode's 2,125 icon
+        rows, which reads exactly like "the mode has no icons".
+
+        Later files do not overwrite earlier ones: `materials.json` is the base
+        and `morematerials.json` is the addition, so the first writer wins and a
+        name that exists in both keeps the base definition.
+        """
         if self._materials is not None:
             return self._materials
-        path = os.path.join(self.widgetui, "materials.json")
-        with open(path, encoding="utf-8-sig") as fh:
-            doc = json.load(fh)
         materials = {}
-        for entry in doc.get("Materials") or ():
-            md = entry.get("MaterialDef", entry)
-            if md.get("Name"):
-                materials.setdefault(md["Name"], md)
         atlases = {}
-        for entry in doc.get("AtlasTextures") or ():
-            ad = entry.get("AtlasDef", entry)
-            if ad.get("Name"):
-                atlases[ad["Name"]] = ad
+        seen_any = False
+        for name in ("materials.json", "morematerials.json"):
+            path = os.path.join(self.widgetui, name)
+            if not os.path.isfile(path):
+                continue
+            seen_any = True
+            with open(path, encoding="utf-8-sig") as fh:
+                doc = json.load(fh)
+            for entry in doc.get("Materials") or ():
+                md = entry.get("MaterialDef", entry)
+                if md.get("Name"):
+                    materials.setdefault(md["Name"], md)
+            for entry in doc.get("AtlasTextures") or ():
+                ad = entry.get("AtlasDef", entry)
+                if ad.get("Name"):
+                    atlases.setdefault(ad["Name"], ad)
+        if not seen_any:
+            raise IOError("neither materials.json nor morematerials.json in %r"
+                          % (self.widgetui,))
         self._materials = materials
         self._atlases = atlases
         return materials

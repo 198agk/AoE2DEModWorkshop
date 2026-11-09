@@ -4,10 +4,12 @@ import sys, io, os, json
 from collections import Counter, defaultdict
 
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
-sys.path.insert(0, r"D:\Software\AI\帝国项目")
+sys.path.insert(0, os.path.abspath(os.path.join(
+    os.path.dirname(__file__), "..", "..", "..")))
 G = r"d:\games\steam\steamapps\common\AoE2DE"
 
 from aoe2mod.dat import parser as P
+import os
 raw, how = P.load_dat(os.path.join(G, "resources", "_common", "dat", "empires2_x2_p1.dat"))
 d = P.Parser(raw).parse()
 gfx = d["graphics"] if "graphics" in d else d.get("graphics")

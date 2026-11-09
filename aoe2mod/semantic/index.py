@@ -22,6 +22,8 @@ import json
 import os
 import unicodedata
 
+from ..game import nametext as NT
+
 _HERE = os.path.dirname(os.path.abspath(__file__))
 _DATA = os.path.join(_HERE, "data")
 
@@ -65,10 +67,19 @@ class Entity(object):
     def __init__(self, kind, uid, raw):
         self.kind = kind
         self.id = uid
-        self.internal = raw.get("internal")
-        self.en = raw.get("en")
-        self.zh = raw.get("zh")
-        self.tw = raw.get("tw")
+        # A `.dat` name is a BYTE string.  Chinese mods write UTF-8 into it and
+        # the reader decodes latin-1 (it must round-trip every byte), so without
+        # this a mod's own names read as mojibake: measured 2026-11-06, the user's
+        # 文明联盟 pack had 230 of 5,874 technology names and 4,473 of 136,861 unit
+        # names stored that way, and the list showed `è´¸æ` where the author
+        # wrote `贸易`.  `readable` leaves pure-ASCII names and already-decoded
+        # JSON names exactly as they were, so the shipped English data is
+        # untouched.  `game/nametext.py` explains why this belongs on the display
+        # side and never on a write path.
+        self.internal = NT.readable(raw.get("internal"))
+        self.en = NT.readable(raw.get("en"))
+        self.zh = NT.readable(raw.get("zh"))
+        self.tw = NT.readable(raw.get("tw"))
         self.name_string_id = raw.get("name_string_id")
         self.resolved = bool(raw.get("resolved"))
         self.reason = raw.get("unresolved_reason")

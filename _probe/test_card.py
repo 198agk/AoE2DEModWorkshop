@@ -123,9 +123,41 @@ def main():
     try:
         CD.set_button(bytearray(data), gv, civs_start, ci, 83, 109, 99,
                       civs=civs)
-        check("a box past 24 is refused", False, "no raise")
+        check("a box past the drawn grid is refused", False, "no raise")
     except CD.CardError as exc:
-        check("a box past 24 is refused", "超出" in str(exc), exc)
+        check("a box past the drawn grid is refused", "不能写" in str(exc), exc)
+        # The refusal must say WHY: a player who wrote 32 needs to hear that the
+        # panel pages twice and stops at 30, or they will try 33.  (The engine
+        # grew a second screen on 2026-11-08 -- the player measured it: writing
+        # 16..30 makes the game draw its own arrow on box 15 and box 30.)
+        check("and the refusal names the range and where it stops",
+              "1..15" in str(exc) and "第 30 格" in str(exc) and "2 页" in str(exc),
+              exc)
+    # Box 0 is a different refusal, and it is the one 「没有 0 的，第一个是 1」
+    # asks about: the entries exist in the file (the villager's twelve build
+    # items live there) and the engine never draws the box.
+    try:
+        CD.set_button(bytearray(data), gv, civs_start, ci, 83, 109, 0,
+                      civs=civs)
+        check("box 0 is refused even though records sit on it", False,
+              "no raise")
+    except CD.CardError as exc:
+        check("box 0 is refused even though records sit on it",
+              "第 0 格" in str(exc), exc)
+    # Three numbers, and merging any two of them is how a panel ends up drawing
+    # a grid the game does not have.  Measured 2026-11-08.
+    check("one screen holds 15 boxes",
+          (CD.ENGINE_FIRST, CD.PAGE_BOXES) == (1, 15),
+          "%r" % ((CD.ENGINE_FIRST, CD.PAGE_BOXES),))
+    check("and the engine pages twice, so it honours box ids up to 30",
+          (CD.PAGE_COUNT, CD.ENGINE_LAST) == (2, 30),
+          "%r" % ((CD.PAGE_COUNT, CD.ENGINE_LAST),))
+    check("page 2 starts where page 1 stops",
+          CD.page_span(1) == (1, 15) and CD.page_span(2) == (16, 30),
+          "%r %r" % (CD.page_span(1), CD.page_span(2)))
+    check("a box knows which screen it is on",
+          [CD.page_of(b) for b in (1, 15, 16, 30, 31)] == [1, 1, 2, 2, None],
+          "%r" % ([CD.page_of(b) for b in (1, 15, 16, 30, 31)],))
 
     print()
     if FAILS:

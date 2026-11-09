@@ -151,6 +151,17 @@
 
 `--r-pill`，`--fs-micro`，`padding: 1px 7px`，底色用对应的 `*-soft` + `*-ink`/`--ok`/`--bad`。
 
+### 进度条 `.loadbar`
+
+用来等一件**真的要好几十秒**的请求，不是装饰。
+
+- 结构：`.loadbar > .loadbar-track > .loadbar-fill` + `.loadbar-label`。
+- 尺寸：track 高 `4px`，`--r-pill`，底 `--panel-3`；fill 底色 `--ok`，宽度由 JS 设 `%`。
+- 文字：`--fs-micro` + `--text-3` + `tabular-nums`，内容是「阶段名 + 百分比」，例如 `建立单位字段索引 41%`。
+- **数字必须是真进度**：宽度只能来自后端走过的字节数（`/api/job`），不许用 `setInterval` 编一个。理由：编辑器首次打开一个单位要 14.52 s（136,861 条记录），假进度条在真等待里第一次卡住就失去信任。
+- **快路径不画条**：索引已缓存时是 0.003 s，`known:false` 就什么也不画。闪一下 100% 比不画更糟。
+- 与 `.railbar` 的分工：`railbar` 是 3px 的「还活着」信号（启动、批量写入），不报百分比；`loadbar` 是「这一步还剩多少」，有阶段名和数字。两个都留，别合并。
+
 ### toast / banner
 
 - `#toast` 与 `.toast` 是**同一个元素的两套样式**（第 397–411 行）。合并成一套，不许双写。
@@ -165,7 +176,11 @@
 - 任何 grid/flex 子项必须显式 `min-width: 0`（第 66–69 行的注释就是这个坑，别再踩）。
 - **组件内部的自适应用 `@container`，不用 `@media`。** 编辑器左右分栏、图标网格都该跟卡片宽度走，而不是跟窗口走 —— 右栏在 1237px 窗口下只有 340px，`@media` 判断不到。
 - 全局断点只保留 3 个：`1320px`（右栏 384→340）、`1120px`（单列）、`860px`（编辑器单列）。
-- 不许 `height: 460px` 这种魔法数字。用 `min-height: 420px; max-height: calc(100dvh - 220px)`。
+- 不许 `height: 460px` 这种魔法数字。要「填满窗口剩下的地方」就用 `flex: 1; min-height: 420px`，让父级 flex 列算出高度。
+- **不许写 `calc(100dvh - 220px)` 这种减法常量。** 减掉的数必须等于「上方所有 chrome 之和」，而 chrome 有 header、卡片标题、说明行、页签、内外两层 padding 至少六段，任何一段改动都会让减法悄悄失效 —— 而且窗口里看不出来，只是底边被推出屏幕。
+  实测 2026-11-01：真实窗口 821px，文档高 921px，玩家必须拖滚动条才能看到字段表最后一行；`- 220px` 而实际 chrome 是 272px，差 52px，叠加视口差共 100px。
+  正确写法是三层 `flex: 1; min-height: 0` 链（`.content` → `main` → `#view-editor` → `.edbody`），由窗口高度反推，不出现任何减法常量。
+- 单列断点下 `.rail` 跑到内容上方，此时填满规则必须由 `.shell` 的 flex 列提供，`.content` 退回 `height: auto; flex: 1` —— 否则把 rail 的高度漏算，编辑器又会溢出 83px。
 - 不许 `h-screen`，用 `min-h: 100dvh`。
 
 ---

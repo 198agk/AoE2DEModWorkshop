@@ -1020,13 +1020,28 @@ for _k in ("holders", "builders", "absent_from", "blocked_in", "pending_in"):
     assert _av[_k] is not None, _k
     assert all(isinstance(x, str) for x in _av[_k]), (_k, _av[_k])
 
-# A .dat record that is NOT in any tech tree cannot answer this question at all.
-# Buildings are shipped as unit records (id 12 = Barracks), so `availability`
-# must be None rather than an empty answer that looks like "nobody can build it".
-for _uid in (1, 10, 12):
+# A .dat record that is NOT in any tech tree cannot answer this question at all,
+# so `availability` must be None rather than an empty answer that looks like
+# "nobody can build it".
+#
+# Which records those are is NOT "buildings".  Id 12 = Barracks and 82 = Castle
+# are unit records in the .dat, and the engine keeps their build rows in a
+# SECOND tech-tree key (`civ_techs_buildings`, `Use Type` = Building).  Until
+# 2026-10-31 the read side asked the Unit space only, so `describe(12)` said
+# "in no tech tree" about the Barracks -- which all 62 civs can build -- and
+# that sentence was the defect, not the answer.  The unit branch now passes
+# `CT.UNIT_USE_TYPES + CT.BUILDINGS_USE_TYPES`, so 12 answers 62/62.
+#
+# The ids kept below are records with zero rows in every space, measured across
+# all 62 files: 1 is Rome's legion record, 10 the legacy Archery-Range record.
+for _uid in (1, 10):
     assert tk.describe(_uid).get("availability") is None, \
         "unit %d is not in any tech tree, so availability must be None" % _uid
-print("  not-in-any-tech-tree records report availability None, not empty lists")
+_av12 = tk.describe(12).get("availability")
+assert _av12 is not None and _av12["builder_count"] == 62, \
+    "the Barracks is a Building row, not a missing record: %r" % (_av12,)
+print("  not-in-any-tech-tree records report availability None, not empty lists;"
+      " and the Barracks answers 62/62 out of the Building key")
 
 # The donor's Building ID is where the copied row would be produced.  When the
 # receiving civ cannot reach that building, the plan must SAY SO in its own

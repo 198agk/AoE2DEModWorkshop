@@ -16,10 +16,12 @@ import subprocess
 import sys
 import time
 import urllib.request
+import _paths as P
 
-sys.path.insert(0, "D:/Software/AI/帝国项目")
+sys.path.insert(0, os.path.abspath(os.path.join(
+    os.path.dirname(__file__), "..")))
 
-BUNDLE = r"D:\Software\AI\AoE2ModWorkshop"
+BUNDLE = P.BUNDLE
 EXE = os.path.join(BUNDLE, "aoe2-mod-workshop.exe")
 PORT = 7861
 
@@ -33,7 +35,11 @@ CASES = [
     "织布机黄金成本改成5",
     "织布机第1条效果改成100",
     "把织布机和铸币术做成只能选一个",
-    "把民兵放在兵营的第5格",
+    # A card-move names a BUTTON SLOT, and the same slot is a different button in
+    # a different civilization, so the sentence has to name one (「挪格子要指定
+    # 一个文明」).  The civilization-less spelling is correctly REFUSED since
+    # 2026-11-01; keeping it here made the case assert against a refusal.
+    "不列颠把民兵放在兵营的第5格",
     "让弓兵的样子换成长弓兵",
 ]
 

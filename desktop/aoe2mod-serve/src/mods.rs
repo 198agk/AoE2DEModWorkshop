@@ -34,12 +34,30 @@ pub struct ModRow {
 /// Located by scanning `Documents/Games/Age of Empires 2 DE/<steam id>/`, since
 /// the id differs per account and hardcoding one would work on exactly this
 /// machine.
+///
+/// `AOE2MOD_PROFILE` points at ONE account directory (the one holding `mods/`).
+/// When it is set, it is the ONLY answer: a set-but-unusable override returns
+/// `None` instead of falling through to the real profile.  Falling through is
+/// how a test that meant to use a sandbox wrote an entry into the player's own
+/// mod list -- the caller had declared where it wanted to write, the layout was
+/// one level off, and nothing said so.
 pub fn profile_root() -> Option<PathBuf> {
     if let Ok(v) = std::env::var("AOE2MOD_PROFILE") {
-        let p = PathBuf::from(v);
+        if v.is_empty() {
+            return None;
+        }
+        let p = PathBuf::from(&v);
         if p.join("mods/mod-status.json").is_file() {
             return Some(p);
         }
+        // Say which level is expected: the account folder itself, not the
+        // `Age of Empires 2 DE` folder above it.
+        eprintln!(
+            "AOE2MOD_PROFILE={v} 里面没有 mods\\mod-status.json。\
+             它要指到存账号文件夹那一层（本该有 mods\\ 的那一级），不是它的上一层。\
+             因为已经指定了档案目录，就不再退回真实档案。"
+        );
+        return None;
     }
     let base = PathBuf::from(std::env::var("USERPROFILE").ok()?)
         .join("Games/Age of Empires 2 DE");
@@ -303,7 +321,7 @@ pub fn set_enabled(profile: &Path, name: &str, enabled: bool) -> Result<ModRow, 
     } else {
         insert_status_entry(&text, &rel, &ftitle, enabled)?
     };
-    write_status(&path, &doc)?;
+    write_status(&path, &text, &doc)?;
     Ok(ModRow {
         name: fname,
         title: ftitle,
@@ -331,7 +349,7 @@ pub fn move_mod(profile: &Path, name: &str, delta: i64) -> Result<(), String> {
     let e = entries.remove(pos);
     entries.insert(target as usize, e);
     let doc = rebuild_status(&text, &entries);
-    write_status(&path, &doc)
+    write_status(&path, &text, &doc)
 }
 
 /// Remove a mod folder and its entry.
@@ -353,6 +371,7 @@ pub fn uninstall(profile: &Path, name: &str) -> Result<Vec<String>, String> {
     let mut removed = Vec::new();
     let path = profile.join("mods/mod-status.json");
     let mut text = fs::read_to_string(&path).map_err(|e| e.to_string())?;
+    let before = text.clone();
     for t in &targets {
         let row = rows.iter().find(|r| &r.name == t || &r.title == t);
         let kind = row.map(|r| r.kind.clone()).unwrap_or_else(|| "local".into());
@@ -368,7 +387,7 @@ pub fn uninstall(profile: &Path, name: &str) -> Result<Vec<String>, String> {
         entries.retain(|e| &e.name != t && &e.title != t);
         text = rebuild_status(&text, &entries);
     }
-    write_status(&path, &text)?;
+    write_status(&path, &before, &text)?;
     Ok(removed)
 }
 
@@ -521,12 +540,10 @@ fn set_bool_in_entry(text: &str, rel: &str, value: bool) -> String {
     format!("{}{}{}", &text[..obj_start], fixed, &text[obj_end..])
 }
 
-fn write_status(path: &Path, doc: &str) -> Result<(), String> {
-    // Write beside, then rename: a half-written status file loses the player's
-    // whole mod list, and that is not recoverable from anywhere.
-    let tmp = path.with_extension("json.tmp");
-    fs::write(&tmp, doc).map_err(|e| e.to_string())?;
-    fs::rename(&tmp, path).map_err(|e| e.to_string())
+fn write_status(path: &Path, before: &str, doc: &str) -> Result<(), String> {
+    // One guard, one writer: `build.rs` installs mods into the same file, and a
+    // second copy of the parse check is a second place for it to drift.
+    crate::build::checked_status_write(path, before, doc)
 }
 
 fn now_ms() -> String {

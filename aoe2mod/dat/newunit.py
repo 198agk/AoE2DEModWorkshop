@@ -32,6 +32,7 @@ re-serialising the result is byte-stable (delta +0).
 import struct
 
 from . import locate as L
+from . import parser as P
 
 
 class NewUnitError(Exception):
@@ -171,6 +172,235 @@ def clone_image(image, new_id, name_string_id=None, hp=None,
             raise NewUnitError("图标号只能是 0..32767，拿到的是 %s" % (icon_id,))
         struct.pack_into("<h", img, ICON_OFF, icon_id)
     return bytes(img)
+
+
+# --- the blank record ------------------------------------------------------
+# A clone is right by construction because a record's tail is type-dependent and
+# it inherits every byte of that tail from the donor.  A BLANK record has no
+# donor, so "empty" is not an option: every byte has to carry a value the READER
+# accepts, and the reader decides which blocks exist from the type alone.
+#
+# The type is therefore chosen for the SHORTEST tail that still leaves a record
+# the game can show:
+#
+#   * 70 (Creatable) reads speed, dead-fish, bird, type50 and creatable.
+#   * anything below 20, and 90, skips all five -- and skips the command card,
+#     the sounds and the build menu with them.
+#   * 80 (Building) and 60 (Projectile) add a block nobody asked for.
+#
+# So 70, and every block it pulls in is written out in full below.
+#
+# Nothing here is guessed twice: the field ORDER is `locate.walk_unit`'s order
+# (that is the reader this file must satisfy), and `blank_image` finishes by
+# walking its own output and refusing to return if the walk does not land
+# exactly on the last byte.  A record that fails that check is a record that
+# would desynchronise every record after it.
+BLANK_TYPE = 70             # UNIT_TYPE_CREATABLE
+BLANK_NAME = "NEWUNIT%d"    # what the picker shows until a string id is given
+
+
+class _Out(object):
+    """Just enough of ``writer`` to lay out one short record."""
+
+    def __init__(self):
+        self.b = bytearray()
+
+    def u8(self, v=0):
+        self.b += struct.pack("<B", int(v))
+
+    def u16(self, v=0):
+        self.b += struct.pack("<H", int(v))
+
+    def i16(self, v=0):
+        self.b += struct.pack("<h", int(v))
+
+    def i32(self, v=0):
+        self.b += struct.pack("<i", int(v))
+
+    def u32(self, v=0):
+        self.b += struct.pack("<I", int(v))
+
+    def f32(self, v=0.0):
+        self.b += struct.pack("<f", float(v))
+
+    def zeros(self, n):
+        self.b += bytes(n)
+
+    def string(self, s):
+        raw = (s or "").encode("latin-1", "replace")
+        self.u16(P.DEBUG_STRING_MARKER)
+        self.u16(len(raw))
+        self.b += raw
+
+
+def blank_image(gv, new_id, name=None, name_string_id=None, hp=None,
+                icon_id=None, speed=None, line_of_sight=None,
+                unit_class=0, type_code=BLANK_TYPE):
+    """Build one legal unit record from nothing.  Returns its bytes.
+
+    ``new_id`` is the record's id (1..32767); ``name`` is the internal name
+    written into the record's own debug string.  ``name_string_id`` is the
+    LanguageDLL id the game looks the display name up by -- pass 0 or leave it
+    out and the game shows the internal name, which is honest for a record that
+    does not have a translated name yet.
+
+    The record is deliberately dull: no graphics, no sounds, no costs, no train
+    locations.  It is a shell you then fill in field by field in the editor --
+    which is the point.  Nothing can build it until a train location is added,
+    so it cannot appear in a game by accident.
+    """
+    new_id = int(new_id)
+    if not 1 <= new_id <= 32767:
+        raise NewUnitError("单位编号只有 1..32767 这些格子，%d 放不下" % (new_id,))
+    if name is None:
+        name = BLANK_NAME % new_id
+    if hp is not None and not -32768 <= int(hp) <= 32767:
+        raise NewUnitError("生命值只能在 -32768..32767 之间，拿到的是 %s" % (hp,))
+    if icon_id is not None and not 0 <= int(icon_id) <= 32767:
+        raise NewUnitError("图标号只能是 0..32767，拿到的是 %s" % (icon_id,))
+
+    w = _Out()
+    # --- the fixed prefix: every unit record has exactly these bytes ---------
+    w.u8(type_code)                    # Type
+    w.i16(new_id)                      # ID
+    w.i32(name_string_id or 0)         # LanguageDLLName
+    w.i32(0)                           # LanguageDLLCreation
+    w.i16(unit_class)                  # Class
+    w.zeros(4)                         # StandingGraphic[2]
+    w.zeros(2 + 2 + 1)                 # DyingGraphic, UndeadGraphic, UndeadMode
+    w.i16(0 if hp is None else int(hp))            # HitPoints        (+22)
+    w.f32(0.0 if line_of_sight is None else line_of_sight)  # LineOfSight
+    w.u8(0)                            # GarrisonCapacity
+    w.zeros(12)                        # CollisionSize[3]
+    w.zeros(8)                         # Train, Damage, Dead, Blood sounds
+    w.u8(0)                            # SortNumber
+    w.u8(0)                            # CanBeBuiltOn
+    w.i16(0 if icon_id is None else int(icon_id))  # IconID           (+51)
+    w.u8(0); w.i16(0); w.u8(0); w.u8(0)            # ObjRadius trio, 2 bytes
+    w.zeros(8)                         # two i16 pairs (graphic ids)
+    w.zeros(8)                         # 2 x f32
+    w.u8(0); w.u8(0); w.i16(0); w.u8(0)
+    w.i16(0); w.f32(0.0)
+    w.zeros(5)                         # the five u8s
+    w.f32(0.0); w.u8(0)
+    w.i32(0)                           # LanguageDLLHelp
+    w.i32(0)                           # LanguageDLLHotKeyText
+    if gv < P.GV_C30:
+        w.i32(0)                       # pre-C30 carriers hold an extra hotkey
+    w.zeros(4)                         # 4 x u8
+    w.zeros(3)                         # 3 x u8
+    w.u8(0); w.u8(0); w.i16(0)
+    w.u8(0); w.u8(0)
+    w.zeros(12)                        # 3 x f32
+    w.i32(0); w.i32(0)
+    w.zeros(21)                        # 3 x ResourceStorage (i16, f32, u8)
+    w.u8(0)                            # zero DamageGraphics
+    w.zeros(4)                         # 2 x i16
+    w.zeros(16)                        # 4 x u32
+    w.u8(0); w.u8(0)
+    w.string(name)                     # the record's own debug name
+    w.i16(0); w.i16(0)                 # CopyID, BaseID
+
+    # --- the tail, in `walk_unit`'s order, for type >= 70 -------------------
+    w.f32(0.0 if speed is None else speed)          # Speed  (t >= 20)
+    # DeadFish (t >= 30): i16, i16, f32, u8, i16, u8, f32, u8, then 5 x f32
+    # (TurnRadius..Stationary) and one more f32 (MinCollisionSizeMultiplier).
+    w.zeros(2 + 2 + 4 + 1 + 2 + 1 + 4 + 1 + 5 * 4 + 4)
+    w.i16(0); w.f32(0.0); w.f32(0.0)   # Bird: two f32 lead-ins
+    w.i16(0)                           #   DropSites count
+    w.u8(0)                            #   TaskSwapGroup
+    w.i16(0); w.i16(0)                 #   AttackSound, MoveSound
+    w.u32(0); w.u32(0)                 #   Wwise attack/move
+    w.u8(0)                            #   RunPattern
+    w.i16(0)                           #   task count
+    # Type50  (t >= 50).  BaseArmor is the 10000 sentinel in the shipped file,
+    # which is what "no base armour" means; zero would read as a real armour.
+    w.i16(10000)
+    w.i16(0)                           # 0 attacks
+    w.i16(0)                           # 0 armours
+    w.i16(0)                           # DefenseTerrainBonus
+    w.f32(0.0)                         # BonusDamageResistance
+    w.zeros(12)                        # MaxRange, BlastWidth, ReloadTime
+    w.i16(0); w.i16(0)                 # ProjectileUnitID, AccuracyPercent
+    w.u8(0)                            # BreakOffCombat
+    w.i16(0)                           # FrameDelay
+    w.zeros(12)                        # GraphicDisplacement[3]
+    w.u8(0)                            # BlastAttackLevel
+    w.f32(0.0)                         # MinRange
+    w.f32(0.0)                         # AccuracyDispersion
+    w.i16(0)                           # AttackGraphic
+    w.i16(0); w.i16(0)                 # DisplayedMeleeArmour, DisplayedAttack
+    w.f32(0.0); w.f32(0.0)             # DisplayedRange, DisplayedReloadTime
+    if P.GV_C20 <= gv <= P.GV_LatestDE2:
+        w.f32(0.0)                     # BlastDamage
+    if P.GV_C22 <= gv <= P.GV_LatestDE2:
+        w.f32(0.0); w.f32(0.0)         # DamageReflection, FriendlyFireDamage
+    if P.GV_C27 <= gv <= P.GV_LatestDE2:
+        w.i16(0); w.f32(0.0); w.i16(0)  # InterruptFrame, GarrisonFirepower, AG2
+    # Creatable  (t >= 70).  No costs, no train locations: nothing builds it.
+    w.zeros(18)                        # 3 x ResourceCost
+    if P.GV_C29 <= gv <= P.GV_LatestDE2:
+        w.i16(0)                       # 0 train locations
+    else:
+        w.i16(0); w.i16(0); w.u8(0)    # exactly one, all zero
+    w.f32(0.0); w.f32(0.0)             # Rear/Flank attack modifier
+    w.u8(0)                            # CreatableType
+    w.u8(0)                            # HeroMode
+    w.i32(0)                           # GarrisonGraphic
+    if P.GV_C13 <= gv <= P.GV_LatestDE2:
+        w.i16(0); w.i16(0)             # SpawningGraphic, UpgradeGraphic
+        if gv >= P.GV_C16:
+            if gv >= P.GV_C17:
+                w.i16(0)               # HeroGlowGraphic
+            if gv >= P.GV_C26:
+                w.i16(0)               # IdleAttackGraphic
+            w.f32(0.0); w.f32(0.0)     # MaxCharge, RechargeRate
+            w.i16(0); w.i16(0)         # ChargeEvent, ChargeType
+            if gv >= P.GV_C23:
+                w.i16(0)               # ChargeTarget
+            if gv >= P.GV_C25:
+                w.i32(0); w.u8(0); w.f32(0.0)   # ChargeProjectile, Priority, Invuln
+            if gv >= P.GV_C24:
+                w.i16(0); w.i32(0); w.i32(0); w.i16(0)  # button icon/tooltips/hotkey
+            if gv >= P.GV_C19:
+                w.f32(0.0); w.f32(0.0); w.f32(0.0)      # conversion modifiers
+    w.f32(0.0)                         # TotalProjectiles
+    w.u8(0)                            # MaxTotalProjectiles
+    w.zeros(12)                        # ProjectileSpawningArea[3]
+    w.i32(0)                           # SecondaryProjectileUnit
+    w.i32(0)                           # SpecialGraphic
+    w.u8(0)                            # SpecialAbility
+    w.i16(0)                           # DisplayedPierceArmour
+
+    img = bytes(w.b)
+    _check_blank(img, gv, new_id, name, type_code)
+    return img
+
+
+def _check_blank(img, gv, new_id, name, type_code):
+    """Walk the record we just built.  Refuse to hand out one that does not land.
+
+    This is not belt-and-braces: the failure mode of a mis-sized record is not
+    "this record looks wrong", it is "every record after it is garbage", and the
+    error surfaces twenty thousand records later inside ``read_bird`` as
+    ``struct.error``.  Walking our own bytes costs microseconds and turns that
+    into a refusal here.
+    """
+    r = L.Orec(img, 0, gv=gv)
+    u = L.walk_unit(r, 0)
+    if r.o != len(img):
+        raise NewUnitError(
+            "空白记录写出来 %d 字节，但读回来只走了 %d 字节（差 %d）——"
+            "这一段的结构和解析器对不上，不能拿它去改文件"
+            % (len(img), r.o, len(img) - r.o))
+    if u["id"] != new_id or u["type"] != type_code:
+        raise NewUnitError(
+            "空白记录读回来是 id %s type %s，不是 id %s type %s"
+            % (u["id"], u["type"], new_id, type_code))
+    if u["name"] != name:
+        raise NewUnitError(
+            "空白记录的名字读回来是 %r，写进去的是 %r" % (u["name"], name))
+    return u
 
 
 def train_slots(raw, gv, civs_start, civ_index, donor_id, civs=None):

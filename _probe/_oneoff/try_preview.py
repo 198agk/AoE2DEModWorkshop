@@ -1,5 +1,6 @@
 import json, subprocess, time, urllib.request
-EXE = r"D:\Software\AI\AoE2ModWorkshop\aoe2-mod-workshop.exe"
+import _paths as P
+EXE = P.BUNDLED_EXE
 PORT = 7841
 p = subprocess.Popen([EXE, "--port", str(PORT)], stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
 def get(path):

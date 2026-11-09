@@ -18,10 +18,12 @@ import subprocess
 import sys
 import time
 import urllib.request
+import _paths as P
 
-sys.path.insert(0, "D:/Software/AI/帝国项目")
+sys.path.insert(0, os.path.abspath(os.path.join(
+    os.path.dirname(__file__), "..")))
 
-BUNDLE = r"D:\Software\AI\AoE2ModWorkshop"
+BUNDLE = P.BUNDLE
 EXE = os.path.join(BUNDLE, "aoe2-mod-workshop.exe")
 PORT = 7841
 

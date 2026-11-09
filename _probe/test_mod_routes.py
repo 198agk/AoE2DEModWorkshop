@@ -10,11 +10,19 @@ import os
 import shutil
 import subprocess
 import sys
+import tempfile
 import time
 import urllib.request
 
 SRC = r"C:\Users\26913\Games\Age of Empires 2 DE\76561198406248391"
-TMP = os.path.join(os.environ["TEMP"], "aoe2mod-profile-test")
+# A UNIQUE directory, never a fixed name.  Measured 2026-11-03 in a full suite
+# run: `shutil.rmtree(TMP)` on the fixed `%TEMP%\aoe2mod-profile-test` raised
+# `OSError [WinError 145] 目录不是空的` at
+# `mods\subscribed\15373_Multiple Buffs Mod v1\resources\_common\drs\graphics`
+# -- a leftover tree from an earlier run still had a handle open on one of its
+# thousands of small files, so the delete raced and lost.  `mkdtemp` makes the
+# collision impossible instead of retrying the delete.
+TMP = ""
 PORT = 7861
 EXE = os.path.normpath(os.path.join(
     os.path.dirname(os.path.abspath(__file__)), "..", "desktop",
@@ -37,10 +45,9 @@ def main():
     if not os.path.isdir(SRC):
         print("REFUSING: no profile at", SRC)
         return 1
-    if os.path.isdir(TMP):
-        shutil.rmtree(TMP)
+    global TMP
+    TMP = tempfile.mkdtemp(prefix="aoe2mod-profile-test-")
     # Copy only what the routes touch: mod-status.json and the mods/ tree.
-    os.makedirs(TMP)
     shutil.copytree(os.path.join(SRC, "mods"), os.path.join(TMP, "mods"),
                     ignore=shutil.ignore_patterns("*.bak", "*.before-*"))
     print("copied profile ->", TMP)
@@ -65,11 +72,24 @@ def main():
             pass
 
     ok = True
+    borrowed = None
     try:
         mods = get(base + "/api/mods")["mods"]
         print("initial mods:", len(mods))
-        target = next(m for m in mods if m["kind"] == "local")
-        print("target:", target["name"], "enabled=", target["enabled"])
+        # Any mod will do -- `mods/local` can be empty (on this machine it is:
+        # all 18 are subscribed), and `next(... "local")` then raises
+        # StopIteration, which reads as a broken route instead of a broken
+        # assumption.  The routes resolve the kind from the name now.
+        local = [m for m in mods if m["kind"] == "local"]
+        target = local[0] if local else mods[0]
+        print("target:", target["name"], "kind=", target["kind"],
+              "enabled=", target["enabled"],
+              "(local mods on this machine: %d)" % len(local))
+        # Borrowed, not taken.  Steps 1 and 2 switch a REAL mod of the player's
+        # off and back on; if this process dies between them the mod stays off,
+        # which changes what the game loads.  Measured 2026-11-07: a killed run
+        # left the file being edited (`582581_文明联盟 test 9`) disabled.
+        borrowed = {"name": target["name"], "enabled": bool(target["enabled"])}
 
         # 1. toggle off
         r = post(base + "/api/mod", {"name": target["name"], "enabled": False})
@@ -123,6 +143,20 @@ def main():
         print("uninstall  ->", "removed" if gone else "FAIL (folder still there)")
         ok = ok and gone and r.get("ok")
     finally:
+        # Put the borrowed mod back the way it was, whatever happened above.
+        if borrowed is not None:
+            try:
+                r = post(base + "/api/mod", {"name": borrowed["name"],
+                                             "enabled": borrowed["enabled"]})
+                back = [m for m in (r.get("mods") or [])
+                        if m["name"] == borrowed["name"]]
+                print("restored:", borrowed["name"][:40],
+                      "enabled=" + str(borrowed["enabled"]),
+                      "ok" if (back and back[0]["enabled"] == borrowed["enabled"])
+                      else "FAIL %r" % ([m["enabled"] for m in back],))
+            except Exception as exc:
+                print("restored: FAILED to put the borrowed mod back: %s: %s"
+                      % (type(exc).__name__, exc))
         p.terminate()
         try:
             p.wait(timeout=10)

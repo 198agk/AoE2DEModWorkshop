@@ -43,8 +43,9 @@ import subprocess
 import sys
 import time
 import urllib.request
+import _paths as P
 
-BUNDLE = r"D:\Software\AI\AoE2ModWorkshop"
+BUNDLE = P.BUNDLE
 EXE = os.path.join(BUNDLE, "aoe2-mod-workshop.exe")
 PORT = 7814
 
@@ -58,7 +59,13 @@ CASES = [
     ("tech.research_time", "织布机研究时间改成5"),
     ("tech.cost", "织布机黄金成本改成5"),
     ("tech.effect", "织布机第1条效果改成100"),
-    ("unit.card_move", "把民兵放在第5格"),
+    # NOT 「把民兵放在第5格」 (the 2026-10-28 text): a card-move names a BUTTON
+    # SLOT, and the same slot is a different button in a different civilization,
+    # so the reader requires a civilization -- 「挪格子要指定一个文明」 is a
+    # correct refusal, not a defect.  The case has to spell the civilization it
+    # means, exactly as the intent's own shipped example does
+    # (`intents.json` -> `unit.card_move`).
+    ("unit.card_move", "不列颠把民兵放在第5格"),
     # NOT 「步弓手对骑兵攻击加2」: 骑兵 is a unit class (12) and the file holds
     # zero attack rows of class 12, so that sentence can never build.  「对平民」
     # resolves to attack class 4, which a militia actually carries.

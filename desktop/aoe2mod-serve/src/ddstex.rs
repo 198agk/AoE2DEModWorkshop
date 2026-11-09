@@ -8,7 +8,7 @@
 //! measurement, not a guess -- over all 4,550 texture entries in materials.json:
 //!
 //! ```text
-//! uncompressed BGRA 8:8:8:8   pitch == width*4, empty fourcc   (539/794 unit icons)
+//! uncompressed 32-bit          pitch == width*4, empty fourcc   (1052 files)
 //! DXT5 / BC3                                                  (most of the rest)
 //! DXT1 / BC1
 //! ```
@@ -33,6 +33,10 @@ pub struct Header {
     pub pitch: u32,
     pub fourcc: String,
     pub dx10_format: Option<u32>,
+    /// (R, G, B, A) channel masks from the pixel-format block. All four are 0
+    /// for a block-compressed file; for an uncompressed one they are the only
+    /// statement of channel order, which is why they travel with the header.
+    pub masks: [u32; 4],
     pub data_offset: usize,
 }
 
@@ -64,8 +68,24 @@ pub fn header(path: &Path) -> io::Result<Header> {
         pitch: u32::from_le_bytes([b[20], b[21], b[22], b[23]]),
         fourcc,
         dx10_format,
+        masks: [
+            u32::from_le_bytes([b[92], b[93], b[94], b[95]]),
+            u32::from_le_bytes([b[96], b[97], b[98], b[99]]),
+            u32::from_le_bytes([b[100], b[101], b[102], b[103]]),
+            u32::from_le_bytes([b[104], b[105], b[106], b[107]]),
+        ],
         data_offset,
     })
+}
+
+/// -> (shift, bits) for one channel mask, or (0, 0) when the mask is empty.
+fn mask_shift(mask: u32) -> (u32, u32) {
+    if mask == 0 {
+        return (0, 0);
+    }
+    let shift = mask.trailing_zeros();
+    let bits = (mask >> shift).trailing_ones();
+    (shift, bits)
 }
 
 /// The four colours a BC1 block encodes, as 16 bytes of RGBA.
@@ -155,18 +175,63 @@ pub fn decode(path: &Path) -> io::Result<(u32, u32, Vec<u8>)> {
 
     match fmt {
         "BGRA" => {
+            // NOT a fixed BGR<->RGB swap.  Measured over `widgetui/textures` on
+            // 2026-11-01, the 1,052 uncompressed DDS files split two ways:
+            //
+            //   rmask 0x000000FF .. bmask 0x00FF0000   1038 files  (bytes are RGBA)
+            //   rmask 0x00FF0000 .. bmask 0x000000FF     14 files  (bytes are BGRA)
+            //
+            // The swap was right for the 14 and wrong for the 1,038, so every
+            // unit and tech icon drew with red and blue traded -- a villager's
+            // skin came out blue and read as "the icon is inverted".  The header
+            // names each channel; read it instead of remembering it.
+            //
             // pitch == width*4 for these; a padded pitch would need a row copy,
             // and the shipped icons do not use one.
+            let masks = if h.masks.iter().all(|m| *m == 0) {
+                [0x000000FFu32, 0x0000FF00, 0x00FF0000, 0xFF000000]
+            } else {
+                h.masks
+            };
+            let mut plan: [(u32, u32); 4] = [(0, 0); 4];
+            for c in 0..4 {
+                plan[c] = mask_shift(masks[c]);
+            }
+            let fast = (0..3).all(|c| plan[c].1 == 8 && plan[c].0 % 8 == 0);
             for y in 0..hh {
                 for x in 0..w {
                     let i = (y * w + x) * 4;
                     if i + 3 >= data.len() {
                         continue;
                     }
-                    out[i] = data[i + 2];
-                    out[i + 1] = data[i + 1];
-                    out[i + 2] = data[i];
-                    out[i + 3] = data[i + 3];
+                    if fast {
+                        for c in 0..3 {
+                            out[i + c] = data[i + (plan[c].0 / 8) as usize];
+                        }
+                        if plan[3].1 == 0 {
+                            out[i + 3] = 255;
+                        } else {
+                            out[i + 3] = data[i + (plan[3].0 / 8) as usize];
+                        }
+                        continue;
+                    }
+                    let word = u32::from_le_bytes([
+                        data[i], data[i + 1], data[i + 2], data[i + 3],
+                    ]);
+                    for c in 0..4 {
+                        let (shift, bits) = plan[c];
+                        if bits == 0 {
+                            out[i + c] = if c == 3 { 255 } else { 0 };
+                            continue;
+                        }
+                        let top = (1u32 << bits) - 1;
+                        let v = (word >> shift) & top;
+                        out[i + c] = if bits == 8 {
+                            v as u8
+                        } else {
+                            ((v * 255 + top / 2) / top) as u8
+                        };
+                    }
                 }
             }
         }
@@ -194,19 +259,52 @@ pub fn decode(path: &Path) -> io::Result<(u32, u32, Vec<u8>)> {
                         data[c_off + 7],
                     ]);
                     let (cols, _four) = rgb565(c0, c1);
-                    // BC3 alpha: the reference reads this as 4 BITS PER PIXEL,
-                    // not as two endpoints plus a 3-bit index table. Two of the
-                    // forty sampled icons disagreed with the spec reading and
-                    // both differed only in the alpha channel, first row correct
-                    // -- the signature of endpoints parsed from the wrong bytes.
+                    // BC3 alpha is a block of its own: two endpoint bytes a0/a1,
+                    // then 48 bits of sixteen 3-bit indices. a0 > a1 selects the
+                    // six 7th-steps between them; otherwise the six are 5th-steps
+                    // and the last two entries are the hard 0 and 255.
                     //
-                    // The Python implementation is the reference here because it
-                    // is what produced the icons this project verified in game.
+                    // Until 2026-11-05 this read the block as 4 BITS PER PIXEL --
+                    // the DXT3/BC2 rule -- because DXT3 and DXT5 share a 16-byte
+                    // block size and nothing else. The note that used to sit here
+                    // said "the Python implementation is the reference", and the
+                    // Python side carried the identical bug, so the two agreed
+                    // with each other and both were wrong: 17 of the editor's 400
+                    // icon rows came out with no opaque pixel at all (longbowman,
+                    // the elite variants, Harald Hardrada, the big pavilion) and
+                    // read as ghosts in the list. Forcing alpha to 255 restored
+                    // each one, which is how the alpha channel was fingered.
+                    // Both sides now agree with Pillow on all 65,536 pixels of
+                    // each of the 353 BC3 textures the game ships.
                     let alpha: Option<[u8; 16]> = if fmt == "BC3" {
+                        let a0 = data[off] as u16;
+                        let a1 = data[off + 1] as u16;
+                        let mut table = [0u8; 8];
+                        table[0] = a0 as u8;
+                        table[1] = a1 as u8;
+                        if a0 > a1 {
+                            for k in 1..7u16 {
+                                // table[2..8], NOT table[1..7]: table[0] and
+                                // table[1] ARE the two endpoints, and the first
+                                // version of this loop overwrote table[1] with
+                                // an interpolated value. That left 11 of the 120
+                                // sampled textures differing in alpha only.
+                                table[(k + 1) as usize] = (((7 - k) * a0 + k * a1) / 7) as u8;
+                            }
+                        } else {
+                            for k in 1..5u16 {
+                                table[(k + 1) as usize] = (((5 - k) * a0 + k * a1) / 5) as u8;
+                            }
+                            table[6] = 0;
+                            table[7] = 255;
+                        }
                         let mut a = [0u8; 16];
+                        let mut abits: u64 = 0;
+                        for i in 0..6usize {
+                            abits |= (data[off + 2 + i] as u64) << (8 * i);
+                        }
                         for p in 0..16usize {
-                            a[p] = (data[off + p / 2] >> (4 * (p % 2))) & 0xF;
-                            a[p] *= 17;
+                            a[p] = table[((abits >> (3 * p)) & 7) as usize];
                         }
                         Some(a)
                     } else {

@@ -9,6 +9,7 @@
     "unit.stat": {
       "title": "改变单位属性",
       "title_en": "Change a unit's stat",
+      "example": "村民血量改成1000",
       "applies_to": "unit",
       "description": "Adjust one numeric stat on every civilization's copy of a unit.",
       "fields": {
@@ -69,6 +70,12 @@
           "required": false,
           "label": "一整类单位",
           "help": "给一个类别编号（和 schema/armor_classes.json 同一张表），就改这一类里的每一条记录。和 unit 二选一：unit 是点名一条，unit_class 是点一整类。实测 2026-10-24：步兵 217 条记录、骑兵 189、平民 28、建筑 215，一次铺完不到半分钟。"
+        },
+        "delta_percent": {
+          "type": "int",
+          "required": false,
+          "label": "变化百分比",
+          "help": "相对变化，单位是百分比：20 表示「加 20%」，-10 表示「减 10%」。和 delta/value 三选一。工具会按每条记录自己当前的值算出新值，所以「村民血量加20%」是 25→30，不是 25→45。"
         }
       },
       "compile": {
@@ -87,6 +94,7 @@
     "unit.attack_class": {
       "title": "改变单位的攻击/护甲数值",
       "title_en": "Change a unit's attack or armour value",
+      "example": "步弓手对骑兵攻击加2",
       "applies_to": "unit",
       "description": "Adjust the raw attack/armour entry for a specific armour class.",
       "fields": {
@@ -125,6 +133,12 @@
         "civs": {
           "type": "civ_scope",
           "default": "all"
+        },
+        "delta_percent": {
+          "type": "int",
+          "required": false,
+          "label": "变化百分比",
+          "help": "相对变化，单位是百分比：20 表示「加 20%」，-10 表示「减 10%」。和 delta/value 三选一。工具会按每条记录自己当前的值算出新值，所以「村民血量加20%」是 25→30，不是 25→45。"
         }
       },
       "compile": {
@@ -140,12 +154,15 @@
     "unit.cost": {
       "title": "改变单位造价",
       "title_en": "Change a unit's cost",
+      "example": "弓箭手木材成本加10",
       "applies_to": "unit",
       "fields": {
         "unit": {
           "type": "entity_ref",
           "kind": "unit",
-          "required": true
+          "required": false,
+          "label": "单位",
+          "help": "Name or id. Ambiguity is reported, never guessed. 和 unit_class 二选一。"
         },
         "resource": {
           "type": "enum",
@@ -173,6 +190,18 @@
         "civs": {
           "type": "civ_scope",
           "default": "all"
+        },
+        "delta_percent": {
+          "type": "int",
+          "required": false,
+          "label": "变化百分比",
+          "help": "相对变化，单位是百分比：20 表示「加 20%」，-10 表示「减 10%」。和 delta/value 三选一。工具会按每条记录自己当前的值算出新值，所以「村民血量加20%」是 25→30，不是 25→45。"
+        },
+        "unit_class": {
+          "type": "armor_class",
+          "required": false,
+          "label": "一整类单位",
+          "help": "给一个类别编号（和 schema/armor_classes.json 同一张表），就改这一类里的每一条记录。和 unit 二选一。实测 2026-10-30：步兵 217 条记录、一次铺完 11970 处写入，预览秒出。"
         }
       },
       "compile": {
@@ -183,6 +212,7 @@
     "tech.research_time": {
       "title": "改变科技研究时间",
       "title_en": "Change a technology's research time",
+      "example": "织布机研究时间减5",
       "applies_to": "tech",
       "fields": {
         "tech": {
@@ -201,6 +231,12 @@
           "required": false,
           "min": 0,
           "max": 32767
+        },
+        "delta_percent": {
+          "type": "int",
+          "required": false,
+          "label": "变化百分比",
+          "help": "相对变化，单位是百分比：20 表示「加 20%」，-10 表示「减 10%」。和 delta/value 三选一。工具会按每条记录自己当前的值算出新值，所以「村民血量加20%」是 25→30，不是 25→45。"
         }
       },
       "compile": {
@@ -215,6 +251,7 @@
     "tech.cost": {
       "title": "改变科技造价",
       "title_en": "Change a technology's cost",
+      "example": "织布机木材成本加10",
       "applies_to": "tech",
       "fields": {
         "tech": {
@@ -244,6 +281,12 @@
           "required": false,
           "min": 0,
           "max": 32767
+        },
+        "delta_percent": {
+          "type": "int",
+          "required": false,
+          "label": "变化百分比",
+          "help": "相对变化，单位是百分比：20 表示「加 20%」，-10 表示「减 10%」。和 delta/value 三选一。工具会按每条记录自己当前的值算出新值，所以「村民血量加20%」是 25→30，不是 25→45。"
         }
       },
       "compile": {
@@ -258,6 +301,7 @@
     "tech.effect": {
       "title": "改变科技效果",
       "title_en": "Change what a technology does",
+      "example": "织布机第1条效果加5",
       "applies_to": "tech",
       "fields": {
         "tech": {
@@ -279,6 +323,12 @@
         "value": {
           "type": "float",
           "required": false
+        },
+        "delta_percent": {
+          "type": "float",
+          "required": false,
+          "label": "变化百分比",
+          "help": "相对变化，单位是百分比：20 表示「加 20%」，-10 表示「减 10%」。和 delta/value 三选一。工具会按每条记录自己当前的值算出新值，所以「村民血量加20%」是 25→30，不是 25→45。"
         }
       },
       "compile": {
@@ -293,6 +343,7 @@
     "unit.availability": {
       "title": "改变某个文明能否建造某单位",
       "title_en": "Change whether a civilization can build a unit",
+      "example": "不列颠不能造火枪兵",
       "applies_to": "unit",
       "description": "Give or take away a unit for ONE civilization. Both directions write THREE layers at once: the .dat recipe the user confirmed in game, the CivTechTrees file, and the build panel. A grant appends an enable and moves the unit's training button; a revoke appends a disable hung on a technology that fires later than the one making the unit available.",
       "fields": {
@@ -357,6 +408,7 @@
     "tech.availability": {
       "title": "改变某个文明能否研究某科技",
       "title_en": "Change whether a civilization can research a technology",
+      "example": "不列颠不能研究织布机",
       "applies_to": "tech",
       "description": "Give or take away a technology for ONE civilization. Like unit.availability this changes no .dat BYTE, but it addresses the OTHER id space: a tech row's Node ID is the .dat tech ARRAY INDEX, and the same integer is a unit id in the unit space, so the two must never be mixed.",
       "fields": {
@@ -400,6 +452,7 @@
     "unit.sprite": {
       "title": "换掉单位的造型",
       "title_en": "Make one unit look like another",
+      "example": "把村民的样子换成步弓手",
       "applies_to": "unit",
       "description": "Copy another unit's animation files over this one's, so it is drawn as that unit while keeping its own stats. Writes loose .sld files under resources/_common/drs/graphics and no .dat at all.",
       "fields": {
@@ -471,6 +524,7 @@
     "unit.art": {
       "title": "给单位画一张新图",
       "title_en": "Paint a picture onto a unit's animations",
+      "example": "给村民换图片 我的图.png",
       "applies_to": "unit",
       "description": "Take one picture off the user's disk and paint it onto the .sld files this unit is drawn from. The original motion survives: every frame keeps its own rect, so the picture is sampled in CANVAS coordinates and each frame's existing crop decides which part of it that frame shows. Writes loose .sld files and no .dat.",
       "fields": {
@@ -523,6 +577,7 @@
     "unit.create": {
       "title": "照着现成的单位做一个新单位",
       "title_en": "Create a unit that the game does not have",
+      "example": "不列颠照村民做一个新单位，叫铁匠学徒，放在第5格",
       "applies_to": "unit",
       "description": "Clone one of a civilization's unit records into an id nothing uses, then name it.  The clone keeps the donor's class, animations, sounds and armour classes.  Its train location starts as the donor's, and the `builder`/`button` fields move it to another building or box.",
       "fields": {
@@ -601,6 +656,7 @@
     "tech.toggle_group": {
       "title": "把几项科技做成只能研究其中一个",
       "title_en": "Make several technologies an exclusive group",
+      "example": "把锻造和步兵鳞甲做成只能选一个",
       "applies_to": "tech",
       "description": "Makes the engine allow only one of several technologies. Measured 2026-10-22 on a real match: researching one then removes the others from the technology panel (they disappear), and they cannot be researched. The blocking half is a `type 102` disable command written on every member's own effect -- the same shape the 16 shipped MutuallyExclusive/Toggleable groups use. The linkedTechs.json record is written too, because that is what makes the UI show the red cross on a sibling; on its own it does NOT block anything (measured: JSON alone showed the cross and still let both be researched).",
       "fields": {
@@ -652,6 +708,7 @@
     "tech.create": {
       "title": "做一项游戏里没有的科技",
       "title_en": "Create a technology that the game does not have",
+      "example": "不列颠照织布机做一项新科技，叫细麻布",
       "applies_to": "tech",
       "description": "Append one technology record modelled on an existing one, give it its own name string, its own effect and a research location so a building can research it. The record is addressed by its POSITION in the array, so the new id is the shipped count.",
       "fields": {
@@ -726,6 +783,7 @@
     "unit.replace_on_map": {
       "title": "让某个单位在地图上换成另一个",
       "title_en": "Make one unit stand in for another when the map is generated",
+      "example": "开局时把村民换成斥候骑兵",
       "applies_to": "unit",
       "description": "Writes a row into `resources/_common/dat/objreplacement.json` so that when a map is generated, place B wherever A would have gone. Measured 2026-10-25 on a real match: the only data mod was this file plus a `.dat` canary in the same folder, the town centre panel read 4000/4000 (so the folder mounted), and every unit standing on the ground at 0:00 was scout 448 while the rule named villager 83 -- the panel said 45/45, which is 448's hit points. It acts at MAP GENERATION: units trained after the match starts are ordinary units. The file has no per-civilization key, so this cannot be scoped to one civilization.",
       "fields": {
@@ -786,6 +844,7 @@
     "unit.card_move": {
       "title": "把单位挪到命令卡的另一格",
       "title_en": "Move a unit to another box on a building's command card",
+      "example": "不列颠把民兵放在第5格",
       "applies_to": "unit",
       "description": "Rewrite the box number in the unit's own train location.  One byte per entry, and the unit that was in the target box takes the vacated one, so no button is ever hidden by a drop.",
       "fields": {

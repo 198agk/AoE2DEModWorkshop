@@ -73,7 +73,14 @@ def looks_like_report(text):
         return False
     if "::" in text:
         return True
-    return text.lstrip().upper().startswith(("FAIL", "[FAIL", "FAILED", "FAILURE"))
+    # The prefix arms are CASE-SENSITIVE, and that is a convention rather than a
+    # convenience: every suite in this tree writes its reports in capitals, so
+    # lowercase `failed:` is the other thing a literal can be -- text a probe
+    # SEARCHES a log for.  `_probe/probe_startup_failure.py` holds exactly
+    # that (`if "failed:" in log_from(off)`) while its docstring quotes the real
+    # log line `failed: 找不到界面目录…`; reading either as a printed report made
+    # this audit demand an uppercase shape from a line nobody prints.  2026-11-01.
+    return text.lstrip().startswith(("FAIL", "[FAIL", "FAILED", "FAILURE"))
 
 
 def literals(rel):
@@ -147,9 +154,22 @@ def main():
         "FAILURES: 1 -> ['x']",
         "  [FAIL] the cursor is not advanced :: 0 vs 11",
         "  FAILED: both halves stay in step",
+        # The sign-off five suites print when they failed.  It is an ALL-CAPS
+        # label, so the "a sign-off is a label, labels are quiet" convention read
+        # it as a pass line; `test_mod_routes.py` went red on 2026-11-01 with this
+        # as its only evidence and the audit did not hear it.
+        "MOD ROUTES: FAILURES ABOVE",
+        "PAGE GATE: FAILED ABOVE",
     )
     for text in caught:
         check("caught %r" % text[:44], R._FAIL_RE.search(text) is not None, text)
+
+    print()
+    print("=== D. and the matching PASS sign-offs stay quiet")
+    # The new arm must not swallow the pass line that shares its prefix.
+    for text in ("MOD ROUTES: ALL PASSED", "REBUILD: ALL PASSED",
+                 "SHIPPED E2E: ALL PASSED", "SUITES: ALL PASSED"):
+        check("%r is not a report" % text[:40], R._FAIL_RE.search(text) is None, text)
 
     print()
     if FAILS:

@@ -238,6 +238,25 @@ target/
 _golden/stat_offsets.json
 _golden/unit0_trace.txt
 
+# 20.5 MB of per-unit cost/attack/armour offsets with ZERO readers.  Measured on
+# 2026-10-28: no Rust file names it, no Python file opens it, and the only
+# generator that writes it (`_probe/make_unit_slots.py`) is called by nothing.
+# The Rust reader models those three lists itself -- `Unit.costs` and
+# `Type50.attacks/armors` in `desktop/aoe2mod-dat/src/stage810.rs`, each entry
+# carrying the offset it was parsed at -- so this table is not a stale copy of a
+# live answer, it is an answer to a question no caller asks.  It stayed in git
+# and in the stamp manifest only because nothing ever asked whether it had a
+# reader; a 20 MB file that must be regenerated before the stamp can be written
+# is a build dependency on a file that changes no behaviour.
+_golden/unit_slots.json
+
+# 81 KB per-unit spans, written by `_probe/make_unit_spans.py` so the Rust port
+# could be diffed record by record against Python.  The port finished; the file
+# has no reader (the `NU.unit_spans` hits in `aoe2mod/` are the FUNCTION, which
+# walks the record stream at runtime, not this dump).  Regenerated in seconds
+# when a future port needs the same ladder.
+_golden/unit_spans.json
+
 # Tauri's generated capability schemas.  Rewritten by `tauri-build` on every
 # compile from the capabilities/ folder, so it is output that happens to sit
 # in the source tree.  Committing it means every build produces a diff.
@@ -249,3 +268,13 @@ desktop/src-tauri/gen/
 _out/
 _golden/sprite_art.json
 _golden/sprite_pairs.json
+
+# build output and cargo cache relocated into the repo
+_cache/
+_probe/_tmp/
+
+# The operation record.  `aoe2mod/oplog.py` appends one line per edit to `log/`
+# beside the tool, which for a source checkout is this repository.  It describes
+# what one person did on one machine -- the same reason `_probe/out_*.log` is
+# ignored -- and a committed copy would be a diff after every save.
+log/

@@ -1,6 +1,6 @@
 # 模组工坊 UI · 逐条问题清单
 
-审计对象：`D:\Software\AI\帝国项目\aoe2mod\ui\static\index.html`（2241 行）
+审计对象：`D:\Software\AI\Aoe2\aoe2mod\ui\static\index.html`（2241 行）
 审计时间：2026-10-26
 方式：只读静态审计 + 数值统计。未改任何文件，未运行程序。
 
@@ -227,7 +227,7 @@ index.html:191   .detailtext { line-height: 1.7 }
 ```css
 index.html:317   #editor .edbody { … height: 460px }
 ```
-在 1080p 窗口下勉强够用，在小窗口下编辑器会被压出滚动条，在大窗口下又浪费。改为 `min-height: 420px; max-height: calc(100dvh - 220px)`。
+在 1080p 窗口下勉强够用，在小窗口下编辑器会被压出滚动条，在大窗口下又浪费。改为 `min-height: 420px` + flex 撑满（**不要再写成 `max-height: calc(100dvh - 220px)`：220 这个减法常量与实际 chrome 272px 差 52px，2026-11-01 实测让真实 821px 窗口里的文档高 921px，玩家要拖滚动条才能看到字段表最后一行**，见 DESIGN.md §6）。
 
 ### P1-10　`font-weight` 五档，其中 650 是非标准值
 

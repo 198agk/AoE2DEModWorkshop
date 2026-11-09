@@ -17,7 +17,8 @@ import os
 import re
 import sys
 
-sys.path.insert(0, r"D:\Software\AI\帝国项目")
+sys.path.insert(0, os.path.abspath(os.path.join(
+    os.path.dirname(__file__), "..")))
 
 from aoe2mod import api as A
 from aoe2mod.dat import parser as P

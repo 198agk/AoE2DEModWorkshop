@@ -18,6 +18,20 @@ import time
 
 DAT_REL = os.path.join("resources", "_common", "dat", "empires2_x2_p1.dat")
 
+#: Override for the profile root; see :func:`find_profile_root`.  Points at ONE
+#: account folder (the one holding ``mods/``), and is how every suite keeps its
+#: writes out of the player's real mod list.
+PROFILE_ENV = "AOE2MOD_PROFILE"
+
+#: Override for the game install; see :func:`find_game_root`.  The native
+#: engine has always honoured it (``desktop/aoe2mod-serve/src/lib.rs:167``), and
+#: this side ignored it -- which turned a sandbox into a silent lie: measured
+#: 2026-10-31, `_probe/probe_startup_failure.py` pointed it at an empty folder to
+#: prove the splash explains a missing ``.dat``, and the shipped exe -- by then
+#: running THIS engine -- found the real game instead and started normally, so
+#: the failure path was never exercised at all.
+GAME_ENV = "AOE2MOD_GAME_ROOT"
+
 # Steam's own app id for Age of Empires II: Definitive Edition.  The manifest
 # named ``appmanifest_<APP_ID>.acf`` is the only authoritative answer to "where
 # did this user install it", so it is the first thing we look for.
@@ -118,6 +132,21 @@ def find_game_root(explicit=None, search=()):
         tried.append(cand)
         if looks_like_game_root(cand):
             return cand
+
+    # A declared game root wins over discovery, and a declared one that does not
+    # look like an install is an ERROR rather than a fall-through -- same rule as
+    # `find_profile_root` and for the same measured reason: a sandbox that
+    # silently resolves somewhere else is worse than no sandbox.
+    override = os.environ.get(GAME_ENV)
+    if override is not None:
+        tried.append(override)
+        if override and looks_like_game_root(override):
+            return override
+        raise FileNotFoundError(
+            "找不到游戏目录：%s=%s 不是一个能用的游戏安装目录。"
+            "它要指到装着 %s 的那一层。因为已经指定了游戏目录，"
+            "就不再退回别的安装。" % (GAME_ENV, override or "(空)",
+                                    _GAME_MARKERS[1]))
 
     # 1 + 2: every library Steam admits to, via the manifest then by name.
     for lib in steam_libraries():
@@ -283,9 +312,36 @@ def game_root_of_dat(dat_path):
 
 
 def find_profile_root(explicit=None):
-    """The user profile root that holds mods, logs and scenarios."""
+    """The user profile root that holds mods, logs and scenarios.
+
+    ``AOE2MOD_PROFILE`` overrides it and points at ONE ACCOUNT folder (the one
+    holding ``mods/``), which is what the native engine's ``mods::profile_root``
+    has always honoured (`desktop/aoe2mod-serve/src/mods.rs:45`).  This side
+    ignored the variable, and that was not a cosmetic gap: measured 2026-10-31,
+    `_probe/test_e2e_shipped.py` copied the profile to a temp folder, set
+    `AOE2MOD_PROFILE` to it, and the shipped exe -- which by then was running
+    THIS engine -- installed two mods into the player's real mod list instead.
+    A sandbox that silently resolves elsewhere is worse than no sandbox.
+
+    A set-but-unusable override is an error, never a fall-through: falling
+    through is exactly how the test above wrote where it did not mean to.
+    """
     if explicit:
         return explicit
+    override = os.environ.get(PROFILE_ENV)
+    if override is not None:
+        if not override:
+            raise FileNotFoundError(
+                "%s 是空的。要么把它删掉，要么指到存账号文件夹那一层"
+                "（本该有 mods\\ 的那一级）。" % PROFILE_ENV)
+        if not os.path.isfile(os.path.join(override, "mods",
+                                           MOD_STATUS_NAME)):
+            raise FileNotFoundError(
+                "%s=%s 里面没有 mods\\%s。它要指到存账号文件夹那一层"
+                "（本该有 mods\\ 的那一级），不是它的上一层。"
+                "因为已经指定了档案目录，就不再退回真实档案。"
+                % (PROFILE_ENV, override, MOD_STATUS_NAME))
+        return override
     home = os.path.expanduser("~")
     cand = os.path.join(home, "Games", "Age of Empires 2 DE")
     if os.path.isdir(cand):
@@ -307,10 +363,26 @@ def read_mod_status(profile_root):
 
     Returns ``{path: entry}``.  The ``Path`` field is stored with forward
     slashes relative to the mods root, e.g. ``subscribed//550412_Name``.
+
+    ``profile_root`` may be the parent of the account folders (the usual case)
+    OR an account folder itself.  The second shape is what ``AOE2MOD_PROFILE``
+    means and what :func:`read_status_doc` already accepts -- but this reader
+    only ever looked one level down, so with a sandbox declared the WRITE landed
+    in the sandbox and the LIST came back empty: measured 2026-10-31,
+    `_probe/test_e2e_shipped.py` installed two mods into its own temp profile and
+    then could not find either one.
     """
     out = {}
-    for steam_dir in os.listdir(profile_root):
-        p = os.path.join(profile_root, steam_dir, "mods", "mod-status.json")
+    if os.path.isfile(os.path.join(profile_root, "mods", MOD_STATUS_NAME)):
+        accounts = [profile_root]
+    else:
+        try:
+            accounts = [os.path.join(profile_root, d)
+                        for d in os.listdir(profile_root)]
+        except OSError:
+            return out
+    for acc in accounts:
+        p = os.path.join(acc, "mods", MOD_STATUS_NAME)
         if not os.path.exists(p):
             continue
         with open(p, encoding="utf-8-sig") as fh:
@@ -333,6 +405,15 @@ def list_mods(profile_root, check_exists=True):
     status = read_mod_status(profile_root)
     mods = []
     import glob
+    # `profile_root` may be an account folder itself (what `AOE2MOD_PROFILE`
+    # means and what `read_mod_status` now accepts).  The glob below is built as
+    # "<profile>\<account>\mods\...", so an account folder has to collapse to its
+    # parent or the pattern matches nothing: measured 2026-10-31, a sandbox
+    # profile installed two mods and `list_mods` returned both with a literal
+    # `*` in `path` and `exists=False`.
+    accounts_root = profile_root
+    if os.path.isfile(os.path.join(profile_root, "mods", MOD_STATUS_NAME)):
+        accounts_root = os.path.dirname(profile_root.rstrip("\\/")) or profile_root
     for rel, entry in status.items():
         kind, _, name = (rel or "").partition("//")
         # The name is a FOLDER NAME, not a pattern.  Three of the 18 mods on this
@@ -340,9 +421,11 @@ def list_mods(profile_root, check_exists=True):
         # passing the name straight to glob.glob made those entries report
         # exists=False and leave a literal '*' inside `path` -- a path that
         # cannot be opened by anything downstream.  glob.escape is the fix.
-        pattern = os.path.join(profile_root, "*", "mods", kind, glob.escape(name))
+        pattern = os.path.join(accounts_root, "*", "mods", kind,
+                               glob.escape(name))
         hits = sorted(glob.glob(pattern))
-        path = hits[0] if hits else os.path.join(profile_root, "*", "mods", kind, name)
+        path = (hits[0] if hits
+                else os.path.join(accounts_root, "*", "mods", kind, name))
         mods.append({
             "name": name,
             "kind": kind,
@@ -592,6 +675,36 @@ def move_mod_entry(doc, name, delta, kind="local"):
     return at + 1
 
 
+def move_mod_to_entry(doc, name, position, kind="local"):
+    """Put one entry at ``position`` in load order; returns its new 1-based Priority.
+
+    The two arrows move a row one place, which is all a list of three rows needs
+    and not what a drag is: the player picks a row up and drops it somewhere
+    else, possibly ten places away.  Sending ten ``delta`` calls would rewrite
+    ``mod-status.json`` eleven times and could half-apply if one failed.
+
+    ``position`` is the index in the array AFTER the row has been lifted out, so
+    "drop before row N" is ``position = N`` and "drop at the end" is the list
+    length.  It is clamped rather than raising: a drop that lands past the end
+    means "last", not an error dialog.  Measured with the 18 mods on this
+    machine: 0.0004 s for the reorder plus renumber.
+    """
+    rel = "%s//%s" % (kind, name)
+    entries = doc.setdefault("Mods", [])
+    at = None
+    for i, e in enumerate(entries):
+        if e.get("Path") == rel:
+            at = i
+            break
+    if at is None:
+        raise KeyError(name)
+    item = entries.pop(at)
+    want = max(0, min(int(position), len(entries)))
+    entries.insert(want, item)
+    renumber_priorities(entries)
+    return want + 1
+
+
 def remove_mod_entry(doc, name, kind="local"):
     """Drop one entry; returns how many were removed (0 or 1)."""
     rel = "%s//%s" % (kind, name)
@@ -800,6 +913,43 @@ def install_mod(mod_dir, profile_root, name=None, title=None, kind="local",
     return man
 
 
+def resolve_mod_any(profile_root, name, kind="local", account=None):
+    """Resolve a mod name to ``(folder, kind, how)``, searching BOTH kinds.
+
+    Every write route passes ``kind`` through with the default ``"local"``, but a
+    Steam library lives in ``subscribed``.  Measured 2026-11-07 on the machine
+    this was built on: all 18 installed mods are ``subscribed``, so the arrows,
+    the drag and the on/off switches all failed -- 「移不动：'582581_文明联盟 test 9'」
+    for a move (the entry is ``subscribed//...``, not ``local//...``) and
+    「没找到叫「…」的模组」 for a toggle -- while every one of them was drawn from
+    the list that had just been read out of the subscribed folder.
+
+    The requested ``kind`` wins when the name exists in both, because that is the
+    caller's own statement about which one it means.  Only when it matches nothing
+    is the other kind tried, which is the case that used to be a dead end.
+    """
+    folder, how = resolve_mod_name(profile_root, name, kind=kind, account=account)
+    if how != "bare":
+        return folder, kind, how
+    other = "subscribed" if kind == "local" else "local"
+    folder2, how2 = resolve_mod_name(profile_root, name, kind=other,
+                                     account=account)
+    if how2 != "bare":
+        return folder2, other, how2
+    # Neither status entry matched.  A folder dropped into the mods tree by hand
+    # still counts -- the game registers those itself -- so look on disk too.
+    try:
+        acc = account or (profile_root
+                          if os.path.isdir(os.path.join(profile_root, "mods"))
+                          else pick_account(profile_root))
+        for k in (kind, other):
+            if os.path.isdir(os.path.join(account_mods_dir(acc, k), name)):
+                return name, k, "folder"
+    except Exception:
+        pass
+    return folder, kind, how
+
+
 def resolve_mod_name(profile_root, name, kind="local", account=None):
     """Turn a mod's folder name OR its Title into the folder name.
 
@@ -912,7 +1062,8 @@ def uninstall_mod(profile_root, name, kind="local", remove_files=True,
     else:
         acc = pick_account(profile_root)
 
-    folder, how = resolve_mod_name(profile_root, name, kind=kind, account=acc)
+    folder, kind, how = resolve_mod_any(profile_root, name, kind=kind,
+                                       account=acc)
     _running = running_note()
 
     doc, acc, _ = read_status_doc(profile_root, account=acc)
@@ -967,7 +1118,8 @@ def set_mod_enabled(profile_root, name, enabled, kind="local", account=None,
         acc = profile_root
     else:
         acc = pick_account(profile_root)
-    folder, _how = resolve_mod_name(profile_root, name, kind=kind, account=acc)
+    folder, kind, _how = resolve_mod_any(profile_root, name, kind=kind,
+                                       account=acc)
     doc, acc, _ = read_status_doc(profile_root, account=acc)
     if _how == "bare" and not os.path.isdir(
             os.path.join(account_mods_dir(acc, kind), folder)):

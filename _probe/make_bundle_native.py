@@ -25,11 +25,12 @@ import os
 import shutil
 import subprocess
 import sys
+import _paths as P
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(HERE)
-DEFAULT_OUT = r"D:\Software\AI\AoE2ModWorkshop"
-EXE = r"D:\Software\AI\AGE2\desktop\src-tauri\target\release\aoe2-mod-workshop.exe"
+DEFAULT_OUT = P.BUNDLE
+EXE = P.EXE
 LOADER_DLL = "WebView2Loader.dll"
 
 README = """帝国时代 2 决定版 · 模组工坊

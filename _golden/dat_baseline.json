@@ -1,9 +1,9 @@
 {
  "file": "empires2_x2_p1.dat",
- "raw_bytes": 93268152,
- "raw_sha256": "02a09b48a0fbd2116295cad2ebdd28dfa20b92b44e29b360f8639e5fb73405df",
+ "raw_bytes": 93272287,
+ "raw_sha256": "82eb7d148f8c6ee53f4dfa93210c3ce7dfb63194b65692ae51bfc780d62980fe",
  "how": "raw-deflate(window_bits=-15)",
- "parsed_pos": 93268152,
+ "parsed_pos": 93272287,
  "eof_clean": true,
  "sections": [
   "civ_count",
@@ -43,7 +43,7 @@
  "counts": {
   "terrain_restrictions": 54,
   "player_colours": 16,
-  "sounds": 769,
+  "sounds": 930,
   "graphics": 20883,
   "effects": 1500,
   "unit_headers": 1701,
@@ -25589,8 +25589,8 @@
    "pointers_total": 2750
   }
  ],
- "gaia_units_sha256": "ffe469d0d7bceeb3ab205ddfec77239ba16b1bcb2b942ed6e7219292d94eb1df",
- "britons_units_sha256": "14277a65965ba28da267e9c3b70450ceaf90042cce959d0cb8b74ebcdf53c631",
+ "gaia_units_sha256": "ee54a3642b204290794b86a0ae1226f34d77d54c12a45a78ef978c1669d58622",
+ "britons_units_sha256": "ae3cd4863c9c0cb78a29785e7586da575a58167a15403ca0295978cf0b91c342",
  "samples": {
   "units_gaia": [
    {
@@ -26015,12 +26015,12 @@
    }
   ]
  },
- "structure_sha256": "6602ee89ba528af1cc1c7c44d877a480c205446e86431ad493da034a452da9c1",
- "serialized_bytes": 93268152,
- "serialized_sha256": "02a09b48a0fbd2116295cad2ebdd28dfa20b92b44e29b360f8639e5fb73405df",
+ "structure_sha256": "fd7c8097dcacaf2bf9e0b157e46d7e948afa2073f0d6e9761f4bbb10997ffdaf",
+ "serialized_bytes": 93272287,
+ "serialized_sha256": "82eb7d148f8c6ee53f4dfa93210c3ce7dfb63194b65692ae51bfc780d62980fe",
  "roundtrip_identical": true,
  "roundtrip_delta": 0,
- "reparse_pos": 93268152,
+ "reparse_pos": 93272287,
  "reparse_clean": true,
- "reparse_structure_sha256": "6602ee89ba528af1cc1c7c44d877a480c205446e86431ad493da034a452da9c1"
+ "reparse_structure_sha256": "fd7c8097dcacaf2bf9e0b157e46d7e948afa2073f0d6e9761f4bbb10997ffdaf"
 }

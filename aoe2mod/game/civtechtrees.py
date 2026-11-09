@@ -344,6 +344,21 @@ UNIT_USE_TYPES = ("Unit",)
 #: ``None`` for all 62 civs -- which reads as "no civilization has Loom".
 TECH_USE_TYPES = ("Tech",)
 
+#: Rows for a BUILDING.  The 63 building rows live in their own engine key
+#: (``civ_techs_buildings``) with ``Use Type`` = ``Building``, and their
+#: ``Node ID`` IS the ``.dat`` unit id of the building (Castle is 82 in both).
+#: Measured 2026-10-31 across all 62 files: no id appears in both the Unit list
+#: and the Building list under two different names (0 collisions), so widening a
+#: unit question to ``UNIT_USE_TYPES + BUILDINGS_USE_TYPES`` cannot turn an
+#: answer about a unit into an answer about a building.
+#:
+#: The reason this needs its own constant: asking the Unit space about a
+#: building returns ``None`` for all 62 civs, which reads as "not in any tech
+#: tree" -- a sentence that is false about the Castle and false about the
+#: Barracks, and the exact shape of the mistake :data:`UNIT_USE_TYPES` warns
+#: about one id space over.
+BUILDINGS_USE_TYPES = ("Building",)
+
 
 def unit_rows(tree):
     """Only the rows whose ``Node ID`` is a UNIT id.
@@ -466,6 +481,50 @@ def status_counts(tree):
     for e in _rows(tree):
         if isinstance(e, dict):
             out[e.get("Node Status")] = out.get(e.get("Node Status"), 0) + 1
+    return out
+
+
+#: One letter per status, because the compact table repeats it thousands of
+#: times.  The letters match the `CivTechTrees/<CIV>.json` spelling already
+#: shipped in ``_golden/civ_trees.json`` -- the page and both engines must not
+#: disagree about what "C" means.
+STATUS_LETTER = {"ResearchedCompleted": "C",     # available from the start
+                 "ResearchRequired": "R",        # available, a tech gates it
+                 "NotAvailable": "N"}            # this civ cannot have it
+
+#: `Use Type` -> the one-letter bucket, the same spelling as the shipped table.
+USE_LETTER = {"Building": "b", "Unit": "u", "Tech": "t"}
+
+
+def compact(tree):
+    """One civ's tree as ``{"b": {...}, "u": {...}, "t": {...}}``.
+
+    WHY THIS EXISTS: the native backend answers ``/api/civ`` with this shape and
+    the Python backend had no such route at all (see ``App.civ`` in
+    ``aoe2mod/ui/server.py``).  A page that can draw the tree from one engine and
+    not the other is the "the shipped build knows less than the repo" defect this
+    project keeps re-finding, so the reader both engines share grows the method
+    rather than the server inventing a private shape.
+
+    A node can carry SEVERAL rows: MAPUCHE lists Skirmisher under buildings 87
+    and 2556, because a row is keyed on ``(Use Type, Node ID, Building ID)`` and
+    not on ``(Use Type, Node ID)``.  Keeping only the first would answer "this
+    civ builds it in one place" while the game offers it in two, so every
+    distinct row survives and only exact repeats collapse (measured: 0 of them).
+    """
+    out = {"b": {}, "u": {}, "t": {}}
+    for e in _rows(tree):
+        if not isinstance(e, dict):
+            continue
+        use = USE_LETTER.get(e.get("Use Type") or "")
+        node = e.get("Node ID")
+        letter = STATUS_LETTER.get(e.get("Node Status") or "")
+        if use is None or node is None or letter is None:
+            continue
+        row = [e.get("Building ID"), letter, e.get("Age ID")]
+        bucket = out[use].setdefault(str(node), [])
+        if row not in bucket:
+            bucket.append(row)
     return out
 
 

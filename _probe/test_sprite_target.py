@@ -22,10 +22,12 @@ import tempfile
 import time
 import urllib.request
 import zipfile
+import _paths as P
 
-sys.path.insert(0, "D:/Software/AI/帝国项目")
+sys.path.insert(0, os.path.abspath(os.path.join(
+    os.path.dirname(__file__), "..")))
 
-BUNDLE = r"D:\Software\AI\AoE2ModWorkshop"
+BUNDLE = P.BUNDLE
 EXE = os.path.join(BUNDLE, "aoe2-mod-workshop.exe")
 PORT = 7847
 GAME = r"d:\games\steam\steamapps\common\AoE2DE"
@@ -76,6 +78,26 @@ def graphics_files(raw_path):
     return [(g["id"], g.get("file") or "") for g in p.stats["graphics"]]
 
 
+def folder_of(reply):
+    """The mod folder a build reply points at, whichever shape it uses."""
+    b = reply.get("built")
+    if isinstance(b, str):
+        return b
+    return (b or {}).get("dir") or ""
+
+
+def count_kinds(folder):
+    """`(dat files, sld files)` under a built mod folder."""
+    dats = slds = 0
+    for _root, _dirs, files in os.walk(folder):
+        for f in files:
+            if f.endswith(".dat"):
+                dats += 1
+            elif f.endswith(".sld"):
+                slds += 1
+    return dats, slds
+
+
 def main():
     before = graphics_files(DAT)
     proc = subprocess.Popen(
@@ -100,8 +122,47 @@ def main():
         desc_names_donor = "#" not in desc
 
         title = "sprite probe %d" % int(time.time())
-        built = post("/api/build", {
+
+        # TWO delivery models, and the default is the one that composes with any
+        # data mod (aoe2mod/api.py::_reskin_mode).  `copy` ships the donor's
+        # picture as loose .sld files and NO .dat; `rename` rewrites the graphics
+        # records' `file` strings and IS a data mod.  The sentence above names no
+        # mode, so it must land on `copy` -- this asserts that first, then asks
+        # for `rename` explicitly to measure the record rewrite.  A probe that
+        # only ever requested the model it wanted would stop noticing the day the
+        # default flipped, and one that demanded a .dat from a copy build (what
+        # this file used to do) fails on a correct product.
+        copy_built = post("/api/build", {
             "intents": [intent],
+            "title": title + " copy",
+            "install": False,
+        })
+        if not copy_built.get("ok"):
+            print("copy build refused: %s" % copy_built.get("error"))
+            return 1
+        copy_folder = folder_of(copy_built)
+        copy_dats, copy_slds = count_kinds(copy_folder)
+        print("copy build  : %d .dat, %d .sld -> %s"
+              % (copy_dats, copy_slds, copy_folder))
+        default_is_copy = copy_dats == 0 and copy_slds > 0
+
+        rename_intent = dict(intent)
+        rename_intent["mode"] = "rename"
+        # The count the preview promises for THIS model.  The copy plan above
+        # promises 20 animation files; the rename plan promises 10 records, and
+        # comparing one model's promise with the other model's build is the same
+        # class of mistake as demanding a .dat from a copy build.
+        rplan = post("/api/plan", {"intent": rename_intent})
+        if not rplan.get("ok"):
+            print("rename plan refused: %s" % rplan.get("error"))
+            return 1
+        # `/api/plan` answers `{"ok": true, "plan": {...}}`; reading the count off
+        # the envelope gives None and every later comparison then quietly fails.
+        rp = rplan.get("plan") or {}
+        print("rename plan : %s | %s" % (rp.get("edit_count"), rp.get("description")))
+        rename_promise = rp.get("edit_count")
+        built = post("/api/build", {
+            "intents": [rename_intent],
             "title": title,
             "install": False,
         })
@@ -111,13 +172,10 @@ def main():
         print("build reply : %s" % json.dumps(built, ensure_ascii=False)[:400])
 
         # Read the produced `.dat` back out of the shipped mod folder.
-        b = built.get("built")
-        folder = b if isinstance(b, str) else ((b or {}).get("dir") or "")
-        cand = []
-        for root, _dirs, files in os.walk(folder):
-            for f in files:
-                if f.endswith(".dat"):
-                    cand.append(os.path.join(root, f))
+        folder = folder_of(built)
+        cand = [os.path.join(root, f)
+                for root, _dirs, files in os.walk(folder)
+                for f in files if f.endswith(".dat")]
         if not cand:
             print("no .dat in the built folder: %s" % folder)
             return 1
@@ -140,13 +198,18 @@ def main():
         # to pass this probe, because only the villager case was counted -- a
         # measurement that goes green when the edit disappears is not a
         # measurement.
-        matches = len(moved) == plan.get("edit_count")
+        matches = len(moved) == rename_promise
         named_ok = not villager
         print("\nVERDICT")
-        print("  records moved           = %d (the plan says %s)" % (len(moved), plan.get("edit_count")))
+        print("  no mode asked = copy    = %s (must be True)" % default_is_copy)
+        print("  records moved           = %d (the rename plan says %s)" % (len(moved), rename_promise))
         print("  plan count matches disk = %s" % matches)
         print("  edits the NAMED unit    = %s (must be True)" % named_ok)
         print("  preview names the donor = %s (must be True)" % desc_names_donor)
+        if not default_is_copy:
+            bad += 1
+            print("  a sentence that names no mode shipped a .dat (%d .dat, %d .sld);"
+                  " the cheap model must be asked for, not assumed" % (copy_dats, copy_slds))
         if not matches:
             bad += 1
             print("  the preview promised a different number of records than the build wrote")

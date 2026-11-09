@@ -169,7 +169,7 @@ fn register(status_path: &Path, title: &str) -> Result<(), String> {
     let rel_compact = format!("\"Path\":\"local//{title}\"");
     let has = text.contains(&rel) || text.contains(&rel_compact);
 
-    let mut doc = text;
+    let mut doc = text.clone();
     if has {
         // Already present: force Enabled true, then move to front.
         doc = enable_entry(&doc, title);
@@ -186,10 +186,7 @@ fn register(status_path: &Path, title: &str) -> Result<(), String> {
         doc = insert_entry(&doc, &entry)?;
         doc = renumber(&doc);
     }
-    let tmp = status_path.with_extension("json.tmp");
-    fs::write(&tmp, doc).map_err(|e| e.to_string())?;
-    fs::rename(&tmp, status_path).map_err(|e| e.to_string())?;
-    Ok(())
+    checked_status_write(status_path, &text, &doc)
 }
 
 fn now_ms() -> String {
@@ -245,8 +242,38 @@ fn enable_entry(doc: &str, title: &str) -> String {
     doc.to_string()
 }
 
+/// Cut `doc[start..=end]` out, dropping exactly the one comma that separated it
+/// from its neighbours.
+///
+/// Written as a splice rather than a `,,` substitution because entries carry
+/// free text: a mod titled `a,, b` would have been silently rewritten by the
+/// substitution, and `{,` never actually occurred here.
+fn splice_out(doc: &str, start: usize, end: usize) -> String {
+    let head = &doc[..start];
+    let tail = &doc[end + 1..];
+    let head_kept = head.trim_end_matches(char::is_whitespace);
+    let tail_off = tail.len() - tail.trim_start_matches(char::is_whitespace).len();
+    if head_kept.ends_with(',') {
+        // `[{prev},{this},{next}]` -> the comma BEFORE this entry goes away.
+        format!("{}{}", &head[..head_kept.len() - 1], tail)
+    } else if tail[tail_off..].starts_with(',') {
+        // Only entry before this position -> the comma AFTER it goes away.
+        format!("{}{}", head, &tail[tail_off + 1..])
+    } else {
+        // Sole entry in the array.
+        format!("{head}{tail}")
+    }
+}
+
 /// Move an existing entry to the front of `Mods[]` and renumber by position.
-fn move_to_front(doc: &str, title: &str) -> String {
+///
+/// `matching` returns the index OF the closing brace, so the entry is
+/// `doc[obj_start..=obj_end]`.  Slicing `..obj_end` dropped the brace and left
+/// it behind at the removal point -- that is how this used to write
+/// `..."WorkshopID":0,}` into the player's real mod list on every reinstall of
+/// an already-present mod, which then made `json.loads` fail for the whole
+/// product and for the game.
+pub fn move_to_front(doc: &str, title: &str) -> String {
     let rels = [
         format!("\"Path\":\"local//{title}\""),
         format!("\"Path\": \"local//{title}\""),
@@ -255,21 +282,19 @@ fn move_to_front(doc: &str, title: &str) -> String {
         if let Some(p) = doc.find(rel) {
             if let Some(obj_start) = doc[..p].rfind('{') {
                 if let Some(obj_end) = matching(doc, obj_start) {
-                    let entry = doc[obj_start..obj_end].to_string();
-                    let rest = format!("{}{}", &doc[..obj_start], &doc[obj_end..]);
-                    // Drop the trailing comma the removal may have left.
-                    let rest = rest.replace(",,", ",").replace("{,", "{");
+                    let entry = doc[obj_start..=obj_end].to_string();
+                    let rest = splice_out(doc, obj_start, obj_end);
                     if let Some(at) = rest.find("\"Mods\"") {
                         if let Some(lb) = rest[at..].find('[') {
                             let lb = lb + at;
                             let mut out = String::new();
                             out.push_str(&rest[..lb + 1]);
                             out.push_str(&entry);
-                            let tail = rest[lb + 1..].trim_start();
-                            if !tail.starts_with(']') {
+                            let tail = &rest[lb + 1..];
+                            if !tail.trim_start().starts_with(']') {
                                 out.push(',');
                             }
-                            out.push_str(&rest[lb + 1..]);
+                            out.push_str(tail);
                             return renumber(&out);
                         }
                     }
@@ -278,6 +303,32 @@ fn move_to_front(doc: &str, title: &str) -> String {
         }
     }
     doc.to_string()
+}
+
+/// Parse-check a `mod-status.json` rewrite before it reaches the disk.
+///
+/// The player's whole mod configuration lives in this one file and the game
+/// refuses to start when it does not parse, so a string-surgery bug here costs
+/// the user their setup -- which is exactly what happened once.  `before` is
+/// the text we read: if that parsed and our rewrite does not, the rewrite is
+/// what is wrong and it must not land.  A file that was ALREADY broken
+/// (`before` fails to parse) is not ours to reject -- repairing it is the job.
+pub fn checked_status_write(path: &Path, before: &str, doc: &str) -> Result<(), String> {
+    let was_ok = serde_json::from_str::<serde_json::Value>(before).is_ok();
+    if was_ok {
+        if let Err(e) = serde_json::from_str::<serde_json::Value>(doc) {
+            return Err(format!(
+                "这次改写会把 mod-status.json 写成不合法的 JSON（{e}），已放弃写入。\
+                 文件里是 {} 个模组的顺序，宁可不装也不能写坏它。",
+                before.matches("\"Path\"").count()
+            ));
+        }
+    }
+    // Write beside, then rename: a half-written status file loses the player's
+    // whole mod list, and that is not recoverable from anywhere.
+    let tmp = path.with_extension("json.tmp");
+    fs::write(&tmp, doc).map_err(|e| e.to_string())?;
+    fs::rename(&tmp, path).map_err(|e| e.to_string())
 }
 
 fn set_bool(obj: &str, key: &str, value: bool) -> String {

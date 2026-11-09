@@ -14,8 +14,9 @@ import subprocess
 import sys
 import time
 import urllib.request
+import _paths as P
 
-OUT = r"D:\Software\AI\AoE2ModWorkshop"
+OUT = P.BUNDLE
 EXE = os.path.join(OUT, "aoe2-mod-workshop.exe")
 SRC = r"C:\Users\26913\Games\Age of Empires 2 DE\76561198406248391"
 TMP = os.path.join(os.environ["TEMP"], "aoe2mod-e2e-shipped")

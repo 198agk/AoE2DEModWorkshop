@@ -9,7 +9,8 @@ import json
 import os
 import sys
 
-sys.path.insert(0, r"D:\Software\AI\帝国项目")
+sys.path.insert(0, os.path.abspath(os.path.join(
+    os.path.dirname(__file__), "..", "..", "..")))
 import aoe2mod.api as A
 from aoe2mod.intent.compiler import IntentError
 

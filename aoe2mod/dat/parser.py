@@ -20,6 +20,7 @@ Standard library only (zlib, struct, sys, time, json).
 
 import os
 import struct
+import threading
 import sys
 import time
 import zlib
@@ -169,6 +170,10 @@ DEBUG_STRING_MARKER = 0x0A60
 # ---------------------------------------------------------------------------
 # Byte reader
 # ---------------------------------------------------------------------------
+# Serialises `parse()`; see the comment inside it.
+_PARSE_LOCK = threading.RLock()
+
+
 class Reader(object):
     """Byte reader.
 
@@ -1070,6 +1075,18 @@ class Parser(object):
             raise SystemExit(0)
 
     def parse(self, stop_after=None):
+        # `unitfields.scan()` records field offsets by swapping the MODULE-level
+        # `read_unit`/`read_civ` for recording twins.  That patch is process
+        # wide, so a second thread parsing mid-scan saw a recorder fed a plain
+        # `Reader` and died with
+        # `Reader.u8() takes 1 positional argument but 2 were given` -- measured
+        # 2026-10-29 on the write path, which re-parses the built file while the
+        # page may be asking for fields at the same time.  Parsing is a 7 s,
+        # single-user job, so serialising it costs nothing.
+        with _PARSE_LOCK:
+            return self._parse_locked(stop_after)
+
+    def _parse_locked(self, stop_after=None):
         r = self.r
         s = self.stats
 

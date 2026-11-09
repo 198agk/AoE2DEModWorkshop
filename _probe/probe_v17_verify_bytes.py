@@ -1,6 +1,8 @@
 ﻿import sys
-sys.path.insert(0, r'D:\Software\AI\帝国项目')
+sys.path.insert(0, os.path.abspath(os.path.join(
+    os.path.dirname(__file__), "..")))
 from aoe2mod.dat import parser as P
+import os
 MOD = r'_probe\out_dshtest_v17\resources\_common\dat\empires2_x2_p1.dat'
 raw, how = P.load_dat(MOD)
 st = P.Parser(raw).parse()

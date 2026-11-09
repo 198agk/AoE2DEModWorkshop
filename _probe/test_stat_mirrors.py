@@ -45,8 +45,14 @@ sys.path.insert(0, ROOT)
 
 GAME = r"d:\games\steam\steamapps\common\AoE2DE"
 DAT = os.path.join(GAME, "resources", "_common", "dat", "empires2_x2_p1.dat")
+# The native `aoe2mod-serve` binary's cargo target.  It used to live in %TEMP%
+# (1.3 GB), which put a build product outside the checkout -- the same thing the
+# owner asked twice to stop doing.  It is `_cache/aoe2target` now, so it inherits
+# the workspace's Integrity Label as well (a copied launcher that sat outside once
+# died with 0xC0000135).  CARGO_TARGET_DIR still overrides, for a one-off build.
 SERVE = os.path.join(
-    os.environ.get("CARGO_TARGET_DIR", r"C:\Users\26913\AppData\Local\Temp\aoe2target"),
+    os.environ.get("CARGO_TARGET_DIR")
+    or os.path.join(ROOT, "_cache", "aoe2target"),
     "release", "aoe2mod-serve.exe")
 
 PORT = 7851
@@ -100,7 +106,12 @@ def python_build(intent, out_dir, title):
     res = app.build([intent], title=title, author="aoe2mod", out_dir=out_dir)
     if not res.get("ok"):
         return None, res.get("error")
-    path = os.path.join(out_dir, "resources", "_common", "dat", "empires2_x2_p1.dat")
+    # Read the folder the build NAMES, do not rebuild the path from the argument:
+    # `App.build` puts every mod in its own subfolder (`out_dir/<safe title>`), so
+    # joining `out_dir` here pointed one level too high and the file was not
+    # there.  Measured 2026-11-01.
+    path = os.path.join(res.get("built") or out_dir, "resources", "_common",
+                        "dat", "empires2_x2_p1.dat")
     with open(path, "rb") as f:
         return zlib.decompressobj(-15).decompress(f.read()), None
 

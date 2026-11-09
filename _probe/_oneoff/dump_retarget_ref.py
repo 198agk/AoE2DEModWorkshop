@@ -8,7 +8,8 @@ import json
 import os
 import sys
 
-sys.path.insert(0, "D:/Software/AI/帝国项目")
+sys.path.insert(0, os.path.abspath(os.path.join(
+    os.path.dirname(__file__), "..", "..")))
 
 from aoe2mod.ui import server as S
 

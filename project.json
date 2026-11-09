@@ -11,7 +11,7 @@
     "verify_quick": "python _probe/run_suites.py",
     "verify_long": "python _probe/run_long.py",
     "suites": {
-      "python": 142,
+      "python": 220,
       "node": 1
     },
     "python": "C:\\Users\\26913\\.dsh\\dsh-runtimes\\dsh-primary-runtime\\dependencies\\python\\python.exe"
@@ -24,6 +24,7 @@
       "fields": [
         "civs",
         "delta",
+        "delta_percent",
         "stat",
         "unit",
         "unit_class",
@@ -43,6 +44,7 @@
         "civs",
         "class_id",
         "delta",
+        "delta_percent",
         "kind",
         "unit",
         "value"
@@ -62,13 +64,14 @@
       "fields": [
         "civs",
         "delta",
+        "delta_percent",
         "resource",
         "unit",
+        "unit_class",
         "value"
       ],
       "required": [
-        "resource",
-        "unit"
+        "resource"
       ],
       "by_sentence": true,
       "mod_contains_dat": false
@@ -79,6 +82,7 @@
       "strategy": "in_place_patch",
       "fields": [
         "delta",
+        "delta_percent",
         "tech",
         "value"
       ],
@@ -94,6 +98,7 @@
       "strategy": "in_place_patch",
       "fields": [
         "delta",
+        "delta_percent",
         "resource",
         "tech",
         "value"
@@ -112,6 +117,7 @@
       "fields": [
         "command",
         "delta",
+        "delta_percent",
         "tech",
         "value"
       ],
@@ -265,6 +271,25 @@
       ],
       "by_sentence": true,
       "mod_contains_dat": false
+    },
+    {
+      "id": "unit.card_move",
+      "title": "把单位挪到命令卡的另一格",
+      "strategy": "card_move",
+      "fields": [
+        "builder",
+        "button",
+        "civ",
+        "unit"
+      ],
+      "required": [
+        "builder",
+        "button",
+        "civ",
+        "unit"
+      ],
+      "by_sentence": true,
+      "mod_contains_dat": true
     }
   ],
   "intents_by_sentence": [
@@ -277,6 +302,7 @@
     "unit.art",
     "unit.attack_class",
     "unit.availability",
+    "unit.card_move",
     "unit.cost",
     "unit.create",
     "unit.replace_on_map",
@@ -286,38 +312,98 @@
   "intents_api_only": [],
   "routes": {
     "get": [
+      "/api/age-icon",
+      "/api/ai-lang-meta",
       "/api/ai-meta",
+      "/api/animations",
+      "/api/art",
       "/api/browse",
+      "/api/card",
+      "/api/civ",
+      "/api/dat-sources",
       "/api/describe",
+      "/api/diag",
       "/api/emblem",
+      "/api/fields",
+      "/api/film",
       "/api/forms",
       "/api/icon",
+      "/api/icons",
+      "/api/job",
       "/api/locale",
+      "/api/log",
       "/api/meta",
+      "/api/mod-thumb",
       "/api/mods",
+      "/api/progress",
+      "/api/pseudo-pages",
       "/api/recipes",
       "/api/repair-check",
+      "/api/script-files",
+      "/api/script-read",
       "/api/search",
-      "/api/update-check"
+      "/api/session-info",
+      "/api/table-fields",
+      "/api/table-rows",
+      "/api/tables",
+      "/api/tech-effects",
+      "/api/tech-fields",
+      "/api/techtree",
+      "/api/techtree-icons",
+      "/api/unit-effects",
+      "/api/update-check",
+      "/api/upgrade-check"
     ],
     "post": [
+      "/api/ai-script-build",
+      "/api/ai-script-check",
+      "/api/ai-script-edit",
       "/api/ai-sentences",
       "/api/build",
+      "/api/card-move",
+      "/api/card-put",
+      "/api/card-take",
+      "/api/card-time",
+      "/api/dat-set",
+      "/api/effect-set",
+      "/api/field-set",
+      "/api/icon-set",
       "/api/install",
+      "/api/log-open",
       "/api/mod",
+      "/api/mod-move",
+      "/api/mod-move-to",
+      "/api/open-url",
       "/api/parse",
       "/api/plan",
+      "/api/pseudo-pages",
       "/api/rebuild",
       "/api/recipe",
       "/api/recipe-forget",
+      "/api/record-add",
+      "/api/record-del",
+      "/api/record-dup",
+      "/api/record-rename",
+      "/api/redo",
       "/api/repair-apply",
-      "/api/uninstall"
+      "/api/script-write",
+      "/api/session-info",
+      "/api/session-intents",
+      "/api/session-reset",
+      "/api/session-save",
+      "/api/sprite",
+      "/api/stat",
+      "/api/table-field-set",
+      "/api/toggle-group",
+      "/api/undo",
+      "/api/uninstall",
+      "/api/upgrade-apply"
     ]
   },
   "wording": {
     "file": "aoe2mod/schema/locales/zh.json",
     "locale": "zh",
-    "keys": 54
+    "keys": 57
   },
   "delivery": {
     "single_mod": "一份模组：只有 .dat，或只有 widgetui —— 单一策略的意图",

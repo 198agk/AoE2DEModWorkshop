@@ -34,7 +34,7 @@ What is asserted, in order of how badly a failure would matter:
      alone, and a global per-unit field that a per-civ write would corrupt
   G  the Longbowman's technology is untouched (the second in-game control)
 
-Run:  $env:PYTHONPATH=D:\Software\AI\帝国项目
+Run:  $env:PYTHONPATH=D:\Software\AI\Aoe2
       python aoe2mod\tests\test_product_v7_recipe.py
 """
 import contextlib

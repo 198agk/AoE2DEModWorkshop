@@ -32,7 +32,13 @@ _DX10_BGRA = 87
 
 
 def header(path):
-    """-> dict(width, height, pitch, fourcc, dx10_format, data_offset)."""
+    """-> dict(width, height, pitch, fourcc, dx10_format, masks, data_offset).
+
+    `masks` is the (R, G, B, A) bit-mask tuple from the pixel format block.  For
+    a block-compressed file all four are 0 and channel order comes from the DXT
+    tables; for an uncompressed one the masks are the whole story about channel
+    order, which is why they are read here instead of assumed in `decode`.
+    """
     with open(path, "rb") as fh:
         b = fh.read(148)
     if len(b) < 128 or b[:4] != b"DDS ":
@@ -46,7 +52,51 @@ def header(path):
             "pitch": struct.unpack_from("<I", b, 20)[0],
             "fourcc": fourcc,
             "dx10_format": dx10,
+            "masks": struct.unpack_from("<IIII", b, 92),
             "data_offset": 148 if fourcc == "DX10" else 128}
+
+
+def _mask_shift(mask):
+    """-> (shift, bits) for one channel mask, or (0, 0) when the mask is empty."""
+    if not mask:
+        return 0, 0
+    shift = 0
+    while not (mask >> shift) & 1:
+        shift += 1
+    bits = 0
+    while (mask >> (shift + bits)) & 1:
+        bits += 1
+    return shift, bits
+
+
+def _bc3_alpha_table(a0, a1):
+    """-> the 8-entry alpha palette a BC3/DXT5 block's 3-bit indices point into.
+
+    Why this exists, and why the old code was wrong
+    -----------------------------------------------
+    BC3 stores alpha as its own 8-byte block: two endpoint bytes `a0`/`a1`, then
+    48 bits holding sixteen 3-bit indices.  When `a0 > a1` the six middle entries
+    are 7ths of the way from a1 to a0; otherwise they are 5ths and the last two
+    entries become the hard 0 and 255.  That is the whole format.
+
+    Until 2026-11-05 this file decoded DXT5 alpha with the DXT3 rule --
+    `((blk[i // 2] >> (4 * (i % 2))) & 0xF) * 17`, i.e. sixteen 4-bit explicit
+    values -- because `block == 16` was treated as one thing.  DXT3 (BC2) and
+    DXT5 (BC3) share a block size and share nothing else, so every BC3 icon came
+    out with alpha values like 34/68/153 and the thin end of the sprite faded
+    into the list background.  The owner reported that as "some icons are still
+    ghosts"; measured over the editor's 400 rows, 17 of them had not one opaque
+    pixel (longbowman, the elite variants, Harald Hardrada, the big pavilion),
+    and forcing alpha to 255 restored each one to full colour -- the pixels were
+    always fine, only the alpha channel was misread.
+
+    Checked against Pillow on all 17 DXT5 files the editor shows: this table
+    agrees on 65,536 of 65,536 pixels per file, where the old path agreed on
+    12,303-16,384.
+    """
+    if a0 > a1:
+        return (a0, a1) + tuple(((7 - k) * a0 + k * a1) // 7 for k in range(1, 7))
+    return (a0, a1) + tuple(((5 - k) * a0 + k * a1) // 5 for k in range(1, 5)) + (0, 255)
 
 
 def _rgb565(c0, c1):
@@ -83,17 +133,11 @@ def decode(path):
         else:
             raise ValueError("unsupported DXGI format %s in %r" % (fmt, path))
 
-    if not fourcc:                                  # uncompressed BGRA
+    if not fourcc:                                  # uncompressed 32-bit
         need = w * h * 4
         if len(body) < need:
             raise ValueError("raw BGRA data short: %d < %d bytes" % (len(body), need))
-        out = bytearray(need)
-        # BGRA -> RGBA, swapping only the two colour channels.
-        out[0::4] = body[2:need:4]
-        out[1::4] = body[1:need:4]
-        out[2::4] = body[0:need:4]
-        out[3::4] = body[3:need:4]
-        return w, h, bytes(out)
+        return w, h, _uncompressed(body, need, hd["masks"], path)
 
     if fourcc in ("DXT5", "DXT4", "BC3"):
         block = 16
@@ -112,10 +156,16 @@ def decode(path):
         for bx in range(bw):
             blk = body[pos:pos + block]
             pos += block
+            apal = None
             if block == 8:
                 c0, c1, bits = struct.unpack_from("<HHI", blk, 0)
                 cols, opaque = _rgb565(c0, c1)
             else:
+                # BC3/DXT5: alpha is a block of its own in the first 8 bytes, the
+                # colour block is the same BC1 shape the DXT1 path uses.  See
+                # _bc3_alpha_table for what went wrong when this was DXT3.
+                apal = _bc3_alpha_table(blk[0], blk[1])
+                abits = int.from_bytes(blk[2:8], "little")
                 c0, c1 = struct.unpack_from("<HH", blk, 8)
                 cols, _opaque = _rgb565(c0, c1)
                 bits = struct.unpack_from("<I", blk, 12)[0]
@@ -129,8 +179,8 @@ def decode(path):
                         continue
                     i = py * 4 + px
                     r, g, b = cols[(bits >> (2 * i)) & 3]
-                    if block == 16:
-                        a = ((blk[i // 2] >> (4 * (i % 2))) & 0xF) * 17
+                    if apal is not None:
+                        a = apal[(abits >> (3 * i)) & 7]
                     elif cols is not None and c0 <= c1 and ((bits >> (2 * i)) & 3) == 3:
                         a = 0
                     else:
@@ -141,6 +191,67 @@ def decode(path):
                     out[o + 2] = b
                     out[o + 3] = a
     return w, h, bytes(out)
+
+
+def _uncompressed(body, need, masks, path):
+    """Raw 32-bit pixels -> RGBA, using the header's masks to find each channel.
+
+    Why this is not a hardcoded BGR->RGB swap
+    -----------------------------------------
+    The first version of this decoder assumed every uncompressed icon was BGRA
+    and swapped channels 0 and 2.  That is true for 14 of the 1,052 uncompressed
+    DDS files the game ships, and false for the other 1,038: measured across
+    `widgetui/textures` on 2026-11-01,
+
+        rmask=0x000000FF gmask=0x0000FF00 bmask=0x00FF0000 amask=0xFF000000  1038 files
+        rmask=0x00FF0000 gmask=0x0000FF00 bmask=0x000000FF amask=0xFF000000    14 files
+
+    so the swap painted 1,038 icons with red and blue exchanged.  On a villager
+    the skin turned blue and it read as "the icon is inverted", which is what the
+    owner reported.  The header had been saying which byte was which all along;
+    nothing was reading it.
+
+    A mask states where a channel lives and how many bits it holds, so this reads
+    the answer instead of remembering it.  Both shapes above go through the same
+    path, and the 8-bit-in-place case keeps the fast slice assignment rather than
+    a per-pixel loop -- 539 unit icons are 256x256.
+    """
+    if not any(masks):
+        # No mask means the header is not describing a channel layout we can
+        # honour.  Use the order 98% of the shipped files carry rather than
+        # drawing something plausible-but-wrong.
+        masks = (0x000000FF, 0x0000FF00, 0x00FF0000, 0xFF000000)
+    plan = []
+    for mask in masks:
+        shift, bits = _mask_shift(mask)
+        plan.append((shift, bits) if bits else None)
+
+    out = bytearray(need)
+    n = need // 4
+
+    # Fast path: all four channels are whole bytes, each sitting in its own byte.
+    if all(p is not None and p[1] == 8 and p[0] % 8 == 0 for p in plan[:3]):
+        for idx in (0, 1, 2):
+            out[idx::4] = body[plan[idx][0] // 8:need:4]
+        if plan[3] is None:
+            out[3::4] = bytes([255]) * n
+        else:
+            out[3::4] = body[plan[3][0] // 8:need:4]
+        return bytes(out)
+
+    # General path: read each pixel word and pick the bits the mask names.
+    for i in range(n):
+        word = int.from_bytes(body[i * 4:i * 4 + 4], "little")
+        for idx in (0, 1, 2, 3):
+            p = plan[idx]
+            if p is None:
+                out[i * 4 + idx] = 255 if idx == 3 else 0
+                continue
+            shift, bits = p
+            top = (1 << bits) - 1
+            v = (word >> shift) & top
+            out[i * 4 + idx] = v if bits == 8 else (v * 255 + top // 2) // top
+    return bytes(out)
 
 
 def _chunk(tag, data):
@@ -181,8 +292,8 @@ def to_png(path, max_side=0):
 def encode_bgra(width, height, rgba):
     """RGBA bytes -> an uncompressed 32-bit DDS the game reads.
 
-    The shipped unit icons split 539 uncompressed / 255 DXT5, so raw BGRA is not
-    a hack around the format -- it is the majority shape.  That matters because
+    The shipped icons split 1,052 uncompressed / 362 block-compressed, so a raw
+    pixel DDS is not a hack around the format -- it is the majority shape.  That matters because
     this project can compose pixels (it already decodes every icon to RGBA to
     draw the screen) but has no DXT encoder, and a mod that only needs to draw a
     square picture does not need one.
@@ -227,7 +338,10 @@ def encode_bgra(width, height, rgba):
     struct.pack_into("<I", head, 100, 0x000000FF)     # B mask
     struct.pack_into("<I", head, 104, 0xFF000000)     # A mask
     struct.pack_into("<I", head, 108, 0x1000)         # DDSCAPS_TEXTURE
-    # RGBA -> BGRA for the same reason `decode` swaps them.
+    # RGBA -> BGRA because the masks written above say BGRA.  The swap is not a
+    # property of DDS, it is this header's own claim, and `decode` reads that
+    # claim back -- so writing the masks and the bytes from the same constant is
+    # what makes them each other's proof.
     body = bytearray(len(rgba))
     body[0::4] = rgba[2::4]
     body[1::4] = rgba[1::4]

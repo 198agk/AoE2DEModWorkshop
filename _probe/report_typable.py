@@ -19,8 +19,9 @@ import subprocess
 import sys
 import time
 import urllib.request
+import _paths as P
 
-BUNDLE = r"D:\Software\AI\AoE2ModWorkshop"
+BUNDLE = P.BUNDLE
 EXE = os.path.join(BUNDLE, "aoe2-mod-workshop.exe")
 PORT = 7813
 

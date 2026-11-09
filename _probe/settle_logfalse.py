@@ -28,9 +28,10 @@ import shutil
 import socket
 import subprocess
 import time
+import _paths as P
 
-EXE = r"D:\Software\AI\AGE2\desktop\src-tauri\target\release\aoe2-mod-workshop.exe"
-BUNDLE = r"D:\Software\AI\AoE2ModWorkshop"
+EXE = P.EXE
+BUNDLE = P.BUNDLE
 DLL = os.path.join(BUNDLE, "WebView2Loader.dll")
 SANDBOX = r"D:\Software\AI\_pkgtest"
 LOG = os.path.join(os.environ.get("TEMP", r"C:\Windows\Temp"), "aoe2-mod-workshop.log")

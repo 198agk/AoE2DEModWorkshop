@@ -84,6 +84,8 @@
 | 时间 | 谁 | 层 | 范围 | 状态 |
 |---|---|---|---|---|
 | 2026-10-28 18:58 | UI 会话 | `<style>` + markup | `.rail` 定高与 `.rlist:has()` 居中、`.mark` 换真图标、断点 `height:auto`、`<span class="mark">` 内加 `<img>` | 已提交 `029bc35` |
+| 2026-11-09 14:2x | 功能会话（用户直接指派） | `<script>` + 一处 HTML 文案 | 「一键适配新版本」接进已有的 `#repair` 面板：**不新增 HTML 元素、不新增 class、不动 `aria-*`**，只在 `<script>` 里给 `repairRow()` 补一个按钮、给 `checkRepairs()` 补一句统计，并改掉 `#repair` 上方那段 `data-i18n="mods.note"` 的正文（文案归功能会话）。样式全部沿用现有 `.chip` / `.hint` / `.stat` | 已改，未提交 |
+| 2026-11-09 10:44 | 功能会话（用户直接指派） | `<style>` + markup class | 四处署名「By - RemonBo」：新增 `.brandby`（品牌块第三行）、`header .byline`（标题条 h1 之后），`.railby`（`.railprodname` 内联，不能另起一行，`.railfoot` 有 180px 硬上限）；`index.html` 的 `<title>`、`loading.py` 的 `<title>`/`<h1>` 与 `.by`、`main.rs:536`、`tauri.conf.json:13` 同步加后缀。用户点名要的，未经 UI 会话排期 | 已改，未提交 |
 
 ---
 

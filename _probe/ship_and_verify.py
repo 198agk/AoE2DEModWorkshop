@@ -33,11 +33,12 @@ import subprocess
 import sys
 import time
 import urllib.request
+import _paths as P
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
-OUT = r"D:\Software\AI\AoE2ModWorkshop"
-BUILT = r"D:\Software\AI\AGE2\desktop\src-tauri\target\release\aoe2-mod-workshop.exe"
+OUT = P.BUNDLE
+BUILT = P.EXE
 GOLDEN = ["stat_offsets.json", "entity_names.json", "ai_grammar.json",
           "tech_offsets.json", "effect_offsets.json", "command_cards.json", "class_names.json", "sprite_art.json",
           "civ_trees.json", "unit_families.json", "tech_effects.json",
@@ -142,7 +143,10 @@ def check_routes(port):
     note("/api/mods", mods.get("ok") is True,
          " rows=%d" % len(mods.get("mods") or []))
 
-    ic = get("/api/icon?kind=unit&id=15&section=Units&max=64")
+    # `size=` is the key the route reads (`max_side=q.get("size", [0])[0]`); a
+    # `max=` spelling is ignored without complaint and answers a 256x256 picture,
+    # which made this line pass while measuring nothing about resizing.
+    ic = get("/api/icon?kind=unit&id=15&section=Units&size=64")
     note("/api/icon", ic[:4] == b"\x89PNG", " %d bytes" % len(ic))
 
     br = json.loads(get("/api/browse?kind=unit&limit=5"))

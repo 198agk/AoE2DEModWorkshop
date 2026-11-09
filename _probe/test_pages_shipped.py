@@ -27,12 +27,13 @@ import subprocess
 import sys
 import time
 import urllib.request
+import _paths as P
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 sys.path.insert(0, ROOT)
 
-BUNDLE = r"D:\Software\AI\AoE2ModWorkshop"
+BUNDLE = P.BUNDLE
 EXE = os.path.join(BUNDLE, "aoe2-mod-workshop.exe")
 PORT = 7809
 
@@ -108,7 +109,28 @@ def main():
             pg = b.new_page(viewport={"width": 1237, "height": 880})
             errors = []
             pg.on("pageerror", lambda e: errors.append(str(e)))
-            pg.goto("http://127.0.0.1:%d/" % PORT, wait_until="networkidle")
+            # NOT `networkidle`.  On a COLD start `boot()` opens the first unit
+            # anyway (the editor is the default view), that builds the field
+            # index over 136,861 records -- 14.52 s measured 2026-11-02 -- and
+            # `watchJob` polls `/api/job?key=unit` every 200 ms while
+            # `job.running` is true.  A 200 ms poll cycle can never leave a
+            # 500 ms quiet window, so `networkidle` is unreachable *by design*
+            # for the whole first build.  Measured 2026-11-04: 67 job polls,
+            # cold open done at 24.6 s, `goto(networkidle)` dead at 30.01 s with
+            # 68 polls logged; the same goto on a WARM start passes because the
+            # index costs 0.003 s and no poll is ever issued.
+            #
+            # So wait for the STATE this gate is about, not for a quiet network.
+            # The timeout is generous because it covers the cold index build --
+            # and the elapsed time is printed, since "how long until the screen
+            # is usable" is a product fact, not just a test detail.
+            t_boot = time.time()
+            pg.goto("http://127.0.0.1:%d/" % PORT, wait_until="domcontentloaded",
+                    timeout=30000)
+            pg.wait_for_function(
+                "document.querySelectorAll('#edlist .edrow').length >= 50",
+                timeout=180000)
+            print("  cold boot to a usable unit list: %.1f s" % (time.time() - t_boot))
             time.sleep(2.0)
             result = pg.evaluate(
                 """async (views) => {

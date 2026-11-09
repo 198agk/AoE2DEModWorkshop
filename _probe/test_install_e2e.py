@@ -152,8 +152,17 @@ def main():
             p.parse()
         check("parses to exact EOF", p.r.pos == len(raw_dat),
               "pos=%d len=%d" % (p.r.pos, len(raw_dat)))
+        # Do NOT pin the byte count.  What this check is for is "the installer
+        # copied the WHOLE stream, not a truncated or re-compressed one" -- and a
+        # literal only says "the game had this many bytes on the day I wrote the
+        # pin".  The shipped .dat moved on 2026-10-28 (93268152 -> 93272287) and
+        # this line then failed on a perfectly good install, which is the same
+        # defect as pinning the player's mod list.  Compare against the stream
+        # this run actually started from.
+        _base, _how = P.load_dat(tk.dat_path)
         check("same size as the base game's raw stream",
-              len(raw_dat) == 93268152, str(len(raw_dat)))
+              len(raw_dat) == len(_base),
+              "installed %d vs base %d" % (len(raw_dat), len(_base)))
 
         # The edit must actually be in the installed bytes.  Use the same
         # locator the product uses -- `P.Parser.stats` has no attack entries,

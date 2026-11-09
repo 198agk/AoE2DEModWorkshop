@@ -95,6 +95,76 @@ def _preflight(game_root):
     return root, notes
 
 
+def _parent_alive(ppid):
+    """Is the process that started this one still running?
+
+    Windows has no `getppid()` worth trusting after the parent dies: the PID can
+    be recycled, so the check is "is there a process with this id", which is the
+    right question here.  Returning True on any doubt matters -- a false "dead"
+    would kill a server the player is using.
+    """
+    if ppid is None:
+        return True
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        kernel32.OpenProcess.restype = wintypes.HANDLE
+        kernel32.OpenProcess.argtypes = (wintypes.DWORD, wintypes.BOOL,
+                                        wintypes.DWORD)
+        SYNCHRONIZE = 0x00100000
+        handle = kernel32.OpenProcess(SYNCHRONIZE, False, int(ppid))
+        if not handle:
+            # ERROR_INVALID_PARAMETER means no such process; anything else
+            # (access denied, say) is not evidence the parent is gone.
+            return ctypes.get_last_error() != 87
+        try:
+            kernel32.WaitForSingleObject.restype = wintypes.DWORD
+            kernel32.WaitForSingleObject.argtypes = (wintypes.HANDLE,
+                                                     wintypes.DWORD)
+            return kernel32.WaitForSingleObject(handle, 0) == 258  # WAIT_TIMEOUT
+        finally:
+            kernel32.CloseHandle(handle)
+    except Exception:
+        return True
+
+
+def _watch_parent(interval=2.0):
+    """Exit when the process that started us disappears.
+
+    Why this is here and not only in the shell: `TerminateProcess` (which is what
+    a force-kill, Task Manager's "end task" and `proc.terminate()` in Python all
+    are) never delivers `WM_CLOSE`, so the Tauri `RunEvent::Exit` handler that
+    kills this child never runs. Measured 2026-10-30: a dozen force-killed shells
+    left a dozen 1 GB interpreters holding ports 13543, 10211, 11326, 4269, 9668,
+    6813, 1474, 2674 -- the next probe then talked to whichever stale engine
+    answered first.
+
+    The graceful path is still the shell's job; this is the belt for the case
+    where the shell is killed and cannot do it.
+    """
+    parent = os.environ.get("AOE2MOD_PARENT_PID")
+    try:
+        ppid = int(parent) if parent else os.getppid()
+    except (TypeError, ValueError):
+        ppid = None
+    if not ppid or ppid <= 0:
+        return
+
+    def loop():
+        while True:
+            threading.Event().wait(interval)
+            if not _parent_alive(ppid):
+                print("（父进程 %d 已经退出，服务跟着停）" % ppid)
+                try:
+                    os._exit(0)
+                except Exception:
+                    return
+
+    threading.Thread(target=loop, name="parent-watch", daemon=True).start()
+
+
 def _serve_in_background(httpd):
     """Run the HTTP server on a daemon thread so the main thread can own a window.
 
@@ -126,7 +196,9 @@ def _run_window(url):
         print("  <python> -m pip install --target _vendor pywebview")
         return None
     try:
-        webview.create_window("模组工坊", url=url, width=1280, height=860,
+        # 标题栏的署名与 Tauri 外壳（desktop/src-tauri/src/main.rs:536）一致。
+        # `_probe/test_window_mode.py` 用子串匹配「模组工坊」，加后缀不会破坏它。
+        webview.create_window("模组工坊 · By - RemonBo", url=url, width=1280, height=860,
                               min_size=(900, 600))
         webview.start()
         return 0
@@ -153,7 +225,14 @@ def main(argv=None):
                     help="只在浏览器里打开（老行为）")
     ap.add_argument("--serve-only", action="store_true",
                     help="只起服务，不开窗口也不开浏览器（给外面的壳用）")
+    ap.add_argument("--parent-pid", type=int, default=None,
+                    help="宿主进程号；宿主没了就自己退出（壳会传进来）")
     args = ap.parse_args(argv)
+    if args.parent_pid:
+        # The shell passes its own pid. Set before any thread can read it; the
+        # watcher below falls back to getppid() when the flag is absent, which is
+        # the right answer for a hand-started `--serve-only` too.
+        os.environ["AOE2MOD_PARENT_PID"] = str(args.parent_pid)
     if args.window and args.browser:
         raise SystemExit("--window 和 --browser 是两种模式，只能选一个。")
     # `--serve-only` exists because the Tauri shell owns the window now: it
@@ -178,6 +257,7 @@ def main(argv=None):
     if args.serve_only:
         # Nothing owns the screen; just serve until killed.
         print("（只起服务，Ctrl+C 结束）")
+        _watch_parent()
         try:
             httpd.serve_forever()
         except KeyboardInterrupt:

@@ -724,7 +724,7 @@ def plan_effect_edit(effects, tech, index, op, amount, ix=None, fanout=None,
         # NOT read as a relative change: a preview can show old + amount and let
         # the user check the arithmetic, which a percentage-of-a-factor reading
         # would hide.
-        after = (before + amount) if op == "delta" else float(amount)
+        after = _apply(op, amount, "float", before)
         row["before"] = before
         row["after"] = after
         # Explicitly the plain float, NOT encode_effect_value(cc, ...): slot C is
@@ -736,17 +736,17 @@ def plan_effect_edit(effects, tech, index, op, amount, ix=None, fanout=None,
         # The number lives in the low byte of the packed pair, so it is an
         # unsigned byte: 0..255, and it is an integer even though the field
         # itself is a float32.
-        if isinstance(amount, float) and amount != int(amount):
+        if op != "percent" and isinstance(amount, float) and amount != int(amount):
             raise IntentError(
                 "「%s」会被压进一个字节里，所以只能是整数（收到的是 %r）"
                 % (row["attribute_label"], amount))
-        after = (before + amount) if op == "delta" else amount
+        after = _apply(op, amount, "int", before)
         if not (0 <= after <= 255):
             raise IntentError(
                 "「%s」会变成 %s，装不进这个 1 字节无符号字段（只能是 0..255），"
                 "改小一点。" % (row["attribute_label"], after))
     else:
-        after = (before + amount) if op == "delta" else float(amount)
+        after = _apply(op, amount, "float", before)
     row["before"] = before
     row["after"] = after
     # The stored float32 is the ENCODED pair, which is not the number the user
@@ -1173,6 +1173,11 @@ class Resolved(object):
         """
         if self.amount is None:
             return ""
+        # A relative change is described AS a percentage, because that is what
+        # the user said and the record's own value decides the result -- "+20"
+        # would be a different, larger edit.
+        if self.op == "percent":
+            return "%+g%%" % self.amount
         # A float amount must not be rendered with %d: -0.1 becomes "+0", which
         # tells the user nothing happened.
         if isinstance(self.amount, float):
@@ -1380,12 +1385,24 @@ def resolve(intent, schema, semantic_index=None, bindings=None):
     wants_number = ("delta" in fields) or ("value" in fields)
     has_delta = "delta" in intent and intent["delta"] is not None
     has_value = "value" in intent and intent["value"] is not None
-    if has_delta and has_value:
-        raise IntentError("give either 'delta' or 'value', not both")
-    if wants_number and not (has_delta or has_value):
+    # A RELATIVE edit carries `delta_percent` instead of `delta`: "村民血量加
+    # 20%" is not twenty points, and reading it as twenty was measured on
+    # 2026-10-30.  It is a third shape rather than a flag on `delta` because a
+    # caller that forgets to look for the flag would then silently apply the
+    # points -- the exact bug this exists to remove.
+    has_pct = ("delta_percent" in fields
+               and intent.get("delta_percent") is not None)
+    _given = sum((bool(has_delta), bool(has_value), bool(has_pct)))
+    if _given > 1:
+        raise IntentError("'delta'、'value'、'delta_percent' 只能给一个")
+    if wants_number and not _given:
         raise IntentError("intent %r needs a 'delta' or a 'value'" % it)
-    op = "delta" if has_delta else "value"
-    amount = intent.get(op) if wants_number else None
+    if has_pct:
+        op = "percent"
+        amount = intent.get("delta_percent")
+    else:
+        op = "delta" if has_delta else "value"
+        amount = intent.get(op) if wants_number else None
 
     # --- the stat ---------------------------------------------------------
     # unit.stat names one; unit.attack_class names a `kind`; unit.cost names a
@@ -2144,6 +2161,20 @@ def _label_for_mirror(bindings, mir):
 
 def _apply(op, amount, kind, before):
     """Return the new value, or raise with a user-facing range message."""
+    if op == "percent":
+        # "村民血量加20%" is the most natural sentence there is, and until now
+        # it silently meant +20 POINTS -- a confident wrong answer, the failure
+        # class this whole reader exists to avoid.  Percent is resolved HERE,
+        # against the value the record actually holds, because that is the only
+        # place both are known: the sentence does not know whether it is editing
+        # a villager with 25 hp or a hero with 550.
+        #
+        # It stays a float on the way out so a float field (range, reload) keeps
+        # its fraction; integer fields are rounded below, where the width rule
+        # already lives.  Rounding happens once, here, so the preview and the
+        # write cannot disagree by one point.
+        raw = before * (1.0 + amount / 100.0)
+        return raw if kind == "float" else int(round(raw))
     if kind == "float":
         new = (before + amount) if op == "delta" else float(amount)
         return new
@@ -2373,7 +2404,7 @@ def _write_targets(data, buf, edits, produced, resolved, b, safety, where):
     return n
 
 
-def _compile_tech_edits(data, tail, gv, resolved, bindings, safety, it):
+def _compile_tech_edits(data, tail, gv, resolved, bindings, safety, it, ix=None):
     """The tech path: one global record, addressed by its index in the array."""
     b = _binding_for(bindings, resolved, it)
 
@@ -2383,7 +2414,7 @@ def _compile_tech_edits(data, tail, gv, resolved, bindings, safety, it):
         # are left alone.
         if tail is None:
             raise IntentError("tech intents need the tech section offset (tail)")
-        return _compile_tech_effect_edits(data, tail, gv, resolved, b, it)
+        return _compile_tech_effect_edits(data, tail, gv, resolved, b, it, ix=ix)
 
     if tail is None:
         raise IntentError("tech intents need the tech section offset (tail)")
@@ -2423,7 +2454,7 @@ def _compile_tech_edits(data, tail, gv, resolved, bindings, safety, it):
     return bytes(buf), edits
 
 
-def _compile_tech_effect_edits(data, tail, gv, resolved, b, it):
+def _compile_tech_effect_edits(data, tail, gv, resolved, b, it, ix=None):
     """Change one command inside the effect a tech points at.
 
     A separate function rather than a branch inside ``_compile_tech_edits``
@@ -2438,7 +2469,13 @@ def _compile_tech_effect_edits(data, tail, gv, resolved, b, it):
                           % (resolved.entity.id, len(techs)))
 
     effects, _start = L.locate_effects(data)
-    ix = semantic.index()
+    # The name shown for the thing a command points at has to come from the
+    # file being edited, not from the game's own .dat: a mod can renumber its
+    # units, and then the shipped table names the wrong one.  Callers that
+    # already hold the right index pass it; `semantic.index()` is the last
+    # resort for direct library use.
+    if ix is None:
+        ix = semantic.index()
     index = resolved.raw.get("command")
 
     buf = bytearray(data)
@@ -2465,7 +2502,7 @@ def _stats_of(data):
 
 
 def compile_edits(data, civs, resolved, bindings, schema, tail=None, gv=None,
-                  stats=None, game_root=None):
+                  stats=None, game_root=None, ix=None):
     """Turn a Resolved intent into byte edits + a new buffer.
 
     ``tail`` is the byte just past the last civ record in ``data``; the tech
@@ -2500,7 +2537,8 @@ def compile_edits(data, civs, resolved, bindings, schema, tail=None, gv=None,
             % (it, strategy))
 
     if resolved.kind == "tech":
-        return _compile_tech_edits(data, tail, gv, resolved, bindings, safety, it)
+        return _compile_tech_edits(data, tail, gv, resolved, bindings, safety, it,
+                                   ix=ix)
     if resolved.kind != "unit":
         raise IntentError("only unit and tech intents are implemented so far "
                           "(got %r)" % it)
@@ -2581,6 +2619,16 @@ def zero_delta_message(resolved, label):
     honest without a number.
     """
     what = label or resolved.stat or "数值"
+    if getattr(resolved, "op", "") == "percent":
+        # "弓箭手攻击力加10%" on a value of 4 rounds straight back to 4, and
+        # the plain sentence above then claims the file already held the number
+        # the player asked for -- measured: 4 + 10% = 4.4, rounds to 4, preview
+        # says "已经是这个值了".  The player did not ask for 4; they asked for a
+        # tenth more and the field cannot hold it.  Saying so is the difference
+        # between "your sentence was wrong" and "this number is too small".
+        return ("%s 的%s太小了：%+g%% 四舍五入之后还是原值，"
+                "想让它变就直接写要改成的数" % (
+                    resolved.entity.display, what, resolved.amount))
     return "%s 的%s已经是这个值了，这样改不会有任何变化" % (
         resolved.entity.display, what)
 
@@ -3017,7 +3065,7 @@ def compile_bundle_intent(dat_path, intents, out_path=None, parsed=None,
 
 
 def compile_intent(dat_path, intent, out_path=None, parsed=None, stats=None,
-                   game_root=None):
+                   game_root=None, ix=None):
     """Resolve -> locate -> compile -> verify.  Returns a result dict.
 
     ``game_root`` is only needed to find ``objreplacement.json`` when ``dat_path``
@@ -3026,7 +3074,7 @@ def compile_intent(dat_path, intent, out_path=None, parsed=None, stats=None,
     variant families.
     """
     schema, bindings = load_schema()
-    resolved = resolve(intent, schema)
+    resolved = resolve(intent, schema, semantic_index=ix)
 
     if parsed is None:
         data, how = P.load_dat(dat_path)
@@ -3041,7 +3089,8 @@ def compile_intent(dat_path, intent, out_path=None, parsed=None, stats=None,
 
     patched, edits = compile_edits(data, civs, resolved, bindings, schema,
                                    tail=tail, gv=gv, stats=stats,
-                                   game_root=game_root or G.game_root_of_dat(dat_path))
+                                   game_root=game_root or G.game_root_of_dat(dat_path),
+                                   ix=ix)
 
     # A resolved edit that writes ZERO BYTES is not a build.  `delta: 0` produced
     # 63 claimed edits whose new value equalled the old one, so a 12 MB `.dat`

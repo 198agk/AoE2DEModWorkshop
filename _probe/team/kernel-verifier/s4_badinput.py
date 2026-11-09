@@ -16,7 +16,8 @@ import shutil
 import sys
 import traceback
 
-sys.path.insert(0, r"D:\Software\AI\帝国项目")
+sys.path.insert(0, os.path.abspath(os.path.join(
+    os.path.dirname(__file__), "..", "..", "..")))
 import aoe2mod.api as A
 # The refusal type is NOT re-exported by aoe2mod.api (its __all__ is
 # ["Toolkit", "open_toolkit"]), so a caller must reach into the compiler module

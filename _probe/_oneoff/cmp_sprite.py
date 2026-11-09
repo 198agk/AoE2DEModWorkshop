@@ -1,6 +1,8 @@
 import json, sys
-sys.path.insert(0, "D:/Software/AI/帝国项目")
+sys.path.insert(0, os.path.abspath(os.path.join(
+    os.path.dirname(__file__), "..", "..")))
 from aoe2mod.ui.server import App
+import os
 app = App()
 for s in ["让弓兵的样子换成长弓兵", "让村民的样子换成绵羊"]:
     got = app.parse(s)

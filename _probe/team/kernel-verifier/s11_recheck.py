@@ -12,7 +12,8 @@ import shutil
 import sys
 import zlib
 
-sys.path.insert(0, r"D:\Software\AI\帝国项目")
+sys.path.insert(0, os.path.abspath(os.path.join(
+    os.path.dirname(__file__), "..", "..", "..")))
 import aoe2mod.api as A
 
 ROOT = r"D:\Games\Steam\steamapps\common\AoE2DE"

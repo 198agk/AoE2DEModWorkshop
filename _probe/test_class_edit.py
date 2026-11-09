@@ -169,10 +169,17 @@ def main():
           "same %d" % same)
 
     print("=== E. the refusals are actionable Chinese")
+    # "成本" and "造价" are the same thing in Chinese and the reader accepts both,
+    # so the check may not insist on the one the player did not type: what makes
+    # this refusal actionable is that it names the class, says which of four
+    # resources is missing (a class cost edit cannot guess), and shows a sentence
+    # that works.  Tightened 2026-11-01 after the wording moved from 成本 to 造价.
     _intent, clause = one("所有骑兵成本减10", vocab, tk)
     check("a class COST edit is refused", _intent is None, "got %r" % (_intent,))
     check("and the words name the class and the way out",
-          "成本" in clause.why and "骑兵" in clause.why, clause.why)
+          "骑兵" in clause.why
+          and all(w in clause.why for w in ("食物", "木材", "黄金", "石头"))
+          and "所有骑兵" in clause.why, clause.why)
     _intent, clause = one("所有步兵解锁", vocab, tk)
     check("a class availability edit is refused", _intent is None,
           "got %r" % (_intent,))

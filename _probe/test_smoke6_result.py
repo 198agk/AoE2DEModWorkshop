@@ -123,23 +123,30 @@ if INSTALLED:
     check("it carries the .dat (11.98 MB)", os.path.exists(_dat) and
           os.path.getsize(_dat) > 10_000_000)
 else:
-    # Do NOT name a specific successor: the mod installed today may itself be
-    # replaced next round (it already was, several times, and the naming scheme
-    # changed to `dsh test vN` as well).  What matters is that SOME later experiment
-    # is installed, so the replacement is a deliberate progression rather than an
-    # accidental deletion.  Match ANY `dsh test` mod, and keep the old smoke names
-    # for historical readability.
+    # Do NOT name a specific successor, and do NOT require one to be there at
+    # all.  Two reasons, both measured:
+    #
+    #   * this tool names a built mod after the TITLE the player typed, so the
+    #     old `dsh test vN` prefix no longer identifies its own work
+    #     (2026-11-01);
+    #   * a pin must not depend on the state of the player's machine -- the
+    #     player is free to disable or delete every experiment mod, and doing
+    #     so says nothing about whether smoke6 was built correctly.
+    #
+    # So the replacement is REPORTED, never asserted.  What this pin is for is
+    # the CONTENT of the JSON-layer write, checked against the BUILT artifact
+    # below, which does not care what is installed today.
     _root = (r"C:\Users\26913\Games\Age of Empires 2 DE"
              r"\76561198406248391\mods\local")
     _later = []
     if os.path.isdir(_root):
         for d in sorted(os.listdir(_root)):
-            if (d.startswith("dsh test ") or
-                    any(k in d for k in ("Smoke7", "Smoke8", "Smoke9"))):
+            if os.path.isdir(os.path.join(_root, d)):
                 _later.append(d)
-    check("smoke6 was replaced on disk by a later test mod%s"
-          % ((" (%s)" % ", ".join(_later)) if _later else ""),
-          bool(_later))
+    print("     [note] experiment mods present today: %s"
+          % (", ".join(_later[:6]) if _later else "none"))
+    print("     (reported, not asserted: the player's mod folder is not this"
+          " project's to pin)")
     print("     the BUILT smoke6 artifact is still asserted below -- what this pin")
     print("     records is the CONTENT of the JSON-layer write, not its presence on")
     print("     the machine today")

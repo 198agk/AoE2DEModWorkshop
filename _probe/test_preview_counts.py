@@ -11,16 +11,20 @@ The check is deliberately narrow: both numbers come from the same builder, so a
 disagreement means the DRY path reports differently from the real one.  Two
 paths that drift are how a preview becomes a second implementation.
 """
+import http.client
 import json
 import os
 import subprocess
 import sys
 import time
+import urllib.error
 import urllib.request
+import _paths as P
 
-sys.path.insert(0, "D:/Software/AI/帝国项目")
+sys.path.insert(0, os.path.abspath(os.path.join(
+    os.path.dirname(__file__), "..")))
 
-BUNDLE = r"D:\Software\AI\AoE2ModWorkshop"
+BUNDLE = P.BUNDLE
 EXE = os.path.join(BUNDLE, "aoe2-mod-workshop.exe")
 PORT = 7859
 
@@ -37,19 +41,55 @@ CASES = [
     ("tech.cost", "织布机黄金成本改成5"),
     ("tech.effect", "织布机第1条效果改成100"),
     ("tech.toggle_group", "把织布机和铸币术做成只能选一个"),
-    ("unit.card_move", "把民兵放在兵营的第5格"),
+    # A card-move names a BUTTON SLOT, and the same slot is a different button in
+    # a different civilization, so the sentence has to name one (「挪格子要指定
+    # 一个文明」).  The civilization-less spelling is correctly REFUSED since
+    # 2026-11-01; keeping it here made the case assert against a refusal.
+    ("unit.card_move", "不列颠把民兵放在兵营的第5格"),
     ("unit.sprite", "让弓兵的样子换成长弓兵"),
 ]
 
 
-def post(path, body, timeout=1800):
-    req = urllib.request.Request(
-        "http://127.0.0.1:%d%s" % (PORT, path),
-        data=json.dumps(body).encode("utf-8"),
-        headers={"Content-Type": "application/json"},
-    )
-    with urllib.request.urlopen(req, timeout=timeout) as r:
-        return json.loads(r.read().decode("utf-8"))
+# A reset connection is not slow, it is gone: no timeout helps.  The build runs
+# in a second process and is the slow request, so under a full-suite run (209
+# suites, same disk) one of the eleven can be answered by a closed socket.  That
+# produced `ConnectionResetError: [WinError 10054]` on 2026-11-07 and the suite
+# exited 1 -- reporting "the preview and the build disagree", the one claim it
+# exists to make, from a request that never got an answer.
+WIRE_ERRORS = (ConnectionResetError, ConnectionAbortedError, BrokenPipeError,
+               http.client.RemoteDisconnected, http.client.BadStatusLine)
+
+
+def post(path, body, timeout=1800, tries=4):
+    """POST and re-send if the socket died before answering.
+
+    A retry must not look like a second edit: `/api/build` writes a mod folder
+    named after `title`, so each attempt gets a fresh title and cannot land in
+    the folder the previous attempt was writing.  The caller compares counts, and
+    a count does not depend on the title.
+    """
+    last = None
+    for attempt in range(1, tries + 1):
+        attempt_body = dict(body)
+        if "title" in attempt_body:
+            attempt_body["title"] = "%s a%d" % (body["title"], attempt)
+        req = urllib.request.Request(
+            "http://127.0.0.1:%d%s" % (PORT, path),
+            data=json.dumps(attempt_body).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as r:
+                return json.loads(r.read().decode("utf-8"))
+        except WIRE_ERRORS as exc:
+            last = exc
+            print("  %s  %s (attempt %d/%d): %s: %s"
+                  % (path, (body.get("title") or ""), attempt, tries,
+                     type(exc).__name__, exc))
+            if attempt < tries:
+                time.sleep(2.0 * attempt)
+    raise SystemExit("the bundle never answered %s: %s: %s"
+                     % (path, type(last).__name__, last))
 
 
 def wait_ready(proc):

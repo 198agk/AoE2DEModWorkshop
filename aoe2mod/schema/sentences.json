@@ -623,8 +623,14 @@
         {
           "id": "move_on_card",
           "label": "挪到某一格",
-          "template": "把{unit}放在第{box}格",
+          "template": "{civ}把{unit}放在第{box}格",
           "slots": [
+            {
+              "name": "civ",
+              "kind": "civ",
+              "label": "文明",
+              "required": true
+            },
             {
               "name": "unit",
               "kind": "unit",
@@ -642,8 +648,14 @@
         {
           "id": "move_on_building_card",
           "label": "挪到某座建筑的某一格",
-          "template": "把{unit}挪到{builder}的第{box}格",
+          "template": "{civ}把{unit}挪到{builder}的第{box}格",
           "slots": [
+            {
+              "name": "civ",
+              "kind": "civ",
+              "label": "文明",
+              "required": true
+            },
             {
               "name": "unit",
               "kind": "unit",

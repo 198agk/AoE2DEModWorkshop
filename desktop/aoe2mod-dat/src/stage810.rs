@@ -527,6 +527,36 @@ pub struct Tech {
     pub icon_id: i16,
     pub name: String,
     pub research_location_count: Option<usize>,
+    /// Byte offset of `effect_id` INSIDE `image`.
+    ///
+    /// `effect_id` is a modeled mirror of two bytes that live in `image`, and
+    /// `write_tech` replays `image` verbatim -- so assigning `t.effect_id`
+    /// changes nothing in the output.  Anything that retargets a tech at a
+    /// different effect record has to poke these two bytes instead, and this is
+    /// how it finds them.  Computed at read time because the position depends
+    /// on a chain of version guards (`gv=54`: 6x2 RequiredTechs, 3x5 costs, 2
+    /// RequiredTechCount, 2 civ, 2 FullTechMode, 8 LanguageDLL pair for DE2,
+    /// then effect_id) -- hard-coding the sum is how it silently lands one
+    /// field early the first time a guard changes.
+    pub effect_id_offset: Option<usize>,
+}
+
+/// Overwrite the `effect_id` field inside `image` so the byte replay points a
+/// tech at a different effect record.  Returns false when this tech has no
+/// located offset (never parsed, or `image` absent), leaving it untouched.
+pub fn set_tech_effect_id(t: &mut Tech, effect_id: i16) -> bool {
+    let Some(off) = t.effect_id_offset else {
+        return false;
+    };
+    let Some(img) = t.image.as_mut() else {
+        return false;
+    };
+    if off + 2 > img.len() {
+        return false;
+    }
+    img[off..off + 2].copy_from_slice(&effect_id.to_le_bytes());
+    t.effect_id = effect_id;
+    true
 }
 
 fn read_research_resource_cost(r: &mut Reader<'_>) -> io::Result<()> {
@@ -560,6 +590,7 @@ pub fn read_tech(r: &mut Reader<'_>, gv: u32) -> io::Result<Tech> {
     if gv < GV_C31 {
         r.skip(2)?; // ResearchTime
     }
+    t.effect_id_offset = Some(r.pos - start);
     t.effect_id = r.i16()?;
     t.tech_type = r.i16()?;
     t.icon_id = r.i16()?;

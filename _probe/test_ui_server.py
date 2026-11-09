@@ -284,6 +284,11 @@ def main():
         visible = re.sub(r"(?is)<script\b.*?</script>", " ", page)
         visible = re.sub(r"(?s)<!--.*?-->", " ", visible)
         visible = re.sub(r"(?s)/\*.*?\*/", " ", visible)
+        # Tags are not prose.  `科技树` is a section heading, and a regex that
+        # allows four characters between "科技" and a number reads `树</h2>`
+        # as "科技 … 2".  Measured 2026-11-08: the only hit was
+        # `<h2>科技树</h2>` -- a false red, not a stale count.
+        visible = re.sub(r"<[^>]{0,400}>", " ", visible)
         num_then_word = re.compile(r"\d[\d,]*\s*[个条项]?\s*(单位|科技|记录)")
         word_then_num = re.compile(
             r"(单位|科技|记录)[^，。；\n]{0,4}?\d[\d,]*\s*[个条项]?")

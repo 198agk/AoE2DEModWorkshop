@@ -65,22 +65,19 @@ def _rel(name):
 
 
 def load_picture(path):
-    """Read a PNG/JPEG/BMP as (rgba bytearray, w, h).
+    """Read a PNG/BMP/DDS (JPEG when Pillow is around) as (rgba bytearray, w, h).
 
-    Pillow is used if present.  A stripped install that lacks it gets a plain
-    sentence instead of an ImportError traceback, because every other part of
-    this package is stdlib-only.
+    Goes through `aoe2mod.game.picture`, which is stdlib-only, because the
+    packaged build excludes Pillow on purpose: calling PIL here meant the
+    SHIPPED program refused every picture the player named (measured 2026-10-30
+    against `aoe2-mod-workshop.exe`).  The repo has Pillow, so no suite saw it.
     """
+    from ..game import picture as P
     try:
-        from PIL import Image
-    except ImportError:
-        raise PaintError(
-            "reading a picture needs Pillow; install it, or pass an "
-            "already-decoded RGBA buffer instead")
-    im = Image.open(path)
-    im = im.convert("RGBA")
-    w, h = im.size
-    return bytearray(im.tobytes()), w, h
+        w, h, rgba = P.read(path)
+    except P.PictureError as exc:
+        raise PaintError(str(exc))
+    return bytearray(rgba), w, h
 
 
 def union_bbox(sld):
@@ -180,17 +177,11 @@ def picture_size(path):
     only needs the dimensions.  Decoding a 4,000 px photo to learn two integers
     would make `plan()` cost as much as `build()`.
     """
+    from ..game import picture as P
     try:
-        from PIL import Image
-    except ImportError:
-        raise PaintError(
-            "reading a picture needs Pillow; install it, or pass an "
-            "already-decoded RGBA buffer instead")
-    try:
-        with Image.open(path) as im:
-            return im.size
-    except Exception as exc:                              # noqa: BLE001
-        raise PaintError("cannot read %r as a picture: %s" % (path, exc))
+        return P.size(path)
+    except P.PictureError as exc:
+        raise PaintError("读不出这张图片：%s —— %s" % (path, exc))
 
 
 def _targets(game_root, graphics, civs, unit_id, animations=None, scope="all"):

@@ -284,8 +284,16 @@ def main():
     _vocab = NL.Vocabulary(_ix.units, _ix.techs)
 
     def _reach(text):
+        # Pass the SAME keyword arguments `App.parse` passes.  Dropping any of
+        # them does not make the reader lazier, it makes it refuse: without
+        # `producers` every card-move sentence is answered with 「「民兵」是哪座
+        # 建筑卡上的？」 even when the sentence names the building, because the
+        # reader cannot know which buildings train what.  Measured 2026-11-01.
         _intents, _cl = NL.read(text, _vocab, civ_names=_tk.civ_names,
-                                civ_zh=NL.CIV_ZH, effect_count=_tk.effect_count)
+                                civ_zh=NL.CIV_ZH, effect_count=_tk.effect_count,
+                                unit_class=_tk.unit_class,
+                                producers=_tk.unit_producers,
+                                tech_cost=_tk.tech_single_cost)
         return [i.get("intent") for i in _intents]
 
     _CASES = [
@@ -308,6 +316,13 @@ def main():
         # one without the other turns this file red, which is how the omission
         # was caught (declared 14, reached 13, the difference being this row).
         ("开局时让村民换成斥候骑兵", "unit.replace_on_map"),
+        # The fifteenth.  `unit.card_move` needs a CIVILIZATION, and that is not
+        # fussiness: the same button slot is a different button in a different
+        # civilization, so a sentence that names only the unit has not said which
+        # grid it means (`nl.py` refuses it with 「挪格子要指定一个文明」).  This
+        # row went missing in a rewrite that kept the older, civilization-less
+        # sentence -- which is exactly the gap this list exists to show.
+        ("不列颠把民兵放在第5格", "unit.card_move"),
     ]
     _seen = set()
     for _txt, _want in _CASES:

@@ -4,36 +4,50 @@
 // doc comment counts as an item for this rule, so it goes above one.
 #![windows_subsystem = "windows"]
 
-//! Replace the Python child with the embedded native engine.
+//! Two engines, one window: Python when the folder carries it, native otherwise.
 //!
-//! What this file used to do
-//! ------------------------
-//! Find a `python.exe`, spawn it on `tools/run_ui.py --serve-only`, poll for the
-//! port, read its stderr when it died.  Every one of those steps has a failure
-//! mode this project paid for:
+//! Why both
+//! --------
+//! The native engine (`aoe2mod-serve`) answers four intents correctly and
+//! refuses the other eleven. The Python engine (`aoe2mod/ui/nl.py`) answers
+//! fourteen. Measured 2026-10-30 against the shipped exe: the native reader
+//! reads 5 of 14 real player sentences, the Python reader reads all 14 --
+//! percentage-of-a-value, whole-class edits, "翻倍", typo repair, the 63-copy
+//! blanket write, field-level editing, all of it.
 //!
-//!   * no interpreter -> the PATH fallback is the Microsoft Store stub, which
-//!     spawns successfully and exits with 9009 in 0.13 s, so the app waited the
-//!     full 150 s on a splash that never advanced;
-//!   * a bundle missing `WebView2Loader.dll` -> a modal dialog and ZERO log
-//!     bytes;
-//!   * a stale `python.exe` in `runtime\` -> a version of the engine the shell
-//!     was not written against.
+//! So the shell no longer picks one. If `<exe dir>\app\tools\run_ui.py` exists
+//! and an interpreter can be found, the Python engine runs and the window talks
+//! to it; that is the only engine with the sentence layer the project has been
+//! building. If the folder has no `app\tools\`, the embedded engine answers --
+//! still four intents, still correct, just fewer.
 //!
-//! All three disappear when there is no child process at all.  The engine is a
-//! library now (`aoe2mod-serve`), so the window and the code that reads the
-//! `.dat` are the same image: nothing to find, nothing to spawn, nothing to
-//! poll, and a failure is a Rust `Result` rather than a missing log line.
+//! The rule this keeps: the player must never be handed a build whose
+//! intelligence is smaller than the repo's. That is what went wrong on
+//! 2026-10-27 -- the native port replaced the whole reader instead of one
+//! intent at a time.
 //!
-//! The loading page survives, because it was never about Python: the parse can
-//! take seconds on a cold disk cache and a window that sits blank reads as a
-//! crash.
+//! What each path costs
+//! --------------------
+//!   * Python path: 34.5 MB runtime + 3 MB app, and a child process to reap.
+//!   * Embedded path: nothing extra, and no child -- which is also why it stays
+//!     as the fallback rather than being deleted. A folder someone stripped by
+//!     hand still opens a working window.
+//!
+//! The loading page survives either way: the parse takes seconds on a cold
+//! disk cache and a window that sits blank reads as a crash.
 
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use tauri::Manager;
+
+/// Holds the Python child, when there is one, so closing the window ends it.
+///
+/// Dropping a `std::process::Child` does NOT kill the process on Windows -- the
+/// child keeps its port and the next launch finds it busy. So the handle is kept
+/// in Tauri's state and taken on `RunEvent::Exit`.
+struct Child(Mutex<Option<std::process::Child>>);
 
 fn log(msg: &str) {
     use std::io::Write;
@@ -99,6 +113,150 @@ fn port_from_argv() -> Option<u16> {
         }
     }
     None
+}
+
+/// Where the Python engine lives, if this folder carries one.
+///
+/// The test is `tools/run_ui.py`, not `aoe2mod/`, because that file is what a
+/// child process is actually started on. A folder with `aoe2mod/ui/static/` but
+/// no `tools/` is the native layout, where the page is data and the reader is
+/// compiled in.
+fn engine_root(ui_root: &std::path::Path) -> Option<PathBuf> {
+    let mut candidates: Vec<PathBuf> = Vec::new();
+    if let Ok(v) = std::env::var("AOE2MOD_ROOT") {
+        candidates.push(PathBuf::from(v));
+    }
+    // The installed shape: `<exe dir>\app\`.
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(d) = exe.parent() {
+            candidates.push(d.join("app"));
+            candidates.push(d.to_path_buf());
+        }
+    }
+    if let Ok(d) = std::env::current_dir() {
+        let mut cur = Some(d);
+        while let Some(p) = cur {
+            candidates.push(p.clone());
+            cur = p.parent().map(|q| q.to_path_buf());
+        }
+    }
+    // The ui root itself is the last thing to try: in a checkout it IS the app
+    // root's parent, and in a bundle it is `<root>/aoe2mod/ui/static`.
+    if let Some(p) = ui_root.parent().and_then(|p| p.parent()).and_then(|p| p.parent()) {
+        candidates.push(p.to_path_buf());
+    }
+    candidates
+        .into_iter()
+        .find(|p| p.join("tools").join("run_ui.py").is_file() && p.join("aoe2mod").is_dir())
+}
+
+/// The interpreter to run the Python engine with.
+///
+/// Order matters and each entry has a story:
+///   1. `AOE2MOD_PYTHON` -- an escape hatch for a machine with an unusual setup.
+///   2. `runtime\python.exe` beside the exe -- what `make_bundle.py` ships, and
+///      the only candidate that exists on a machine that merely installed the
+///      app.
+///   3. the dsh runtime -- this checkout's development interpreter.
+///   4. `python` on PATH.
+///
+/// The PATH fallback used to be a trap: on Windows without Python installed,
+/// `python` resolves to the Microsoft Store stub, which SPAWNS SUCCESSFULLY and
+/// then exits with 9009 in 0.13 s. The caller therefore never sees a spawn
+/// failure and waits out the full readiness window on a splash that cannot
+/// advance. `spawn_python` handles that by re-checking the child after a moment
+/// -- see the comment there.
+fn python_candidates() -> Vec<PathBuf> {
+    let mut out: Vec<PathBuf> = Vec::new();
+    if let Ok(v) = std::env::var("AOE2MOD_PYTHON") {
+        out.push(PathBuf::from(v));
+    }
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(d) = exe.parent() {
+            out.push(d.join("runtime").join("python.exe"));
+        }
+    }
+    if let Ok(home) = std::env::var("USERPROFILE") {
+        out.push(PathBuf::from(home).join(
+            r".dsh\dsh-runtimes\dsh-primary-runtime\dependencies\python\python.exe",
+        ));
+    }
+    out
+}
+
+/// Start the Python engine and prove it is still alive a moment later.
+///
+/// The Microsoft Store stub is why this is not a plain `Command::spawn`: that
+/// stub exits 9009 almost immediately, and a caller that only checks the
+/// `Result` concludes the engine is on its way. 250 ms is enough to tell a real
+/// interpreter (still running, still importing) from the stub (already gone).
+fn spawn_python(root: &std::path::Path, port: u16) -> Result<std::process::Child, String> {
+    let mut tried: Vec<String> = Vec::new();
+    let mut all = python_candidates();
+    all.push(PathBuf::from("python"));
+    for py in all {
+        if py.is_absolute() && !py.is_file() {
+            tried.push(format!("{}（没有这个文件）", py.display()));
+            continue;
+        }
+        let mut cmd = std::process::Command::new(&py);
+        cmd.args([
+            "-X",
+            "utf8",
+            "-u",
+            "tools/run_ui.py",
+            "--serve-only",
+            "--port",
+            &port.to_string(),
+            // The engine watches this pid and exits when it disappears. The
+            // graceful path below still kills it on `RunEvent::Exit`; this covers
+            // the case where the shell is force-killed and gets no chance to.
+            "--parent-pid",
+            &std::process::id().to_string(),
+        ])
+        .current_dir(root)
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::piped());
+        // Windows gives every child process a console unless it is told not to.
+        // The Python server needs none -- its output goes to a log file and its
+        // stderr is read back through the pipe. Without this flag a black cmd
+        // window sits behind the app for the whole session.
+        #[cfg(windows)]
+        let child = {
+            use std::os::windows::process::CommandExt;
+            const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+            cmd.creation_flags(CREATE_NO_WINDOW).spawn()
+        };
+        #[cfg(not(windows))]
+        let child = cmd.spawn();
+        match child {
+            Ok(mut c) => {
+                std::thread::sleep(Duration::from_millis(250));
+                match c.try_wait() {
+                    Ok(None) => {
+                        log(&format!("started {} on port {port}", py.display()));
+                        log(&format!("root for the child: {}", root.display()));
+                        return Ok(c);
+                    }
+                    Ok(Some(status)) => {
+                        tried.push(format!(
+                            "{}（0.25 秒就退出了：{}）",
+                            py.display(),
+                            status
+                        ));
+                    }
+                    Err(e) => {
+                        tried.push(format!("{}（问不到状态：{}）", py.display(), e));
+                    }
+                }
+            }
+            Err(e) => tried.push(format!("{}（{}）", py.display(), e)),
+        }
+    }
+    Err(format!(
+        "找到了 Python 引擎，但没有能用的解释器。试过：{}",
+        tried.join("；")
+    ))
 }
 
 fn http_get_ok(port: u16, path: &str) -> bool {
@@ -183,7 +341,13 @@ fn main() {
     // Start the engine BEFORE the window, and do not block on it: the loading
     // page is what the player sees while the `.dat` is read.
     let mut startup_failure: Option<(String, String)> = None;
-    let server = match find_ui_root() {
+    // True when a Python child is running the engine.  The readiness poll and
+    // the shutdown path both differ between the two engines, so it is recorded
+    // here rather than inferred later.
+    let mut python_engine = false;
+    let mut child: Option<std::process::Child> = None;
+    let mut server: Option<Arc<aoe2mod_serve::server::Server>> = None;
+    match find_ui_root() {
         None => {
             startup_failure = Some((
                 "找不到界面目录：exe 旁边没有 app\\，从 exe 和当前目录向上也没有 aoe2mod/ui/static/index.html。"
@@ -197,30 +361,64 @@ fn main() {
                 "装好的文件夹里要有 app\\；如果是从仓库直接运行，请确认 exe 在仓库内部。"
                     .to_string(),
             ));
-            None
         }
         Some(root) => {
             let statics = static_dir(&root);
             log(&format!("ui root: {}", statics.display()));
-            let server = aoe2mod_serve::build(statics, port);
-            {
-                let s = Arc::clone(&server);
-                std::thread::spawn(move || aoe2mod_serve::load_game(&s));
-            }
-            {
-                let s = Arc::clone(&server);
-                std::thread::spawn(move || {
-                    if let Err(e) = aoe2mod_serve::server::serve(s) {
-                        log(&format!("serve failed: {e}"));
+            let engine = engine_root(&root);
+            if let Some(eroot) = engine.as_ref() {
+                log(&format!("python engine root: {}", eroot.display()));
+                match spawn_python(eroot, port) {
+                    Ok(c) => {
+                        python_engine = true;
+                        child = Some(c);
                     }
-                });
+                    Err(e) => {
+                        // Falling back is the point of having two engines: the
+                        // native reader is smaller, but a window that opens and
+                        // reads four intents beats a failure page.
+                        log(&format!("python engine unavailable: {e}"));
+                    }
+                }
+            } else {
+                log("no tools/run_ui.py in this folder -- using the built-in reader");
             }
-            Some(server)
+            if !python_engine {
+                let s = aoe2mod_serve::build(statics, port);
+                {
+                    let s2 = Arc::clone(&s);
+                    std::thread::spawn(move || aoe2mod_serve::load_game(&s2));
+                }
+                {
+                    let s2 = Arc::clone(&s);
+                    std::thread::spawn(move || {
+                        if let Err(e) = aoe2mod_serve::server::serve(s2) {
+                            log(&format!("serve failed: {e}"));
+                        }
+                    });
+                }
+                server = Some(s);
+                // Only logged. A player whose folder carries the Python engine and
+                // who still gets the smaller reader can find the reason there;
+                // putting it on the page would need a banner the page does not
+                // have room for, and the four intents it does read are still
+                // correct.
+            }
         }
-    };
+    }
 
     tauri::Builder::default()
+        .manage(Child(Mutex::new(None)))
         .setup(move |app| {
+            // The child belongs to the app, not to this closure: dropping a
+            // Child does not kill it on Windows.
+            if let Some(c) = child.take() {
+                if let Some(state) = app.try_state::<Child>() {
+                    if let Ok(mut slot) = state.0.lock() {
+                        *slot = Some(c);
+                    }
+                }
+            }
             let handle = app.handle().clone();
             let failure = startup_failure.clone();
             std::thread::spawn(move || {
@@ -230,24 +428,58 @@ fn main() {
                         data_url(&error_page(&msg, &hint))
                     }
                     None => {
-                        // The engine now runs in this process, so "did it come
-                        // up" is a port check and nothing else: there is no
-                        // child to die, no stderr to drain, no interpreter to
-                        // find.
+                        // Two ways to fail, so two things are watched. The
+                        // built-in engine cannot die on its own -- a port that
+                        // never opens is the only symptom. A Python child can
+                        // exit, and when it does the port will never open, so
+                        // polling the port alone would sit on the splash for
+                        // the full 150 s on a bug that is already decided.
                         let began = Instant::now();
                         let limit = Duration::from_secs(150);
+                        let mut child_died: Option<String> = None;
                         while began.elapsed() < limit {
                             if http_get_ok(port, "/loading") {
                                 break;
                             }
+                            if python_engine {
+                                if let Some(state) = handle.try_state::<Child>() {
+                                    if let Ok(mut slot) = state.0.lock() {
+                                        if let Some(c) = slot.as_mut() {
+                                            match c.try_wait() {
+                                                Ok(Some(status)) => {
+                                                    child_died = Some(status.to_string());
+                                                    break;
+                                                }
+                                                Ok(None) => {}
+                                                Err(e) => {
+                                                    child_died =
+                                                        Some(format!("问不到状态：{e}"));
+                                                    break;
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
                             std::thread::sleep(Duration::from_millis(60));
                         }
-                        if !http_get_ok(port, "/loading") {
+                        if let Some(why) = child_died {
+                            let msg = format!("Python 引擎退出了（{why}）。");
+                            log(&format!("failed: {msg}"));
+                            data_url(&error_page(
+                                &msg,
+                                "这台机器上的解释器可能不对。看日志里 python engine 那几行，它列出了试过的每一个。",
+                            ))
+                        } else if !http_get_ok(port, "/loading") {
                             let msg = format!("引擎在 150 秒内没有开始监听端口 {port}。");
                             log(&format!("failed: {msg}"));
                             data_url(&error_page(
                                 &msg,
-                                "这是内置引擎，不依赖 Python；请把日志发出来。",
+                                if python_engine {
+                                    "Python 引擎还活着但端口没开。看日志里 root for the child 那一行，确认它指向装好的文件夹。"
+                                } else {
+                                    "这是内置引擎，不依赖 Python；请把日志发出来。"
+                                },
                             ))
                         } else {
                             log(&format!("listening on port {port}"));
@@ -301,7 +533,7 @@ fn main() {
                     "workshop",
                     tauri::WebviewUrl::External(parsed),
                 )
-                .title("帝国时代 2 决定版 · 模组工坊")
+                .title("帝国时代 2 决定版 · 模组工坊 · By - RemonBo")
                 .inner_size(win_w, win_h)
                 .min_inner_size(640.0, 480.0)
                 .center()
@@ -321,7 +553,26 @@ fn main() {
         })
         .build(tauri::generate_context!())
         .expect("tauri app failed to build")
-        .run(|_app, _event| {});
+        .run(|app, event| {
+            // Kill the Python child on the way out.
+            //
+            // Windows does not reap children when the parent exits, and a
+            // `std::process::Child` that is merely dropped leaves the process
+            // running with the port bound. The next launch then finds 7799 (or
+            // whatever free_port handed out) taken by a server nobody can see,
+            // serving a stale engine. `kill` + `wait` is what closes it.
+            if let tauri::RunEvent::Exit = event {
+                if let Some(state) = app.try_state::<Child>() {
+                    if let Ok(mut slot) = state.0.lock() {
+                        if let Some(mut c) = slot.take() {
+                            log(&format!("stopping python engine (pid {})", c.id()));
+                            let _ = c.kill();
+                            let _ = c.wait();
+                        }
+                    }
+                }
+            }
+        });
 
     // Keep the server handle alive for the process lifetime.  Dropping it would
     // close the listener the webview is still talking to.

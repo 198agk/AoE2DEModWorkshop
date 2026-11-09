@@ -64,8 +64,15 @@ def main():
     table = CP.load()
 
     def read(text):
+        # The same keyword arguments `App.parse` passes (`server.py:1905`).  A
+        # reader given less is not a lazier reader, it is a different one: without
+        # `producers` it cannot know which buildings train which units, so the
+        # card-move form is refused with 「「民兵」是哪座建筑卡上的？」 even though
+        # the sentence names the building.  Measured 2026-11-01.
         return NL.read(text, vocab, civ_names=tk.civ_names, civ_zh=NL.CIV_ZH,
-                       effect_count=tk.effect_count, unit_class=tk.unit_class)
+                       effect_count=tk.effect_count, unit_class=tk.unit_class,
+                       producers=tk.unit_producers,
+                       tech_cost=tk.tech_single_cost)
 
     print("=== A. the table is shaped as declared")
     check("the table has intents", bool(table["intents"]), len(table["intents"]))

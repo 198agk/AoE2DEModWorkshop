@@ -122,7 +122,19 @@ def main():
               open(real, "rb").read() == before)
         check("the fixture carries the live entry count (%d)" % len(doc0["Mods"]),
               len(doc0["Mods"]) > 0, str(len(doc0["Mods"])))
-        check("Unsub preserved", doc0.get("Unsub") == [])
+        # 「Unsub preserved」 used to read `doc0.get("Unsub") == []` -- an equality
+        # against an EMPTY list, which is not a statement about preservation at
+        # all: it says "the live profile has nothing unsubscribed".  On
+        # 2026-11-07T23:39 the game rewrote this file (it was running) and the
+        # check went red for a suite that never touched the field.  The promise
+        # is that reading changes nothing and that a write keeps whatever was
+        # there, so state it as: the value the fixture carries survives the read,
+        # whatever it happens to be.  A separate check below proves install()
+        # leaves it alone.
+        unsub0 = doc0.get("Unsub")
+        check("Unsub survives a read unchanged",
+              isinstance(unsub0, list) and unsub0 == json.loads(
+                  raw0.decode("utf-8")).get("Unsub"), repr(unsub0)[:60])
         n0 = len(doc0["Mods"])
 
         print("=== install at position 0 (highest priority) ===")
@@ -170,6 +182,8 @@ def main():
               isinstance(ents[0]["WorkshopID"], int)
               and isinstance(ents[0]["PublishID"], int))
         check("survives a strict JSON parse", json.loads(raw1.decode("utf-8")))
+        check("install() left Unsub exactly as it found it",
+              doc1.get("Unsub") == unsub0, repr(doc1.get("Unsub"))[:60])
 
         print("=== re-install without overwrite must refuse ===")
         try:

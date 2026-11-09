@@ -234,6 +234,11 @@ pub struct Effect {
     pub name_len: u16,
     /// `(u8, i16, i16, i16, f32)` -- 11 bytes.
     pub commands: Vec<(u8, i16, i16, i16, f32)>,
+    /// True for an effect this session APPENDED, which has no counterpart in
+    /// the input stream.  Writing one must freeze the input cursor: appending a
+    /// record otherwise shifts every later `op()` read and corrupts the tail
+    /// while still producing a syntactically valid file.
+    pub is_new: bool,
 }
 
 pub fn read_effect(r: &mut Reader<'_>) -> io::Result<Effect> {
@@ -248,8 +253,34 @@ pub fn read_effect(r: &mut Reader<'_>) -> io::Result<Effect> {
         name_marker,
         name_len,
         commands,
+        is_new: false,
     })
 }
+
+/// An effect record this session created: `aoe2mod/dat/writer.py`'s
+/// `{"_new": True}`.  It carries no input counterpart, so the writer freezes
+/// the cursor for its whole duration.
+///
+/// `name_marker` is the marker the shipped records use (`0x0A60`; the format
+/// does not treat it as a constant but every record in the retail file carries
+/// it) and `name_len` is the length of the name we are about to write, because
+/// there is no stored width to preserve.
+pub fn new_effect(name: String, commands: Vec<(u8, i16, i16, i16, f32)>) -> Effect {
+    let name_len = name.as_bytes().len() as u16;
+    Effect {
+        name,
+        name_marker: DEBUG_STRING_MARKER,
+        name_len,
+        commands,
+        is_new: true,
+    }
+}
+
+/// `serializeDebugString`'s marker in the retail file (`parse_dat.py:166`,
+/// `writer.py:42`).  Not a format constant -- only the value every shipped
+/// record happens to carry -- which is why parsed records keep theirs verbatim
+/// and only synthesised ones use this.
+pub const DEBUG_STRING_MARKER: u16 = 0x0A60;
 
 // ---------------------------------------------------------------------------
 // Stage 6: unit lines (skipped for DE - gv < GV_SWGB)

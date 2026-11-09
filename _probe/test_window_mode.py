@@ -23,8 +23,16 @@ PY = sys.executable
 PORT = 7823
 
 
-def window_titles():
-    """Top-level window titles, via ctypes -- no extra dependency."""
+def windows(pid=None):
+    """Visible top-level windows as ``[(hwnd, pid, title)]``.
+
+    ``pid`` filters to the windows one process owns, and that filter is the
+    whole point.  An earlier version counted windows by TITLE across the
+    machine, so the packaged ``aoe2-mod-workshop.exe`` -- same title, same
+    taskbar -- turned "exactly one window" into a red that had nothing to do
+    with the code under test.  A nail that asks "did MY process open one
+    window" has to ask the OS about that process.
+    """
     import ctypes
     from ctypes import wintypes
     user32 = ctypes.windll.user32
@@ -39,11 +47,20 @@ def window_titles():
             return True
         buf = ctypes.create_unicode_buffer(n + 1)
         user32.GetWindowTextW(hwnd, buf, n + 1)
-        found.append(buf.value)
+        owner = wintypes.DWORD()
+        user32.GetWindowThreadProcessId(hwnd, ctypes.byref(owner))
+        if pid is not None and owner.value != pid:
+            return True
+        found.append((hwnd, owner.value, buf.value))
         return True
 
     user32.EnumWindows(cb, 0)
     return found
+
+
+def window_titles(pid=None):
+    """Just the titles, for the places that only look for a phrase."""
+    return [t for _h, _p, t in windows(pid)]
 
 
 def get(url, tries=40, delay=0.5):
@@ -99,7 +116,7 @@ def main():
         deadline = time.time() + 25
         titles = []
         while time.time() < deadline:
-            titles = window_titles()
+            titles = window_titles(proc.pid)
             if any(want in t for t in titles):
                 break
             time.sleep(0.6)
@@ -136,7 +153,8 @@ def main():
         time.sleep(0.4)
     check("the port is no longer bound", gone, "port %d still open" % PORT)
     check("and no pywebview window is left behind",
-          not any("模组工坊" in t for t in window_titles()))
+          not any("模组工坊" in t for t in window_titles(proc.pid)),
+          window_titles(proc.pid))
 
     print()
     if fails:

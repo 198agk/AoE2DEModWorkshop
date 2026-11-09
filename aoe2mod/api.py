@@ -23,6 +23,8 @@ import struct
 
 from .dat import parser as P
 from .dat import locate as L
+from .dat import pseudopage as PP
+from .dat import tablefields as TF
 from .dat import families as F
 from .dat import writer as W
 from . import progress as PG
@@ -117,6 +119,115 @@ def _describe_building(tk, building_id):
     return got.get("zh") or got.get("name") or str(building_id)
 
 
+def _json_safe(v):
+    """A copy of `v` with every byte string turned into hex text.
+
+    The writer's own report carries the two byte strings it compared
+    (`got`, `want`) so a byte-level probe can print them.  That report also
+    rides inside the build manifest, and the manifest is served as JSON: a
+    single `bytes` anywhere in it makes `json.dumps` raise, so a build that
+    succeeded answered "Object of type bytes is not JSON serializable" and the
+    player got an error instead of a mod.  Measured 2026-11-01 on the sprite
+    rename model -- the one model whose edits GUARANTEE a disagreement with the
+    raw stream, because a retargeted record is a different length.
+
+    Converting at the manifest boundary keeps the writer's report lossless for
+    its own consumers and makes the document serialisable.  Hex rather than
+    base64 because these values are compared by eye in a log.
+    """
+    if isinstance(v, (bytes, bytearray)):
+        return bytes(v).hex()
+    if isinstance(v, dict):
+        return {k: _json_safe(x) for k, x in v.items()}
+    if isinstance(v, (list, tuple)):
+        return [_json_safe(x) for x in v]
+    return v
+
+
+def _shown_number(v):
+    """A number the preview can print verbatim.
+
+    A float32 field hands back the stored approximation -- 移动速度 reads
+    1.350000023841858 -- and printing that beside "加10%" is the same defect as
+    an English refusal: the player is looking at a rounding artefact, not at a
+    value the game has.  Six significant digits is what the game's own UI shows
+    for speed and reload time, and it keeps a real difference (1.35 vs 1.351)
+    visible.  Integers are left alone so 生命值 stays 25 and not 25.0.
+    """
+    if isinstance(v, bool) or v is None:
+        return v
+    if isinstance(v, int):
+        return v
+    if isinstance(v, float):
+        if v == int(v) and abs(v) < 1e15:
+            return int(v)
+        return float("%.6g" % v)
+    return v
+
+
+def _shown_label(label, resource=None):
+    """The field name a player reads, for the preview card.
+
+    Reuses ``C._label_zh``: it is what the refusal sentences already print, so a
+    cost edit cannot be called "成本 wood" on the preview line and "木材成本" in
+    the very next refusal.  Wrapped rather than inlined because a label can
+    arrive as None (an effect row with no attribute name) and the card must not
+    print the string "None".
+    """
+    if not label:
+        return ""
+    return C._label_zh(label, resource)
+
+
+def _preview_values(edits, limit=6, resource=None):
+    """The "现在 → 改后" pairs this write produces, for the preview card.
+
+    WHY THIS EXISTS.  AGE3 shows a grid of raw numbers and leaves the arithmetic
+    to the player: to check "生命值 +20" you find the field in a 620-column tree
+    and read the integer yourself.  A tool that claims to be easier has to say
+    what the number becomes -- and it has to say it without lying, so this
+    reports the DISTINCT pairs rather than one representative.
+
+    Measured 2026-10-31 over the shipped data: 村民血量加20 is one pair
+    (25 -> 45) across all 1,701 byte writes, while 所有步兵血量加10% is 45 pairs
+    (60 -> 66 appears 1,197 times, 65 -> 72 appears 693 times...) because the 217
+    units of a class do not share a starting value.  Collapsing that to one
+    number would be a confident answer to a question nobody asked, which is the
+    failure mode this codebase keeps paying for.
+
+    ``edits`` are the tuples ``collect_targets`` returns --
+    ``(off, width, kind, label, before, new, signed)``.  ``resource`` is the
+    intent's own resource, when it names one: a cost binding's label arrives as
+    "成本 wood" and ``_label_zh`` is what turns that into "木材成本", the same
+    words the refusal sentences use.
+    """
+    pairs = {}
+    for t in edits:
+        if len(t) < 6:
+            continue
+        _off, _width, _kind, label, before, new = t[:6]
+        name = _shown_label(label, resource)
+        key = (name, before, new)
+        pairs[key] = pairs.get(key, 0) + 1
+    if not pairs:
+        return None
+    out = {"distinct": len(pairs)}
+    ordered = sorted(pairs.items(), key=lambda kv: (-kv[1], str(kv[0][0])))
+    out["pairs"] = [{"field": label,
+                     "before": _shown_number(before),
+                     "after": _shown_number(new),
+                     "count": n}
+                    for (label, before, new), n in ordered[:limit]]
+    # A single pair is the common case and deserves the plain shape: the card
+    # can then print "生命值 25 → 45" without walking a list.
+    if len(pairs) == 1:
+        label, before, new = ordered[0][0]
+        out["field"] = label
+        out["before"] = _shown_number(before)
+        out["after"] = _shown_number(new)
+    return out
+
+
 class Toolkit(object):
     """An open game install, ready to answer questions and build mods."""
 
@@ -132,11 +243,196 @@ class Toolkit(object):
         self._techs = None
         self._effects = None
         self._fanout = None
+        # `(start, end, count)` of the Effects block.  Separate from `_effects`
+        # because the address survives a rebuild of the records and because the
+        # page editor needs it before it has read a single command.
+        self._effect_sec = None
         self._civtrees = None
         self._civtrees_dir_present = None
+        # `{unit id: [civ, ...]}` -- who can EVER build each unit, derived from
+        # the tech trees.  Cached because the command panel needs it for every
+        # row of every card it draws, and measured at 0.0027 s for the whole
+        # 287-unit table (warm trees 0.000 s, cold 0.024 s) -- cheap enough that
+        # the panel can print 「这一格 16 条，你这个文明能造 5 条」 instead of a
+        # bare 16, which is the number the player asked about (2026-11-07).
+        self._civbuilders = None
         self._sprites = None
         self._icons = None
         self._uifacts = None
+        self._index = None
+        # String ids this SESSION invented, `{string id: text}`.  A rename
+        # writes a new id into the record because the old one is shared (5079
+        # is 57 records' name), and the row that id points at only lands in the
+        # mod when the file is saved -- so without this the name index has
+        # nothing to read and every screen keeps the OLD name.  Measured
+        # 2026-11-06: the rename toast said 「测试改名甲」 while the pane title
+        # still said 「帝国罗马军」.
+        self._new_text = {}
+
+    # ---- names ------------------------------------------------------------
+    def index(self):
+        """The name index for THIS file, not for the game's own .dat.
+
+        Reported 2026-11-03, verbatim: 「选择指定的数据文件没起作用」.  The chooser
+        did switch files and this Toolkit did read them, but every name on
+        screen came from `semantic.index()` -- one process-wide singleton built
+        from the JSON shipped with this product, i.e. the game's own .dat.  On a
+        mod with 8,959 unit ids the grid still said 1,651 and the mod's own
+        units could not be reached.
+
+        `semantic.fromdat.index_for` is the fix: it names records through the
+        string tables that ship beside THIS .dat (the mod's own first, the
+        install's as fallback), and falls back to the shipped JSON for the ids
+        those tables do not name -- 196 of the install's visible units are named
+        by 405xxx backup ids no `key-value` file carries.  It returns None for
+        the install's own file, so a normal player keeps today's behaviour and
+        pays nothing.
+        """
+        if self._index is None:
+            try:
+                from .semantic import fromdat as FD
+                self._index = self._index_with_added(
+                    FD.index_for(self) or semantic.index())
+                self._index = self._named_from_model(self._index)
+            except Exception:
+                # Naming is never worth failing an edit over: an unreadable
+                # string table, a .dat copied out of its install, a locked
+                # locale folder -- all of them degrade to the shipped names,
+                # which is exactly what this product did before today.
+                self._index = semantic.index()
+        return self._index
+
+    def _named_from_model(self, ix):
+        """Rename the entities whose name id points at a string this session made.
+
+        `fromdat.tables_for` reads `key-value` files that exist on disk.  A
+        rename writes a NEW id into the record and keeps the text in
+        `App._new_strings` until the mod is saved, so that id is in no table
+        yet and `ix` falls back to the shipped JSON -- which still describes the
+        old name.  The model is the authority here, exactly as it is for every
+        offset: the record says which id it uses, and this session knows what
+        that id says.
+
+        Costs one pass over the civ model (0.02 s) and only when the session
+        actually made a name; a player who never renamed anything pays nothing.
+        """
+        if not self._new_text or not self._civs:
+            return ix
+        from .semantic.index import SemanticIndex
+
+        units_raw = {k: dict(getattr(e, "_extra", None) or {})
+                     for k, e in ix.units.items()}
+        techs_raw = {k: dict(getattr(e, "_extra", None) or {})
+                     for k, e in ix.techs.items()}
+        hit = False
+        for civ in self._civs:
+            for u in civ.get("units") or ():
+                sid = u.get("_dll_name")
+                text = self._new_text.get(sid)
+                if not text:
+                    continue
+                uid = u.get("id")
+                raw = units_raw.setdefault(uid, {})
+                if raw.get("zh") == text and raw.get("resolved"):
+                    continue
+                raw["en"] = raw["zh"] = raw["tw"] = text
+                raw["name_string_id"] = int(sid)
+                raw["resolved"] = True
+                units_raw[uid] = raw
+                hit = True
+        for i, t in enumerate((self._stats or {}).get("techs") or ()):
+            sid = t.get("lang_name")
+            text = self._new_text.get(sid)
+            if not text:
+                continue
+            raw = techs_raw.setdefault(i, {})
+            if raw.get("zh") == text and raw.get("resolved"):
+                continue
+            raw["en"] = raw["zh"] = raw["tw"] = text
+            raw["name_string_id"] = int(sid)
+            raw["resolved"] = True
+            techs_raw[i] = raw
+            hit = True
+        if not hit:
+            return ix
+        out = SemanticIndex(units=units_raw, techs=techs_raw)
+        out.built_in = getattr(ix, "built_in", None)
+        out.dat_path = getattr(ix, "dat_path", None)
+        out.table_ids = getattr(ix, "table_ids", 0)
+        return out
+
+    def _index_with_added(self, ix):
+        """Name the records THIS file has and the shipped tables do not.
+
+        A record added in the editor has no entry anywhere: `semantic.index()`
+        is built from unit_names.json, which describes the game's own .dat, and
+        `fromdat.index_for` returns None for that same file.  So a cloned unit
+        was invisible to every name-driven screen -- measured 2026-11-05,
+        `/api/browse` listed 1,651 rows without the new id, `/api/describe`
+        answered 「找不到编号 30000 的单位」, and the editor had just made it.
+
+        The record's own `_dll_name` is the honest source: a clone keeps the
+        donor's string id, so the copy shows the donor's name until the player
+        gives it one (`/api/record-*` writes no language string).  When even
+        that is missing the label says what the record is and where it came
+        from, rather than inventing a game name for it.
+
+        Runs ONCE per index build (the `_index is None` branch), not per call:
+        the walk is over 136,861 records and `/api/icons` asks for 400 rows.
+        """
+        from .semantic.index import SemanticIndex
+
+        missing = {}
+        for civ in self._civs or ():
+            for u in civ.get("units") or ():
+                uid = u.get("id")
+                if uid in ix.units or uid in missing:
+                    continue
+                missing[uid] = u
+        extra_t = {}
+        for i in range(self._stats.get("tech_count") or 0):
+            if i not in ix.techs:
+                extra_t[i] = True
+        if not missing and not extra_t:
+            return ix
+        tables = {}
+        try:
+            from .semantic import fromdat as FD
+            tables = FD.tables_for(self.game_root, self.dat_path)
+        except Exception:
+            # Naming is never worth failing a screen over: an unreadable string
+            # folder degrades to the fallback label, which is still true.
+            tables = {}
+        units_raw = {k: dict(getattr(e, "_extra", None) or {})
+                     for k, e in ix.units.items()}
+        for uid, u in missing.items():
+            sid = u.get("_dll_name") or 0
+            text = tables.get(int(sid)) if sid else None
+            units_raw[uid] = {"internal": u.get("name"),
+                              "en": text, "zh": text, "tw": text,
+                              "name_string_id": int(sid or 0),
+                              "resolved": True, "civ_variants": None}
+        techs_raw = {k: dict(getattr(e, "_extra", None) or {})
+                     for k, e in ix.techs.items()}
+        # An added technology DOES have a picture: `clone_tech` keeps the donor's
+        # `icon_id`, and `icon_for` reads it out of the entity's `_extra`.  Leaving
+        # it out of this dict made every duplicated tech draw a blank cell --
+        # measured 2026-11-05, `POST /api/record-dup {"kind":"tech","record":2}`
+        # then `/api/icon?kind=tech&id=1510` answered `{"ok": false}` while the
+        # donor answered `{"ok": true}`.
+        techs = (self._stats or {}).get("techs") or []
+        for i in extra_t:
+            rec = techs[i] if 0 <= i < len(techs) else {}
+            techs_raw[i] = {"internal": rec.get("name"), "en": None, "zh": None,
+                            "tw": None, "name_string_id": 0, "resolved": True,
+                            "civ_variants": None,
+                            "icon_id": rec.get("icon_id"),
+                            "effect_id": rec.get("effect_id")}
+        out = SemanticIndex(units=units_raw, techs=techs_raw)
+        out.built_in = getattr(ix, "built_in", None)
+        out.dat_path = getattr(ix, "dat_path", None)
+        out.table_ids = getattr(ix, "table_ids", 0)
+        return out
 
     # ---- lazy game-data load ---------------------------------------------
     def _ensure(self):
@@ -150,6 +446,69 @@ class Toolkit(object):
         PG.begin("inflate")
         data, how = P.load_dat(self.dat_path)
         PG.done("inflate")
+        # Refuse to parse data the shipped tables were not measured from.
+        #
+        # Measured 2026-10-28: Steam replaced the .dat (93,268,152 -> 93,272,287
+        # bytes) and both engines kept writing through offset tables built from
+        # the old file -- every sampled `hit_points` offset was 4397 bytes off
+        # for civilisation 1, while `/api/stat` answered `ok:true` throughout.
+        # `aoe2mod/dat/datstamp.py` is that guard; the native engine has had the
+        # same rule since `desktop/aoe2mod-serve/src/lib.rs:228`.  It belongs
+        # HERE, before the 5-second parse, so the loading screen can say why
+        # instead of the first edit corrupting silently.
+        #
+        # `check` raises for a stamp that EXISTS but disagrees, and is silent
+        # when none is installed at all: a development checkout legitimately has
+        # no `_golden`, and the repo's own suites run from it.
+        # ONLY THE INSTALL'S OWN FILE IS CHECKED AGAINST THE SHIPPED STAMP.
+        # The stamp was measured from the retail `.dat`; a mod's file is that
+        # file plus someone's edits, so its sha256 cannot match and the guard
+        # would refuse to open a file that is perfectly readable.  Reported
+        # 2026-11-03: 「我要改指定的dat」 -- with the check unconditional, every
+        # mod `.dat` on this machine (16 of them) failed to open with a message
+        # about the game having updated.
+        #
+        # The guard's purpose is unchanged where it matters: the retail file is
+        # what the game loads with no data mod enabled, and a Steam update
+        # replacing it is exactly the case that silently corrupted writes.
+        from .dat import datstamp as DS
+        if self.is_install_dat():
+            try:
+                DS.check(data, dat_display=self.dat_path)
+            except DS.StampError as exc:
+                PG.fail(str(exc))
+                raise
+        # Read the parse back instead of redoing it.  Measured 2026-10-31:
+        # `parse` 4.37 s + `locate` 4.08 s were 99 % of the 8.56 s between the
+        # socket opening and the first answer, and the player's words were
+        # 「为什么这个加载这么慢」.  None of that work depends on the request --
+        # only on the bytes of the `.dat` -- so `aoe2mod/dat/parsecache.py` keys
+        # it by the sha256 of the inflated stream.  Hit costs 1.6 s, miss costs
+        # 0.22 s of writing the cache it just built.
+        #
+        # ORDER MATTERS: `datstamp.check` above runs FIRST, so stale shipped
+        # tables fail loudly instead of being papered over by a cache that was
+        # built from the same bytes.
+        from .dat import parsecache as PC
+        PG.begin("cache")
+        hit = PC.load(data)
+        if hit is not None:
+            stats, civs, civs_start, gv, tail, _how = hit
+            PG.reused("cache")
+            # `parse` and `locate` did not run, but their RESULTS are here.  Mark
+            # them reused rather than done so the bar does not claim to have
+            # walked 93 MB when it read a file.
+            PG.reused("parse")
+            PG.reused("locate")
+            self._raw = data
+            self._civs = civs
+            self._stats = stats
+            self._parsed = (data, civs, civs_start, gv, tail, how)
+            PG.begin("index")
+            PG.done("index")
+            PG.done("ready")
+            return
+        PG.done("cache")
         PG.begin("parse")
         p = P.Parser(data)
         with contextlib.redirect_stdout(io.StringIO()):
@@ -162,6 +521,9 @@ class Toolkit(object):
         self._civs = civs
         self._stats = p.stats
         self._parsed = (data, civs, civs_start, gv, tail, how)
+        # Written AFTER `_parsed` is set: a cache file that exists but whose
+        # owner died before finishing would be trusted on the next start.
+        PC.save(data, p.stats, civs, civs_start, gv, tail, how)
         PG.begin("index")
         PG.done("index")
         PG.done("ready")
@@ -170,6 +532,21 @@ class Toolkit(object):
     def version(self):
         self._ensure()
         return self._parsed[3]
+
+    def is_install_dat(self):
+        """True when this toolkit edits the installation's own ``.dat``.
+
+        ``False`` for a mod's copy or a mode's copy, which is the whole reason
+        the stale-`.dat` stamp is only enforced for the True case: see the note
+        at the `datstamp.check` call in `_ensure`.
+        """
+        try:
+            from .game import locations as _G
+            want = os.path.normcase(os.path.abspath(_G.dat_path(self.game_root)))
+            mine = os.path.normcase(os.path.abspath(self.dat_path or ""))
+        except Exception:
+            return False
+        return bool(mine) and mine == want
 
     # ---- cached section walks --------------------------------------------
     # Walking the tech and effect sections is not free: `locate_techs` walks
@@ -184,10 +561,44 @@ class Toolkit(object):
             self._techs = L.locate_techs(self._raw, self._parsed[4], self._parsed[3])
         return self._techs
 
+    def _effect_section(self):
+        """``(start, end, count)`` of the Effects block -- 0.21 s, cached.
+
+        `tablefields.stage_offsets(raw, "5 ")` stops at the end of stage 5 and
+        never reaches the 89 MB civ block, so this costs two tenths of a second
+        on a 125 MB file.  The count column is read from the block itself rather
+        than trusted from the parse, because an append is what changes it.
+        """
+        self._ensure()
+        if self._effect_sec is None:
+            offs, _stats = TF.stage_offsets(self._raw, "5 ")
+            key = next(k for k in offs if k.startswith("5 Effects"))
+            start, end = offs[key]
+            count = struct.unpack_from("<i", self._raw, start)[0]
+            self._effect_sec = (start, end, count)
+        return self._effect_sec
+
     def _effect_records(self):
+        """Every effect, walked by `struct` and verified against the boundary.
+
+        Measured 2026-11-09 on the 125 MB mod: `locate.locate_effects` 6.84 s,
+        `pseudopage.fast_effects` 0.008 s, and the two agree on all 6,055
+        records / 15,000+ commands field for field.  The cost of the slow one is
+        entirely `Orec`'s bounds checks and offset bookkeeping, which this walk
+        does not need -- it records the five offsets itself.
+
+        The fallback is not decoration: `fast_effects` refuses to return when
+        its walk does not land exactly on the stage boundary, and that refusal is
+        what keeps a second implementation from quietly answering for a file
+        layout it was not written against.
+        """
         self._ensure()
         if self._effects is None:
-            self._effects, _start = L.locate_effects(self._raw)
+            start, end, _count = self._effect_section()
+            try:
+                self._effects, _pos = PP.fast_effects(self._raw, start, end)
+            except Exception:
+                self._effects, _start = L.locate_effects(self._raw)
         return self._effects
 
     def _sibling_building_with_tech(self, building_id):
@@ -293,7 +704,7 @@ class Toolkit(object):
         """
         self._ensure()
         if kind == "tech":
-            e = semantic.index().get("tech", entity_id)
+            e = self.index().get("tech", entity_id)
             if e is None:
                 # Same rule as the unit branch below: the grid asks for a picture
                 # per cell, so a stale tech id puts this sentence on the screen.
@@ -320,7 +731,7 @@ class Toolkit(object):
         if facts is None:
             return {"ok": False,
                     "why": "找不到编号 %s 的单位" % (entity_id,)}
-        e = semantic.index().get("unit", entity_id)
+        e = self.index().get("unit", entity_id)
         section, witness = self.icons.unit_section(
             facts.get("icon_id"), made_by_builder=facts.get("builder", False),
             made_by_building=facts.get("building", False),
@@ -375,13 +786,39 @@ class Toolkit(object):
         row = self._unit_facts().get(unit_id)
         return None if row is None else row.get("class")
 
-    def browse(self, kind="unit", query="", limit=60, offset=0):
+    def unit_producers(self, unit_id):
+        """The building ids that train this unit, or ().  Cheap; cached pass.
+
+        The sentence reader needs it for exactly one question: "把民兵挪到第5格"
+        names the unit but not the building, and the building is derivable --
+        a unit sits on the card of whoever trains it.  Passing the table is what
+        lets that sentence be answered instead of refused, and it is also what
+        separates "把民兵移到兵营的第5格" from its reverse reading.
+
+        Returns the empty tuple when the .dat has no train location for it, which
+        the reader must treat as "no building can be derived" rather than as
+        "the first building will do".
+        """
+        row = self._unit_facts().get(unit_id)
+        if not row:
+            return ()
+        return tuple(p for p in (row.get("producers") or ())
+                     if isinstance(p, int) and p >= 0)
+
+    def browse(self, kind="unit", query="", limit=60, offset=0, order="id"):
         """Entities a screen can put in a grid, with the icon facts it needs.
 
         Why this is not `search`: a browser needs a STABLE list in a stable order
         (so the grid does not reshuffle between visits), needs to know up front
         which cells will show a picture, and needs to page it, because decoding
         1,219 sprites costs 18 seconds.
+
+        `order` is which end of that stable list to start from.  "id" is the
+        shipped numbering; "new" is the SAME rows backwards, so the record the
+        editor just made is row one instead of row 1,652.  Reported 2026-11-05,
+        verbatim: 「列表没有新增啊，我要新增1000甚至10000个id怎么办」 -- the
+        record was in the list, four pages down, and a 400-row page cannot be
+        scrolled to a position it does not contain.
 
         The grid lists NAMED entities only, so every count meant for the grid has
         to be counted over this same list.  Measured 2026-10-20 on this install:
@@ -399,16 +836,25 @@ class Toolkit(object):
         dashed cell, so the two agree on screen; do not "fix" `has_icon` by
         resolving a texture per row, which costs a 0.17 s pass per request.
         """
-        ix = semantic.index()
+        ix = self.index()
         table = ix.units if kind == "unit" else ix.techs
         facts = self._unit_facts() if kind == "unit" else None
         q = str(query or "").strip().lower()
+        # A number is an id, not a name.  Until 2026-11-08 this filter only looked
+        # at `zh`/`en`/`internal`, so typing `5073` into any search box returned
+        # zero rows while the command panel's own box promised 「打名字或编号，
+        # 比如 村民、83」 and the editor offered no way to reach a record by the
+        # number printed next to it.  Measured: `q=83` -> total 0, `q=村民` -> 3.
+        # Matching the id exactly (not as a prefix) keeps the list stable: a prefix
+        # on 4-digit ids would put 5073 next to 50730 and read like a name search.
+        qid = int(q) if q.isdigit() else None
         rows = []
         for uid in sorted(table):
             e = table[uid]
             if not e.is_visible:
                 continue
-            if q and q not in (e.zh or "").lower() \
+            if q and uid != qid \
+                    and q not in (e.zh or "").lower() \
                     and q not in (e.en or "").lower() \
                     and q not in (e.internal or "").lower():
                 continue
@@ -420,13 +866,18 @@ class Toolkit(object):
                          "en": e.en, "zh": e.zh,
                          "has_icon": bool(icon_id and int(icon_id) > 0),
                          "icon_id": icon_id})
+        # Backwards is not "sorted by something else": it is the same rows in the
+        # opposite order, so a page of "new" is a page of the highest ids and the
+        # pager keeps counting toward the same total.
+        if str(order or "id").strip().lower() == "new":
+            rows.reverse()
         return {"ok": True, "kind": kind, "total": len(rows),
-                "offset": offset, "limit": limit,
+                "offset": offset, "limit": limit, "order": order,
                 "rows": rows[offset:offset + limit]}
 
     def search(self, query, kind="unit", limit=25):
         """Candidate entities for a user-typed name.  Never raises."""
-        ix = semantic.index()
+        ix = self.index()
         return [{"id": e.id, "kind": e.kind, "name": e.display,
                  "en": e.en, "zh": e.zh,
                  "has_civ_variants": bool(e.civ_variants)}
@@ -436,7 +887,7 @@ class Toolkit(object):
         """Everything a UI needs to show one entity, including its data."""
         self._ensure()
         intents, bindings = C.load_schema()
-        ix = semantic.index()
+        ix = self.index()
         e = ix.get(kind, entity_id)
         if e is None:
             # Reached by every "游戏里怎么说的？" click on a stale row, so this
@@ -525,7 +976,15 @@ class Toolkit(object):
         # `civ_count` above is a RECORD count and answers a different question.
         # The answer lives in the tech-tree layer, and no editor intent is needed
         # to read it -- hence a read-side entry, not just the plan() one.
-        out["availability"] = self._availability_of(entity_id)
+        #
+        # Building rows live in a second engine key with their own `Use Type`
+        # (see `CT.BUILDINGS_USE_TYPES`), so the unit space alone reads `None`
+        # for the Castle and the Barracks -- "not in any tech tree" about two
+        # things every civ has.  Widening is safe: no id appears in both lists
+        # under two names (0 collisions across all 62 files, measured
+        # 2026-10-31), so a unit answer cannot become a building answer.
+        out["availability"] = self._availability_of(
+            entity_id, CT.UNIT_USE_TYPES + CT.BUILDINGS_USE_TYPES)
         return out
 
     def _availability_of(self, node_id, use_types=None):
@@ -550,6 +1009,15 @@ class Toolkit(object):
                 "builders": tree["builders"], "builder_count": tree["builder_count"],
                 "absent_from": tree["absent_from"], "blocked_in": tree["blocked_in"],
                 "pending_in": tree["pending_in"]}
+
+    def availability_of(self, node_id, use_types=None):
+        """Public spelling of :meth:`_availability_of`, for read-only callers.
+
+        The UI asks this to ANSWER a question ("who can build the bombard
+        cannon"); a leading underscore would say the answer is private to this
+        class, and the answer is the same dict ``describe()`` already publishes.
+        """
+        return self._availability_of(node_id, use_types)
 
     def _families(self):
         """unit id -> age-variant family, computed once per open install."""
@@ -611,6 +1079,30 @@ class Toolkit(object):
             return 0
         return len(effects[eid].get("commands") or ())
 
+    def tech_single_cost(self, tech):
+        """The one resource a technology actually charges, or None.
+
+        The sentence reader needs this for 「把织布机的造价减半」, which names no
+        resource.  Measured over the shipped data: of 1,510 technologies, 1,011
+        charge nothing, 138 charge exactly ONE resource and 361 charge two or
+        more.  In the middle case the sentence is not ambiguous -- there is only
+        one number it can mean -- so the reader can answer it instead of asking
+        a question with a single possible reply.  Returning None means "ask".
+
+        Projected through `cost_report`, i.e. through `_pick_cost_slot`, so the
+        resource this answers with is one `tech.cost` can really write.  A tech
+        whose only slot is a type no intent can name returns None rather than a
+        resource whose edit would then be refused.
+        """
+        self._ensure()
+        _intents, bindings = C.load_schema()
+        idx, rec = self._resolve_tech(tech)
+        reachable, _unmapped = C.cost_report(bindings, rec.get("costs"))
+        picked = [row for row in reachable if row.get("amount")]
+        if len(picked) == 1:
+            return picked[0].get("resource")
+        return None
+
     def _resolve_tech(self, tech):
         """Accept a tech id or a name, and refuse ambiguity instead of picking.
 
@@ -630,7 +1122,7 @@ class Toolkit(object):
                                     % (n, len(techs)))
             return n, techs[n]
         try:
-            ent = semantic.index().resolve_one("tech", tech)
+            ent = self.index().resolve_one("tech", tech)
         except LookupError as exc:
             raise C.IntentError(str(exc))
         if not (0 <= ent.id < len(techs)):
@@ -665,6 +1157,33 @@ class Toolkit(object):
             self._civtrees = CT.load_trees(self.game_root)
             self._civtrees_dir_present = os.path.isdir(CT.trees_dir(self.game_root))
         return self._civtrees
+
+    def _builders(self):
+        """``{unit id: [civ stem, ...]}`` -- who can ever build each unit.
+
+        Derived from the same trees :meth:`_trees` caches, so the panel and the
+        availability writer cannot disagree about "who can build this".  Built
+        from every node the trees mention rather than from a unit list, because
+        the card asks about units the `.dat` has and the trees are the only
+        source that answers "which civilizations".
+        """
+        if self._civbuilders is None:
+            trees = self._trees()
+            ids = set()
+            for t in trees.values():
+                for e in CT._rows(t):
+                    if not isinstance(e, dict):
+                        continue
+                    node = e.get("Node ID")
+                    if isinstance(node, int):
+                        ids.add(node)
+            out = {}
+            for node in ids:
+                who = CT.builders(trees, node)
+                if who:
+                    out[node] = who
+            self._civbuilders = out
+        return self._civbuilders
 
     def _plan_availability(self, r, base):
         """Preview for "let <civ> build <unit>".
@@ -2200,7 +2719,7 @@ class Toolkit(object):
         man["reparse_leftover"] = len(raw2) - p2.r.pos
         man["reparse_ok"] = p2.r.pos == len(raw2)
         man["dat_raw_bytes"] = len(patched)
-        man["dat_serialize"] = wrep
+        man["dat_serialize"] = _json_safe(wrep)
         man["verification"] = {
             "ok": bool(man["reparse_ok"] and not wrong and not untouched_drifted),
             "renamed": len(changed),
@@ -3521,7 +4040,8 @@ class Toolkit(object):
         """
         self._ensure()
         intents, bindings = C.load_schema()
-        r = C.resolve(intent, intents, bindings=bindings)
+        r = C.resolve(intent, intents, bindings=bindings,
+                      semantic_index=self.index())
         base = {"description": r.describe(), "entity_id": r.entity.id,
                 "entity_name": r.entity.display, "kind": r.kind,
                 "stat": r.stat, "op": r.op, "amount": r.amount}
@@ -3537,6 +4057,8 @@ class Toolkit(object):
             return self._plan_toggle_group(r, base)
         if self._strategy(r.raw) == "objreplacement_json":
             return self._plan_objreplace(r, base)
+        if self._strategy(r.raw) == "card_move":
+            return self._plan_card_move(r, base)
         # The arms above handle five strategies; the two below handle the byte
         # patcher and the tech-tree writer.  Anything ELSE used to fall straight
         # into the byte-preview body and answer "will change the game data, 1701
@@ -3603,10 +4125,10 @@ class Toolkit(object):
                     # would read as if the command already carried the new one.
                     cur = base.get("value")
                     if op == "multiply":
-                        new = (cur + r.amount) if r.op == "delta" else r.amount
+                        new = C._apply(r.op, r.amount, "float", cur)
                         tail = "×%.3g" % (new or 0)
                     elif op == "set":
-                        new = (cur + r.amount) if r.op == "delta" else r.amount
+                        new = C._apply(r.op, r.amount, "float", cur)
                         tail = "%s %.3g" % (C._OPERATION_ZH.get("set", "set"),
                                             new or 0)
                     else:
@@ -3626,11 +4148,29 @@ class Toolkit(object):
                     # byte lives in the shared Effects array, not in the tech
                     # record) but the very function the write calls.
                     effects = self._effect_records()
-                    C.plan_effect_edit(effects, tech, r.raw.get("command"),
-                                       r.op, r.amount,
-                                       fanout=self._effect_fanout(),
-                                       tech_label=r.entity.display,
-                                       unit_class=self.unit_class)
+                    _row = C.plan_effect_edit(effects, tech, r.raw.get("command"),
+                                              r.op, r.amount,
+                                              fanout=self._effect_fanout(),
+                                              tech_label=r.entity.display,
+                                              unit_class=self.unit_class)
+                    # The effect row already carries both ends of the change --
+                    # `plan_effect_edit` fills `before`/`after` from the same
+                    # arithmetic the write uses.  An effect command is one number
+                    # shared by every tech that points at it, so there is exactly
+                    # one pair here; reporting it costs nothing and the player
+                    # otherwise has to open the effects table to see the number.
+                    if _row.get("after") is not None:
+                        base["preview_values"] = {
+                            "distinct": 1,
+                            "field": _row.get("attribute_label") or _row.get("name"),
+                            "before": _shown_number(_row.get("before")),
+                            "after": _shown_number(_row.get("after")),
+                            "pairs": [{"field": _row.get("attribute_label")
+                                       or _row.get("name"),
+                                       "before": _shown_number(_row.get("before")),
+                                       "after": _shown_number(_row.get("after")),
+                                       "count": 1}],
+                        }
                 else:
                     # KEEP the count.  `_describe_tech_targets` reports how many
                     # places the field LIVES (`research_time` is one number per
@@ -3644,11 +4184,22 @@ class Toolkit(object):
                     # plan said `editable: True, changes_dat: True, 1 edit`,
                     # build raised.  The unit branch below has always used the
                     # collected count; this one now does the same.
-                    writes = len(list(C.collect_targets(
+                    _got = list(C.collect_targets(
                         self._raw, C._targets_for_tech(b, tech, idx), r, b,
-                        safety)))
+                        safety))
+                    writes = len(_got)
                     if writes != base.get("edit_count"):
                         base["edit_count"] = writes
+                    # Same "现在 → 改后" fact as the unit branch.  A tech with
+                    # several research locations stores one number per location
+                    # and they can differ, so this keeps the pair list rather
+                    # than picking one -- `_preview_values` reports the distinct
+                    # pairs and only collapses when there is exactly one.
+                    if writes:
+                        _pv = _preview_values(
+                            _got, resource=getattr(r, "resource", None))
+                        if _pv:
+                            base["preview_values"] = _pv
             # Same contract as the unit branch below: a plan must not promise
             # work the build then refuses.  "Change Loom's food cost" is 0
             # edits -- Loom costs gold -- and the user has to be told that here,
@@ -3739,16 +4290,24 @@ class Toolkit(object):
         # raw class entry that actually deals the damage) writes two slots per
         # record, and `collect_targets` returns both, so mirrors stay counted.
         writes = 0
-        mirrors = 0
+        collected = []
         for h, tg in per_hit:
             got = C.collect_targets(self._raw, tg, r, b, safety)
             writes += len(got)
-            mirrors += sum(1 for t in got[0:] if False)
+            collected.extend(got)
         mirrors = sum(1 for _, tg in per_hit for t in tg
                       if len(t) >= 5 and t[4] is not None)
         base.update({"civ_count": len({c for c, _, _ in live}),
                      "edit_count": writes,
                      "civs": sorted({c for c, _, _ in live})})
+        # What the numbers are now and what they become.  Only filled for an
+        # edit that will really write something: a refused plan's numbers would
+        # describe a change that is not going to happen.
+        if writes:
+            _pv = _preview_values(
+                collected, resource=getattr(r, "resource", None))
+            if _pv:
+                base["preview_values"] = _pv
         if mirrors:
             base["mirror_count"] = mirrors
         if not live:
@@ -3909,7 +4468,8 @@ class Toolkit(object):
             # the byte patcher's tail of the function (which reparses a .dat that
             # was never written).
             intents_schema, bindings = C.load_schema()
-            r = C.resolve(intent, intents_schema, bindings=bindings)
+            r = C.resolve(intent, intents_schema, bindings=bindings,
+                          semantic_index=self.index())
             # Which delivery model is a FIELD of this intent, not a property of
             # the strategy: 'rename' ships one .dat and no picture, 'copy' ships
             # pictures and no .dat.  Reading it only in `plan()` is exactly the
@@ -3925,13 +4485,15 @@ class Toolkit(object):
                                       thumbnail=thumbnail, overwrite=overwrite)
         if strategy == "new_unit":
             intents_schema, bindings = C.load_schema()
-            r = C.resolve(intent, intents_schema, bindings=bindings)
+            r = C.resolve(intent, intents_schema, bindings=bindings,
+                          semantic_index=self.index())
             return self._build_new_unit(r, out_dir, title=title, author=author,
                                         description=description,
                                         thumbnail=thumbnail, overwrite=overwrite)
         if strategy == "new_tech":
             intents_schema, bindings = C.load_schema()
-            r = C.resolve(intent, intents_schema, bindings=bindings)
+            r = C.resolve(intent, intents_schema, bindings=bindings,
+                          semantic_index=self.index())
             return self._build_new_tech(r, out_dir, title=title, author=author,
                                         description=description,
                                         thumbnail=thumbnail, overwrite=overwrite)
@@ -3941,13 +4503,15 @@ class Toolkit(object):
             # already exists -- so it is its own strategy rather than a `mode`
             # of `unit.sprite`.
             intents_schema, bindings = C.load_schema()
-            r = C.resolve(intent, intents_schema, bindings=bindings)
+            r = C.resolve(intent, intents_schema, bindings=bindings,
+                          semantic_index=self.index())
             return self._build_paint(r, out_dir, title=title, author=author,
                                      description=description,
                                      thumbnail=thumbnail, overwrite=overwrite)
         if strategy == "linked_techs_json":
             intents_schema, bindings = C.load_schema()
-            r = C.resolve(intent, intents_schema, bindings=bindings)
+            r = C.resolve(intent, intents_schema, bindings=bindings,
+                          semantic_index=self.index())
             return self._build_toggle_group(r, out_dir, title=title,
                                             author=author,
                                             description=description,
@@ -3955,18 +4519,29 @@ class Toolkit(object):
                                             overwrite=overwrite)
         if strategy == "objreplacement_json":
             intents_schema, bindings = C.load_schema()
-            r = C.resolve(intent, intents_schema, bindings=bindings)
+            r = C.resolve(intent, intents_schema, bindings=bindings,
+                          semantic_index=self.index())
             return self._build_objreplace(r, out_dir, title=title,
                                           author=author,
                                           description=description,
                                           thumbnail=thumbnail,
                                           overwrite=overwrite)
+        if strategy == "card_move":
+            intents_schema, bindings = C.load_schema()
+            r = C.resolve(intent, intents_schema, bindings=bindings,
+                          semantic_index=self.index())
+            return self._build_card_move(r, out_dir, title=title,
+                                         author=author,
+                                         description=description,
+                                         thumbnail=thumbnail,
+                                         overwrite=overwrite)
         if strategy != "in_place_patch":
             raise C.IntentError(
                 "「%s」声明了编译策略 %r，这个版本不构建它。"
                 % (intent.get("intent"), strategy))
         rep = C.compile_intent(self.dat_path, intent, parsed=self._parsed,
-                               stats=self._stats, game_root=self.game_root)
+                               stats=self._stats, game_root=self.game_root,
+                               ix=self.index())
         patched = C.apply_edits(self._raw, rep["edits"])
 
         info = E.make_info(title or rep["resolved"], author=author,
@@ -4005,6 +4580,17 @@ class Toolkit(object):
         # a test reading man["edit_count"] died with a KeyError).
         man["edit_count"] = len(rep["edits"])
         man["civs_edited"] = rep["civs_edited"]
+        # The field's own endpoints, carried out of the compiler rather than
+        # re-derived by the caller.  The native engine reports `before` and
+        # `value` on every build (`desktop/aoe2mod-serve/src/stat_edit.rs:461`)
+        # and the shipped exe now runs THIS engine, so a caller that asked "what
+        # was it, what is it now" got None for both and printed
+        # `None->None`.  `rep["edits"]` is already in hand here, so this costs
+        # nothing; recompiling in the HTTP layer to recover the same two numbers
+        # was measured at 17 s per call on 2026-10-31.
+        if rep["edits"]:
+            man["before"] = rep["edits"][0].before
+            man["value"] = rep["edits"][0].after
         # A CLASS edit has no entity id and a scope the preview quotes, so the
         # build has to hand back the same keys -- a caller comparing plan
         # against build found `member_count` missing here while the preview
@@ -4140,7 +4726,7 @@ class Toolkit(object):
         """
         names = {}
         try:
-            ix = semantic.index()
+            ix = self.index()
             for uid in list(ix.units):
                 e = ix.get("unit", uid)
                 if e is not None and e.display:
@@ -4294,6 +4880,210 @@ class Toolkit(object):
         ]
         return man
 
+    # ---- command card: move a unit to another box -----------------------
+    def _card_move_args(self, r):
+        """``(unit, builder, button, civ_index)`` for a ``unit.card_move``.
+
+        All four come from the resolved intent, but `civ` needs translating:
+        the sentence says `British` and the `.dat` civ list is found by FILE
+        STEM (`BRITONS`), so `_civ_index` does the same comparison the
+        availability path uses.  Reusing it matters -- six civs have two
+        different names and an ordinal lookup lands on the wrong record.
+        """
+        raw = r.raw
+        unit = int(raw["unit"])
+        builder = int(raw["builder"] if raw.get("builder") is not None
+                      else raw["building"])
+        button = int(raw["button"] if raw.get("button") is not None
+                     else raw["box"])
+        civ_index = self._civ_index(raw["civ"])
+        return unit, builder, button, civ_index
+
+    def _plan_card_move(self, r, base):
+        """Preview a box move without writing a byte.
+
+        The preview runs the SAME ``card.move`` the build runs, on a scratch
+        copy of the stream, because the interesting answer is not "one byte
+        changes" -- it is WHICH byte and WHOSE box moves the other way.  A box
+        that already holds a unit swaps rather than overwrites, so the real
+        edit count is 1 or 2 and a preview that always says 1 is wrong half the
+        time.
+
+        Read-only by construction: `move` is handed a `bytearray` copy, and the
+        toolkit's own `_raw` is `bytes`.
+        """
+        from .dat import card as CARD
+        from .game import cardview as CV
+        self._ensure()
+        unit, builder, button, civ_index = self._card_move_args(r)
+        names = self._unit_names()
+        slots, from_file = CV.card_slots(self.game_root)
+        base["shape"] = "card_move"
+        base["writes"] = E.DAT_REL.replace(os.sep, "/")
+        base["changes_dat"] = True
+        base["mod_contains_dat"] = True
+        base["unit"] = unit
+        base["unit_name"] = names.get(unit) or str(unit)
+        base["building"] = builder
+        base["building_name"] = names.get(builder) or str(builder)
+        base["box"] = button
+        base["slots"] = slots
+        base["slots_from_file"] = from_file
+        base["civ"] = r.civ
+        base["civ_index"] = civ_index
+        if not (0 <= button < slots):
+            base["editable"] = False
+            base["edit_count"] = 0
+            base["reason"] = ("格子号 %d 超出 0..%d；命令面板只画 %d 格（布局见 "
+                              "widgetui/commandpanel.json）"
+                              % (button, slots - 1, slots))
+            base["description"] = base["reason"]
+            return base
+        try:
+            rep = CARD.move(bytearray(self._raw), self._parsed[3],
+                            self._parsed[2], civ_index, unit, builder, button,
+                            civs=self._civs)
+        except CARD.CardError as exc:
+            base["editable"] = False
+            base["edit_count"] = 0
+            base["reason"] = str(exc)
+            base["description"] = str(exc)
+            return base
+        moved = [{"unit": u, "from": a, "to": b} for (u, a, b) in rep["moved"]]
+        swapped = [{"unit": u, "from": a, "to": b} for (u, a, b) in rep["swapped"]]
+        base["editable"] = True
+        base["moved"] = moved
+        base["swapped"] = swapped
+        base["edit_count"] = max(1, len(moved) + len(swapped))
+        # The sentence names both ends: "民兵 从第 1 格 → 第 5 格", plus the
+        # unit that was displaced.  Reporting only the edit count would leave a
+        # player unable to tell a move from a swap.
+        desc = "%s 从第 %s 格 → 第 %d 格" % (
+            base["unit_name"],
+            "?" if not moved or moved[0]["from"] is None else moved[0]["from"],
+            button)
+        if swapped:
+            desc += "，第 %d 格原来的「%s」换到第 %s 格" % (
+                button, names.get(swapped[0]["unit"]) or str(swapped[0]["unit"]),
+                swapped[0]["to"])
+        base["description"] = desc
+        base["notes"] = [
+            "只改 .dat 里那一个格号字节，单位记录的长度不变",
+            "格子号是按文明分的：这条只对「%s」生效" % (r.civ,),
+        ]
+        if not from_file:
+            base["notes"].append(
+                "没读到 widgetui/commandpanel.json，格子数按兜底的 %d 算" % slots)
+        return base
+
+    def _build_card_move(self, r, out_dir, title=None, author="",
+                         description="", thumbnail=None, overwrite=False):
+        """Write the box move as a data mod and prove it by re-reading the disk.
+
+        Three claims have to survive: only the intended bytes changed, the
+        emitted `.dat` inflates and re-parses to the end, and reading the card
+        back from the bytes ON DISK puts the unit in the new box.  The last one
+        is the only one a player cares about, and it is the one an in-memory
+        check would fake -- `_entry`'s docstring records the exact bug this
+        guards: an offset that wrote into the Sound stage, leaving `before: 255`
+        and a card that still drew box 1.
+        """
+        from .dat import card as CARD
+        from .game import cardview as CV
+        self._ensure()
+        unit, builder, button, civ_index = self._card_move_args(r)
+        names = self._unit_names()
+        slots, from_file = CV.card_slots(self.game_root)
+        if not (0 <= button < slots):
+            raise C.IntentError("格子号 %d 超出 0..%d；命令面板只画 %d 格"
+                                % (button, slots - 1, slots))
+        try:
+            rep = CARD.move(bytearray(self._raw), self._parsed[3],
+                            self._parsed[2], civ_index, unit, builder, button,
+                            civs=self._civs)
+        except CARD.CardError as exc:
+            raise C.IntentError(str(exc))
+        # `CARD.move` edits a scratch buffer and hands back what it moved; the
+        # bytes themselves come from the same `set_button` calls applied to a
+        # copy here.  Run it TWICE and compare: a preview and a write that
+        # disagree would mean the offset arithmetic is not a function of the
+        # input, and shipping one of the two answers would be a guess.
+        buf = bytearray(self._raw)
+        moved2 = CARD.move(buf, self._parsed[3], self._parsed[2], civ_index,
+                           unit, builder, button, civs=self._civs)
+        if moved2 != rep:
+            raise C.IntentError(
+                "挪格子的两次计算不一致（预览 %r，落盘 %r），这份文件不能用"
+                % (rep, moved2))
+        patched = bytes(buf)
+        if len(patched) != len(self._raw):
+            raise C.IntentError(
+                "挪格子后文件长度变了（%d -> %d）；这一步只该改一个字节，"
+                "长度变化说明写到了别处" % (len(self._raw), len(patched)))
+        changed = sum(1 for a, b in zip(self._raw, patched) if a != b)
+        unit_name = names.get(unit) or str(unit)
+        info = E.make_info(title or "命令面板 %s" % unit_name,
+                           author=author, description=description)
+        man = E.emit_data_mod(out_dir, patched, info, thumbnail=thumbnail,
+                              base_dir=self.game_root, overwrite=overwrite)
+
+        # --- verification, from the file on disk ---------------------------
+        raw2, how2 = P.load_dat(man["dat"])
+        p2 = P.Parser(raw2)
+        with contextlib.redirect_stdout(io.StringIO()):
+            p2.parse()
+        man["reloaded_with"] = how2
+        man["reparse_leftover"] = len(raw2) - p2.r.pos
+        man["reparse_ok"] = p2.r.pos == len(raw2)
+        civs2, civs_start2, gv2, _tail2 = L.locate(raw2, parser=p2)
+        # Read the card back out of the EMITTED stream, not out of the buffer
+        # that was written: same reason as everywhere else in this file.
+        back = {r2["unit"]: r2["button"]
+                for r2 in CARD.card(civs2, civ_index, builder)}
+        man["shape"] = "card_move"
+        man["writes"] = E.DAT_REL.replace(os.sep, "/")
+        man["changes_dat"] = True
+        man["mod_contains_dat"] = True
+        man["building"] = builder
+        man["unit"] = unit
+        man["box"] = button
+        man["slots"] = slots
+        man["slots_from_file"] = from_file
+        man["civ"] = r.civ
+        man["moved"] = [{"unit": u, "from": a, "to": b}
+                        for (u, a, b) in rep["moved"]]
+        man["swapped"] = [{"unit": u, "from": a, "to": b}
+                          for (u, a, b) in rep["swapped"]]
+        man["edit_count"] = max(1, len(rep["moved"]) + len(rep["swapped"]))
+        man["bytes_changed"] = changed
+        man["box_on_disk"] = back.get(unit)
+        man["verification"] = {
+            "ok": bool(man["reparse_ok"] and back.get(unit) == button
+                       and changed == man["edit_count"]),
+            "proven": [
+                "the emitted .dat inflates and re-parses to its own end",
+                "the unit reads back on the target box from the bytes on disk",
+                "exactly %d byte(s) differ from the shipped stream" % changed,
+                "every other unit's box is unchanged",
+            ],
+            "proven_by": ["_probe/test_card_move.py"],
+            "not_proven": [
+                "that the game draws the button in its new box: no run has "
+                "opened a game to look (the byte, the re-parse and the read-back "
+                "are what was measured)",
+            ],
+            "limits": [],
+        }
+        man["notes"] = [
+            "只改 .dat 里那一个格号字节，单位记录的长度不变",
+            "格子号是按文明分的：这条只对「%s」生效" % (r.civ,),
+        ]
+        try:
+            self._remember(man, [r.raw])
+        except Exception:                             # noqa: BLE001
+            pass
+        return man
+
     def _split_by_strategy(self, resolved_list):
         """One resolved list -> ``(in_place_patch, civtechtrees_json, loose_files)``.
 
@@ -4312,12 +5102,20 @@ class Toolkit(object):
         An undeclared strategy still raises: quietly dropping a sentence would
         produce a mod that does less than it says.
         """
-        dat, js, sld, paint, new, linked, tech, repl = \
-            [], [], [], [], [], [], [], []
+        dat, js, sld, paint, new, linked, tech, repl, cards = \
+            [], [], [], [], [], [], [], [], []
         for r in resolved_list:
             s = self._strategy(r.raw)
             if s == "in_place_patch":
                 dat.append(r)
+            elif s == "card_move":
+                # Its own bucket, and it MUST be its own: a box move is in-place
+                # (no byte is added or removed) but it is not a value patch --
+                # `C.compile_bundle` addresses fields through the intent schema's
+                # bindings, and `unit.card_move` has no `stat`/`delta` to bind.
+                # Letting it fall through to `in_place_patch` made a two-sentence
+                # bundle die inside the patcher instead of moving a button.
+                cards.append(r)
             elif s == "civtechtrees_json":
                 js.append(r)
             elif s == "loose_files":
@@ -4361,7 +5159,7 @@ class Toolkit(object):
                 raise C.IntentError(
                     "「%s」声明了编译策略 %r，这个版本的 bundle 路径不构建它。"
                     % (r.raw.get("intent"), s))
-        return dat, js, sld, paint, new, linked, tech, repl
+        return dat, js, sld, paint, new, linked, tech, repl, cards
 
     def _split_reskin_modes(self, sld_list):
         """Split reskin sentences by DELIVERY MODEL: ``(copy, rename)``.
@@ -4857,7 +5655,8 @@ class Toolkit(object):
         # build Huskarls" be one request instead of two mods where the engine
         # loads only the higher-priority one.
         dat_list, js_list, sld_list, paint_list, new_list, linked_list, \
-            tech_list, repl_list = self._split_by_strategy(resolved_list)
+            tech_list, repl_list, card_list = self._split_by_strategy(
+                resolved_list)
 
         # The group sentences get the same dry run the other buckets get, through
         # the SAME accumulating function the build calls -- so "the preview said
@@ -5210,7 +6009,7 @@ class Toolkit(object):
         intents_schema, bindings = C.load_schema()
         resolved_list = C.resolve_bundle(intents, intents_schema, bindings=bindings)
         dat_list, js_list, sld_list, paint_list, new_list, linked_list, \
-            tech_list, repl_list = self._split_by_strategy(resolved_list)
+            tech_list, repl_list, card_list = self._split_by_strategy(resolved_list)
 
         data, civs, _cs, gv, tail, how = self._parsed
         json_files = {}
@@ -5323,13 +6122,70 @@ class Toolkit(object):
             civs_edited = 0
             overlaps = {}
 
+        # The card-move sentences: in-place like the byte patcher -- nothing is
+        # appended, one box byte changes -- so they fold here, on the stream the
+        # patcher produced, before anything that grows the file.  They keep their
+        # own bucket because `C.compile_bundle` binds fields through the schema's
+        # `stat`/`delta`, and a box move has neither.
+        card_reps = []
+        if card_list:
+            from .dat import card as CARD
+            from .game import cardview as CV
+            _base = patched
+            for r in card_list:
+                try:
+                    _unit, _builder, _button, _ci = self._card_move_args(r)
+                    _slots, _from_file = CV.card_slots(self.game_root)
+                    if not (0 <= _button < _slots):
+                        raise C.IntentError(
+                            "格子号 %d 超出 0..%d；命令面板只画 %d 格"
+                            % (_button, _slots - 1, _slots))
+                    _rep = CARD.move(bytearray(_base), self._parsed[3],
+                                     self._parsed[2], _ci, _unit, _builder,
+                                     _button, civs=self._civs)
+                except (CARD.CardError, C.IntentError) as exc:
+                    card_reps.append({"resolved": r.describe(), "ok": False,
+                                      "reason": str(exc)})
+                    continue
+                _buf = bytearray(_base)
+                CARD.move(_buf, self._parsed[3], self._parsed[2], _ci, _unit,
+                          _builder, _button, civs=self._civs)
+                if len(_buf) != len(_base):
+                    card_reps.append({
+                        "resolved": r.describe(), "ok": False,
+                        "reason": "挪格子后文件长度变了（%d -> %d）"
+                                  % (len(_base), len(_buf))})
+                    continue
+                _base = bytes(_buf)
+                card_reps.append({"resolved": r.describe(), "ok": True,
+                                  "unit": _unit, "building": _builder,
+                                  "box": _button, "slots": _slots,
+                                  "slots_from_file": _from_file,
+                                  "civ": r.civ,
+                                  "moved": [{"unit": u, "from": a, "to": b}
+                                            for (u, a, b) in _rep["moved"]],
+                                  "swapped": [{"unit": u, "from": a, "to": b}
+                                              for (u, a, b) in _rep["swapped"]],
+                                  "edit_count": max(1, len(_rep["moved"])
+                                                    + len(_rep["swapped"]))})
+            if any(x.get("ok") for x in card_reps):
+                patched = _base
+                if not dat_list:
+                    # No byte patch, but the card move DID change bytes: the mod
+                    # has to carry the .dat or the move goes nowhere.
+                    dat_bytes = patched
+
         # The availability sentences' own `.dat` half, folded onto the stream the
         # byte patcher produced.  Before this existed a bundle applied two layers of
         # a grant and shipped a `.dat` identical to the base while reporting
         # `changes_dat: True` from an unrelated sentence -- measured in
         # `_probe/probe_bundle_dat_half.py`.
         halves, refusals = self._declared_dat_halves(resolved_list, self._trees())
-        dat_bytes = patched if dat_list else None
+        # `patched` already carries the card-move bytes when there were any, so
+        # the question is not "did a byte patch run" but "does the stream this
+        # bundle will ship differ from the base at all".  Only the former would
+        # drop a card-move-only bundle's .dat on the floor.
+        dat_bytes = patched if (dat_list or card_list) else None
         dat_half_reps = []
         if halves:
             folded, dat_half_reps, _gv2 = self._fold_dat_halves(halves, patched)
@@ -5521,6 +6377,36 @@ class Toolkit(object):
                               base_dir=self.game_root, overwrite=overwrite,
                               json_files=json_files or None)
         man["resolved"] = [r.describe() for r in resolved_list]
+        # Card moves report the same facts the single-sentence path reports, and
+        # one of them is only knowable HERE: `dat_bytes` is the stream the mod
+        # will actually ship, so reading the box back out of it is the only way
+        # to prove a move survived the other sentences in the same bundle.
+        if card_list:
+            man["card_moves"] = card_reps
+            man["card_move_refusals"] = [
+                {"description": x.get("resolved"), "reason": x.get("reason")}
+                for x in card_reps if not x.get("ok")]
+            _okmoves = [x for x in card_reps if x.get("ok")]
+            man["card_move_edit_count"] = sum(
+                int(x.get("edit_count") or 0) for x in _okmoves)
+            if man.get("dat") and _okmoves:
+                raw2, _how2 = P.load_dat(man["dat"])
+                p2 = P.Parser(raw2)
+                with contextlib.redirect_stdout(io.StringIO()):
+                    p2.parse()
+                _civs2, _cs2, _gv2, _tail2 = L.locate(raw2, parser=p2)
+                _back_ok = True
+                for x in _okmoves:
+                    from .dat import card as _CARD
+                    _cards2 = {r2["unit"]: r2["button"]
+                               for r2 in _CARD.card(
+                                   _civs2, self._civ_index(x["civ"]),
+                                   x["building"])}
+                    x["box_on_disk"] = _cards2.get(x["unit"])
+                    if _cards2.get(x["unit"]) != x["box"]:
+                        _back_ok = False
+                man["card_move_verified"] = bool(
+                    _back_ok and p2.r.pos == len(raw2))
         # A bundle is the path the screen actually uses -- the page always posts
         # a list, even for one sentence -- so the width the preview promised has
         # to be here too.  Measured 2026-10-25: `build_bundle` of 「所有平民血量
@@ -5916,6 +6802,257 @@ class Toolkit(object):
                 "carried": carried, "notes": notes, "manifest": man,
                 "installed": installed}
 
+    # ------------------------------------------------------------------
+    # One-click upgrade: carry a mod's edits onto TODAY'S official `.dat`
+    # ------------------------------------------------------------------
+    #
+    # `repair_*` above answers a narrower question than the one players ask
+    # after a patch.  It expresses what a mod changed as the handful of intents
+    # the intent layer knows, so a mod that added a unit, replaced an effect or
+    # moved an icon has nothing to replay into and comes back `manual` -- "list
+    # it honestly, do not pretend".  That is the right answer for a patch
+    # patcher, and the wrong answer for the player, who then redoes 20 mods by
+    # hand.
+    #
+    # `aoe2mod/mod/upgrade.py` asks the same question one level lower: what BYTES
+    # did the author move, and what SYMBOLIC ADDRESS did each one live at
+    # (`(civ, unit, field)`, `(tech, field)`, `(effect, "#3.b")`, `(table, ID,
+    # field)`).  That covers adds, removes, effect commands, graphics and record
+    # replacements, and it survives a patch that shifts every offset in the file
+    # -- which is the actual failure a patch causes.
+
+    def archive_official(self, game_root=None):
+        """File the game's CURRENT `.dat` into the version archive.
+
+        This has to run BEFORE the patch, not after: once the game updates, the
+        build the installed mods were made from exists nowhere on disk, and with
+        no base there is no way to tell "the author moved this byte" from
+        "the official data moved it".  Calling it on every page load is what
+        makes the archive fill itself without asking the player for anything
+        (measured 0.120 s to store, 0.039 s when it is already there).
+        """
+        from .mod import archives as AR
+        try:
+            entry = AR.note_official(game_root or self.game_root)
+        except Exception as exc:                        # noqa: BLE001
+            return {"ok": False, "why_not": "%s: %s"
+                    % (type(exc).__name__, exc)}
+        ix = AR.load_index()
+        return {"ok": True, "noted": entry,
+                "count": len(ix.get("entries") or {}),
+                "archive": AR.archive_dir(),
+                "describe": AR.describe()}
+
+    def _upgrade_targets(self, profile_root, name=None, limit=40):
+        """Installed mods that ship their own `.dat`, as upgrade candidates."""
+        from .game import locations as G
+        from .mod import archives as AR
+        out = []
+        for row in G.list_mods(profile_root):
+            if not row.get("exists"):
+                continue
+            if name and row.get("name") != name:
+                continue
+            dat = os.path.join(row["path"], AR.DAT_REL)
+            if not os.path.isfile(dat):
+                continue
+            row = dict(row)
+            row["dat"] = dat
+            out.append(row)
+            if limit and len(out) >= int(limit):
+                break
+        return out
+
+    def upgrade_check(self, name=None, profile_root=None, limit=40,
+                      base_dat=None, new_dat=None):
+        """Can each installed data mod be carried onto today's official `.dat`?
+
+        Read-only: nothing is rebuilt, installed or deleted.  Every row says one
+        of five verdicts plus the engine's own Chinese summary, so the panel
+        never has to re-word a result and drift away from what the CLI says.
+
+        Cost is why this is a button and not a page load.  A mod that is already
+        current short-circuits before any parsing (measured 0.58 s: inflate,
+        hash, compare).  A mod that really has to be merged pays one parse of the
+        new official stream, which the parse cache and the upgrade slot cache
+        turn into a load on later runs (1.32 s warm vs 4.37 s cold, 2026-11-09).
+        """
+        from .mod import upgrade as UP
+        from .game import locations as G
+        prof = profile_root or G.find_profile_root()
+        official = self.archive_official()
+        rows = []
+        for row in self._upgrade_targets(prof, name=name, limit=limit):
+            rec = {"name": row["name"],
+                   "title": row.get("title") or row["name"],
+                   "enabled": row.get("enabled"),
+                   "priority": row.get("priority"),
+                   "kind": row.get("kind"),
+                   "path": row["path"], "dat": row["dat"], "ok": False}
+            try:
+                rep = UP.analyze(mod_dat=row["dat"], base_dat=base_dat,
+                                 new_dat=new_dat, game_root=self.game_root)
+            except UP.UpgradeError as exc:
+                rec["verdict"] = UP.IMPOSSIBLE
+                rec["error"] = str(exc)
+                rec["summary"] = str(exc)
+                # Zeroes, not a missing key: every row has the same shape so a
+                # caller can print counts without asking whether this one was
+                # refused before it got that far.
+                rec["counts"] = {"edits": 0, "conflicts": 0, "units_added": 0,
+                                 "units_removed": 0, "units_replaced": 0,
+                                 "techs_added": 0, "techs_removed": 0,
+                                 "tables_added": 0, "tables_removed": 0,
+                                 "unmapped": 0}
+                rec["conflict_count"] = 0
+                rec["unmapped_count"] = 0
+                rec["notes"] = [str(exc)]
+                rec["seconds"] = None
+                rows.append(rec)
+                continue
+            except Exception as exc:                    # noqa: BLE001
+                # One unreadable mod must not hide the other nineteen: a list
+                # that stops at the first bad file is a list the player cannot
+                # act on.
+                rec["verdict"] = None
+                rec["error"] = "%s: %s" % (type(exc).__name__, exc)
+                rec["summary"] = "读不了这个模组：" + rec["error"]
+                rec["counts"] = {"edits": 0, "conflicts": 0, "units_added": 0,
+                                 "units_removed": 0, "units_replaced": 0,
+                                 "techs_added": 0, "techs_removed": 0,
+                                 "tables_added": 0, "tables_removed": 0,
+                                 "unmapped": 0}
+                rec["conflict_count"] = 0
+                rec["unmapped_count"] = 0
+                rec["notes"] = []
+                rec["seconds"] = None
+                rows.append(rec)
+                continue
+            rec.update({
+                "ok": True,
+                "verdict": rep["verdict"],
+                "counts": rep["counts"],
+                "seconds": rep.get("seconds"),
+                "mod": rep["mod"], "base": rep["base"], "new": rep["new"],
+                "summary": UP.describe(rep),
+                "notes": rep["notes"],
+                "conflict_count": len(rep["conflicts"]),
+                "unmapped_count": len(rep["unmapped"]),
+                # A capped count is a floor, and the page has to be able to say
+                # so; otherwise "2 处" reads as the complete inventory.
+                "capped": bool(rep.get("capped")),
+                "conflicts": rep["conflicts"][:8],
+                "unmapped": rep["unmapped"][:8],
+            })
+            rows.append(rec)
+        # Same split the page prints, computed once here so two surfaces cannot
+        # disagree about how many mods need work.
+        ready = [r for r in rows if r.get("verdict") in (UP.MERGEABLE,
+                                                         UP.CONFLICTS)]
+        rows.sort(key=lambda r: (r.get("verdict") not in (UP.MERGEABLE,
+                                                          UP.CONFLICTS),
+                                 r.get("title") or ""))
+        return {"ok": True, "profile_root": prof, "mods": rows,
+                "count": len(rows), "ready": len(ready),
+                "official": official}
+
+    def _upgrade_remember(self, rep, title):
+        """Record the rebuilt mod's origin, the same way `_remember` does.
+
+        Never raises: the mod is real and installable whether or not the record
+        file could be written.  What is lost when it fails is the ability to say
+        later whether the game moved under it, and "unknown" is the honest
+        answer -- so it is reported, not swallowed.
+        """
+        try:
+            entry = PV.entry_from_manifest(
+                rep.get("manifest") or {}, self.dat_path,
+                base_raw_sha256=(rep.get("new") or {}).get("sha256"),
+                intents=None,
+                target_version=(rep.get("new") or {}).get("ver"))
+            if title:
+                entry["title"] = title
+            entry["upgraded_at"] = PV.now_iso()
+            entry["upgraded_from_raw_sha256"] = (rep.get("mod") or {}).get(
+                "sha256")
+            entry["upgrade_counts"] = dict(rep.get("counts") or {})
+            entry["upgrade_official_wins"] = bool(rep.get("official_wins"))
+            PV.record(entry)
+            return {"title": entry["title"], "state_file": PV.state_path(),
+                    "base_version": entry["base_version"]}
+        except Exception as exc:                        # noqa: BLE001
+            return {"title": None, "state_file": None,
+                    "why_not": "%s: %s" % (type(exc).__name__, exc)}
+
+    def upgrade_apply(self, name=None, mod_dat=None, out_dir=None, title=None,
+                      base_dat=None, new_dat=None, install=True,
+                      profile_root=None, official_wins=False, force=False,
+                      limit=20000):
+        """Carry one mod's edits onto today's official `.dat`, then reinstall it.
+
+        The rebuilt folder carries over every non-`.dat` file the author shipped
+        (art, strings, UI json), because `install(overwrite=True)` deletes the
+        old folder first: a rebuilt folder holding only `info.json` + `.dat`
+        would come back with the numbers restored and the artwork gone.
+
+        ``force`` ships even when something could not be carried.  The default is
+        to refuse, because a mod that silently lost one of its own edits is worse
+        than one that was not rebuilt at all -- the player blames the game.
+        """
+        from .mod import upgrade as UP
+        from .game import locations as G
+        prof = profile_root or G.find_profile_root()
+
+        row = None
+        if mod_dat is None:
+            if not name:
+                raise C.IntentError(
+                    "要说清是哪个模组：给 name（模组列表里的名字），"
+                    "或者直接给 mod_dat（.dat 的路径）")
+            cands = self._upgrade_targets(prof, name=name, limit=1)
+            if not cands:
+                raise C.IntentError(
+                    "这个玩家的模组列表里没有叫「%s」的、自带 .dat 的模组"
+                    % name)
+            row = cands[0]
+            mod_dat = row["dat"]
+        else:
+            want = os.path.normcase(os.path.abspath(mod_dat))
+            for r in self._upgrade_targets(prof, limit=400):
+                if os.path.normcase(os.path.abspath(r["dat"])) == want:
+                    row = r
+                    break
+
+        if title is None:
+            title = (row.get("title") if row else None) or (
+                os.path.basename(os.path.dirname(os.path.dirname(
+                    os.path.dirname(os.path.dirname(
+                        os.path.dirname(mod_dat)))))) if mod_dat else None)
+
+        if not out_dir:
+            # NOT under game_root: that folder is the one the engine reads and
+            # whose CRCs get checked.  The install step copies out of here.
+            import tempfile as _tempfile
+            out_dir = _tempfile.mkdtemp(prefix="dsh_upgrade_")
+
+        self.archive_official()
+        rep = UP.upgrade(mod_dat=mod_dat, out_dir=out_dir, title=title,
+                         base_dat=base_dat, new_dat=new_dat,
+                         game_root=self.game_root, install=False,
+                         official_wins=official_wins, force=force,
+                         limit=limit)
+        rep["provenance"] = None
+        if rep.get("out"):
+            rep["provenance"] = self._upgrade_remember(rep, title)
+            if install:
+                rep["installed"] = self.install(
+                    rep["out"]["mod_dir"],
+                    name=(row or {}).get("name") or UP._safe_name(title),
+                    title=title, enabled=True,
+                    position=(row or {}).get("priority") or 0,
+                    profile_root=prof, overwrite=True)
+        return rep
+
     def update_check(self, profile_root=None, game_dat=None,
                      state_file=None):
         """Has the game's data moved since any installed mod was built?
@@ -6031,12 +7168,39 @@ class Toolkit(object):
         """
         from .game import locations as G
         prof = profile_root or G.find_profile_root()
-        folder, _how = G.resolve_mod_name(prof, name, kind=kind, account=account)
+        folder, kind, _how = G.resolve_mod_any(prof, name, kind=kind,
+                                               account=account)
         doc, acc, _p = G.read_status_doc(prof, account=account)
         _running = G.running_note()
         pos = G.move_mod_entry(doc, folder, delta, kind=kind)
         G.write_status_doc(acc, doc, backup=True)
-        return {"account": acc, "name": name, "kind": kind, "priority": pos,
+        return {"account": acc, "name": name, "kind": kind, "folder": folder,
+                "priority": pos,
+                "game_running": _running["game_running"],
+                "running_warning": _running["running_warning"]}
+
+    def move_mod_to(self, name, position, kind="local", profile_root=None,
+                    account=None):
+        """Drop an installed mod at one place in load order.
+
+        The arrows move one row; a drag says where the row should END UP, and
+        that can be ten places away.  Doing it as one edit means `mod-status.json`
+        is written once -- ten `move_mod` calls would rewrite it eleven times and
+        leave the file half-moved if one of them failed.
+
+        ``position`` is 1-based to match ``Priority``, because that is the number
+        the sheet shows: position 1 is the mod the engine reads first.
+        """
+        from .game import locations as G
+        prof = profile_root or G.find_profile_root()
+        folder, kind, _how = G.resolve_mod_any(prof, name, kind=kind,
+                                               account=account)
+        doc, acc, _p = G.read_status_doc(prof, account=account)
+        _running = G.running_note()
+        pos = G.move_mod_to_entry(doc, folder, int(position) - 1, kind=kind)
+        G.write_status_doc(acc, doc, backup=True)
+        return {"account": acc, "name": name, "kind": kind, "folder": folder,
+                "priority": pos,
                 "game_running": _running["game_running"],
                 "running_warning": _running["running_warning"]}
 
@@ -6109,11 +7273,20 @@ class Toolkit(object):
         return first
 
 
-def open_toolkit(game_root=None):
-    """Open the installed game (cached per root -- parsing takes seconds)."""
+def open_toolkit(game_root=None, dat_path=None):
+    """Open the installed game (cached per root -- parsing takes seconds).
+
+    ``dat_path`` selects WHICH ``.dat`` to edit, which is not always the
+    install's own: the game loads a mode's file when a mode is selected, and a
+    data mod's file while that mod is enabled.  Reported 2026-11-03: 「我要改
+    指定的dat」.  The cache key is therefore the pair, not the root alone --
+    keying by root alone would hand back a toolkit pointed at the previous file
+    and silently edit the wrong one.
+    """
     from .game import locations as G
     root = game_root or G.find_game_root()
-    key = os.path.abspath(root)
+    dat = dat_path or G.dat_path(root)
+    key = (os.path.abspath(root), os.path.normcase(os.path.abspath(dat)))
     if key not in _CACHE:
-        _CACHE[key] = Toolkit(root)
+        _CACHE[key] = Toolkit(root, dat_path=dat)
     return _CACHE[key]

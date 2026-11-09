@@ -62,6 +62,10 @@ if ROOT not in sys.path:
 HTML_PATH = os.path.join(ROOT, "aoe2mod", "ui", "static", "index.html")
 SERVER_PATH = os.path.join(ROOT, "aoe2mod", "ui", "server.py")
 
+# A handler that reads the whole query string accepts any key.  Used instead of
+# an empty set so "the page sends keys this route ignores" stays meaningful.
+WILDCARD = frozenset(["*"])
+
 FAILS = []
 
 
@@ -113,6 +117,23 @@ def page_bodies(html):
     return out
 
 
+def _app_method_body(src, name):
+    """The source of `App.<name>(...)`, from its `def` to the next same-indent `def`.
+
+    Needed because a route can hand the WHOLE payload to a method on the app
+    (`return self._guard(lambda: app.ai_script_build(payload))`) and read nothing
+    itself.  Reading only the route body then reports every key the page sends as
+    ignored -- three false failures on 2026-11-01, all of them on routes that are
+    nothing but a forward.
+    """
+    m = re.search(r"(?m)^    def %s\(self" % re.escape(name), src)
+    if not m:
+        return ""
+    rest = src[m.end():]
+    end = re.search(r"(?m)^    def ", rest)
+    return rest[:end.start()] if end else rest
+
+
 def server_reads(src):
     """{route: (required, optional)} for every POST handler.
 
@@ -133,8 +154,17 @@ def server_reads(src):
         if not m:
             continue
         head = part[m.end():]
-        required = set(re.findall(r'payload\[\s*"([A-Za-z_]+)"\s*\]', head))
-        optional = set(re.findall(r'payload\.get\(\s*"([A-Za-z_]+)"', head))
+        required = set(re.findall(r'payload\[\s*"([A-Za-z_][A-Za-z0-9_]*)"\s*\]', head))
+        optional = set(re.findall(r'payload\.get\(\s*"([A-Za-z_][A-Za-z0-9_]*)"', head))
+        if not required and not optional:
+            # A pure forward: follow it to the method that does the reading.
+            fwd = re.search(r"app\.([a-z_]+)\(payload\)", head)
+            if fwd:
+                body = _app_method_body(src, fwd.group(1))
+                required |= set(re.findall(
+                    r'payload\[\s*"([A-Za-z_][A-Za-z0-9_]*)"\s*\]', body))
+                optional |= set(re.findall(
+                    r'payload\.get\(\s*"([A-Za-z_][A-Za-z0-9_]*)"', body))
         out[m.group(1)] = (required, optional)
     return out
 
@@ -169,6 +199,22 @@ def page_queries(html):
     # the opposite of the contract this file states.
     for m in re.finditer(r'api\("(/api/[a-z\-]+)"\)', html):
         plain.add(m.group(1))
+    # A URL assembled in two steps -- `const q = civ ? ("?civ=" + ...) : "";
+    # api("/api/techtree" + q)` -- keeps the route name and the query in
+    # different statements, so the scan above sees a route with no query at all
+    # and the "route with no callers" check then calls it forgotten.  The tree
+    # view asks for it on every civilization change.  Read the shape and take
+    # the keys from the same file, so a renamed key still shows up as stray.
+    for m in re.finditer(r'api\("(/api/[a-z\-]+)"\s*\+\s*(\w+)\)', html):
+        route, var = m.group(1), m.group(2)
+        # The keys are in the statement that builds that variable, not in the
+        # file at large: taking them from everywhere credited the tree with
+        # sixteen keys that belong to `/api/browse`, `/api/icon` and friends.
+        built = re.search(r'const %s = [^;]*;' % re.escape(var), html)
+        if not built:
+            continue
+        keys = set(re.findall(r'"[?&]([A-Za-z_]+)="', built.group(0)))
+        out.setdefault(route, set()).update(keys)
     return out, plain
 
 
@@ -193,6 +239,13 @@ def server_queries(src):
             continue
         head = part[m.end():]
         keys = set(re.findall(r'\.get\(\s*"([A-Za-z_]+)"', head))
+        if not keys and "_query(self.path)" in head:
+            # The handler takes the WHOLE query string (`_query(self.path)` and
+            # then iterates it, as `/api/diag` does: it stores whatever the page
+            # reports about its own viewport, so the key list is the page's to
+            # decide).  Saying "reads no key" here made the contract report every
+            # key the page sent as ignored.  A wildcard is the honest answer.
+            keys = WILDCARD
         if keys:
             out[m.group(1)] = keys
     return out
@@ -246,7 +299,8 @@ def main():
               route in qread, sorted(qread))
         if route not in qread:
             continue
-        stray = sorted(ask[route] - qread[route])
+        _reads = qread[route]
+        stray = [] if WILDCARD <= _reads else sorted(ask[route] - _reads)
         check("%s reads every query key the page sends" % route, not stray,
               "ignored: %s" % stray)
 
@@ -265,7 +319,24 @@ def main():
     # the page asks for it).  Both are real capabilities with no button, which is
     # exactly the state this whole file exists to keep visible.
     no_screen_get = {"search": "superseded by /api/browse",
-                     "emblem": "no screen shows a civilization emblem yet"}
+                     "emblem": "no screen shows a civilization emblem yet",
+                     # `/api/civ` was added to the Python engine so the shipped
+                     # exe would stop being WORSE than the native one it
+                     # replaced (the native engine had it; the page never asked).
+                     # Nothing on the screen reads a civilization tree yet, and
+                     # that is a real gap, not a forgotten button: the tree
+                     # reaches the user through `谁能造X`, which is answered
+                     # server-side.
+                     "civ": "the trees reach the screen through the who-can "
+                            "answer, not through a browser of their own",
+                     # The page moved to `/api/upgrade-check` (2026-11-09): that
+                     # one answers for third-party mods with no build record and
+                     # is the path that can carry an added unit or a moved
+                     # effect.  `/api/repair-check` is still the narrower
+                     # question and still served, so it stays declared rather
+                     # than deleted.
+                     "repair-check": "superseded by /api/upgrade-check, kept as "
+                                     "the narrower question"}
     called = set(ask) | ask_plain
     uncalled = sorted(r for r in qread if r not in called)
     unexplained_get = [r for r in uncalled if r.rsplit("/", 1)[-1] not in no_screen_get]
@@ -276,15 +347,35 @@ def main():
     # it, deleting the second pass would leave this file green while
     # `/api/repair-check` silently fell back into "no caller".
     check("a route the page calls with no query at all is counted as called",
-          "/api/repair-check" in ask_plain, sorted(ask_plain))
+          "/api/progress" in ask_plain, sorted(ask_plain))
 
     # ---- the routes with no screen must be named, not forgotten ---------
     # `/api/plan` and `/api/search` are used by `tools/` and by hand, and
     # `/api/uninstall` has no button yet.  Listing them here is the difference
     # between "no screen yet" and "someone forgot the button".
     no_screen = {"uninstall": "no button on the page yet",
+                 "repair-apply": "same reason as repair-check: the page now "
+                                 "goes through /api/upgrade-apply",
                  "plan": "the page reads previews out of /api/parse",
-                 "search": "the page browses by picture instead"}
+                 "search": "the page browses by picture instead",
+                 # These four exist for the same reason as `/api/civ`: the
+                 # native engine had them and the page never called them, so
+                 # dropping them would have made the shipped exe worse than what
+                 # it replaced.  Two are the field-editor's and the effect
+                 # editor's: the editors call `/api/field-set` and
+                 # `/api/effect-set`, which are the write paths, while
+                 # `/api/session-info` (GET and POST) and
+                 # `/api/session-intents` are what a probe reads to prove a
+                 # preview did not touch the session.  `/api/stat` and
+                 # `/api/sprite` are the native contracts the sentence path
+                 # already covers.
+                 "session-info": "read by probes, and the page uses the GET "
+                                 "form at index.html:3010",
+                 "session-intents": "the probe-facing view of pending edits",
+                 "stat": "native contract; the page goes through /api/build",
+                 "sprite": "native contract; the page goes through /api/build",
+                 "toggle-group": "native contract; the page goes through "
+                                 "/api/build"}
     unsent = sorted(r for r in read if r not in sent)
     unexpected = [r for r in unsent if r.rsplit("/", 1)[-1] not in no_screen]
     check("every POST route the page never calls is a declared decision",

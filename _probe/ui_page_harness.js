@@ -24,7 +24,7 @@ const src = m[1];
 function node(tag) {
   const n = {
     tagName: (tag || "div").toUpperCase(),
-    className: "", textContent: "", innerHTML: "", style: {},
+    className: "", innerHTML: "", style: {},
     children: [], value: "", disabled: false, onclick: null, title: "",
     parentNode: null,
     // The form panel labels each control with the slot it fills (`data-slot`),
@@ -45,6 +45,12 @@ function node(tag) {
       if (k === "data-slot") { this.dataset.slot = v; return; }
       if (k === "placeholder") { this.placeholder = v; return; }
       this.attrs[k] = v;
+    },
+    // The pager clears a tooltip when the two counts agree.  Without this the
+    // fake DOM would report a page that every browser runs fine.
+    removeAttribute(k) {
+      this.attrs = this.attrs || {};
+      delete this.attrs[k];
     },
     appendChild(c) {
       c.parentNode = this;
@@ -78,7 +84,43 @@ function node(tag) {
     // a function` while every browser was fine -- the fake DOM was the defect.
     classList: null,   // wired below, because it needs `this` to be the node
 
-    addEventListener() {},
+    // The page moved off HTML5 drag and onto pointer events (the desktop host
+    // owns the webview's drop target and swallows `dragstart`), so a no-op
+    // `addEventListener` would make every pointer assertion below vacuous.
+    // Handlers are kept per type and fired by the harness through `fire`.
+    _ev: null,
+    // The pointer gesture asks "which row is under this point" by walking up from
+    // the node a real `elementFromPoint` returned.  A stand-in without `closest`
+    // would make every hit test throw, and the throw would read as a page defect.
+    closest(sel) {
+      const parts = String(sel).trim().split(/\s+/);
+      const last = parts[parts.length - 1];
+      const hit = (n) => {
+        if (last.charAt(0) === ".") {
+          return (n.className || "").split(/\s+/).indexOf(last.slice(1)) >= 0;
+        }
+        if (last.charAt(0) === "#") {
+          return n.id === last.slice(1) || ids[last.slice(1)] === n;
+        }
+        return true;
+      };
+      let n = this;
+      while (n) { if (hit(n)) return n; n = n.parentNode; }
+      return null;
+    },
+    addEventListener(type, fn) {
+      if (!this._ev) this._ev = {};
+      (this._ev[type] = this._ev[type] || []).push(fn);
+    },
+    removeEventListener(type, fn) {
+      if (!this._ev || !this._ev[type]) return;
+      this._ev[type] = this._ev[type].filter((f) => f !== fn);
+    },
+    fire(type, ev) {
+      const list = (this._ev && this._ev[type]) || [];
+      list.slice().forEach((f) => f(ev || {}));
+      return list.length;
+    },
     // Enough of the real DOM for the page's own "replace, do not stack" logic:
     // find the first descendant with a class, and detach a child.
     querySelector(sel) {
@@ -96,6 +138,34 @@ function node(tag) {
       const at = p.children.indexOf(this);
       if (at >= 0) p.children.splice(at, 1);
       this.parentNode = null;
+    },
+    // The other half of `remove()`: the parent detaches a child it holds.  The
+    // page uses it to take back its own placeholder (`_reading`) once `/api/meta`
+    // answers, because clearing the whole `#preview` there was measured to wipe
+    // a card the player had already parsed.  A stub without it reported
+    // `_reading.parentNode.removeChild is not a function` while every browser
+    // was fine -- the fake DOM being wrong again.
+    removeChild(c) {
+      const at = this.children.indexOf(c);
+      if (at >= 0) this.children.splice(at, 1);
+      if (c) c.parentNode = null;
+      return c;
+    },
+    // Class selectors only, and descendants only -- that is all the page asks
+    // for (`drawPager` counts `.edrow`).  Added when the pager started counting
+    // rows: without it the harness died with `querySelectorAll is not a
+    // function` while every browser was fine, which is the fake DOM being wrong.
+    querySelectorAll(sel) {
+      const want = String(sel).replace(/^\./, "");
+      const out = [];
+      const walk = (n) => {
+        for (const c of n.children || []) {
+          if ((c.className || "").split(/\s+/).indexOf(want) >= 0) out.push(c);
+          walk(c);
+        }
+      };
+      walk(this);
+      return out;
     },
     get firstChild() { return this.children[0] || null; },
   };
@@ -128,11 +198,73 @@ function node(tag) {
     get() { return html; },
     set(v) { html = String(v); if (html === "") n.children.length = 0; },
   });
+  // `textContent` is an accessor in the real DOM too, and writing it replaces
+  // every child with one text node.  The page leans on that to empty a list
+  // before filling it (`box.textContent = ""`); a plain field kept the old rows,
+  // so the second fill drew eight rows where a browser shows four and the
+  // duplicate read as a page that forgot to clear.  `innerHTML` already did
+  // this -- `textContent` was the other half of the same rule.
+  let _text = "";
+  Object.defineProperty(n, "textContent", {
+    get() { return _text; },
+    set(v) {
+      _text = (v === null || v === undefined) ? "" : String(v);
+      n.children.length = 0;
+    },
+    enumerable: true,
+    configurable: true,
+  });
   return n;
 }
 const ids = {};
+// The page adds `dragging-row` to `document.body` for the length of a gesture
+// (it changes the cursor for the whole window), so the stand-in needs a body.
+let DOC_HIT = null;
 const document = {
+  body: node("body"),
   createElement: node,
+  // The tech-tree legend puts the label beside a colour swatch with
+  // `createTextNode`, because `textContent` on the span would replace the
+  // swatch it just appended.  A stub without this crashed the whole script
+  // at load time -- every check in the file then reported the same TypeError.
+  createTextNode(text) {
+    const n = node("#text");
+    n.textContent = String(text);
+    return n;
+  },
+  // The page reaches for two things by id: `#railbar` (it inserts its own
+  // "which file" row before it on a re-render) and a preview row it names
+  // itself (`ufx-note-<tech>-<command>`).  A stub without this crashed the whole
+  // boot path the moment the fixture carried a `dat` block, which reads as
+  // "the page is broken" rather than "the stand-in is".
+  // The pointer drag listens on the DOCUMENT with capture, because the pointer
+  // leaves the row on the first pixel of the gesture.  A stand-in that dropped
+  // those listeners would test a page nobody can ship -- the same class of defect
+  // as the missing `textContent` setter.
+  _ev: null,
+  addEventListener(type, fn) {
+    if (!this._ev) this._ev = {};
+    (this._ev[type] = this._ev[type] || []).push(fn);
+  },
+  removeEventListener(type, fn) {
+    if (!this._ev || !this._ev[type]) return;
+    this._ev[type] = this._ev[type].filter((f) => f !== fn);
+  },
+  fire(type, ev) {
+    const list = (this._ev && this._ev[type]) || [];
+    return Promise.all(list.slice().map((f) => f(ev || {})));
+  },
+  // `document.elementFromPoint` is how the page decides which row the pointer is
+  // over.  A headless run has no layout, so the harness sets the answer for the
+  // length of one gesture -- and resets it, so a check that leaks cannot pass.
+  elementFromPoint(x, y) {
+    return (typeof DOC_HIT === "function") ? DOC_HIT(x, y) : null;
+  },
+  getElementById(id) {
+    const k = String(id);
+    if (!ids[k]) ids[k] = node(k);
+    return ids[k];
+  },
   querySelector(sel) {
     const key = sel.replace(/^#/, "");
     if (!ids[key]) ids[key] = node(sel);
@@ -381,8 +513,8 @@ const BROWSE = {
 // fixture nobody can scan is a fixture nobody checks.
 const LOCALE = {ok: true, locale: "zh", strings: {
   "page.heading": "帝国时代 2 DE · 模组工坊",
-  "page.version": "数据版本 {version}",
-  "page.ready": "{civs} 个文明 · 已就绪",
+  "page.version": "游戏版本 {version}",
+  "page.ready": "{civs} 个文明",
   "btn.parse": "读一下",
   "btn.build": "生成并安装",
   "mods.heading": "已安装的模组",
@@ -501,25 +633,38 @@ let DROPPED = [];
 // `verification.ok` true and the page rendered none of them.
 let BUILD_WARNINGS = [];
 
-// What /api/repair-check answers: four installed mods that ship their own .dat,
+// What /api/upgrade-check answers: four installed mods that ship their own .dat,
 // one per verdict that can be acted on or must be refused.  The page's job is to
-// say which of them this tool can fix and to offer the button ONLY on those --
-// a stub where every row looked fixable would let a page that drew the button
-// unconditionally pass, and the player would be offered a rebuild for a
-// cross-generation mod that cannot be rebuilt.
-let REPAIR_ANSWER = {
-  ok: true, count: 4, mods: [
-    { name: "dsh test v46", title: "村民血量一组", verdict: "auto", enabled: true,
-      summary: "可以自动修：5 处数值改动（单位 5 / 科技 0）" },
-    { name: "167396_Red Alert 2 MOD", title: "Red Alert 2", verdict: "manual",
-      enabled: true,
-      summary: "只能部分自动修：555 处数值可以重放；45 个新单位、39 个新科技要重建" },
+// say which of them this tool can carry forward and to offer the button ONLY on
+// those -- a stub where every row looked migratable would let a page that drew
+// the button unconditionally pass, and the player would be offered an upgrade
+// for a mod from a data generation we never archived.
+//
+// The shapes are the route's own (`aoe2mod/ui/server.py:7202`): `verdict`,
+// `counts.edits`, `conflict_count`, `unmapped_count`, `summary`, `notes`.  A
+// stub that answered the OLD route (`/api/repair-check`, verdicts
+// `auto/manual/impossible`) left this harness green while the page asked a
+// question nobody answered -- 2026-11-09.
+let UPGRADE_ANSWER = {
+  ok: true, count: 4,
+  official: { ok: true, count: 12 },
+  mods: [
+    { name: "dsh test v46", title: "村民血量一组", verdict: "mergeable",
+      enabled: true, counts: { edits: 5 }, conflict_count: 0, unmapped_count: 0,
+      summary: "作者的 5 处改动都能搬到新版上。", notes: [] },
+    { name: "167396_Red Alert 2 MOD", title: "Red Alert 2", verdict: "conflicts",
+      enabled: true, counts: { edits: 555 }, conflict_count: 2,
+      unmapped_count: 0,
+      summary: "作者的改动搬得过去，但官方也动了其中 2 处。", notes: [] },
     { name: "10 倍资源", title: "10 倍资源文明联盟3倍科技", verdict: "impossible",
-      enabled: true, summary: "不能自动修：不是偏移挪了位，是数据格式换代了" },
-    { name: "dsh test v61", title: "自己的图标", verdict: "identical",
-      enabled: true, summary: "这份 .dat 和游戏现在的一样，不用修" },
-    { name: "some ui mod", title: "纯 UI 模组", verdict: "no_dat", enabled: true,
-      summary: "没量出来：这一个不带数据文件" },
+      enabled: true, counts: { edits: 0 }, conflict_count: 0,
+      unmapped_count: 0,
+      summary: "这一版搬不过去：它的记录布局和存档的那几版都不一样。",
+      notes: [] },
+    { name: "dsh test v61", title: "自己的图标", verdict: "up_to_date",
+      enabled: true, counts: { edits: 0 }, conflict_count: 0,
+      unmapped_count: 0,
+      summary: "这份 .dat 已经是新版了，不用动。", notes: [] },
   ],
 };
 const repairedNow = [];
@@ -551,13 +696,18 @@ const removed = [];
 let MODS = [
   { name: "dsh mine", title: "dsh 我的数据模组", enabled: true, kind: "local",
     priority: 3, ships_dat: true, dat_rank: 1, dat_competing: 1,
-    role: "data", paired_with: "dsh 我的数据模组（界面）" },
+    role: "data", paired_with: "dsh 我的数据模组（界面）",
+    author: "aoe2mod", description: "生命值 单位「SVMBAS」：25 → 137",
+    thumb: "thumbnail.png", exists: true },
   { name: "dsh mine（界面）", title: "dsh 我的数据模组（界面）", enabled: true,
     kind: "local", priority: 4, ships_dat: false, dat_rank: null,
-    dat_competing: 1, role: "ui", paired_with: "dsh 我的数据模组" },
+    dat_competing: 1, role: "ui", paired_with: "dsh 我的数据模组",
+    author: "aoe2mod", description: "", thumb: "thumbnail.jpg", exists: true },
   { name: "someone else", title: "别人做的 UI 模组", enabled: true,
     kind: "subscribed", priority: 9, ships_dat: false, dat_rank: null,
-    dat_competing: 1, role: null, paired_with: null },
+    dat_competing: 1, role: null, paired_with: null,
+    author: "", description: "Content comes from the community.",
+    thumb: "", exists: true },
 ];
 
 // What /api/meta answers for the 能做的事 box.  One shipped intent (reachable by
@@ -570,6 +720,22 @@ const META_INTENTS = [
   { id: "unit.stat", title: "改数值", by_sentence: true },
   { id: "unit.set_stat", title: "把一项属性设成某个值（插件示例）",
     by_sentence: false },
+];
+
+// What /api/dat-sources answers.  Three scopes, deliberately in an order the
+// page must not keep: `mod-b` sorts before `Game` alphabetically, so a stub in
+// path order would let a page that never sorted look correct.  `mod-a` is the
+// one being edited AND the one the game reads; `mod-b` is enabled and loses;
+// `mode` has no format (a user pointed at something that is not a .dat).
+const DATS = [
+  { path: "C:/x/dat/empires2_x2_p1.dat", scope: "mod", mod: "mod-a",
+    label: "mod-a", format: 54, supported: true, current: true, head: "VER 8.9" },
+  { path: "C:/x/modes/x/empires2_x2_p1.dat", scope: "mode", mod: null,
+    label: "modes/x", format: 54, supported: true, current: false, head: "VER 8.9" },
+  { path: "C:/x/mod-b/widgetui/junk.dat", scope: "mod", mod: "mod-b",
+    label: "mod-b", format: null, supported: false, current: false, head: "" },
+  { path: "C:/games/AoE2DE/dat/empires2_x2_p1.dat", scope: "game", mod: null,
+    label: "游戏本体", format: 54, supported: true, current: false, head: "VER 8.9" },
 ];
 
 // What the parse route answers.  Most sections want the two-edit answer; the
@@ -669,8 +835,14 @@ const sandbox = {
       // level) pass here and fail on screen.
       return { json: async () => ({ ok: true, update: UPDATE_ANSWER }) };
     }
-    if (url.indexOf("/api/repair-check") === 0) {
-      return { json: async () => REPAIR_ANSWER };
+    // The route the page asks (`/api/upgrade-check`).  The old
+    // `/api/repair-check` is still served, so it is answered too -- but with the
+    // upgrade shape, because that is what the box reads now: answering it with
+    // the retired shape would make a page that went back to the old route look
+    // right here and wrong on screen.
+    if (url.indexOf("/api/upgrade-check") === 0
+        || url.indexOf("/api/repair-check") === 0) {
+      return { json: async () => UPGRADE_ANSWER };
     }
     // The AI entry.  Note the answer carries no intent, no plan and no bytes --
     // only the sentences a model would have written.  If a future page tried to
@@ -686,18 +858,21 @@ const sandbox = {
         sentences: ["村民血量改成 1000", "弓箭手攻击力加 2"],
       } }) };
     }
-    if (url.indexOf("/api/repair-apply") === 0) {
+    if (url.indexOf("/api/upgrade-apply") === 0
+        || url.indexOf("/api/repair-apply") === 0) {
       const body = opt && opt.body ? JSON.parse(opt.body) : {};
       repairedNow.push(body.name);
-      // A repair reinstalls, so it carries the same game-running answer as
-      // install/rebuild.  After a successful repair the row must read as
-      // nothing-left-to-do, because the whole claim is "same intents, same base
-      // data, same bytes" -- if the page kept showing 可以自动修, the user would
+      // An upgrade reinstalls, so it carries the same game-running answer as
+      // install/rebuild.  After a successful upgrade the row must read as
+      // nothing-left-to-do, because the whole claim is "same edits, same base
+      // data, same bytes" -- if the page kept showing 能一键适配, the user would
       // click again.
-      REPAIR_ANSWER = {
-        ok: true, count: 1, mods: [
-          { name: "dsh test v46", title: "村民血量一组", verdict: "identical",
-            enabled: true, summary: "这份 .dat 和游戏现在的一样，不用修" },
+      UPGRADE_ANSWER = {
+        ok: true, count: 1, official: { ok: true, count: 12 }, mods: [
+          { name: "dsh test v46", title: "村民血量一组", verdict: "up_to_date",
+            enabled: true, counts: { edits: 0 }, conflict_count: 0,
+            unmapped_count: 0, summary: "这份 .dat 已经是新版了，不用动。",
+            notes: [] },
         ],
       };
       return { json: async () => ({ ok: true, manifest: {}, installed: {
@@ -734,6 +909,34 @@ const sandbox = {
     // game-running warning the page must not throw away.  A stub without
     // `running_warning` would make "toggling while the game runs says so"
     // untestable -- the page would read `undefined` and look fine.
+    // The mods screen's data-file picker.  `/api/dat-set` is answered with the
+    // new meta so the page can redraw the "which file" line from the same
+    // request -- that is what the real route does.
+    if (url.indexOf("/api/dat-sources") === 0) {
+      return { json: async () => ({ ok: true, current: DATS[0].path,
+                                    sources: DATS }) };
+    }
+    if (url.indexOf("/api/dat-set") === 0) {
+      const body = posted[posted.length - 1].body || {};
+      for (const d of DATS) d.current = (d.path === body.path);
+      return { json: async () => ({ ok: true, changed: true, dropped: 0 }) };
+    }
+    // Dragging a row to a new place.  The body carries `position` (1-based);
+    // the answer is the whole reordered list, which is what the page redraws.
+    // The stub has to really reorder: a page that posted the right body but
+    // drew a stale list would look correct here and be wrong on screen.
+    if (url.indexOf("/api/mod-move-to") === 0) {
+      const body = posted[posted.length - 1].body || {};
+      const at = MODS.findIndex((m) => m.name === body.name);
+      if (at >= 0) {
+        const item = MODS.splice(at, 1)[0];
+        const want = Math.max(0, Math.min(body.position - 1, MODS.length));
+        MODS.splice(want, 0, item);
+      }
+      return { json: async () => ({ ok: true, mods: MODS,
+        game_running: RUNNING,
+        running_warning: RUNNING ? RUNNING_TEXT : null }) };
+    }
     if (url.indexOf("/api/mod") === 0) {
       return { json: async () => ({ ok: true, mods: MODS,
         game_running: RUNNING,
@@ -751,8 +954,16 @@ const sandbox = {
         game_running: RUNNING,
         running_warning: RUNNING ? RUNNING_TEXT : null }) };
     }
+    // `dat` and `dat_loads` are what the data-file picker and the "which file"
+    // line read.  The winner here is deliberately NOT the file being edited:
+    // when those two are the same file the page can print one label and still
+    // be wrong about the other, and nothing would notice.
     return { json: async () => ({ ok: true, version: 54, civs: new Array(63),
-      intents: META_INTENTS, mods: [], manifest: { mod_dir: "/tmp/x", info: {} } }) };
+      intents: META_INTENTS, mods: [], manifest: { mod_dir: "/tmp/x", info: {} },
+      dat: { path: DATS[2].path, scope: "mod", label: "mod-a", mod: "mod-a",
+             head: "VER 8.9", supported: true },
+      dat_loads: { reads: "other", competing: 2,
+                   winner: { name: "mod-b", title: "mod-b wins", priority: 6 } } }) };
   },
   setTimeout: () => 0, clearTimeout: () => {},
   console,
@@ -768,7 +979,8 @@ const fn = new Function(
   "checkUpdates: checkUpdates, rebuildAll: rebuildAll, " +
   "checkRepairs: checkRepairs, REPAIR: () => REPAIR_ANSWER, " +
   "aiBoot: aiBoot, doAI: doAI, " +
-  "renderMods: renderMods, " +
+  "renderMods: renderMods, setModsView: setModsView, MODSVIEW: () => MODSVIEW, " +
+  "loadDatPicker: loadDatPicker, " +
   "renderIntentList: renderIntentList, " +
   "loadForms: loadForms, renderShapes: renderShapes, " +
   "formValues: formValues, renderFormPreview: renderFormPreview, " +
@@ -1226,6 +1438,269 @@ function modsChecks() {
         String(walk(ids.mods, []).filter(
           (n) => n.className === "switch" || n.className === "switch on").length));
 
+  // ---- the two views ---------------------------------------------------
+  // A card is a different SHELL for the same rows, and the counter above is
+  // `className === "mod"`.  If the card branch had written `"mod card"` every
+  // check in this block would have counted zero rows and passed by measuring
+  // nothing -- which is the exact failure this family of assertions exists for.
+  page.renderMods(MODS);
+  page.setModsView("card");
+  const cards = (ids.mods.children || []).filter((n) => n.className === "mod");
+  check("the card view draws the same one-`mod`-per-row",
+        cards.length === 3, String(cards.length));
+  check("...and puts the mode on the container, never on the row",
+        ids.mods.classList.contains("cards") && cards[0].className === "mod",
+        ids.mods.className + " / " + (cards[0] || {}).className);
+  const inCards = walk(ids.mods, []);
+  const pics = inCards.filter((n) => n.className === "thumb");
+  const none = inCards.filter((n) => n.className === "nothumb");
+  check("a mod that ships a picture draws one, and one that does not says so",
+        pics.length === 2 && none.length === 1,
+        pics.length + " pictures, " + none.length + " placeholders");
+  check("the picture is fetched from the route that serves it",
+        pics.length === 2 && pics.every((p) => String(p.src || "").indexOf("/api/mod-thumb?name=") === 0),
+        pics.map((p) => p.src).join(","));
+  const cardText = text(ids.mods);
+  check("the description is printed as the author wrote it",
+        cardText.indexOf("生命值 单位「SVMBAS」：25 → 137") >= 0, cardText);
+  check("a mod with no description says that instead of drawing a blank line",
+        cardText.indexOf("这个模组没有写简介。") >= 0, cardText);
+  check("the author is named",
+        cardText.indexOf("作者 aoe2mod") >= 0, cardText);
+  const cardCtl = inCards.filter(
+    (n) => n.className === "move" || n.className === "remove"
+          || (n.className || "").indexOf("switch") === 0).length;
+  page.setModsView("list");
+  const listCtl = walk(ids.mods, []).filter(
+    (n) => n.className === "move" || n.className === "remove"
+          || (n.className || "").indexOf("switch") === 0).length;
+  check("every control the row had is still there in the card",
+        cardCtl === listCtl && cardCtl > 0, cardCtl + " vs " + listCtl);
+  check("switching back to the list takes the card shell off",
+        !ids.mods.classList.contains("cards")
+        && walk(ids.mods, []).filter((n) => n.className === "thumb").length === 0,
+        ids.mods.className);
+
+  // ---- dragging a row to a new place -----------------------------------
+  // Load order IS the conflict order: the first data mod wins a fight over the
+  // same bytes.  Two arrows move one position per press, which is 17 presses to
+  // go from last to first in this machine's 18 mods.  A drag says where.
+  //
+  // `draggable` is FALSE on purpose: the desktop host owns the webview's drop
+  // target, so an HTML5 drag is consumed before the page sees it, and asking the
+  // browser for one is how a row comes to look clickable and do nothing.
+  const dragRows = (ids.mods.children || []).filter((n) => n.className === "mod");
+  placeRows(dragRows);
+  check("every row answers the pointer, not the HTML5 drag",
+        dragRows.length === 3 && dragRows.every((r) => r.draggable === false),
+        dragRows.map((r) => String(r.draggable)).join(","));
+  check("and carries a pointerdown handler for it",
+        dragRows.every((r) => r._ev && (r._ev.pointerdown || []).length === 1),
+        dragRows.map((r) => String((r._ev && (r._ev.pointerdown || []).length))).join(","));
+  // A drag from the last row onto the FIRST row's top half; the position that
+  // must travel is 1, and the body must say `position`, never `delta`.
+  const before = posted.length;
+  return pointerDrag(dragRows, 2, 0, "top", () => {
+    check("hovering while carrying marks the row the drop would land on",
+          dragRows[0].classList.contains("dragover")
+          && !dragRows[1].classList.contains("dragover"),
+          dragRows.map((r) => r.className).join(" / "));
+    check("and the row being carried is marked too",
+          dragRows[2].classList.contains("dragging"),
+          dragRows[2].className);
+  }).then(() => {
+    const sent = posted[posted.length - 1] || {};
+    check("the drop posts a target position, not a delta",
+          String(sent.url || "").indexOf("/api/mod-move-to") === 0
+          && (sent.body || {}).position === 1
+          && (sent.body || {}).delta === undefined,
+          JSON.stringify(sent));
+    check("the row that was dragged is the one named",
+          (sent.body || {}).name === "someone else", JSON.stringify(sent.body));
+    const after = (ids.mods.children || []).filter((n) => n.className === "mod");
+    check("and the list comes back in the new order",
+          text(after[0]).indexOf("别人做的 UI 模组") === 0,
+          after.map((n) => text(n).slice(0, 6)).join(" | "));
+    check("the highlight came off with the drop",
+          (ids.mods.children || []).filter(
+            (n) => (n.className || "").indexOf("dragover") >= 0).length === 0,
+          (ids.mods.children || []).map((n) => n.className).join(" / "));
+    check("the count of posts grew by exactly one", posted.length === before + 1,
+          String(posted.length - before));
+    return datPickerChecks();
+  });
+
+}
+
+// Which .dat, on the mods screen.  The picker lived in the editor's tab bar and
+// only filled on view entry, which is why the same request arrived twice.
+function datPickerChecks() {
+  page.renderMods(MODS);
+  return Promise.resolve(page.loadDatPicker(true)).then(() => {
+    const rows = (ids["dp-list"].children || [])
+      .filter((n) => String(n.className).indexOf("dprow") >= 0);
+    check("the mods screen lists every data file the game could load",
+          rows.length === 4, String(rows.length));
+    // The fixture is listed mod, mode, mod, game: alphabetical order would put
+    // `mod-b` first.  A page that never sorted still draws four rows.
+    const scopes = rows.map((r) => {
+      const cells = (r.children || []).filter(
+        (c) => String(c.className).indexOf("dpscope") >= 0);
+      return cells.length ? text(cells[0]) : "?";
+    });
+    check("game first, then mode, then mod -- not alphabetical",
+          scopes.join(",") === "游戏本体,模式,模组,模组", scopes.join(","));
+    check("the file being edited says so exactly once",
+          rows.filter((r) => text(r).indexOf("正在改") >= 0).length === 1,
+          rows.map((r) => text(r)).join(" | "));
+    check("...and it does not offer to switch to itself",
+          rows.filter((r) => text(r).indexOf("正在改") >= 0)
+            .every((r) => !(r.children || []).some(
+              (c) => String(c.className).indexOf("chip") >= 0)),
+          "a 改这一份 button on the current file");
+    // "Being edited" and "the game reads it" are different questions: five
+    // enabled data mods compete and the highest priority wins.  The row used to
+    // answer the second one with a「游戏现在读的是它」badge; asked to remove it
+    // (2026-11-07,「这个不需要，去掉吧」), so the ROW no longer says it and the
+    // header above the list still does.  Both halves are worth pinning: a silent
+    // return of the badge would put fifteen labels back on fifteen rows.
+    check("no row says which file the game reads",
+          rows.every((r) => text(r).indexOf("游戏现在读的是它") < 0),
+          rows.map((r) => text(r)).join(" | "));
+    check("...the header above the list still does",
+          text(ids["dp-note"]).indexOf("优先级最高的是") >= 0,
+          text(ids["dp-note"]));
+    check("a file whose format cannot be read says so instead of a number",
+          rows.some((r) => text(r).indexOf("格式读不出来") >= 0),
+          rows.map((r) => text(r)).join(" | "));
+    const note = text(ids["dp-note"]);
+    check("the header says which file wins when several mods are enabled",
+          note.indexOf("优先级最高的是") >= 0, note);
+    const before = posted.filter((p) => p.url.indexOf("/api/dat-set") === 0)
+                         .length;
+    const go = rows.filter((r) => (r.children || []).some(
+      (c) => String(c.className).indexOf("chip") >= 0))[0];
+    const btn = (go.children || []).filter(
+      (c) => String(c.className).indexOf("chip") >= 0)[0];
+    return Promise.resolve(btn.onclick()).then(() => {
+      const sent = posted.filter((p) => p.url.indexOf("/api/dat-set") === 0);
+      check("改这一份 really switches the session",
+            sent.length === before + 1,
+            String(sent.length - before));
+      check("...by path, not by label",
+            (sent[sent.length - 1].body || {}).path === DATS[3].path,
+            JSON.stringify(sent[sent.length - 1].body));
+      const now = (ids["dp-list"].children || [])
+        .filter((n) => String(n.className).indexOf("dprow") >= 0);
+      // The list is sorted game-first, so the file just switched to is row 0 --
+      // asserting "the last row is marked" would fail on a correct page.
+      check("...and the list redraws with the new file marked",
+            now.filter((r) => text(r).indexOf("正在改") >= 0).length === 1
+            && text(now[0]).indexOf("正在改") >= 0,
+            now.map((r) => text(r)).join(" | "));
+      return dragDownChecks();
+    });
+  }).catch((e) => {
+    fails.push("the data-file picker threw: " + e.message);
+    console.log("FAIL the data-file picker threw :: " + e.stack);
+    return dragDownChecks();
+  });
+}
+
+// Rows have no layout in a stub, so `getBoundingClientRect` has to be given
+// one.  Without it the page reads every drop as "on the near half" and the
+// half-of-the-row rule is never exercised -- the check would pass whichever
+// branch the page happened to have.
+function placeRows(rows) {
+  rows.forEach((r, i) => {
+    r.getBoundingClientRect = () => ({top: i * 30, left: 0,
+                                      width: 300, height: 30, bottom: i * 30 + 30});
+  });
+}
+
+// One whole mouse gesture, exactly the way the page hears it: press on a row,
+// move the pointer (the page listens on the DOCUMENT, capture, because the
+// pointer leaves the row on the first pixel), release.  `half` is "top" or
+// "bottom" of the row it is over.
+//
+// This replaced a two-line `ondragstart`/`ondrop` pair.  The pair was green on a
+// page that could not be dragged at all: the shipped window's host owns the
+// webview's drop target and swallows HTML5 drag before the page sees it, so the
+// stand-in was testing a code path no user could reach.
+function pointerDrag(rows, fromAt, ontoAt, half, during) {
+  const from = rows[fromAt];
+  const onto = rows[ontoAt];
+  const startY = fromAt * 30 + 15;
+  const y = ontoAt * 30 + (half === "bottom" ? 25 : 5);
+  DOC_HIT = () => onto;
+  const down = (n) => n.fire("pointerdown", {
+    button: 0, clientX: 10, clientY: startY, target: n,
+    preventDefault() {}, stopPropagation() {}});
+  check("pressing a row starts a gesture", down(from) === 1,
+        String(down(from)));
+  return document.fire("pointermove", {clientX: 10, clientY: y,
+                                       preventDefault() {}}).then(() => {
+    // The highlight lives for the length of the gesture and comes off with the
+    // drop, so anything that asks about it has to look HERE -- between the move
+    // and the release.  Looking afterwards reported "no row is marked" about a
+    // row that had been marked the whole time.
+    if (during) during();
+    DOC_HIT = null;
+    return document.fire("pointerup", {clientX: 10, clientY: y,
+                                       preventDefault() {}});
+  });
+}
+
+// The row is taken OUT before it is put back, so every slot after it shifts
+// down one.  Without that subtraction a drop one row down is a no-op and a drop
+// on itself moves one row -- both look like "the mouse is unreliable".
+function dragDownChecks() {
+  page.renderMods(MODS);
+  const rows = (ids.mods.children || []).filter((n) => n.className === "mod");
+  placeRows(rows);
+  const head = text(rows[0]).slice(0, 6);
+  const second = text(rows[1]).slice(0, 6);
+  // Row 0 dropped on row 1's TOP half means "put it just before row 1" -- which
+  // is where it already is.  After the removal shift the target is index 0
+  // again, so nothing may be sent.  (The BOTTOM half is a real one-row swap,
+  // and that case is exercised by the two-row drop below.)
+  const before = posted.length;
+  return pointerDrag(rows, 0, 1, "top").then(() => {
+    check("a drop that lands where the row already is sends nothing",
+          posted.length === before, String(posted.length - before));
+    // The same drag onto row 2's bottom half really moves it past two rows.
+    page.renderMods(MODS);
+    const rows2 = (ids.mods.children || []).filter((n) => n.className === "mod");
+    placeRows(rows2);
+    return pointerDrag(rows2, 0, 2, "bottom");
+  }).then(() => {
+    const sent = posted[posted.length - 1] || {};
+    check("a drop past two rows asks for the third place",
+          (sent.body || {}).position === 3, JSON.stringify(sent.body));
+    const now = (ids.mods.children || []).filter((n) => n.className === "mod");
+    check("and the row that was first is now third",
+          text(now[2]).slice(0, 6) === head && text(now[0]).slice(0, 6) === second,
+          now.map((n) => text(n).slice(0, 6)).join(" | "));
+    // Cards are the same rows with a different shell: a card that cannot be
+    // dragged would make the mode the player asked for the one that cannot
+    // reorder anything.
+    page.renderMods(MODS);
+    page.setModsView("card");
+    const cards = (ids.mods.children || []).filter((n) => n.className === "mod");
+    placeRows(cards);
+    check("a card answers the pointer too",
+          cards.length === 3
+          && cards.every((r) => r._ev && (r._ev.pointerdown || []).length === 1),
+          cards.map((r) => String((r._ev && (r._ev.pointerdown || []).length))).join(","));
+    page.setModsView("list");
+    return toggleChecks();
+  });
+}
+
+// The switch's own checks.  These used to sit after a `return` inside
+// `modsChecks`, where nothing reached them: the harness still exited 0 and its
+// summary line simply never printed.
+function toggleChecks() {
   page.renderMods(MODS);
   // Toggling while the game runs is the case where the list on screen and the
   // list the game will use can differ.  The server computes the warning; the page
@@ -1623,40 +2098,52 @@ function repairChecks() {
   return page.checkRepairs().then(() => {
     const box = ids.repair;
     const flat = text(box);
-    // The count comes first: twenty rows with no "3 of them can be fixed here"
-    // makes the player read all twenty to find out.
-    check("the repair box says how many it can actually fix",
-          flat.indexOf("4 个") >= 0 && flat.indexOf("1 个能在这里修好") >= 0, flat);
-    check("an auto row offers the button",
+    // The count comes first: twenty rows with no "2 of them can be carried
+    // forward here" makes the player read all twenty to find out.
+    check("the upgrade box says how many it can carry forward",
+          flat.indexOf("自带数据文件的模组 4 个") >= 0
+            && flat.indexOf("能一键适配 2 个") >= 0, flat);
+    // The archive line is the reason the tool can answer at all: without it the
+    // only thing it could say is "this file differs from the shipped one".
+    check("and says where the baseline came from",
+          flat.indexOf("官方这一版的数据已经存档") >= 0
+            && flat.indexOf("档案里共 12 份") >= 0, flat);
+    // `conflicts` is actionable too -- one click "keep mine" -- so two buttons,
+    // not one.  A page that only offered it on `mergeable` would silently drop
+    // the mods the official patch happened to touch.
+    check("both actionable rows offer the button",
           walk(box, []).filter((n) => n.className === "chip"
-            && text(n) === "修好它").length === 1,
-          JSON.stringify(walk(box, []).map((n) => text(n)).slice(0, 12)));
-    // A cross-generation mod cannot be rebuilt, and a rebuild attempt would
+            && text(n) === "适配新版本").length === 2,
+          JSON.stringify(walk(box, []).map((n) => text(n)).slice(0, 14)));
+    // A cross-generation mod cannot be carried forward, and an attempt would
     // produce a mod that silently is not the author's.  No button on that row.
-    check("a row that cannot be fixed offers no button",
+    check("a row that cannot be carried forward offers no button",
           walk(box, []).filter((n) => text(n).indexOf("10 倍资源文明联盟3倍科技") >= 0
-            && n.children.some((c) => text(c) === "修好它")).length === 0,
+            && n.children.some((c) => text(c) === "适配新版本")).length === 0,
           flat);
     check("the verdict is printed in Chinese, not as the file's spelling",
-          flat.indexOf("可以自动修") >= 0 && flat.indexOf("impossible") < 0,
+          flat.indexOf("能一键适配") >= 0 && flat.indexOf("这一版搬不过去") >= 0
+            && flat.indexOf("impossible") < 0 && flat.indexOf("mergeable") < 0,
           flat);
     const btn = walk(box, []).find((n) => n.className === "chip"
-      && text(n) === "修好它");
+      && text(n) === "适配新版本");
     RUNNING = true;
     return btn ? btn.onclick({ target: btn }) : null;
   }).then(() => {
-    check("the repair posts the installed mod's own folder name",
+    check("the upgrade posts the installed mod's own folder name",
           repairedNow.length === 1 && repairedNow[0] === "dsh test v46",
           JSON.stringify(repairedNow));
-    check("a repair says the game is open too",
+    check("a upgrade says the game is open too",
           text(ids.toast).indexOf("游戏正开着") >= 0, text(ids.toast));
-    // Re-asked, not assumed: the row has to read 不用修 afterwards.  Asserting
-    // the toast would pass even if the rebuild produced a different .dat.
-    check("the row reads as nothing-left-to-do after the repair",
-          text(ids.repair).indexOf("不用修") >= 0, text(ids.repair));
+    // Re-asked, not assumed: the row has to read 本来就是新版 afterwards.
+    // Asserting the toast would pass even if the merge produced a different
+    // .dat -- the toast is a claim about the request, the row is a claim about
+    // the answer.
+    check("the row reads as nothing-left-to-do after the upgrade",
+          text(ids.repair).indexOf("本来就是新版") >= 0, text(ids.repair));
     check("and no button is left on it",
           walk(ids.repair, []).filter((n) => n.className === "chip"
-            && text(n) === "修好它").length === 0, text(ids.repair));
+            && text(n) === "适配新版本").length === 0, text(ids.repair));
     RUNNING = false;
     return intentListChecks();
   }).catch((e) => { fails.push("the repair box threw: " + e.message);
@@ -1703,7 +2190,7 @@ function localeChecks() {
     const h = taggedNode("h2", "say.heading", "旧的一句话");
     const ph = taggedNode("input", "pick.search", "", "data-i18n-ph");
     ph.setAttribute("placeholder", "旧提示");
-    const templ = taggedNode("span", "page.version", "数据版本 54");
+    const templ = taggedNode("span", "page.version", "游戏版本 54");
     page.applyLocale();
     check("the table's wording replaces the inline copy",
           h.textContent === "你想要什么改动？用中文说就行",
@@ -1712,7 +2199,7 @@ function localeChecks() {
           ph.getAttribute("placeholder") === "在这个列表里找…",
           JSON.stringify(ph.getAttribute("placeholder")));
     check("a string with a placeholder is left to the code that fills it",
-          templ.textContent === "数据版本 54",
+          templ.textContent === "游戏版本 54",
           JSON.stringify(templ.textContent));
     const ghost = taggedNode("h2", "no.such.key", "原样留着");
     page.applyLocale();

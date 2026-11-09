@@ -61,6 +61,8 @@ import hashlib
 import os
 
 from ..game import sprites as S
+from ..game.moments import MOMENT_WORD as _MOMENT_WORD
+from ..game.moments import ORDER as _MOMENT_ORDER
 
 #: The intent this module implements.  Named so a caller can assert it routed.
 INTENT = "unit.sprite"
@@ -86,34 +88,34 @@ ESSENTIAL_TOKENS = ("idle", "walk", "attack", "death")
 #: player read "unchanged while it is working (chopping, mining, farming)" on a
 #: Chinese screen.  Only entity names were localized, and that is not enough when
 #: the rest of the sentence is ours.
-MOMENT_WORD = {
-    "idle": "站着不动",
-    "walk": "走路",
-    "attack": "攻击",
-    "death": "倒下",
-    "decay": "腐烂",
-    "work": "干活（砍树、挖矿、种田、盖房）",
-    "task": "干活（砍树、挖矿、种田、盖房）",
-    "carry": "搬着东西走路",
-    "seed": "播种",
-    "idlec": "闲着没事动一下",
-    "conversion": "被招降",
-    "heal": "治疗",
-    "build": "盖房",
-}
+#: Re-exported from `aoe2mod/game/moments.py`.  The words live there because the
+#: editor's 看动画 chips need them too, and `game/` may not import `intent/`
+#: (reskin already imports `game/sprites`).  Keeping two tables meant one said
+#: `idlec` was 「闲着没事动一下」 while the other said 「闲着的另一个动作」 -- two
+#: names for one animation on two screens about the same unit.
+MOMENT_WORD = _MOMENT_WORD
 
 
 def _moments(tokens):
     """Turn engine animation keys into the moments a player notices.
 
     Several keys can describe one moment (`work` and `task` are both "chopping"),
-    so the list is de-duplicated and ordered as written above rather than in
-    whatever order the tokens happened to arrive.
+    so the list is de-duplicated by WORD and ordered by `moments.ORDER` rather
+    than in whatever order the tokens happened to arrive.
+
+    The rank comes from the key that maps to the word, not from the word itself:
+    a word can belong to several keys (`idle`/`idleA`), and an unmapped token
+    sorts last instead of raising.  The old version called `order.index` on a
+    key it had just failed to find, so an unknown token took the whole refusal
+    sentence down with a `ValueError`.
     """
-    order = list(MOMENT_WORD)
+    rank = {}
+    for key, word in MOMENT_WORD.items():
+        r = _MOMENT_ORDER.index(key) if key in _MOMENT_ORDER else len(_MOMENT_ORDER)
+        if word not in rank or r < rank[word]:
+            rank[word] = r
     hits = sorted({MOMENT_WORD.get(t, t) for t in tokens},
-                  key=lambda s: (order.index(next(
-                      (k for k in order if MOMENT_WORD[k] == s), "zzz")), s))
+                  key=lambda s: (rank.get(s, len(_MOMENT_ORDER)), s))
     return hits
 
 
@@ -201,49 +203,6 @@ def _sprite_reason(exc):
 
 def _sha(data):
     return hashlib.sha256(data).hexdigest()
-
-
-#: The engine's animation keys are lowercase ASCII ("attack", "idleC") and they
-#: ARE printed on screen -- a refusal says which animations the two units have.
-#: 16 of them are in MOMENT_WORD; the rest are the engine's own words with no
-#: Chinese name in this project (``idleC`` variants, building states like
-#: ``destruction``/``rubble``).  A sentence that reads "目标有 attack, death,
-#: decay, idle, idlec, walk" is half English to the only reader there is, so the
-#: remaining ones get a Chinese word here.  An unknown key is NOT invented: it is
-#: printed as ``动作「x」`` so the reader still sees the game's spelling without
-#: being told it is a word they should know.
-_MOMENT_EXTRA = {
-    "age": "建成后的样子",
-    "age1": "第一个时代的样子",
-    "age2": "第二个时代的样子",
-    "age3": "第三个时代的样子",
-    "age4": "第四个时代的样子",
-    "destruction": "倒塌中",
-    "rubble": "成为废墟",
-    "idleA": "站着不动",
-    "idleB": "站着不动",
-    "idleC": "闲着的另一个动作",
-    "walkA": "走路",
-    "walkB": "走路",
-    "attackA": "攻击",
-    "attackB": "攻击",
-    "deathA": "倒下",
-    "decayA": "腐烂",
-    "emplacement": "架起来的样子",
-    "emplacements": "架起来的样子",
-    "all emplacements": "架起来的样子",
-    "defensive emplacement": "防守位置上架起来的样子",
-    "offensive emplacement": "进攻位置上架起来的样子",
-    "packed": "收起来的样子",
-    "unpacked": "放下来的样子",
-}
-
-MOMENT_WORD.update({k.lower(): v for k, v in _MOMENT_EXTRA.items()})
-#: `_moment_names` looks a token up with spaces removed ("All Emplacements" ->
-#: "allemplacements"), so the spaced spellings above need that form too.  Doing it
-#: here rather than in the lookup keeps ONE normalisation rule in the file.
-MOMENT_WORD.update({k.replace(" ", ""): v
-                    for k, v in list(MOMENT_WORD.items()) if " " in k})
 
 
 def _units_by_id(civs):

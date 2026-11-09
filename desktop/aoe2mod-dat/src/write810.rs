@@ -31,7 +31,7 @@ fn write_unit(w: &mut Writer<'_>, u: &crate::Unit) -> io::Result<()> {
             w.push_bytes(bytes);
             // The push advanced the OUTPUT only; the input cursor must advance
             // by the same span so the verbatim replay stays aligned.
-            w.advance_raw(bytes.len())
+            w.advance_raw(bytes.len() as isize)
         }
         None => Err(io::Error::new(
             io::ErrorKind::InvalidData,
@@ -69,7 +69,7 @@ fn write_tech(w: &mut Writer<'_>, t: &crate::Tech) -> io::Result<()> {
     match &t.image {
         Some(bytes) => {
             w.push_bytes(bytes);
-            w.advance_raw(bytes.len())
+            w.advance_raw(bytes.len() as isize)
         }
         None => Err(io::Error::new(
             io::ErrorKind::InvalidData,
@@ -92,7 +92,7 @@ pub fn write_stages810(w: &mut Writer<'_>, s: &Stages810) -> io::Result<()> {
     match &s.tech_tree_image {
         Some(bytes) => {
             w.push_bytes(bytes);
-            w.advance_raw(bytes.len())
+            w.advance_raw(bytes.len() as isize)
         }
         None => Err(io::Error::new(
             io::ErrorKind::InvalidData,

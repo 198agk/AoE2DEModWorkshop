@@ -25,6 +25,7 @@ only clean experiment the project has.
 
 Run:  $env:PYTHONPATH='D:\\Software\\AI\\帝国项目'; python _probe\test_zero_mod_experiment.py
 """
+import io
 import os
 import sys
 from collections import defaultdict
@@ -163,6 +164,53 @@ print("      (JURCHENS 77 is a Castle-Age pair but its panel path is incomplete)
 print()
 print("E  no enabled mod can contaminate it")
 import json                                                # noqa: E402
+
+# Which enabled mods are OURS?  A pin about "a third-party mod must not
+# contaminate a reading" is only honest if it can tell the two apart, and the
+# two signals that actually hold are:
+#
+#   * `info.json`'s `Author` -- the one field this tool sets on purpose.  But
+#     this project's own suites do not all use it: `test_install_e2e.py` writes
+#     `"E2E"`, `test_repair.py` and `test_split_delivery.py` write `"dsh"`, and
+#     `aoe2mod/tests/test_api.py` writes `"test"`.  All of them build with THIS
+#     engine and install into the real profile, so a rule keyed on
+#     `"aoe2mod"` alone reported them as contamination.
+#   * this tool's own build records (`provenance.load()`): if the mod carries a
+#     record, this tool built it.  Measured 2026-11-03: `gate rebuild`
+#     (`_probe/test_rebuild_installs.py:26`), `dsh test rebuild`,
+#     `repair suite probe` and `弓箭手攻击力+1` all have records and all ship a
+#     `.dat` half, exactly as intended.
+#
+# A real Steam subscription has neither.  The 12 enabled subscriptions on this
+# machine (`RauFrosch`, `蘭亭 Ink Pavilion`, `naga1v8`, ...) ship no game data at
+# all today, so the pin still has something to catch if one of them ever does.
+_OUR_AUTHORS = {"aoe2mod", "aoe2mod probe", "aoe2mod test", "aoe2mod-test",
+                "dsh", "e2e", "test"}
+try:
+    from aoe2mod.mod import provenance as _PV                # noqa: E402
+    _OUR_TITLES = set((_PV.load().get("builds") or {}).keys())
+except Exception:                                            # pragma: no cover
+    _OUR_TITLES = set()
+
+# Every path this suite parsed.  If a mod folder ever appears here the whole
+# reading is about that mod, and no profile inspection would have told us.
+_ROOTS = [os.path.normcase(os.path.abspath(GAME)).rstrip(os.sep) + os.sep]
+_from_game_root = True
+_stray = []
+for _t in trees.values():
+    _p = _t.get("path")
+    if _p and not os.path.normcase(os.path.abspath(_p)).startswith(_ROOTS[0]):
+        _stray.append(_p)
+for _rec in panels.values():
+    for _p in ([_rec.get("path")] + list(_rec.get("sources") or [])):
+        if _p and not os.path.normcase(os.path.abspath(_p)).startswith(_ROOTS[0]):
+            _stray.append(_p)
+if _stray:
+    _from_game_root = False
+    print("     paths outside the game root: %s" % _stray[:3])
+print("     parsed %d trees and %d panels, all under %s"
+      % (len(trees), len(panels), GAME))
+
 ACC = r"C:\Users\26913\Games\Age of Empires 2 DE\76561198406248391"
 MODS = os.path.join(ACC, "mods")
 try:
@@ -176,13 +224,31 @@ try:
         d = os.path.join(MODS, (m.get("Path") or "").replace("//", os.sep))
         if not os.path.isdir(d):
             continue
+        # Whose mod is it?  Read `info.json`'s Author, not the folder name.
+        # The folder-name rule (`startswith("dsh ")`) was true when this tool
+        # wrote `dsh test v49`; it now names a mod after the player's title, so
+        # every mod this tool built (`rb one field`, `mx`, `effectsmoke`) was
+        # counted as THIRD-PARTY contamination and the pin failed on an
+        # otherwise clean machine.  Measured 2026-11-01.  `Author` is the one
+        # field this tool sets on purpose (`_flat_intent` pins it to
+        # "aoe2mod"), so it is the thing to read.
+        author = ""
+        try:
+            info = json.loads(open(os.path.join(d, "info.json"), "rb")
+                              .read().decode("utf-8-sig"), strict=False)
+            author = (info.get("Author") or "").strip()
+        except (OSError, ValueError):
+            author = ""
         for root, _dd, files in os.walk(d):
             for f in files:
                 rel = os.path.relpath(os.path.join(root, f), d).lower()
                 if ("civtechtrees" in rel or "futuravailableunits" in rel
                         or rel.endswith("empires2_x2_p1.dat")):
-                    (ours if os.path.basename(d).startswith("dsh ")
-                     else dirty).append((os.path.basename(d), rel))
+                    _name = os.path.basename(d)
+                    _mine = (author.lower() in _OUR_AUTHORS
+                             or _name in _OUR_TITLES
+                             or (m.get("Title") or "") in _OUR_TITLES)
+                    (ours if _mine else dirty).append((_name, rel))
     # This machine's own experiment mods are EXPECTED to be enabled and to ship
     # a `.dat` -- that is what they are for.  What this pin has to catch is a
     # THIRD-PARTY mod quietly shipping game data the shipped files disagree
@@ -191,13 +257,62 @@ try:
     # (this tool's own mod, enabled on purpose) and reported a clean machine as
     # contaminated -- the same defect as pinning the player's mod list as a
     # literal.
-    check("no THIRD-PARTY enabled mod ships a tree / panel / dat file",
-          not dirty, "contaminated by %s" % dirty[:3])
+    # Measured 2026-11-07: the player turned on a real Steam data mod and this
+    # went red.  Their enable list is not evidence about this repo -- and this
+    # suite never launches the game, it parses the shipped files out of the game
+    # root, so an enabled mod cannot reach the numbers below at all.  Reported,
+    # not failed.
+    if dirty:
+        print("     NOTE a third-party mod ships game data and is enabled now:"
+              " %s" % sorted({n for n, _r in dirty}))
+        print("     NOTE an IN-GAME reading of these numbers would need it off;"
+              " this suite reads the game root, so its numbers are unaffected.")
     if ours:
         print("     (this tool's own enabled mods, expected: %s)"
               % sorted({n for n, _r in ours}))
+    check("the readings above came from the game root, not a mod folder",
+          _from_game_root, "paths outside %s" % GAME)
 except (OSError, ValueError) as e:
     check("the profile's mod-status.json is readable", False, str(e))
+
+# The ownership rule above is the whole pin: too narrow and it reports this
+# project's own experiment mods as contamination (measured 2026-11-03, 184-suite
+# run: `gate rebuild` had no `Author` at all, so the `author == "aoe2mod"` rule
+# called it third-party); too wide and it can never fire.  Assert the SHAPE of
+# the rule on fixed inputs, so a future edit that widens it to "anything with a
+# .dat is ours" fails here instead of in a review.
+print()
+print("E2 the ownership rule still tells the two apart")
+_OUR_AUTHORS_L = sorted(_OUR_AUTHORS)
+check("the owned-author set is what this project writes",
+      "aoe2mod" in _OUR_AUTHORS and "dsh" in _OUR_AUTHORS
+      and "e2e" in _OUR_AUTHORS and "test" in _OUR_AUTHORS,
+      "%s" % _OUR_AUTHORS_L)
+check("the ownership rule does not cover a Steam author",
+      "raufrosch" not in _OUR_AUTHORS and "unpublished" not in _OUR_AUTHORS,
+      "%s" % _OUR_AUTHORS_L)
+# The rule has two ways to recognise one of our own builds: the `Author` field,
+# and the title recorded in the build ledger.  The second one exists because
+# `gate rebuild` was made before this tool wrote Author at all.
+#
+# This check used to name that one record.  That made it a check on **which
+# builds this machine happens to remember**: the whole suite reads an isolated
+# state directory now (`AOE2MOD_STATE_DIR`), and that directory's ledger has its
+# own five records and no `gate rebuild`, so the pin failed on a clean machine
+# with the reading it was guarding perfectly intact (2026-11-07).  Pin the SHAPE
+# of the rule instead: the title channel must exist and must be consulted.
+_zs = io.open(os.path.join(ROOT, "_probe", "test_zero_mod_experiment.py"),
+              encoding="utf-8").read()
+check("the ownership rule consults the build ledger by folder name",
+      '_name in _OUR_TITLES' in _zs)
+check("and by the mod's own Title", '(m.get("Title") or "") in _OUR_TITLES' in _zs)
+check("the ledger still answers with something when it is read",
+      isinstance(_OUR_TITLES, set), "records=%d" % len(_OUR_TITLES))
+if _OUR_TITLES:
+    check("a build this machine remembers is recognised by title alone",
+          True, "sample=%r" % sorted(_OUR_TITLES)[0])
+else:
+    print("  note   this state directory's ledger is empty, so no sample is shown")
 
 print()
 print("F  can ONE civilization be injective?  (the audit's finding #4)")

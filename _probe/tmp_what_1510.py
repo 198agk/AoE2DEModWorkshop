@@ -3,9 +3,11 @@
 import io
 import sys
 
-sys.path.insert(0, r"D:\Software\AI\帝国项目")
+sys.path.insert(0, os.path.abspath(os.path.join(
+    os.path.dirname(__file__), "..")))
 from aoe2mod import api as A
 from aoe2mod.game import civtechtrees as CT
+import os
 
 GAME = r"D:\Games\Steam\steamapps\common\AoE2DE"
 tk = A.open_toolkit(GAME)

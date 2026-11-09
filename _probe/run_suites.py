@@ -35,13 +35,24 @@ _FAIL_RE = re.compile(
     # the line: `a :: FAIL` and `[FAIL] name :: detail` are reports whose marker is
     # not at column 0.
     r"(?m)^(?!\s*ok\b)(?=[^\n]*(?:"
-    r"^\s*FAILED:\s"                       # `FAILED: both halves stay in step`
+    # `FAILED: both halves stay in step`, and the bare `FAILED:` that
+    # `print("FAILED:", name)` hands to the regex as a literal -- the colon ends
+    # the string, so there is no whitespace after it to match.  `FAILED:WORD`
+    # (no space) is still an identifier and stays quiet.  2026-11-09.
+    r"^\s*FAILED:(?:\s|$)"
     r"|^\s*FAILED\s+\S"                     # `FAILED %d check(s)` / `FAILED 3 CHECKS:`
     r"|\bFAILURES:\s*(?:\d|%[sdr])"          # `FAILURES: 1 -> [...]` / `FAILURES: %s`
     r"|^\s*FAIL(?:\s|:)(?!\s*[A-Z][A-Z0-9 _()/.-]{2,}:)"  # report, not a verdict
     r"|\bFAIL\s+[^\s]+\s*::"               # `FAIL name :: detail`
     r"|\bFAIL(?:ED|URE|URES)?\s*$"           # report ends the line
     r"|\bCHECK\(S\)\s+FAILED\b"            # `N CHECK(S) FAILED -> [...]`
+    # `MOD ROUTES: FAILURES ABOVE` -- the sign-off five suites print when they
+    # failed (`test_mod_routes`, `test_rebuild`, `test_pages_shipped`,
+    # `test_e2e_shipped`, `ship_and_verify`).  It carries an ALL-CAPS label with
+    # no digits, so the "a sign-off is a label" convention read it as quiet while
+    # it was in fact the only line saying the run went red.  `... ABOVE` is never
+    # a pass; catch it by its second word, not by the label rule.  2026-11-01.
+    r"|\bFAIL(?:ED|URE|URES|S)?\s+(?:ABOVE|BELOW)\b"
     r"|\[\s*FAIL(?:ED|URE|URES)?\s*\]"      # `[FAIL] name :: detail`
     r"))"
 )
@@ -250,6 +261,425 @@ SUITES = [
     # The check that cannot be written as a count is distinguishability: the same
     # unnamed unit must always read the same, and two different ones never must.
     r"_probe\test_effect_labels.py",
+    # The read half of "change what a technology does": a technology stores only
+    # a pointer, so every number a tech actually moves lives in another part of
+    # the file as a command list.  8,005 reachable commands; before this the page
+    # could not show one of them.  Asserts the offset printed IS the number
+    # written (decoded through the same code the write uses) and that a write
+    # records a POSITION, not a byte offset, so a rebuild survives a re-read.
+    r"_probe\test_effect_list.py",
+    # 图形 (20,883 records) and 音效 (930) -- the two biggest tables in AGE3 that
+    # this build could not open at all, which is the concrete meaning of
+    # 「依旧无法替代age3」.  The load-bearing checks are that the picker counts the
+    # rows it pages (3,520 graphics and 491 sounds have no name and are not
+    # listed), that a graphic record's `SpeedMultiplier` is reached through
+    # `/api/table-field-set` and NOT through `/api/field-set` (unit 100 and
+    # graphic 100 are different records), and that the four tab chips exist.
+    r"_probe\test_table_tabs.py",
+    # A table edit has to survive a rebuild, which is the promise a data editor
+    # actually makes.  Pins that the intent stores (table, position) and never a
+    # byte offset, that the replayed stream re-walks with leftover 0, and that a
+    # batch across BOTH tables lands in one mod.
+    r"_probe\test_table_rebuild.py",
+    # 效果 (1,500 records / 10,500 commands) -- a technology only carries an
+    # effect ID, so 486 records (2,795 numbers) belong to no technology and no
+    # screen here could open them.  The load-bearing checks are that the walk
+    # lands exactly on the table's end (a one-byte drift per record silently
+    # points a write at the neighbouring record), that the five slots of a
+    # command sit at type@0/a@1/b@3/c@5/d@7 (a first version derived them from
+    # `d - 11` and put all three i16 on one byte, so three columns showed one
+    # number), and that a packed value keeps its class byte while its number
+    # changes 1 -> 7.
+    r"_probe\test_effect_table.py",
+    # 2026-11-03 地形 200 / 地形通行表 54 / 玩家颜色 16 -- 14,616 numbers
+    # that `Parser.parse()` had already read and no screen could reach.
+    # Each one is pinned to walk to its own end (a one-byte drift points a
+    # write at the neighbouring record), to label itself in Chinese with the
+    # terrain kind named (「地形 7 的伤害倍率」, not 「Mult.7」), and to refuse
+    # the terrain shape pointer with a reason.  Measured 2026-11-03: the
+    # restriction walk was 2 bytes off because `_colour_count_at()` returns
+    # the count field's own offset.
+    r"_probe\test_new_tables.py",
+    # 2026-11-03 「我要改指定的dat或者ai/xs，你这完全没有给我选择」: 18 `.dat`
+    # candidates and 62 script files on this machine, and picking one has to
+    # really change what the editor reads -- not just repaint a dropdown.
+    r"_probe\test_sources.py",
+    # 2026-11-03 /api/mod-move called `self._body()`, a method that never
+    # existed, so every move killed the handler before a response was
+    # written and the screen said 「移不动：Failed to fetch」.  This pin parses
+    # the handler and refuses any self.<name>() it does not define.
+    r"_probe\test_handler_methods.py",
+    # 「谁能造X」 -- the one question the data answers without a number, and the
+    # one the reader used to refuse ("可用性得指定一个文明"), which is the opposite
+    # of an answer.  Its load-bearing assertion is that a BUILDING is answered at
+    # all: a Castle is `Building` id 82 and no `Unit` row has that id, so asking
+    # the unit space alone produced the false sentence "not in any tech tree"
+    # for something 62 of 62 civs have.  Also pins that the cannot side is
+    # blocked+absent, never 62 minus the can side.
+    r"_probe\test_who_can.py",
+    # An ANSWER is not an ERROR.  `renderClauses` colours a card from
+    # `buildable()`, which is false for anything carrying no intent -- correct
+    # for a refusal, wrong for an answer.  「谁能造长弓兵」 therefore shipped as a
+    # red card that read like the tool had failed.  Every other check reads the
+    # JSON from /api/parse and cannot see a CSS class, so this one drives the
+    # real page headless.
+    r"_probe\test_answer_cards.py",
+    # Opening a unit in the field editor builds the field index on first use:
+    # measured 14.52 s for 136,861 records (2026-11-02), 0.003 s cached.  For
+    # fourteen seconds the pane said one static sentence -- indistinguishable
+    # from a hang, and the same complaint the startup bar already answers.  This
+    # nail holds the whole chain: the scanner reports BYTES WALKED (not a timer),
+    # /api/job answers in milliseconds while the scan holds the GIL, a cached
+    # open draws no bar at all, and the scan must not get slower for reporting.
+    r"_probe\test_job_progress.py",
+    # Saving a file-switch is a wait of 9-22 s: `App.set_dat` decompresses,
+    # parses, locates and re-indexes, and the page used to sit still with the
+    # old data on screen and every control live.  Player 2026-11-08: 「点了之后
+    # 我也不知道是不是在加载…这段时间我切别的页面又做什么的」.  The veil is
+    # measured in a real browser on BOTH paths: the slow one must open, lock the
+    # page and show a percentage the server produced; the warm one (0.31 s) must
+    # not flash at all.
+    r"_probe\test_datveil.py",
+    # 保存 twice must UPDATE the folder it wrote last, not make a second one:
+    # the folder is named from the mod Title, and an empty name box used to have
+    # the SERVER derive a Title from the batch's first edit, so a mod grew one
+    # folder per save.  Player 2026-11-09: 「总不能我每改动一次，就另存为一份吧」.
+    r"_probe\test_save_reuse.py",
+    r"_probe\test_archives.py",
+    # 官方 .dat 存档架：幂等、不再对得上名字的 blob、损坏的索引、只能留最新的 prune。
+    # Six complaints from one screenshot session (2026-11-02), each a real
+    # defect a player hit in a real window:
+    #   「有些图标不正常」    -> 400 separate /api/icon requests took 3.6 s to paint
+    #   「这个改成中文」      -> the civ picker printed `British` in a Chinese tool
+    #   「我改的是哪个 dat」  -> the screen never said which file on disk it edits
+    #   「0/-1 是代表什么」   -> nothing explained the game's two sentinel numbers
+    #   「试算这些是什么意思」 -> 试算 / 写入 are not words a player says
+    #   「关闭没保存的弹窗」  -> closing the window silently dropped the batch
+    # Each check names the measurement, so a future edit that undoes one of them
+    # fails with the reason rather than with "the page changed".
+    r"_probe\test_ui_fixes.py",
+    # Where emitted mod folders go.  Measured 2026-11-02: the shipped package had
+    # grown from 50.9 MB to 1.7 GB because `_out_root()` resolved to
+    # `<bundle>/app` for the shipped copy -- so every suite that ran the exe
+    # without AOE2MOD_BUILD_OUT wrote a 93 MB mod folder INSIDE the package.
+    # Nothing broke, which is why it went unnoticed for days.
+    r"_probe\test_out_root.py",
+    # 「你这个大小不对啊，还有版本是哪的版本，你不能读取游戏的版本号吗，后面那一串
+    # 我也不知道哪的」 (2026-11-03).  Three complaints, one line on the rail: it printed
+    # 89.0 MB for a file Explorer sizes at 11.4 MB (89.0 MB is the size AFTER the
+    # game's compression is undone), and it printed 「数据版本 54」, which is the .dat's
+    # internal FileVersion ordinal -- the field layout the parser needs, never the
+    # release the player runs.  The number the game itself shows on its main menu is
+    # a banner baked into AoE2DE_s.exe.  This pin reads that exe with its own regex,
+    # so a regression in aoe2mod/game/version.py cannot mark its own homework.
+    r"_probe\test_version_display.py",
+    # 「为什么没全部显示，比如我要添加几千甚至几万的表格怎么办」 -- the list was a
+    # hard 400 with no way to reach row 401, and the counter said "400 / 1651"
+    # as if that were the whole game.  Now it pages, appends, and re-batches the
+    # pictures for the new page.  The load-generation check in this file also
+    # pins the race measured while building it: two loads started at boot, and
+    # the slower one wiped the faster one's rows.
+    r"_probe\test_list_paging.py",
+    # 「就不能像正常的软件那样，任何改动都能直接全页保存」 -- the gesture was
+    # type, 先看看, 记下这个改动, and a value typed without the second click was
+    # silently NOT in the batch: the header still said 已改 0 项 and closing the
+    # window lost it without a word.  Enter now queues the edit; 先看看 stays for
+    # seeing the bytes first but is no longer a step you must take.
+    r"_probe\test_enter_commit.py",
+    # The exe prefers a Python engine when one sits beside it, so every
+    # `*_shipped` suite talks to the BUNDLE's copy of `aoe2mod/`.  A stale copy
+    # there is the most expensive red in this project: the repo is green, the
+    # exe answers with last week's reader, and a hundred suites report bugs that
+    # were fixed days ago (it happened with `ui/nl.py`, found by accident).
+    r"_probe\test_bundle_package_sync.py",
+    # A refusal that names a REAL mechanism must survive typo repair.  「所有步兵
+    # 砍树速度加10%」 was repaired 树速度 -> 速度 and came back as a WALK SPEED edit
+    # of 217 infantry -- the repair overwrote a truthful answer.  The guard is a
+    # list of terminal refusal sentences; this pins that the list is read, that a
+    # real slip is still repaired, and that the sentence above stays refused.
+    r"_probe\test_typo_guard.py",
+    # 「造价是多少」 is a QUESTION whose answer the tool already holds.  It used to
+    # name the four slots and ask which one -- a menu, not an answer.  The
+    # example must also name a resource the record really charges (「城堡食物
+    # 造价减10%」 points at an empty slot).
+    r"_probe\test_cost_answer.py",
+    # A class refusal ENDS with a sentence to copy, so that sentence is a
+    # promise: it must parse, and it must be about the field the player named.
+    # Both broke on 2026-11-02 -- 「射程比弓箭手更远」 was answered 「所有弓箭手移动
+    # 速度加10%」 because a comparison word was tested before any field word.
+    r"_probe\test_class_hint.py",
+    # A card that offers a sentence is a promise that the sentence works.  The
+    # reader moves under the text (one added vocabulary word re-routes a whole
+    # sentence), so every one of the 15 examples is re-read through the live
+    # reader and must land on its OWN intent -- the exact failure that once
+    # listed 「把村民血量设成40」 on a plugin intent's card while the reader
+    # resolved it to `unit.stat`.
+    r"_probe\test_intent_examples.py",
+    # The preview has to say what the number BECOMES (25 → 45), because checking
+    # a sentence against the game otherwise means opening the field editor and
+    # reading the integer yourself -- the chore this tool exists to remove.  The
+    # load-bearing assertion is the one against the AVERAGE: a class edit spans
+    # 217 units with different starting values (45 distinct pairs), and one
+    # representative number would be a confident answer to a question nobody
+    # asked.
+    r"_probe\test_preview_values.py",
+    # 「村民血量是多少」 -- AGE3 has no answer path at all; to learn a villager's hit
+    # points you find the record in a tree of 620 columns and read the integer
+    # yourself.  The question is read as 「…加1」, so `preview_values.before` IS the
+    # number on disk and cannot disagree with a later write.  Pinned here: a
+    # question resolves to NO intent (so the page cannot offer a build button for
+    # it), and a field with several values reports how many instead of one.
+    r"_probe\test_question_answers.py",
+    # "Storing the intents" is the mod panel's whole promise: after a patch the
+    # player should not have to remember what they wrote weeks ago.  The field
+    # editor bypasses the intent compiler (no sentence resolves to "set this
+    # named field of record N"), so a build recorded from it carries intents the
+    # compiler REJECTS -- measured 2026-10-30, all nine historical field builds
+    # were unrebuildable with "unknown intent".  Pinned here: the record stores
+    # (record, field, value) and re-locates it in the CURRENT file, never a byte
+    # offset, because after a patch an offset writes into a neighbouring field
+    # while reporting success.
+    r"_probe\test_rebuild_fields.py",
+    # The shipped bundle has NO Pillow (`_build/aoe2mod.spec:88` excludes PIL), so
+    # a picture swap that works in the repository and dies in the exe is exactly
+    # the defect class this project keeps paying for.  This suite blocks PIL with
+    # a meta_path hook before importing the reader, then reads hand-built PNG,
+    # BMP and DDS fixtures whose four rows are four DIFFERENT colours -- the
+    # first version of the reader ignored the row offset and read row 0 for every
+    # scanline, which a symmetric test image cannot see.
+    r"_probe\test_picture_formats.py",
+    # 2026-10-28: Steam replaced the `.dat` and both engines kept writing through
+    # offset tables measured from the OLD file -- every sampled `hit_points`
+    # offset was 4397 bytes off for civilisation 1, and `/api/stat` answered
+    # ok:true throughout.  Pinned here: a stamp that disagrees stops the parse
+    # with BOTH byte counts in the sentence, a declared-but-absent stamp does not
+    # become a shrug, and the SHIPPED folder carries `app/_golden/dat_stamp.json`
+    # (without it a player's copy runs with no guard at all while the repo's copy
+    # is protected -- the split-brain that has already cost this project twice).
+    r"_probe\test_dat_stamp_guard.py",
+    # The shell used to embed a SECOND engine -- a subset (5 of 14 sentence
+    # families, 8 routes missing, a page 80 KB older) -- so a double-clicked
+    # release was dumber than a checkout, and every suite here still passed
+    # because they all started the Python engine.  Pinned: engine_root() prefers
+    # Python, and the child dies when its parent is force-killed (TerminateProcess
+    # delivers no WM_CLOSE, so the shell's own handler never runs -- a dozen
+    # killed shells once left a dozen 1 GB interpreters holding ports).
+    r"_probe\test_shell_engine.py",
+    # The user's own words, once: 「ui有问题，显示不全，非要拖动滚动条」.  Measured
+    # the same hour: the page stood 921px in an 821px window because one line
+    # guessed how much chrome sat above the editor (220px, actually 272px).  The
+    # gate fails on ANY `calc(100dvh - Npx)` that is not the frame's own 32px
+    # padding, and then measures a real Chromium at both real widths, because a
+    # text gate cannot see a page that scrolls.
+    # 2026-11-03, verbatim: 「选择指定的数据文件没起作用，列表也没法全部显示，
+    # 即便点了显示，随便点一个就会恢复，而且随便点一个，选中的总是在中间」.
+    # Four defects behind one paragraph, all invisible to the 191 suites that
+    # already ran green because every one of them read JSON from the routes and
+    # none of them drove the list in a browser: the name table was a process-wide
+    # singleton so a mod `.dat` still listed the install's 1651 units; picking a
+    # row called `loadEditor()` with no argument and threw away the 1,251 rows
+    # the player had revealed; `edRecentre` centred the pick so any scroll was
+    # undone (measured 4200 -> 1718 on one click); and a request read `self.tk`
+    # twice, so a swap in between decoded a 125 MB mod's offsets out of the
+    # game's 93 MB stream -- the EOFError on the player's screen.
+    r"_probe\test_editor_list.py",
+    r"_probe\test_undo_redo.py",
+    r"_probe\test_task_table.py",
+    # The last record family, and the only one whose records do not say where
+    # they begin: a civ's first byte is the byte after the previous civ's last
+    # unit, so this table takes its starts from the unit index instead of paying
+    # 9 s to re-walk 136,861 unit records.  A shortcut that is never measured is
+    # a silent corruption across 63 records, so the suite walks the block the
+    # honest way and requires every derived start to land on the same byte, then
+    # checks the 601-slot ordering against the file's own numbers (65 live /
+    # 24 varying / 536 always zero) rather than trusting the label table.
+    r"_probe\test_civ_table.py",
+    # The 「找字段」 placeholder is the only copy on the editor screen that
+    # makes a promise, and it was a ternary chain that grew by copy: every
+    # table that forgot a branch inherited 图形's 「图形文件编号 / 帧数 /
+    # 播放速度」.  Measured 2026-11-04 -- 文明 offered all three (a civ
+    # record has none of them), 地形 offered 「名称 / 水面」 and 颜色 offered
+    # 「描边」, none of which exist in those records.  This pin reads the
+    # copy out of the page and requires every example to hit a real label,
+    # so a placeholder that finds nothing fails here instead of on the
+    # player's screen.
+    r"_probe\test_field_search_hint.py",
+    # The same lie, one box over.  `#lang-xs-text` has offered
+    # 「例如：把 goal 0 设成 1」 since it was built and that sentence produced
+    # NOTHING: `ainl.ACTIONS` had no verb for writing a goal, so the reader
+    # answered 没有读出动作 and the box returned an empty `code`.  No pin saw
+    # it, because every existing one tested `ainl.EXAMPLES` -- the chips the
+    # page paints -- and not the placeholder.  This pin compiles both, and
+    # requires the goal bridge to WRITE (xsSetGoal / set-goal) as well as
+    # read (xsGetGoal): a bridge with one direction is a box that can look
+    # and not touch.
+    r"_probe\test_rule_box_examples.py",
+    # A civilisation typed into the 「整份 AI 脚本」 form went into
+    # (civ-selected X) with no check: 「不列颠」 shipped Chinese inside the
+    # file, "british" was not the token the engine's name table holds, and
+    # `problems` stayed empty for both.  This pins the bridge from every
+    # spelling a player can type to the token the parser reads, and that an
+    # unnameable one is REPORTED instead of silently dropped.
+    r"_probe\test_ai_plan_civ.py",
+    # The same boundary, applied to the rest of the form.  `civ` was the
+    # first field found reaching the file unexamined; `name` reached it as
+    # script (a newline ended the comment the name sits in), and the two
+    # counts plus `age` were repaired silently.  This pin is why a clamp
+    # has to come back to the player as a sentence.
+    r"_probe\test_ai_plan_fields.py",
+    # Every write before 2026-11-05 was an equal-width byte swap inside a
+    # record that already existed, which is what let the undo stack be a list
+    # of (offset, before, after) and let `_after_write` patch three caches in
+    # place.  Adding or removing a record moves every offset after it, and all
+    # three assumptions failed on the way in: the flag array has to grow at
+    # `ptr_off + 4*m` and not at the end of the record run (padding there made
+    # the parser read the first record's bytes as 27,251 pointers and die in
+    # `read_bird`); undo has to replay the steps BACKWARDS or it shrinks the
+    # array before it cuts the record; and the index that says where each
+    # record starts has to be thrown away, with any scan already running made
+    # to lose.  This pin holds all three, plus the two refusals that keep a
+    # structural edit from being silent: a record other things point at is not
+    # deleted without being told twice, and `"*"` (a field-write scope) is not
+    # an address.
+    r"_probe\test_record_crud.py",
+    # 一千条 = 一次 splice = 一步撤销, and the keys a selection needs.  The
+    # batch planner writes a flag window that must never read record bytes
+    # as pointers, and Ctrl+V has to be ONE undo step even when it took
+    # several donors.
+    r"_probe\test_editor_bulk.py",
+    # One record added to one civilisation used to cost 44 s: `_restructure`
+    # re-parsed 93 MB (10.45 s) and `_unit_index` re-scanned every record
+    # (10.43 s), for 0.04 s of actual byte work.  A splice is a (at, cut, add)
+    # plan, so the model can be MOVED instead of rebuilt -- the pin proves the
+    # moved model is indistinguishable from a fresh parse (136,928 offsets, 0
+    # differences), that a chain that cannot prove itself falls back to the slow
+    # path, and that an undo lands back on the original bytes.
+    r"_probe\test_relocate.py",
+    # 「我要新增完全空白的」 -- reported 2026-11-06. Every add used to clone a
+    # donor, because a unit record's tail is type-dependent and rebuilding it
+    # from zeros is one guess per field. `newunit.blank_image` makes the guess
+    # once and then walks its own bytes back with the reader that will read them
+    # out of the file: a record one byte off does not look wrong, it makes every
+    # record after it in that civilisation garbage. The pin proves the walk
+    # closes at every game version, that the bytes at the new span ARE the blank
+    # record, and that the model, the statistics, the browser and the field form
+    # all see it.
+    r"_probe\test_blank_unit.py",
+    # 「为什么不能修改名字」 -- reported 2026-11-06.  Every name field was
+    # read-only and the refusal for `Name` told the player to use 「重命名」, a
+    # function that existed nowhere in the repo.  A name is TWO things: a
+    # `debug_string` inside the record (marker + length + text, three
+    # consecutive addresses) and an i32 pointing at a row in a `key-value`
+    # string table -- and that id is SHARED (5079 is 57 records' name), so a
+    # rename has to mint a new one and carry the row to the mod.  The pin
+    # proves both halves move on all 63 civ copies, that the screens see the
+    # new name before the save, that undo restores the bytes AND the model, and
+    # that a rename which changes nothing writes nothing.
+    r"_probe\test_rename.py",
+    # 2026-11-06, two nails from the user's own 125 MB mod:
+    # `test_stage_stop` because the tech tab said `_Stop: 没有说明` whenever two
+    # scans overlapped (a per-call exception class plus `orig` read outside the
+    # lock), and `test_name_text` because 4,473 unit names and 230 tech names in
+    # that mod are UTF-8 stored in a byte string and the list showed them as
+    # `è´¸æ\x98\x93`.  Both are about a rule that is right where it lives and
+    # wrong where it was used, so both pins assert the SHAPE as well as the
+    # behaviour -- a fix that only made the symptom go away would pass a
+    # behaviour-only test while the next scan overlap brings it back.
+    r"_probe\test_stage_stop.py",
+    r"_probe\test_name_text.py",
+    # 「单位绑定效果」其实是反过来的：.dat 里没有从单位到科技的指针，
+    # 只有科技的效果命令里写着单位编号。这条钉子走一遍全表（1,510 条
+    # 科技、8,005 条命令、0.1 s），核对屏幕上的数字就是文件里的数字，
+    # 并且核对接它的路由在 do_GET 里——第一版插进了 do_POST，页面用
+    # GET 拉，404。
+    r"_probe\test_unit_effects.py",
+    # The mod screen has two views over one set of rows.  The card is a class on
+    # the container, not a second kind of row: the harness counts rows by
+    # `className === "mod"`, so a row that said "mod card" would make a whole
+    # block of assertions pass by measuring nothing.
+    r"_probe\test_mods_view.py",
+    # 「换图标」不是一个数字：记录里的 IconID 只是四样东西之一，另外三样
+    # 在贴图文件、材质表和图标表里。四样有一半对不上，命令卡上就是空框
+    # （2026-10-24 实机十一次）。这条钉子核对：两张图占两个槽、同一条记录
+    # 换第二张图是同槽替换而不是报失败、一次保存会产出两个模组文件夹并且
+    # 两个名字都要报出来、以及写盘时缺的正是「界面」那半个。
+    r"_probe\test_icon_set.py",
+    # 命令面板不只是能看：拖动进会话、把单位加进卡、从卡上拿掉、改训练时间。
+    # 钉子同时钉住「plan_move 只读」与「splice 拿的是活缓冲」——第一版把
+    # apply_steps 交给了一份拷贝，模型照样搬迁，下一次解析死在 read_bird。
+    r"_probe\test_card_edit.py",
+    # '按时代' -- the era of a box comes from futuravailableunits.json's
+    # RequiredAge (the file the game reads), one vote per unit because the two
+    # files disagree, and two numbers per box because a box is a chain.
+    r"_probe\test_card_ages.py",
+    # 「搞个关于页面」 (2026-11-07): the seventh view, three addresses that are
+    # printed and copied rather than linked (a real anchor would replace the
+    # workshop window, which has no address bar and no back button), and a
+    # version line that quotes this run's `/api/meta` instead of the markup.
+    r"_probe\test_about_page.py",
+    # 2026-11-08: 玩家说「右边那么大一片空白，要不你放个这张图片上去」。
+    # 关于页每张卡里的正文段落只有 509px（`--measure` 62ch），卡片 1056px，
+    # 右边那半张一直空着。这条钉子钉那张图：资源真在树里、路由按 image/jpeg
+    # 送出、标记与样式按既有的步进写、两张窗口宽度下都不压到正文。
+    r"_probe\test_notice_figure.py",
+    # 玩家说「面板是只有1-15，但是游戏支持能写到30…那我想搞个这种伪翻页」
+    # (2026-11-08).  三个数从此分开: 一屏 15 格、两页、引擎认到第 30 格。
+    # 钉子钉住三者互不相等、page_of/page_span 的分界、写入上下限、以及
+    # 页面把一屏画成一屏而不是把 30 格摊平。
+    r"_probe\test_card_pages.py",
+    r"_probe\test_pseudo_pages.py",
+    # 一个格子挂一串可重复研究的科技 = 伪翻页：读、写、撤销、快扫、页面入口。
+    # The start-up 防伪声明 window is measured in a live page: whether boot
+    # really opens it, whether its six sentences are a copy of the 关于
+    # section rather than a second list, and whether "not now" and "not
+    # this week" are two different decisions.  None of that is visible
+    # from the source text.
+    r"_probe\test_notice_modal.py",
+    # A list of 18 mods with two arrows is one place per press, and every press
+    # rewrites `mod-status.json` -- the file whose array order IS the load order.
+    # A drag states where in one write, so the arithmetic has to be right: the
+    # row is lifted OUT before it is put back (a drop one place down is otherwise
+    # a no-op), Position is 1-based while the array index is 0-based, a drop past
+    # the end means last, and a drop where the row already is writes nothing.
+    r"_probe\test_mod_order.py",
+    # 「应该给我选择数据模组的功能」-- 列文件的路由从 2026-11-03 就在，但唯一的
+    # 调用者是编辑器页签栏那个下拉框，于是「这二十份里我在改哪一份」这个问题的
+    # 答案住在另一个界面上。钉子钉住三件容易假的事：正在改的与游戏读的不是同
+    # 一个问题（五个数据模组抢，优先级最高的赢）、一行是标签但切过去必须发路
+    # 径、以及 supported 是「我们读得懂」而不是「54 这个数」。
+    r"_probe\test_dat_picker.py",
+
+    # 「format 43」不是坏文件，是 VER 7.8 的布局序号；一份模组比本体旧多少，
+    # 只有 FileVersion 头能回答（记录计数会被刻意裁剪的模组误报），而那个数
+    # 的方向写在函数名里（steps_behind），调用方没有机会把符号读反。
+    r"_probe\test_dat_version.py",
+    # One inline <script> holds ~6,000 lines, so a single bad string literal is
+    # not a broken feature: the browser refuses the whole program and the page
+    # looks like a server that never answered.  Measured 2026-11-05 -- a raw
+    # newline inside `window.confirm(e.message + ...)` gave `pageerror ::
+    # Invalid or unexpected token`, an empty #edlist, and a probe that sat on
+    # `wait_for_function` for 180 s before blaming the wait.  Twelve suites load
+    # that page and not one of them says "the file does not parse", which is the
+    # same shape as the networkidle pin: a timeout sends the reader to the
+    # timeout.  This one costs a second and names the file.
+    r"_probe\test_page_syntax.py",
+    r"_probe\test_filmstrip.py",
+    r"_probe\test_editor_fit.py",
+    # BRAND.md rule 5 had been broken twice: the Tauri shell page drew its own
+    # gold pentagon and the Python loading page drew a blue one.  Pinned: one
+    # inline PNG per page, pixel-identical across all three, and equal to a fresh
+    # LANCZOS downscale of `brand/app-icon.png` -- plus that the build tree
+    # syncs the page tauri-codegen INLINES, or a release ships a page that is not
+    # in the repository.
+    r"_probe\test_splash_brand.py",
+    # Where the products live, asserted rather than assumed.  The bundle and the
+    # cargo tree were written outside the checkout until 2026-11-01; the owner
+    # asked twice to keep them in the workspace, and the reason is not tidiness
+    # -- a copied `runtime\python.exe` outside the checkout died with
+    # 0xC0000135 because the folder's Integrity Label differed, which cost six
+    # hours to find.  This pin fails the moment a probe spells an absolute
+    # product path again.
+    r"_probe\test_products_in_workspace.py",
     # The other half of the Chinese-text work, and the reason two rounds of it
     # were partly wasted: refusals found by calling the facade with a hand-written
     # intent are not necessarily refusals a player can reach.  What a player can
@@ -582,6 +1012,29 @@ SUITES = [
     # means "this shape does not report" reads exactly like a zero that means
     # "nothing will happen".
     r"_probe\test_preview_counts.py",
+    # ---- five suites that existed on disk but were named by NO runner --------
+    # `probe_suite_registry.py` reported ten such files on 2026-11-01.  A suite
+    # nothing runs is not a gate; it is a file that looks like one, and it can
+    # rot for months while `SUITES: ALL PASSED` keeps printing.  The five that
+    # finish in seconds live here; the five that spawn the shipped shell or walk
+    # 93 MB twice live in run_long.py.
+    r"_probe\test_civ_trees.py",
+    r"_probe\test_mod_routes.py",
+    r"_probe\test_dds_parity.py",
+    # DDS parity compares the Rust decoder against the Python one, and until
+    # 2026-11-05 they agreed with each other because they shared one bug: both
+    # read BC3 alpha with the DXT3 rule (sixteen 4-bit values) instead of two
+    # endpoints plus sixteen 3-bit indices. Seventeen of the editor's 400 icon
+    # rows then had no opaque pixel at all and read as ghosts -- reported by the
+    # owner that morning. Agreement between two implementations is not evidence
+    # when both were written from the same wrong sentence, so this suite checks
+    # the alpha plane against a third decoder built from the format description.
+    r"_probe\test_dds_alpha.py",
+    r"_probe\test_dat_baseline.py",
+    # plan/build agreement on all eleven intent shapes.  The same sentence going
+    # through two paths that disagree about the count is the bug class this tree
+    # keeps finding, and this was never in a runner.
+    r"_probe\test_plan_roundtrip.py",
 ]
 
 # Suites that are not Python.  The screen's script is JavaScript and no Python
@@ -616,6 +1069,17 @@ def main():
     that only wants `_FAIL_RE` or `SUITES` must not start a 131-suite
     run.  Learned on 2026-10-25 by doing exactly that.
     """
+    # One env var, one meaning, for every child.  `AOE2MOD_BUILD_OUT` is read
+    # by `aoe2mod/ui/server.py`, and several suites start the SHIPPED exe with
+    # `cwd=<bundle>`.  A relative value therefore names a different folder in the
+    # exe than in the runner, and the build reports a path nobody can find:
+    # `test_sprite_target.py` and `test_civ_scope.py` both failed on 2026-11-02
+    # with `no .dat in the built folder` while passing when run by hand.  Fix it
+    # once here, resolved against the repo, instead of in every suite.
+    _bo = os.environ.get("AOE2MOD_BUILD_OUT")
+    if _bo and not os.path.isabs(_bo):
+        os.environ["AOE2MOD_BUILD_OUT"] = os.path.join(ROOT, _bo)
+
     for rel in SUITES:
         path = os.path.join(ROOT, rel)
         env = dict(os.environ, PYTHONIOENCODING="utf-8")

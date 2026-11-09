@@ -384,9 +384,9 @@ pub fn read_stages23(r: &mut Reader<'_>) -> io::Result<Stages23> {
 pub mod stages37;
 
 pub use stages37::{
-    read_effect, read_random_maps, read_task, read_terrain, read_terrain_block,
-    read_unit_header, read_unit_line, Effect, Task, Terrain, TerrainBlock,
-    UnitHeader, UnitLine,
+    new_effect, read_effect, read_random_maps, read_task, read_terrain, read_terrain_block,
+    read_unit_header, read_unit_line, Effect, Task, Terrain, TerrainBlock, UnitHeader, UnitLine,
+    DEBUG_STRING_MARKER,
 };
 
 pub struct Stages47 {
@@ -439,8 +439,8 @@ pub mod write23;
 pub mod write47;
 
 pub use stage810::{
-    read_civ, read_stages810, read_tech, read_tech_tree, read_unit, Civ, Stages810,
-    Tech, TechTree, Unit,
+    read_civ, read_stages810, read_tech, read_tech_tree, read_unit, set_tech_effect_id, Civ,
+    Stages810, Tech, TechTree, Unit,
 };
 
 /// `VER 8.9` -> the ordinal the C++ `GameVersion` enum gives it.

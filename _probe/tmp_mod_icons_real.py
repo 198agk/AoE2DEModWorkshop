@@ -11,7 +11,8 @@ import json
 import os
 import sys
 
-sys.path.insert(0, r"D:\Software\AI\帝国项目")
+sys.path.insert(0, os.path.abspath(os.path.join(
+    os.path.dirname(__file__), "..")))
 
 GAME = r"D:\Games\Steam\steamapps\common\AoE2DE"
 MODROOT = os.path.join(os.path.expanduser("~"), "Games", "Age of Empires 2 DE",

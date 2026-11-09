@@ -19,10 +19,11 @@ import sys
 import time
 import urllib.request
 import zlib
+import _paths as P
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
-BUNDLE = r'D:\Software\AI\AoE2ModWorkshop'
+BUNDLE = P.BUNDLE
 EXE = os.path.join(BUNDLE, 'aoe2-mod-workshop.exe')
 PORT = 7817
 BASE = 'http://127.0.0.1:%d' % PORT

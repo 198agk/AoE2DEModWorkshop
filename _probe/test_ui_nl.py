@@ -114,8 +114,12 @@ def main():
     check("a non-numeric amount is refused", not _i, _i)
 
     _i, clauses = read("血量改成 1000")
-    check("a stat with no entity is refused, and says which half is missing",
-          not _i and "哪个东西" in clauses[0].why, clauses[0].why)
+    # The refusal must NAME the field the sentence got right (「血量」), not just
+    # say "no name I know": measured 2026-11-01, all four no-subject sentences in
+    # the corpus named a real field and got one generic sentence back.
+    check("a stat with no entity is refused, and names the field it DID read",
+          not _i and "\u8840\u91cf" in clauses[0].why
+          and "\u5355\u4f4d" in clauses[0].why, clauses[0].why)
 
     _i, clauses = read("这是什么")
     check("a question is not an edit", not _i
@@ -440,12 +444,18 @@ def main():
           len(intents) == 1 and intents[0].get("intent") == "unit.art",
           intents)
 
-    # Missing facts are refused, and each refusal names the fact that is missing:
-    # a refusal that says "did not understand" here would leave the player with a
-    # correct sentence and no idea what to add.
+    # Missing facts are refused, and each refusal names the fact that is missing
+    # AND finishes the sentence with the player's own words: a refusal that says
+    # "did not understand" leaves them with a correct sentence and no idea what
+    # to add, and an example that invents both the donor and the name makes them
+    # rewrite the half they already got right.  The words were improved on
+    # 2026-11-01 (「补上照着谁」 replacing 「说一个出厂单位的名字」); what these
+    # checks pin is the property, not the phrasing -- the missing fact is named,
+    # and the name the player typed comes back in the example.
     intents, clauses = read("给不列颠新建一个单位，叫铁匠学徒")
     check("a creation with no donor is refused, naming the donor",
-          not intents and "照着哪个单位" in (clauses[0].why or ""),
+          not intents and "照" in (clauses[0].why or "")
+          and "铁匠学徒" in (clauses[0].why or ""),
           [c.why for c in clauses])
     intents, clauses = read("照着村民新建一个单位")
     check("a creation with no name is refused, naming the name",
@@ -453,8 +463,8 @@ def main():
           [c.why for c in clauses])
     intents, clauses = read("照着村民新建一个单位，叫铁匠学徒")
     check("a creation with no civilization is refused, naming the civilization",
-          not intents and ("文明" in (clauses[0].why or "")
-                           and "说清" in (clauses[0].why or "")),
+          not intents and "文明" in (clauses[0].why or "")
+          and "铁匠学徒" in (clauses[0].why or ""),
           [c.why for c in clauses])
     # …and an ordinary edit must not be read as a creation.  "造" appears in
     # 能造; 照 appears in 照片 and 按照.
@@ -515,6 +525,41 @@ def main():
     check("the example sentence on the screen parses",
           bool(intents) and intents[0].get("intent") == "unit.cost"
           and intents[0].get("civs") == ["Poles"], intents)
+
+    # ---- rate comparisons, spoken form -----------------------------------
+    # 「造得快」/「做得快」 is how this is actually said.  The written compounds
+    # (建造速度 / 生产速度) were the only spellings the rate table knew, and both
+    # silent failures below come from that gap.
+    for text in ("\u6751\u6c11\u9020\u5f97\u5feb\u4e00\u70b9",
+                 "\u6751\u6c11\u9020\u7684\u5feb\u4e00\u70b9",
+                 "\u6751\u6c11\u5efa\u9020\u5f97\u5feb\u4e00\u70b9",
+                 "\u6751\u6c11\u751f\u4ea7\u5f97\u5feb\u4e00\u70b9",
+                 "\u6751\u6c11\u505a\u5f97\u5feb\u4e00\u70b9"):
+        _i, _c = read(text)
+        check("%s reads as TRAINING TIME, faster" % text,
+              bool(_i) and _i[0].get("stat") == "creation_time"
+              and _i[0].get("delta", 0) < 0, _i or _c)
+
+    _i, _c = read("\u6751\u6c11\u9020\u5f97\u6162\u4e00\u70b9")
+    check("and \u6162 flips the direction", bool(_i)
+          and _i[0].get("stat") == "creation_time"
+          and _i[0].get("delta", 0) > 0, _i or _c)
+
+    # The one that mattered: this sentence used to come back as
+    # ``unit.stat hit_points +1``.  A wrong-but-plausible edit is worse than a
+    # refusal, so the assertion names the field AND rejects the wrong one.
+    _i, _c = read("\u6751\u6c11\u751f\u4ea7\u5f97\u5feb\u4e00\u70b9")
+    check("production speed is NEVER read as hit points",
+          not (bool(_i) and _i[0].get("stat") == "hit_points"), _i)
+
+    # 攻击更快 is a RATE, 攻击力更强 is DAMAGE -- only the adjacency tells them
+    # apart, and 造 must not steal 攻击 (it does not: longer words win).
+    _i, _c = read("\u957f\u67aa\u5175\u653b\u51fb\u66f4\u5feb1")
+    check("\u653b\u51fb\u66f4\u5feb stays a rate", bool(_i)
+          and _i[0].get("stat") == "reload_time", _i or _c)
+    _i, _c = read("\u6751\u6c11\u653b\u51fb\u529b\u66f4\u5f3a1")
+    check("\u653b\u51fb\u529b\u66f4\u5f3a stays damage", bool(_i)
+          and _i[0].get("stat") == "displayed_attack", _i or _c)
 
     # ---- honesty: every clause carries either an intent or a reason ------
     _, clauses = read("随便写点什么")

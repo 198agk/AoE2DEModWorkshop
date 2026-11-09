@@ -1,8 +1,10 @@
 ﻿import sys, io, os, collections, contextlib
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
-sys.path.insert(0, r"D:\Software\AI\帝国项目")
+sys.path.insert(0, os.path.abspath(os.path.join(
+    os.path.dirname(__file__), "..", "..", "..")))
 from aoe2mod.dat import parser as P, locate as L
 from aoe2mod.game import locations as LOC
+import os
 g = LOC.find_game_root()
 raw, how = P.load_dat(os.path.join(g,"resources","_common","dat","empires2_x2_p1.dat"))
 with contextlib.redirect_stdout(io.StringIO()):

@@ -34,6 +34,28 @@ SUITES = [
     # tech.effect case (~50 s each), so it lives here with the other ~20 min
     # suites rather than in the fast run_suites.py.
     ("_probe\\test_plan_matches_build.py", "AGREE ON EVERY CASE"),
+    # ---- five suites that existed on disk but were named by NO runner --------
+    # These started the shipped shell, or walked the 93 MB .dat twice, which is
+    # why they were left out of run_suites.py -- and then out of every runner.
+    # `probe_suite_registry.py` reported ten orphans on 2026-11-01; five are fast
+    # and were registered there, these five belong here.
+    #
+    # `test_dat_baseline_reverse` is the only one that proves the baseline CHECKER
+    # can go red at all: a checker that cannot fail has never been tested.
+    ("_probe\\test_dat_baseline_reverse.py", "REVERSE OK"),
+    # The double-clicked release, measured as a product: parses, previews, builds,
+    # installs, and answers the icon route.  Every other suite tests the checkout;
+    # this one tests what the player runs.
+    ("_probe\\test_e2e_shipped.py", "SHIPPED E2E: ALL PASSED"),
+    ("_probe\\test_pages_shipped.py", "PAGE GATE: ALL PASSED"),
+    # The icon route against the decoder, pixel for pixel, at three sizes.  It was
+    # red for a month for two reasons that were both the probe's own: it read
+    # `max=` while the route reads `size=`, and it treated a unit id as an icon id.
+    ("_probe\\test_icon_parity.py", "pixel-identical"),
+    # Rebuild round-trip against a COPY of the profile.  It used to build the
+    # moment the socket answered, seconds before the 93 MB parse finished, and
+    # reported the engine's honest refusal as a product defect.
+    ("_probe\\test_rebuild.py", "REBUILD: ALL PASSED"),
 ]
 
 env = dict(os.environ)

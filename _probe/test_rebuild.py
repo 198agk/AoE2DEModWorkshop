@@ -66,13 +66,29 @@ def main():
          os.path.join(ROOT, "aoe2mod", "ui", "static")],
         env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     base = "http://127.0.0.1:%d" % PORT
-    for _ in range(80):
-        time.sleep(0.25)
+    # Wait for the PARSER, not for the socket.  `/api/progress` answers as soon as
+    # the listener is up, which is seconds before the 93 MB .dat is read; the first
+    # version broke out of this loop on the first successful reply and then built
+    # into an engine that could only answer "游戏数据还没读完".  A gate must wait
+    # for the thing it measures to be ready.
+    deadline = time.time() + 240
+    ready = False
+    while time.time() < deadline:
+        if p.poll() is not None:
+            raise SystemExit("aoe2mod-serve exited: %s" % p.returncode)
         try:
-            get(base + "/api/progress")
-            break
+            pr = get(base + "/api/progress").get("progress") or {}
         except Exception:
-            pass
+            time.sleep(0.25)
+            continue
+        if pr.get("error"):
+            raise SystemExit("aoe2mod-serve failed: %s" % pr["error"])
+        if pr.get("ready"):
+            ready = True
+            break
+        time.sleep(0.25)
+    if not ready:
+        raise SystemExit("aoe2mod-serve never finished reading the game data")
 
     ok = True
     try:

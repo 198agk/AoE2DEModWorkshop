@@ -16,9 +16,10 @@ import subprocess
 import sys
 import time
 import urllib.request
+import _paths as P
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-BUNDLE = r'D:\Software\AI\AoE2ModWorkshop'
+BUNDLE = P.BUNDLE
 EXE = os.path.join(BUNDLE, 'aoe2-mod-workshop.exe')
 PORT = 7824
 BASE = 'http://127.0.0.1:%d' % PORT
@@ -36,12 +37,27 @@ def check(name, got, want, why=''):
 
 
 def post(path, body, timeout=900):
-    req = urllib.request.Request(
-        BASE + path,
-        data=json.dumps(body).encode(),
-        headers={'Content-Type': 'application/json'},
-    )
-    return json.load(urllib.request.urlopen(req, timeout=timeout))
+    # RETRY A RESET, ONCE.  Measured 2026-11-02: a full-suite run got
+    # `ConnectionResetError [WinError 10054]` on one POST while the same file
+    # passed on its own.  A reset means no answer was read, so a retry cannot
+    # double-install (the build is keyed by TITLE and replaces its own folder) --
+    # and after two failures this still raises, because a silent retry loop would
+    # turn a broken server into a green suite.
+    last = None
+    for attempt in (1, 2):
+        req = urllib.request.Request(
+            BASE + path,
+            data=json.dumps(body).encode(),
+            headers={'Content-Type': 'application/json'},
+        )
+        try:
+            return json.load(urllib.request.urlopen(req, timeout=timeout))
+        except ConnectionResetError as exc:            # noqa: PERF203
+            last = exc
+            if attempt == 1:
+                print('  [retry] POST %s was reset, asking again' % (path,))
+                time.sleep(2.0)
+    raise last
 
 
 def sha(path):

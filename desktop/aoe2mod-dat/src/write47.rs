@@ -80,17 +80,63 @@ pub fn write_terrain_block(w: &mut Writer<'_>, tb: &crate::TerrainBlock) -> io::
     Ok(())
 }
 
-fn write_effect(w: &mut Writer<'_>, e: &crate::Effect) -> io::Result<()> {
-    w.debug_string(e.name_marker, &e.name, Some(e.name_len))?;
-    w.i16(e.commands.len() as i16);
-    for &(a, b, c, d, f) in &e.commands {
+/// One effect command: `type u8`, then `a`, `b`, `c` as `i16`, then `d` as
+/// `f32`.  `aoe2mod/dat/writer.py:47` calls this `EFFECT_COMMAND_BYTES`.
+const EFFECT_COMMAND_BYTES: isize = 11;
+
+fn write_commands(w: &mut Writer<'_>, cmds: &[(u8, i16, i16, i16, f32)]) {
+    for &(a, b, c, d, f) in cmds {
         w.u8(a);
         w.i16(b);
         w.i16(c);
         w.i16(d);
         w.f32(f);
     }
-    Ok(())
+}
+
+/// Emit one effect record.
+///
+/// The count field is the one variable width in this record, and it is the
+/// reason this function cannot simply write and move on:
+///
+///   * The width the INPUT stored has to be read BEFORE the cursor moves by the
+///     width we write, otherwise the old width is gone.
+///   * After writing, the cursor sits where `our_count` commands end, but the
+///     input's next field starts where `stored_count` commands ended.  The
+///     difference has to be walked explicitly.
+///
+/// Skipping that walk is not a crash: the stream stays syntactically valid and
+/// only the numbers inside are wrong from that point on.  Measured in
+/// `aoe2mod/dat/writer.py`'s history -- two added `type 102` commands produced
+/// 96,331,764 B instead of 93,268,152 and the re-parse died in `read_bird`.
+fn write_effect(w: &mut Writer<'_>, e: &crate::Effect) -> io::Result<()> {
+    if e.is_new {
+        w.begin_new();
+        let r = (|| -> io::Result<()> {
+            w.debug_string(e.name_marker, &e.name, Some(e.name_len))?;
+            w.i16(e.commands.len() as i16);
+            write_commands(w, &e.commands);
+            Ok(())
+        })();
+        w.end_new();
+        return r;
+    }
+
+    w.debug_string(e.name_marker, &e.name, Some(e.name_len))?;
+    let stored_count = w.peek_i16().ok_or_else(|| {
+        io::Error::new(
+            io::ErrorKind::UnexpectedEof,
+            format!(
+                "effect {:?}: command count unreadable at raw {}",
+                e.name,
+                w.raw_pos()
+            ),
+        )
+    })?;
+    w.i16(e.commands.len() as i16);
+    write_commands(w, &e.commands);
+    let delta = stored_count as isize - e.commands.len() as isize;
+    w.advance_raw(delta * EFFECT_COMMAND_BYTES)
 }
 
 pub fn write_stages47(w: &mut Writer<'_>, s: &Stages47, gv: u32) -> io::Result<()> {

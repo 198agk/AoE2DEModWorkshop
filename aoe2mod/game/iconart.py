@@ -239,28 +239,25 @@ def _clean_stem(name, slot=None, kind=None):
 
 
 def _open_picture(path):
-    """-> a PIL image whose header has been read, or raise IconError in Chinese.
+    """-> (width, height) after checking the file really is a picture.
 
-    Only the header is parsed here (`Image.open` is lazy), which is what makes it
-    affordable on the preview path -- the page plans on every keystroke.  The
-    full decode still happens in `_rgba_from_picture`, because a file can pass the
-    header check and still be truncated.
+    Kept as the same private name it always had, because `api.py` calls
+    `check_picture` on the preview path and every test that ever asserted about
+    this behaviour asserted through the public pair.  The decoding itself moved
+    to `aoe2mod.game.picture`, which is stdlib-only: the packaged build excludes
+    Pillow on purpose, so `from PIL import Image` here meant the SHIPPED program
+    could not read any picture at all (measured 2026-10-30 against
+    `aoe2-mod-workshop.exe`, whose `app/aoe2mod/` holds only `schema/` and `ui/`).
     """
-    try:
-        from PIL import Image
-    except ImportError:                             # pragma: no cover
-        raise IconError("这个版本装不了图片读取组件（Pillow），没法读你给的图片")
+    from . import picture as P
+
     if not os.path.isfile(path):
         raise IconError("找不到这张图片：%s" % path)
     try:
-        return Image.open(path)
-    except Exception:                               # noqa: BLE001
-        # Measured 2026-10-23: a text file named .png reached the build, which
-        # answered with PIL's own English sentence.  The type name is the only
-        # part a player could act on, and even that only means "this is not a
-        # picture", so say that plainly instead of pasting the exception.
-        raise IconError("这张图片打不开：%s 不是一张能识别的图片"
-                        "（支持 PNG、JPG、BMP、GIF）" % os.path.basename(path))
+        return P.size(path)
+    except P.PictureError as exc:
+        raise IconError("这张图片打不开：%s —— %s"
+                        % (os.path.basename(path), exc))
 
 
 def check_picture(path):
@@ -271,44 +268,29 @@ def check_picture(path):
     and the build then died decoding it -- measured 2026-10-23 with a text file
     named `not_a_picture.png`: plan said edit_count=3, build raised.
     """
-    img = _open_picture(path)
-    try:
-        size = img.size
-    finally:
-        try:
-            img.close()
-        except Exception:                           # noqa: BLE001
-            pass
-    w, h = size
+    w, h = _open_picture(path)
     if w <= 0 or h <= 0:
         raise IconError("这张图片是空的（%dx%d）" % (w, h))
     return w, h
 
 
 def _rgba_from_picture(path, side=SIDE):
-    """Any picture PIL can open -> (side, side, RGBA bytes), letterboxed on alpha 0.
+    """Any supported picture -> (side, side, RGBA bytes), letterboxed on alpha 0.
 
     The letterbox is deliberate: a 200x100 logo squashed to a square would look
     wrong on a square button, and silently cropping it would hide most of the
     picture.  Fitting keeps the whole thing and leaves transparent margins.
     """
-    from PIL import Image
-    img = _open_picture(path)
+    from . import picture as P
+
+    if not os.path.isfile(path):
+        raise IconError("找不到这张图片：%s" % path)
     try:
-        img.load()
-    except Exception:                               # noqa: BLE001
-        raise IconError("这张图片读到一半失败，文件可能是坏的：%s"
-                        % os.path.basename(path))
-    img = img.convert("RGBA")
-    w, h = img.size
-    if w <= 0 or h <= 0:
-        raise IconError("这张图片是空的（%dx%d）" % (w, h))
-    scale = min(float(side) / w, float(side) / h)
-    nw, nh = max(1, int(round(w * scale))), max(1, int(round(h * scale)))
-    img = img.resize((nw, nh), Image.LANCZOS)
-    canvas = Image.new("RGBA", (side, side), (0, 0, 0, 0))
-    canvas.paste(img, ((side - nw) // 2, (side - nh) // 2))
-    return side, side, canvas.tobytes()
+        w, h, rgba = P.read(path)
+        return P.fit(w, h, rgba, side)
+    except P.PictureError as exc:
+        raise IconError("这张图片读不出来：%s —— %s"
+                        % (os.path.basename(path), exc))
 
 
 def plan(icons_doc, materials_doc, picture, stem=None, slot=None, kind="unit"):
@@ -350,24 +332,22 @@ def _key(slot):
     return str(slot).zfill(3)
 
 
-def emit(icons_doc, materials_doc, label, rgba, side=SIDE, slot=None,
-         stem=None, kind="unit"):
-    """-> {relative_path: bytes} for the whole icon layer.
+def _merge_one(icons, materials, label, rgba, side=SIDE, slot=None,
+               stem=None, kind="unit"):
+    """Add ONE icon to tables that are ALREADY deep copies.
+
+    Split out of `emit` because a session that changes three icons would
+    otherwise deep-copy the 2.5 MB materials table three times AND write three
+    complete tables into the mod, where only the last one survives -- the engine
+    reads the file, not the writes.
 
     `label` is the slot key as the table spells it; `rgba` is `side*side*4` bytes.
-    Both JSON files come back as the full merged table -- see the module
-    docstring for why a patch would not work.
-
-    A unit icon is written as uncompressed BGRA DDS and a tech icon as PNG,
-    because those are the shapes the only shipped precedent used per section.
-    Nothing in the engine requires that split -- it is copied from a mod that
-    works, which is the strongest evidence available without another run.
+    A unit icon becomes an uncompressed BGRA DDS and a tech icon a PNG, because
+    those are the shapes the only shipped precedent used per section.  Nothing in
+    the engine requires that split -- it is copied from a mod that works, which is
+    the strongest evidence available without another run.
     """
-    import copy
-
     spec = SECTIONS[kind]
-    icons = copy.deepcopy(icons_doc)
-    materials = copy.deepcopy(materials_doc)
     if slot is None:
         slot = next_slot(icons, kind)
     slot = int(slot)
@@ -400,10 +380,49 @@ def emit(icons_doc, materials_doc, label, rgba, side=SIDE, slot=None,
     # texture lookup never finds it -- measured 2026-10-23 on a real build: the
     # JSON named `textures/ingame/units/newicon.dds` and that is where the file
     # landed, next to `info.json` rather than under `widgetui/`.
-    return {_mod_rel(file_rel): blob,
-            ICONS_REL.replace(os.sep, "/"): _dump(icons),
-            MATERIALS_REL.replace(os.sep, "/"): _dump(materials)}
+    meta = {"slot": slot, "key": key, "material": material,
+            "file_rel": file_rel, "side": side, "kind": kind,
+            "section": spec["section"], "label": label}
+    return meta, blob
 
+
+def emit_many(icons_doc, materials_doc, items):
+    """-> ({relative_path: bytes}, [meta]) for several icons, ONE table dump.
+
+    `items` is a list of `{"label","rgba","side","slot","stem","kind"}`.  Both
+    JSON files come back as the FULL merged table -- see the module docstring for
+    why a patch would not work.
+    """
+    import copy
+
+    icons = copy.deepcopy(icons_doc)
+    materials = copy.deepcopy(materials_doc)
+    files = {}
+    metas = []
+    for it in items:
+        meta, blob = _merge_one(icons, materials, it.get("label"), it["rgba"],
+                                side=it.get("side") or SIDE,
+                                slot=it.get("slot"), stem=it.get("stem"),
+                                kind=it.get("kind") or "unit")
+        files[_mod_rel(meta["file_rel"])] = blob
+        metas.append(meta)
+    files[ICONS_REL.replace(os.sep, "/")] = _dump(icons)
+    files[MATERIALS_REL.replace(os.sep, "/")] = _dump(materials)
+    return files, metas
+
+
+def emit(icons_doc, materials_doc, label, rgba, side=SIDE, slot=None,
+         stem=None, kind="unit"):
+    """-> {relative_path: bytes} for ONE icon's whole layer.
+
+    Kept as the single-icon spelling because every existing caller (the intent
+    build paths in `aoe2mod/api.py`) adds exactly one picture; `emit_many` is the
+    same code with the table dump hoisted out of the loop.
+    """
+    files, _metas = emit_many(icons_doc, materials_doc,
+                              [{"label": label, "rgba": rgba, "side": side,
+                                "slot": slot, "stem": stem, "kind": kind}])
+    return files
 
 def _mod_rel(file_name):
     """Where a texture's file goes INSIDE the mod, given its `FileName`."""

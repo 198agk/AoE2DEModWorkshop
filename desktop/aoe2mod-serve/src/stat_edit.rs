@@ -15,6 +15,26 @@ use aoe2mod_dat::{
 /// The preview calls the builders with this set so it reports the build's own
 /// numbers instead of a second calculation.  Every builder honours it at exactly
 /// one place: the line before it creates the mod folder.
+/// The mod's `Description`, taken from the request.
+///
+/// The reference engine does not invent one: `aoe2mod/ui/server.py:898` reads
+/// `payload.get("description") or ""` and writes whatever it got, empty
+/// included.  This side used to synthesise a line per builder
+/// (`"hp 74 -> 100"`), which meant the same intent produced a different
+/// `info.json` depending on WHO built it -- the byte-comparison gate caught it
+/// as ten of eleven cases differing in exactly this file.  A description is the
+/// player's text; deriving it from the numbers that already appear in the
+/// manifest's own intents adds a second, weaker copy of the same facts.
+///
+/// It is also used for `remember_build`, so the build record and the shipped
+/// `info.json` cannot disagree about what was asked for.
+fn description_of(req: &serde_json::Value) -> String {
+    req.get("description")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string()
+}
+
 pub fn is_dry(req: &serde_json::Value) -> bool {
     req.get("dry").and_then(|v| v.as_bool()).unwrap_or(false)
 }
@@ -447,7 +467,7 @@ pub fn build_one(server: &Server, req: &serde_json::Value) -> Result<String, Str
         &out,
         &title,
         "aoe2mod",
-        &format!("{stat} {unit} -> {new_value}"),
+        &description_of(req),
         true,
     )?;
 
@@ -478,7 +498,7 @@ pub fn build_one(server: &Server, req: &serde_json::Value) -> Result<String, Str
     crate::updates::remember_build(
         &title,
         "aoe2mod",
-        &format!("{stat} {unit} -> {new_value}"),
+        &description_of(req),
         recorded_intent(
             serde_json::json!({
                 "intent": "unit.stat",
@@ -614,7 +634,7 @@ fn build_unit_field(
         &out,
         &title,
         "aoe2mod",
-        &format!("{} {unit} -> {new_value}", resolved.label),
+        &description_of(req),
         true,
     )?;
 
@@ -633,7 +653,7 @@ fn build_unit_field(
     crate::updates::remember_build(
         &title,
         "aoe2mod",
-        &format!("{} {unit} -> {new_value}", resolved.label),
+        &description_of(req),
         recorded_intent(
             serde_json::json!({
                 "intent": intent,
@@ -871,7 +891,7 @@ fn build_tech(server: &Server, req: &serde_json::Value) -> Result<String, String
         &out,
         &title,
         "aoe2mod",
-        &format!("{intent} {tech} -> {new_value}"),
+        &description_of(req),
         true,
     )?;
 
@@ -894,7 +914,7 @@ fn build_tech(server: &Server, req: &serde_json::Value) -> Result<String, String
     crate::updates::remember_build(
         &title,
         "aoe2mod",
-        &format!("{intent} {tech} -> {new_value}"),
+        &description_of(req),
         recorded_intent(
             serde_json::json!({
                 "intent": intent,
@@ -1074,7 +1094,7 @@ fn build_effect(server: &Server, req: &serde_json::Value) -> Result<String, Stri
         &out,
         &title,
         "aoe2mod",
-        &format!("effect {effect_id} cmd {command} {field} -> {new_value}"),
+        &description_of(req),
         true,
     )?;
 
@@ -1093,7 +1113,7 @@ fn build_effect(server: &Server, req: &serde_json::Value) -> Result<String, Stri
     crate::updates::remember_build(
         &title,
         "aoe2mod",
-        &format!("effect {effect_id} cmd {command} {field} -> {new_value}"),
+        &description_of(req),
         serde_json::json!([{
             "intent": "tech.effect",
             "tech": tech,
@@ -1263,7 +1283,7 @@ fn build_card_move(server: &Server, req: &serde_json::Value) -> Result<String, S
         &out,
         &title,
         "aoe2mod",
-        &format!("card {building}: unit {unit} -> box {target}"),
+        &description_of(req),
         true,
     )?;
 
@@ -1282,7 +1302,7 @@ fn build_card_move(server: &Server, req: &serde_json::Value) -> Result<String, S
     crate::updates::remember_build(
         &title,
         "aoe2mod",
-        &format!("card {building}: unit {unit} -> box {target}"),
+        &description_of(req),
         serde_json::json!([{
             "intent": "unit.card_move",
             "unit": unit,
@@ -1532,7 +1552,7 @@ fn build_sprite(server: &Server, req: &serde_json::Value) -> Result<String, Stri
         &out,
         &title,
         "aoe2mod",
-        &format!("sprite rename: {touched} records"),
+        &description_of(req),
         true,
     )?;
 
@@ -1551,7 +1571,7 @@ fn build_sprite(server: &Server, req: &serde_json::Value) -> Result<String, Stri
     crate::updates::remember_build(
         &title,
         "aoe2mod",
-        &format!("sprite rename: {touched} records"),
+        &description_of(req),
         serde_json::json!([{
             "intent": "unit.sprite",
             "unit": target,
@@ -1613,6 +1633,11 @@ fn build_toggle_group(server: &Server, req: &serde_json::Value) -> Result<String
     let out_dir = std::env::temp_dir()
         .join("aoe2mod-native-build")
         .join(&title);
+    let kind = req
+        .get("type")
+        .and_then(|v| v.as_str())
+        .unwrap_or("MutuallyExclusive")
+        .to_string();
     if is_dry(req) {
         // The JSON layer is the whole edit, and it is refused or accepted by
         // `add_group` -- so the preview has to run it, not guess.  Run it against
@@ -1628,13 +1653,30 @@ fn build_toggle_group(server: &Server, req: &serde_json::Value) -> Result<String
             .and_then(|v| v.as_array())
             .map(|a| a.len())
             .unwrap_or(0);
+        // The `.dat` half is counted, not guessed: an `edit_count` that says
+        // "1 entry" while the mechanism is 4 commands (or, for a Cycle, none at
+        // all) understates what pressing 生成 does to the player's game folder.
+        let (cmds, cloned, changed) = crate::groupdat::rewrite(&raw, &techs, &kind)
+            .map(|r| match r {
+                Some(r) => (
+                    r.added.commands_added,
+                    r.added.cloned.len(),
+                    r.bytes != raw,
+                ),
+                None => (0, 0, false),
+            })
+            .unwrap_or((0, 0, false));
         return Ok(format!(
             // `edit_count` must be here too: the preview reads the builder's own
             // report, and a dry run that omits the field previews "0 edits" for
             // an edit that writes one entry.  A zero meaning "not reported" is
             // indistinguishable from a zero meaning "nothing will happen".
-            "{{\"ok\":true,\"intent\":\"tech.toggle_group\",\"entry\":{},\"entries\":{},\"edit_count\":1,\"files\":2,\"dry\":true,\"built\":\"\",\"installed\":\"\"}}",
-            entry, total
+            "{{\"ok\":true,\"intent\":\"tech.toggle_group\",\"entry\":{},\"entries\":{},\"edit_count\":1,\"files\":2,\"changes_dat\":{},\"commands_added\":{},\"shared_effects_cloned\":{},\"dry\":true,\"built\":\"\",\"installed\":\"\"}}",
+            entry,
+            total,
+            changed,
+            cmds,
+            cloned
         ));
     }
     if out_dir.exists() {
@@ -1649,22 +1691,67 @@ fn build_toggle_group(server: &Server, req: &serde_json::Value) -> Result<String
         &techs,
     )?;
 
-    // 2. the carrier .dat, copied verbatim
+    // 2. the .dat half.
+    //
+    // The label alone is not the mechanism: `linkedTechs.json` draws the red
+    // cross and the second technology stays researchable.  The `type 102`
+    // commands in each member's own effect are what actually hide it, so this
+    // half is written whenever `kind` is one of the two that use it -- and
+    // VERIFIED by re-parsing the bytes, because a wrong writer cursor still
+    // produces a well-formed 93 MB file.
+    let (dat_bytes, compressed, commands_added, cloned) = match crate::groupdat::rewrite(
+        &raw, &techs, &kind,
+    )? {
+        Some(rw) => {
+            let first = techs[0];
+            let expect = rw
+                .added
+                .cloned
+                .iter()
+                .find(|c| c.tech == first)
+                .map(|c| (c.from, c.to));
+            let v = crate::groupdat::verify(&rw.bytes, first, &kind, expect)?;
+            if v.reparsed_commands == 0 {
+                return Err("写出的 .dat 里没有 102 命令".into());
+            }
+            use flate2::write::DeflateEncoder;
+            use flate2::Compression;
+            use std::io::Write;
+            let mut enc = DeflateEncoder::new(Vec::new(), Compression::default());
+            enc.write_all(&rw.bytes).map_err(|e| e.to_string())?;
+            let packed = enc.finish().map_err(|e| e.to_string())?;
+            (
+                rw.bytes.len(),
+                packed,
+                rw.added.commands_added,
+                rw.added.cloned.len(),
+            )
+        }
+        None => {
+            // Nothing to add: every member already bans the others, so the only
+            // change is the JSON entry.  A `.dat` is still shipped because a mod
+            // that writes under `resources/_common/dat/` without one makes the
+            // game fail to start -- the DAT storage point is resolved as a unit,
+            // not per file.
+            use flate2::write::DeflateEncoder;
+            use flate2::Compression;
+            use std::io::Write;
+            let mut enc = DeflateEncoder::new(Vec::new(), Compression::default());
+            enc.write_all(&raw).map_err(|e| e.to_string())?;
+            (raw.len(), enc.finish().map_err(|e| e.to_string())?, 0usize, 0usize)
+        }
+    };
     let dat_out = out_dir.join("resources/_common/dat/empires2_x2_p1.dat");
-    {
-        use flate2::write::DeflateEncoder;
-        use flate2::Compression;
-        use std::io::Write;
-        let f = std::fs::File::create(&dat_out).map_err(|e| e.to_string())?;
-        let mut e = DeflateEncoder::new(f, Compression::default());
-        e.write_all(&raw).map_err(|e| e.to_string())?;
-        e.finish().map_err(|e| e.to_string())?;
+    if let Some(parent) = dat_out.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
+    std::fs::write(&dat_out, &compressed).map_err(|e| e.to_string())?;
 
     // 3. info.json, compact, four keys
+    let description = description_of(req);
     let info = format!(
         "{{\"Author\":\"aoe2mod\",\"CacheStatus\":0,\"Description\":\"{}\",\"Title\":\"{}\"}}",
-        crate::server::json_escape(&format!("mutually exclusive: {techs:?}")),
+        crate::server::json_escape(&description),
         crate::server::json_escape(&title)
     );
     std::fs::write(out_dir.join("info.json"), info).map_err(|e| e.to_string())?;
@@ -1675,8 +1762,8 @@ fn build_toggle_group(server: &Server, req: &serde_json::Value) -> Result<String
         let built = crate::build::Built {
             dir: out_dir.clone(),
             title: title.clone(),
-            dat_bytes: raw.len(),
-            compressed: Vec::new(),
+            dat_bytes,
+            compressed: compressed.clone(),
         };
         let dest = crate::build::install_local(&prof, &built, &title)?;
         installed_to = dest.display().to_string();
@@ -1686,20 +1773,25 @@ fn build_toggle_group(server: &Server, req: &serde_json::Value) -> Result<String
         Some((f, rr, _v)) => (f, rr),
         None => (String::new(), None),
     };
+    // The hash of what LANDED ON DISK.  Empty only when the `.dat` is a byte
+    // copy of the factory one: `update-check` reads an empty hash as "carrier",
+    // and reading a real hash as carrier would hide a mod that went stale.
+    let dat_out_sha = if commands_added > 0 {
+        sha256_bytes(&compressed)
+    } else {
+        String::new()
+    };
     crate::updates::remember_build(
         &title,
         "aoe2mod",
-        &format!("mutually exclusive: {techs:?}"),
+        &description,
         serde_json::json!([{
             "intent": "tech.toggle_group",
             "techs": techs
         }]),
         &base_file_sha,
         base_raw_sha.as_deref(),
-        // The emitted .dat is the factory one, so its hash is empty on purpose:
-        // `update-check` then treats this as a CARRIER, not as an edit that can go
-        // stale. Writing a hash here would make it look edited forever.
-        "",
+        &dat_out_sha,
         true,
     )
     .map_err(|e| format!("建好了但没能写构建记录：{e}"))?;
@@ -1707,10 +1799,17 @@ fn build_toggle_group(server: &Server, req: &serde_json::Value) -> Result<String
     Ok(format!(
         // One entry, not one per member: the array it lands in is keyed by
         // group, and 「2 项做成一组」 changes that array once.  The reference
-        // reports edit_count 1 for the same sentence.
-        "{{\"ok\":true,\"intent\":\"tech.toggle_group\",\"entry\":{},\"entries\":{},\"edit_count\":1,\"files\":2,\"built\":\"{}\",\"installed\":\"{}\"}}",
+        // reports edit_count 1 for the same sentence.  `commands_added` is the
+        // separate, honest count of what the `.dat` half did -- the two numbers
+        // answer different questions and a single one would hide the case where
+        // the JSON changed and the mechanism did not.
+        "{{\"ok\":true,\"intent\":\"tech.toggle_group\",\"entry\":{},\"entries\":{},\"edit_count\":1,\"files\":2,\"changes_dat\":{},\"commands_added\":{},\"shared_effects_cloned\":{},\"dat_bytes\":{},\"built\":\"{}\",\"installed\":\"{}\"}}",
         entry,
         total,
+        commands_added > 0,
+        commands_added,
+        cloned,
+        dat_bytes,
         crate::server::json_escape(&out_dir.display().to_string()),
         crate::server::json_escape(&installed_to)
     ))

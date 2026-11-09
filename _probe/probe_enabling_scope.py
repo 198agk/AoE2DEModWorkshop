@@ -69,7 +69,8 @@ def connections(raw, gv):
     """Every TechTree UnitConnection, keyed by unit id.
 
     Field order copied verbatim from the production walk in
-    `aoe2mod/intent/datgrant.py:145-177` -- the same code that produced
+    `aoe2mod/intent/datgrant.py:445-479` (`connection_offset`) -- the same
+    code that produced
     `enabling_research {'was': -1}` for unit 2550 in the end-to-end run.  Hand
     rolling a shorter skip yields 20 connections with garbage values: the age and
     building records are variable length, so an approximate skip desynchronises.
@@ -113,21 +114,23 @@ def connections(raw, gv):
         o = r.pos
         en = r.i32()
         out[uid] = {"offset": o, "enabling_research": en}
-    return out
+    return out, n_units
 
 
 print("A  the shipped distribution of EnablingResearch")
 tk = A.open_toolkit(game_root=GAME)
 tk.describe(4)
 data, civs, _cs, gv, _tail, _how = tk._parsed
-conn = connections(data, gv)
+conn, _n_units = connections(data, gv)
 _neg = [u for u, c in conn.items() if c["enabling_research"] == -1]
 _pos = sorted(u for u, c in conn.items() if c["enabling_research"] != -1)
-print("     unit connections: %d   (=1 per unit id, so the field is global)")
+print("     unit connections: %d   (=1 per unit id, so the field is global)"
+      % len(conn))
 print("     EnablingResearch == -1 : %d" % len(_neg))
 print("     EnablingResearch >= 0  : %d   %s" % (len(_pos), _pos[:20]))
 check("the census matches the production reader's unit count",
-      len(conn) == 266, "%d connections" % len(conn))
+      len(conn) == _n_units, "%d connections, file declares %d"
+      % (len(conn), _n_units))
 check("unit 2550 (the confirmed target) ships as -1",
       conn[2550]["enabling_research"] == -1,
       "%r" % (conn.get(2550, {}).get("enabling_research"),))
@@ -140,7 +143,7 @@ print()
 print("B  what v7's artifact actually contains")
 if os.path.exists(V7):
     vraw, _ = P.load_dat(V7)
-    vconn = connections(vraw, gv)
+    vconn, _vn = connections(vraw, gv)
     print("     v7      unit 2550 EnablingResearch = %s"
           % vconn[2550]["enabling_research"])
     print("     shipped unit 2550 EnablingResearch = %s"

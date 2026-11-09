@@ -63,6 +63,14 @@ import zlib
 
 STATE_VERSION = 1
 STATE_DIR_ENV = "AOE2MOD_STATE_DIR"
+#: The native engine's spelling of the same override
+#: (`desktop/aoe2mod-serve/src/recipes.rs:40 fn state_dir`).  Both are honoured
+#: because the shipped exe now runs THIS engine, and every suite written against
+#: the native one sets this name -- measured 2026-10-31,
+#: `_probe/test_e2e_shipped.py:74` isolated its build records with
+#: `AOE2MOD_STATE` and this side wrote into the player's real `builds.json`
+#: anyway, so its own update-check could not find the mods it had just built.
+STATE_DIR_ENV_NATIVE = "AOE2MOD_STATE"
 STATE_FILE = "builds.json"
 
 # Status values a caller may print.  Kept as words rather than booleans so the
@@ -75,8 +83,15 @@ NO_DAT = "no_dat"          # the mod ships no .dat, so a patch cannot stale it
 
 
 def state_dir():
-    """Where build records live.  ``AOE2MOD_STATE_DIR`` overrides for tests."""
-    override = os.environ.get(STATE_DIR_ENV)
+    """Where build records live.
+
+    ``AOE2MOD_STATE_DIR`` overrides for tests, and the native engine's own name
+    ``AOE2MOD_STATE`` is accepted as the same thing: both are sandbox
+    declarations, and a deployment that sets only the native name must not end
+    up writing into the player's real records.
+    """
+    override = (os.environ.get(STATE_DIR_ENV)
+                or os.environ.get(STATE_DIR_ENV_NATIVE))
     if override:
         return os.path.abspath(override)
     base = os.environ.get("LOCALAPPDATA")

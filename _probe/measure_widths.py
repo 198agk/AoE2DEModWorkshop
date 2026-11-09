@@ -58,9 +58,9 @@ def main():
         shot = os.path.join(shots, "w%d.png" % width)
         got = measure(base, width, shot)
         out[str(width)] = got
-        print("%dpx -> vw=%s doc=%s scroll=%s cols=%s"
+        print("%dpx -> vw=%s doc=%s scroll=%s display=%s flow=%s cols=%s"
               % (width, got.get("vw"), got.get("doc"), got.get("scroll"),
-                 got.get("cols")))
+                 got.get("display"), got.get("flow"), got.get("cols")))
 
     with io.open(REPORT, "w", encoding="utf-8", newline="\n") as fh:
         json.dump(out, fh, ensure_ascii=False, indent=2, sort_keys=True)

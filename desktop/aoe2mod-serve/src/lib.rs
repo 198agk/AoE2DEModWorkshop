@@ -9,6 +9,7 @@
 //! The second is what "a folder you double-click" needs. A shell that spawns a
 //! server must decide what to do when the spawn fails, and every answer to that
 //! ("wait 150 s", "show an error page") has already cost this project a round.
+pub mod groupdat;
 pub mod togglegroup;
 pub mod spriteart;
 pub mod spritemap;
@@ -110,6 +111,16 @@ pub fn load_game(server: &Arc<Server>) {
         }
     };
 
+    // The offset tables were measured from one specific `.dat`.  On 2026-10-28
+    // Steam replaced it (`sounds` 769 -> 930, +4135 bytes) and every table went
+    // stale while the tool happily kept writing at the old offsets -- `/api/stat`
+    // answered `ok:true` for edits landing 4397 bytes off.  Refuse before parse:
+    // a wrong write that reports success is worse than a refusal that explains.
+    if let Some(err) = stamp_mismatch(&dat, &raw) {
+        set("stale", "游戏数据更新了，偏移表对不上", 30, false, Some(err));
+        return;
+    }
+
     set("parse", "正在解析游戏数据", 60, false, None);
     let mut r = Reader::new(&raw);
     let s1 = match read_stage1(&mut r) {
@@ -148,12 +159,21 @@ pub fn load_game(server: &Arc<Server>) {
 
 /// Where the game lives: environment override, then the paths that exist on a
 /// normal Steam install.
+///
+/// A set-but-unusable `AOE2MOD_GAME_ROOT` returns `None` rather than falling
+/// through: the caller declared which installation to read, and silently
+/// answering from a different one is how a test measures the wrong `.dat`.
 pub fn game_root() -> Option<PathBuf> {
     if let Ok(v) = std::env::var("AOE2MOD_GAME_ROOT") {
-        let p = PathBuf::from(v);
+        if v.is_empty() {
+            return None;
+        }
+        let p = PathBuf::from(&v);
         if p.is_dir() {
             return Some(p);
         }
+        eprintln!("AOE2MOD_GAME_ROOT={v} 不是一个存在的目录，就不再退回别的游戏装了。");
+        return None;
     }
     [
         r"d:\games\steam\steamapps\common\AoE2DE",
@@ -181,3 +201,82 @@ pub fn stats_path() -> std::path::PathBuf {
     }
     std::path::PathBuf::from("_golden/stat_offsets.json")
 }
+
+/// Where `dat_stamp.json` lives: the manifest naming the `.dat` every
+/// offset-bearing table under `_golden/` was measured from.
+pub fn stamp_path() -> Option<std::path::PathBuf> {
+    sentences::table_paths("AOE2MOD_DAT_STAMP", "dat_stamp.json")
+        .into_iter()
+        .find(|p| p.is_file())
+}
+
+/// `Some(reason)` when the tables do not belong to this `.dat`.
+///
+/// Three outcomes, and the middle one is the point of the whole function:
+///
+/// * no stamp at all -> refuse.  A missing manifest is not "assume it is fine":
+///   that is exactly the state the 2026-10-28 update produced on every machine
+///   that had already generated tables, and it looks identical to a fresh,
+///   correct install.
+/// * stamp names a different `.dat` -> refuse, and quote both byte counts so the
+///   message says what happened instead of "something is wrong".
+/// * stamp matches -> `None`.
+///
+/// The comparison is on the DECOMPRESSED stream because the game re-packs the
+/// container between builds without changing its content; a file-level hash
+/// would cry wolf on every re-install with identical data.
+pub fn stamp_mismatch(dat: &std::path::Path, raw: &[u8]) -> Option<String> {
+    use sha2::{Digest, Sha256};
+    let path = match stamp_path() {
+        Some(p) => p,
+        None => {
+            return Some(
+                "找不到 dat_stamp.json（记录偏移表来自哪一份 .dat 的清单）。\
+                 没有它就无法确定 _golden/ 里的偏移表还属不属于这份游戏数据，\
+                 而按过期表写字节会改到别的位置——还会返回 ok:true。\
+                 修复：py _probe/make_dat_stamp.py"
+                    .into(),
+            )
+        }
+    };
+    let text = match std::fs::read_to_string(&path) {
+        Ok(t) => t,
+        Err(e) => return Some(format!("读不到 {}：{e}", path.display())),
+    };
+    let doc: serde_json::Value = match serde_json::from_str(text.trim_start_matches('\u{feff}')) {
+        Ok(v) => v,
+        Err(e) => return Some(format!("{} 不是合法 JSON：{e}", path.display())),
+    };
+    let want = doc
+        .get("dat")
+        .and_then(|d| d.get("raw_sha256"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    if want.is_empty() {
+        return Some(format!("{} 里没有 dat.raw_sha256", path.display()));
+    }
+    let mut h = Sha256::new();
+    h.update(raw);
+    let got = format!("{:x}", h.finalize());
+    if got == want {
+        return None;
+    }
+    let was = doc
+        .get("dat")
+        .and_then(|d| d.get("raw_bytes"))
+        .and_then(|v| v.as_i64())
+        .unwrap_or(-1);
+    Some(format!(
+        "游戏数据更新了：偏移表是按另一份 .dat 量的（{} 字节，sha {}…），\
+         现在这份 {} 是 {} 字节（sha {}…）。按旧表写字节会改到别的位置，\
+         而且会返回 ok:true——所以这里先停下。\
+         修复：重新生成偏移表（py _probe/make_stat_offsets.py 等），\
+         再跑 py _probe/make_dat_stamp.py。",
+        was,
+        &want[..want.len().min(12)],
+        dat.display(),
+        raw.len(),
+        &got[..got.len().min(12)]
+    ))
+}
+

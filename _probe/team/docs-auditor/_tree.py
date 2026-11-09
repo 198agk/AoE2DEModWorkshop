@@ -1,7 +1,9 @@
 ﻿import sys, io, os, collections
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
-sys.path.insert(0, r"D:\Software\AI\帝国项目")
+sys.path.insert(0, os.path.abspath(os.path.join(
+    os.path.dirname(__file__), "..", "..", "..")))
 from aoe2mod.game import civtechtrees as CT, locations as LOC
+import os
 g = LOC.find_game_root()
 trees = CT.load_trees(g)
 t = trees["BRITONS"]

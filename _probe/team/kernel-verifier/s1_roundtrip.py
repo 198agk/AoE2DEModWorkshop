@@ -12,10 +12,12 @@ import sys
 import time
 import zlib
 
-sys.path.insert(0, r"D:\Software\AI\帝国项目")
+sys.path.insert(0, os.path.abspath(os.path.join(
+    os.path.dirname(__file__), "..", "..", "..")))
 
 from aoe2mod.dat import parser as P          # noqa: E402
 from aoe2mod.dat import writer as W          # noqa: E402
+import os
 
 DAT = r"D:\Games\Steam\steamapps\common\AoE2DE\resources\_common\dat\empires2_x2_p1.dat"
 

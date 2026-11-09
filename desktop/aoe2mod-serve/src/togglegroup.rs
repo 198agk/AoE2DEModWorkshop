@@ -6,10 +6,14 @@
 //! has 20 entries, and adding `{NameId: 424021, Type: "MutuallyExclusive",
 //! Techs: [22, 23]}` is the whole edit (Loom + Coinage).
 //!
-//! The mod still ships a `.dat` -- UNMODIFIED -- because the project measured that
-//! a mod writing under `resources/_common/dat/` without one makes the game fail to
-//! start: the DAT storage point is resolved as a unit, not per file. That is why
-//! `changes_dat` is true here even though no byte of the `.dat` moved.
+//! This file is ONLY the label.  The mechanism -- the `type 102` ban commands in
+//! each member's own effect record -- is in `crate::groupdat`, and for
+//! `MutuallyExclusive`/`Toggleable` the label alone does nothing on screen
+//! (measured in game 2026-10-22: the user researched Forging and read 「不变灰」,
+//! then 「研究后依旧能接着研究第二个」).  The `.dat` is still always shipped even
+//! when it is a byte copy of the factory one, because a mod writing under
+//! `resources/_common/dat/` without one makes the game fail to start: the DAT
+//! storage point is resolved as a unit, not per file.
 //!
 //! What this refuses
 //! -----------------
