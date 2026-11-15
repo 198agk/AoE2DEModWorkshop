@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-online-login"
+description = "Enables the online_login command without any pre-configured scope."
+commands.allow = ["online_login"]
+
+[[permission]]
+identifier = "deny-online-login"
+description = "Denies the online_login command without any pre-configured scope."
+commands.deny = ["online_login"]

@@ -1,0 +1,23 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "The workshop page draws its own title bar, so it needs the window commands from the WebView. The page is served over http://127.0.0.1:<port>, which Tauri classifies as a remote origin, so the remote block is what actually lets start_dragging through. The pattern must carry the port wildcard: tauri-utils turns a bare 'http://127.0.0.1' into port='' which only matches the default port 80, and the helper picks a random high port every launch. The last two entries are the app's own commands (online.rs); without them the online page's buttons do nothing, because a remote origin is ACL-checked even when the command belongs to the app.",
+  "local": true,
+  "remote": {
+    "urls": ["http://127.0.0.1:*"]
+  },
+  "windows": ["loading", "workshop"],
+  "permissions": [
+    "core:default",
+    "core:window:allow-start-dragging",
+    "core:window:allow-minimize",
+    "core:window:allow-maximize",
+    "core:window:allow-unmaximize",
+    "core:window:allow-toggle-maximize",
+    "core:window:allow-internal-toggle-maximize",
+    "core:window:allow-close",
+    "core:window:allow-is-maximized",
+    "allow-online-session",
+    "allow-online-login"
+  ]
+}

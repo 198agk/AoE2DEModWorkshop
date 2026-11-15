@@ -47,6 +47,7 @@ from aoe2mod.dat import fieldwrite as FW
 from aoe2mod.dat import locate as L
 from aoe2mod.dat import parser as P
 from aoe2mod.dat import pseudopage as PP
+from aoe2mod.game import linkedtechs as LT
 from aoe2mod.dat import records as REC
 from aoe2mod.dat import relocate as REL
 from aoe2mod.game import civnames as CN
@@ -57,6 +58,7 @@ from aoe2mod.mod import emitter as E
 from aoe2mod.mod import strings as S
 from aoe2mod.ui import compose as CP
 from aoe2mod.ui import locale as LO
+from aoe2mod.ui import online as ON
 from aoe2mod.ui.loading import LOADING_PAGE
 from aoe2mod.ui import nl
 from aoe2mod import oplog as OPLOG
@@ -86,7 +88,15 @@ def _LOCALE_TEXT(key, values=None):
 _QUIET_ERRORS = ("AIError", "IntentError", "ModError", "ValueError", "RuntimeError",
                  "TypeError", "KeyError", "OSError", "FileNotFoundError",
                  "NotADirectoryError", "PermissionError", "UnsupportedVersionError",
-                 "struct.error", "zlib.error",
+                 # NOT "struct.error": `struct.error.__name__` is just
+                 # `"error"`, so the dotted spelling never matched and every
+                 # raw struct failure reached the player as
+                 # "error: unpack_from requires a buffer of at least 93272559
+                 # bytes ..." -- a library message wearing an English class
+                 # name.  `zlib.error` has the same shape.  `_sentence` now
+                 # compares the qualified name too, but the bare names belong
+                 # here so the table reads like the rest of it.
+                 "error",
                  # A bad query parameter is the product speaking to the person
                  # who typed the URL, not a library failing: "units='abc' 里有
                  # 一个不是编号" is the whole message, and prefixing it with
@@ -103,8 +113,12 @@ def _sentence(exc):
     the product's own refusals must not carry one.
     """
     text = str(exc) or "没有说明"
-    name = type(exc).__name__
-    if name in _QUIET_ERRORS:
+    kind = type(exc)
+    name = kind.__name__
+    # Both spellings: `ValueError` matches bare, while the C-implemented
+    # exceptions (`struct.error`, `zlib.error`) only ever appear qualified in
+    # the table and only ever report a bare `error` here.
+    if name in _QUIET_ERRORS or ("%s.%s" % (kind.__module__, name)) in _QUIET_ERRORS:
         return text
     return "%s: %s" % (name, text)
 
@@ -128,6 +142,17 @@ class App(object):
         # no longer holds.
         self._panel_age_cache = {}
         self._card_age_last = {}
+        # THE BUILD MENU, AS BYTES WE OWE THE MOD.  A unit or a technology
+        # needs TWO halves to appear in game: the .dat edit (what the record
+        # says) and the menu edit (what the build panel draws).  The .dat lives
+        # in the session buffer; the menu is a 1.3 MB hand-written JSON file
+        # that must be spliced, not re-serialised (a canonical dump differs by
+        # 983,313 bytes), so the edited text is held as bytes here keyed by the
+        # file's path relative to the game root, and `save_session` hands the
+        # whole map to the emitter's `json_files`.
+        self._panel_panels = None
+        self._panel_pools = {}
+        self._panel_files = {}
         self._lock = threading.Lock()
         # Icon bytes and their per-(kind,id,size) answers.  See `icon()` for the
         # measurement: the DDS decode + PNG encode is 8.56 ms, and the unit list
@@ -147,6 +172,12 @@ class App(object):
         # another folder.  Remembering the last Title is what makes 保存 mean
         # update-in-place instead of accumulate.
         self._last_title = ""
+        # Same memory for the script screen, per department: the mod folder and
+        # the file name the last 放进本地模组 wrote.  Asked 2026-11-10: 「就像编辑
+        # 器那些存的一样 ... 后续改动也按原文件名一样就覆盖」 -- the editor makes
+        # 保存 update the title it remembers, so this screen has to behave the
+        # same way.  Empty means "use the defaults", not "make a new one".
+        self._last_script = {"ai": None, "xs": None}
         # WHICH BYTES THE CACHED INDEXES DESCRIBE.  Every index below is a table
         # of absolute offsets into `session_raw()`, and a structural edit or a
         # 放弃 REPLACES that buffer and moves every offset after the change.  A
@@ -161,6 +192,27 @@ class App(object):
         # it caches is cheaper than a lock around a 10 s walk: a stale result is
         # thrown away instead of blocking the edit that invalidated it.
         self._gen = 0
+        # The page is TOLD, not asked.  `_live_v` rises with every change and a
+        # screen parked in `live_wait` wakes on the same condition, so a click
+        # that lands shows up everywhere at once instead of after the next
+        # redraw of a 93 MB file.  See `_live_bump` for the measurement.
+        self._live_v = 0
+        self._live_cv = threading.Condition()
+        # While this is above zero a change is still being PUT TOGETHER:
+        # `_live_v` keeps rising so nobody reads a stale number, but no waiter
+        # is woken until the gesture is whole.  See `undo` for the measurement
+        # that made this necessary: the reparse inside `_hist_apply` bumped, a
+        # parked screen woke in that instant, and it was handed the counters of
+        # the state BEFORE the undo -- bytes already restored, undo still 1.
+        self._live_hold = 0
+        # The oldest version any open gesture started from, so `_live_ungrip`
+        # only wakes anybody when a gesture actually moved the file.  A pure
+        # read routed through `_guard` (every POST with a body) must not cost
+        # every parked screen a round trip.  Kept as one scalar rather than a
+        # per-thread stack: `ThreadingHTTPServer` runs one request per thread,
+        # and the question "did anything move while anybody held this" is a
+        # question about the file, not about which request asked.
+        self._live_held_from = 0
         # {string id: text} for rows this session had to ADD to a string table.
         #
         # Renaming a record for the player means pointing its `LanguageDLLName`
@@ -209,7 +261,95 @@ class App(object):
     def _gen_bump(self):
         """Declare every offset-based index stale.  See `self._gen`."""
         self._gen += 1
+        self._live_bump()
         return self._gen
+
+    def _live_bump(self):
+        # TELL EVERY OPEN SCREEN THAT SOMETHING MOVED.  The page used to
+        # re-read the whole command card after every single tile it put on a
+        # page -- two round trips, one of them a walk of the 89 MB civ block --
+        # so a player adding three units waited through three full redraws and
+        # reported it as 「这个页面依旧是不能实时更新的」 (2026-11-11).  The write
+        # verbs now hand back their own new page list, and this counter wakes
+        # every other screen waiting in `live_wait`, so nothing has to guess
+        # how long to wait and nothing has to re-parse to find out.
+        # THE INCREMENT HAPPENS UNDER THE CONDITION'S OWN LOCK.  A waiter that
+        # checked `_live_v`, then lost the CPU to a write, then waited would
+        # sleep through the notify that write already sent -- twenty seconds of
+        # a screen showing the old pages after a click that landed.  Bumping
+        # inside the lock makes check-and-wait atomic against it.
+        with self._live_cv:
+            self._live_v += 1
+            # A number nobody can be woken for is still a true number: the
+            # holder below only suppresses the NOTIFY, never the count, so a
+            # screen that asks later still learns the file moved.
+            if not self._live_hold:
+                self._live_cv.notify_all()
+        return self._live_v
+
+    def _live_grip(self):
+        # START OF A GESTURE.  Bumps keep counting, wake-ups wait.
+        with self._live_cv:
+            if not self._live_hold:
+                self._live_held_from = self._live_v
+            self._live_hold += 1
+            return self._live_hold
+
+    def _live_ungrip(self):
+        # END OF A GESTURE: wake every parked screen once, now that the answer
+        # they will read describes the whole step.  Measured 2026-11-11 -- see
+        # `self._live_hold`: an undo woke a parked screen in the middle of
+        # `_hist_apply`, and the page was told the OLD counters (bytes already
+        # restored to the base file, undo still 1) because `_hist_at` had not
+        # been moved yet.  The screen then redrew a panel that disagreed with
+        # the file it was drawing.
+        with self._live_cv:
+            if self._live_hold > 0:
+                self._live_hold -= 1
+            whole = not self._live_hold
+            if whole and self._live_v != self._live_held_from:
+                self._live_cv.notify_all()
+        return self._live_v
+
+    def live_state(self):
+        # THE ANSWER A WAITING SCREEN NEEDS, and the same shape every write
+        # verb already reports, so the page has one handler for both.
+        hist = self.hist_state()
+        return {
+            "ok": True,
+            "v": self._live_v,
+            "gen": self._gen,
+            "dirty": self.session_dirty,
+            "bytes": len(self._sess) if self._sess is not None else 0,
+            "pending": len(self.pending_edits()),
+            "undo": hist["undo"],
+            "redo": hist["redo"],
+            "undo_label": hist["undo_label"],
+            "redo_label": hist["redo_label"],
+        }
+
+    def live_wait(self, since=None, timeout=None):
+        # LONG POLLING, NOT SSE, AND NOT A TIMER.  `Handler` has no
+        # `protocol_version`, so it speaks HTTP/1.0: a chunked event stream
+        # would be cut by the first client that reloads.  A condition variable
+        # plus one response per change costs nothing while nothing changes --
+        # unlike the 2 s timer the diagnostics block uses -- and answers the
+        # instant a write lands.
+        #
+        # `since` is the `v` the caller already knows.  Nobody waiting means
+        # nobody is owed an answer: return the current numbers immediately
+        # rather than sitting for the full timeout.
+        try:
+            want = int(since) if since not in (None, "") else -1
+        except (TypeError, ValueError):
+            want = -1
+        if want < 0 or want != self._live_v:
+            return self.live_state()
+        wait = 20.0 if timeout is None else max(0.0, float(timeout))
+        with self._live_cv:
+            if self._live_v == want:
+                self._live_cv.wait(wait)
+        return self.live_state()
 
     @property
     def tk(self):
@@ -287,13 +427,12 @@ class App(object):
             _src = None
         _mods = _mods_brief(tk)
         # The game loads exactly ONE data mod: the enabled one with the highest
-        # Priority.  With none enabled it loads the install's own file.  So
-        # "am I editing the file that will be read" has an answer, and it is not
-        # always yes -- measured here: 16 installed mods ship a `.dat`, 5 are
-        # enabled, and the winner is `tbl one field` (Priority 6).
-        _live = [m for m in _mods if m.get("ships_dat") and m.get("enabled")
-                 and m.get("exists")]
-        _live.sort(key=lambda r: -(r.get("priority") or 0))
+        # Priority, where 1 is the top of the list.  With none enabled it loads
+        # the install's own file.  So "am I editing the file that will be read"
+        # has an answer, and it is not always yes -- measured here: 16 installed
+        # mods ship a `.dat`, and the winner is the one nearest the top of the
+        # engine's own list, NOT the one with the biggest number.
+        _live = _live_dat_mods(_mods, require_exists=True)
         _top = _live[0] if _live else None
         _mine_mod = (_src or {}).get("mod") if _src else None
         if _top is None:
@@ -805,6 +944,31 @@ class App(object):
                           or "").strip()
                       or ("建筑 " + str(h["id"])))}
             for h in hosts]
+        # EVERY NAMED BUILDING, not only the ones that already have a card.  The
+        # dropdown used to list `hosts` alone (48 for the British), so a building
+        # with no training entry and no research button -- a House, a Gate, a
+        # Tower variant -- was unreachable, and "put a building on this card"
+        # read as impossible.  It never was: `/api/card-put` writes into
+        # whatever record the target belongs to, and an EMPTY card grows content
+        # the moment one entry lands (measured 2026-11-10: House 70 answered
+        # `has_data False`, took House on box 3, and came back `has_data True`).
+        # Reported 2026-11-10, verbatim: 「怎么建筑放不了…」.
+        #
+        # Type 80 is the .dat's own word for "building"
+        # (`aoe2mod/dat/parser.py`), never a name list, so a mod that renumbers
+        # its buildings still lists them.  `host` stays on the row because the
+        # page sorts the two groups apart and must not duplicate an id.
+        have = {h["id"] for h in hosts}
+        kinds = getattr(tk, "_utypes", None) or {}
+        all_buildings = []
+        for uid, e in tk.index().units.items():
+            if kinds.get(uid) != 80 or not e.is_visible:
+                continue
+            all_buildings.append({"id": uid,
+                                  "name": names.get(uid) or e.display,
+                                  "host": uid in have})
+        all_buildings.sort(key=lambda r: r["id"])
+        body["all_buildings"] = all_buildings
         body["engine_first"] = CV.ENGINE_FIRST
         body["engine_last"] = CV.ENGINE_LAST
         body["dat_slots"] = None
@@ -1105,6 +1269,53 @@ class App(object):
     # "让这个话题快一点" -- changes the RECORD instead, and that is why the card
     # panel could be read but not used (reported 2026-11-07: 「还有这个也完全
     # 没用」).
+    @staticmethod
+    def _tail_sane(raw, tail):
+        """Can `tail` still be read as the i16 count that starts the tech block?"""
+        import struct
+        try:
+            tail = int(tail)
+        except (TypeError, ValueError):
+            return False
+        if not (0 <= tail <= len(raw) - 2):
+            return False
+        try:
+            n = struct.unpack_from("<h", raw, tail)[0]
+        except Exception:                        # noqa: BLE001
+            return False
+        # 1,510 in the shipped file, 6,055 in the biggest mod seen.  A count
+        # outside this window cannot describe a real technology block.
+        return 0 <= n <= 100000
+
+    def _tail_ready(self, tk=None):
+        """Make sure `_parsed[4]` still points at a technology count.
+
+        `_relocate` now refuses to store a tail it cannot verify, but a session
+        already poisoned -- by an older build, or by a shift that moved the civ
+        block and the tail together -- would keep failing every write with an
+        English `struct` sentence.  So every structural verb asks here first: a
+        bad tail earns ONE full reparse of the SESSION buffer, which derives the
+        pointer from the bytes instead of from the shift that lost it.  That
+        costs ~10 s on 93 MB and happens once, only when the model is already
+        wrong; every other call is a two-byte read.
+        """
+        tk = tk or self.tk
+        if tk._parsed is None:
+            tk._ensure()
+        if self._tail_sane(self.session_raw(tk), tk._parsed[4]):
+            return True
+        # NOT `_parsed = None`: that would reload from disk and throw away the
+        # session's edits, which are the only copy of what the player did.
+        try:
+            self._restructure(None)
+        except Exception:                        # noqa: BLE001
+            # The rebuild itself can fail on a buffer that is already wrong.
+            # Returning False leaves the caller with its own sentence instead
+            # of a traceback, and the next write tries the repair again.
+            return False
+        tk = self.tk
+        return self._tail_sane(self.session_raw(tk), tk._parsed[4])
+
     def _card_ctx(self, civ):
         """`(tk, civs, gv, civs_start, civ_index, civ_name)` for a card edit."""
         tk = self.tk
@@ -1115,6 +1326,178 @@ class App(object):
             1 if len(civs) > 1 else 0)
         return tk, civs, tk._parsed[3], tk._parsed[2], civ_index, civ_name
 
+    def _card_targets(self, civ):
+        """[[(civ_index, civ_name)]] -- which copies a card edit is written to.
+
+        AN EMPTY `civ` MEANS EVERY CIVILIZATION, and that is a correctness fix
+        rather than a convenience.  `train_locations` lives on the UNIT record,
+        and the unit records are duplicated once per civilization -- 63 separate
+        byte ranges that happen to hold the same values.  The old default here was
+        index 1 (the British), so a grant with no civilization named changed one
+        of the 63 and said nothing about the other 62.  Reported 2026-11-11,
+        verbatim: 【这个全部文明的，居然是完全不生效的，这么说你要我一个一个文明
+        去改吗】.
+
+        `"*" / "all" / 全部` are accepted too, because the field-value routes
+        have spelled the same idea that way since `set_unit_field`.
+        """
+        tk = self.tk
+        tk._ensure()
+        civs = tk._civs
+        want = str(civ or "").strip()
+        if want in ("", "*", "all", "ALL", "全部", "全部文明"):
+            return [(i, str(c.get("name") or "")) for i, c in enumerate(civs)]
+        return [(tk._civ_index(want), want)]
+
+    # --- the build menu file (futuravailableunits.json) ---------------------
+    # TWO HALVES, TWO JOBS.  The .dat says what a building can train and whether
+    # the unit is enabled; the panel JSON is the pre-baked list the BUILD MENU
+    # draws from, per civilization.  A .dat edit with no panel edit leaves the
+    # button off the menu -- measured 2026-10-15, the .dat half rendered in game
+    # while the menu did not change.
+    #
+    # It is a hand-edited TEXT file, not a re-serialised object: a canonical
+    # json.dumps of the shipped artifact differs by 983,313 bytes, so writing one
+    # back would reformat 1.3 MB of keys the generator owns.  insert_entry
+    # splices one element with the file's own CRLF and indentation, and the
+    # result rides to the mod in save_session's json_files map.
+    def _panel_all(self):
+        """The shipped panels, parsed once per session."""
+        if self._panel_panels is None:
+            from aoe2mod.game import buildpanel as BP
+            self._panel_panels = BP.load_all(self.tk.game_root)
+        return self._panel_panels
+
+    def _panel_pool(self, space):
+        """[[{node_id: [(civ, building, entry)]}]] across EVERY civilization.
+
+        synth_entry copies a real shipped entry rather than inventing one, and
+        it refuses to copy the target civilization's own row (so the entry says
+        what the other 62 menus say).  Measured on 402 shipped unit rows: 400
+        (99.5%) come back byte-identical from this recipe.
+        """
+        from aoe2mod.game import buildpanel as BP
+        hit = self._panel_pools.get(space)
+        if hit is not None:
+            return hit
+        key = BP.TECHS_KEY if space == "techs" else BP.UNITS_KEY
+        pool = {}
+        for rec in (self._panel_all() or {}).values():
+            obj = (rec or {}).get("obj") or {}
+            try:
+                got = BP.entry_pool(obj, key) or {}
+            except Exception:                        # noqa: BLE001
+                continue
+            for node, rows in got.items():
+                pool.setdefault(node, []).extend(rows)
+        self._panel_pools[space] = pool
+        return pool
+
+    def _panel_text(self, path, rel):
+        """The panel text to edit: our own bytes first, the file on disk second."""
+        from aoe2mod.game import buildpanel as BP
+        got = self._panel_files.get(rel)
+        if got is not None:
+            return got.decode("utf-8")
+        text, _obj = BP.load_panel(path)
+        return text
+
+    def _panel_add(self, targets, node_id, building_id, space="units", age_id=1):
+        """List `node_id` in `building_id`'s menu for every target civilization.
+
+        RequiredAge is set to 1 (Dark Age) on purpose.  The menu is the second
+        gate after the .dat, and a row that says Castle would put the button back
+        behind an age the player was told to stop worrying about -- 2026-11-11,
+        verbatim: 【我tm也没让你要分时代，全部的话，就要任何时代都生效】.
+        A civilization whose own menu never listed the node still gets a row: the
+        donor comes from the pool, and the ID is written as asked.
+        """
+        from aoe2mod.game import buildpanel as BP
+        report = []
+        pool = self._panel_pool(space)
+        key_of_space = BP.TECHS_KEY if space == "techs" else BP.UNITS_KEY
+        for row in targets:
+            ci, name = int(row[0]), str(row[1] or "")
+            if not name:
+                report.append({"civ": name, "ok": False,
+                               "reason": "这个文明没有名字，找不到它的建造面板"})
+                continue
+            try:
+                path, key = BP.panel_path_for(self.tk.game_root, name)
+            except Exception as exc:                 # noqa: BLE001
+                report.append({"civ": name, "ok": False, "reason": "%s" % (exc,)})
+                continue
+            rel = BP.panel_rel_for(path)
+            if rel is None:
+                report.append({"civ": name, "ok": False,
+                               "reason": "面板文件不在已知的两个位置上"})
+                continue
+            try:
+                synth = BP.synth_entry(key, node_id, building_id, age_id=age_id,
+                                       space=key_of_space, pool=pool)
+            except Exception as exc:                 # noqa: BLE001
+                report.append({"civ": name, "ok": False, "reason": "%s" % (exc,)})
+                continue
+            if synth is None:
+                report.append({"civ": name, "ok": False,
+                               "reason": "没有任何文明把这个条目列进过建造菜单，"
+                                         "没有可以照抄的样本"})
+                continue
+            try:
+                text = self._panel_text(path, rel)
+                # A BUILDING WITH NO `Units` ARRAY IS NOT A REFUSAL.  Most of
+                # the panel's buildings -- every wall, tower, mill and the
+                # Outpost -- are listed only as things you can put down, so the
+                # generator never wrote an empty array for them.  Writing the
+                # empty key first is what makes "add a unit to building 598"
+                # mean add it rather than report success while doing nothing.
+                if BP.lists_node(text, key, building_id, node_id,
+                                 space=key_of_space):
+                    report.append({"civ": name, "ok": True, "mode": "already"})
+                    continue
+                text = BP.ensure_array(text, key, building_id,
+                                       space=key_of_space)
+                new_text = BP.insert_entry(text, key, building_id,
+                                           synth["entry"], space=key_of_space)
+            except Exception as exc:                 # noqa: BLE001
+                report.append({"civ": name, "ok": False, "reason": "%s" % (exc,)})
+                continue
+            self._panel_files[rel] = BP.serialize_bytes(new_text)
+            report.append({"civ": name, "ok": True, "mode": "added",
+                           "donor": synth.get("donor"), "entry": synth["entry"]})
+        return report
+
+    def _panel_remove(self, targets, node_id, space="units"):
+        """Drop `node_id` from every target civilization's menu."""
+        from aoe2mod.game import buildpanel as BP
+        key_of_space = BP.TECHS_KEY if space == "techs" else BP.UNITS_KEY
+        report = []
+        for row in targets:
+            ci, name = int(row[0]), str(row[1] or "")
+            if not name:
+                continue
+            try:
+                path, key = BP.panel_path_for(self.tk.game_root, name)
+            except Exception as exc:                 # noqa: BLE001
+                report.append({"civ": name, "ok": False, "reason": "%s" % (exc,)})
+                continue
+            rel = BP.panel_rel_for(path)
+            if rel is None:
+                report.append({"civ": name, "ok": False,
+                               "reason": "面板文件不在已知的两个位置上"})
+                continue
+            try:
+                text = self._panel_text(path, rel)
+                new_text, removed = BP.remove_entry(text, key, node_id,
+                                                    space=key_of_space)
+            except Exception as exc:                 # noqa: BLE001
+                report.append({"civ": name, "ok": False, "reason": "%s" % (exc,)})
+                continue
+            if removed:
+                self._panel_files[rel] = BP.serialize_bytes(new_text)
+            report.append({"civ": name, "ok": True, "removed": removed})
+        return report
+
     @staticmethod
     def _train_bytes():
         from aoe2mod.dat import newunit as NU
@@ -1123,6 +1506,190 @@ class App(object):
     def _card_slots(self):
         from aoe2mod.game import cardview as CV
         return CV.card_slots(self.tk.game_root)
+
+    # ------------------------------------------------------------------
+    # the enable carrier: one per unit, found before it is built
+    # ------------------------------------------------------------------
+    def _unit_on_any_card(self, tk, uid, drop=None):
+        """Is this unit still on some card, once `drop` has landed?
+
+        `drop` counts the removals the caller is about to make, keyed
+        `(civ_index, building_id)`.  Counting rather than naming is what makes
+        the answer right when several boxes of ONE building carry the same unit:
+        taking one of three entries off the Barracks leaves two entries on the
+        Barracks, so the grant has to stay.
+
+        Every civilization is asked, because the carrier this guards has
+        `Civ == -1` when the button went onto every card: a button left standing
+        anywhere keeps the grant alive, and revoking it would grey that one out.
+
+        A `unit_id` of -1 is not a card: that is how the shipped data says "this
+        record belongs to a building but occupies no box" -- measured, 683 of
+        the British units carry exactly that and nothing else.
+        """
+        gone = {}
+        for pair in drop or ():
+            try:
+                key = (int(pair[0]), int(pair[1]))
+            except (TypeError, ValueError, IndexError):
+                continue
+            gone[key] = gone.get(key, 0) + 1
+        for ci, row in enumerate(tk._civs or ()):
+            for u in row.get("units") or ():
+                if u.get("id") != uid:
+                    continue
+                have = {}
+                for tl in u.get("train_locations") or ():
+                    try:
+                        builder = int(tl.get("unit_id"))
+                    except (TypeError, ValueError):
+                        continue
+                    if builder < 0:
+                        continue
+                    have[builder] = have.get(builder, 0) + 1
+                for builder, n in have.items():
+                    if n > gone.get((ci, builder), 0):
+                        return True
+        return False
+    def _enable_span(self, buf, uid, eff_start, eff_end):
+        """The effect record that says 「这个文明可以造第 <uid> 号单位」, or None.
+
+        The command is `type 2` with `a = unit` and `b = 1` (enable).  Only a
+        record whose NAME is the one this writer gives it is considered: the
+        shipped file already carries 158 enable commands hung on technologies
+        the game owns (tech 85 'Hand Cannoneer' -> effect 174, tech 332
+        'Outpost (make avail)' -> effect 331), and those must never be edited,
+        moved or deleted by a card edit.
+        """
+        import struct
+        want = "DshEnable%d" % (uid,)
+        spans, _pos = PP.effect_spans(buf, eff_start, eff_end)
+        for sp in spans:
+            if sp.get("name") != want or sp.get("count") != 1:
+                continue
+            ty, a, b, _c, _d = struct.unpack_from("<Bhhhf", buf, sp["cmd_start"])
+            if ty == 2 and a == uid and b == 1:
+                return sp
+        return None
+
+    def _enable_carrier(self, tk, buf, gv, tail, uid, civ_field,
+                        eff_start, eff_end):
+        """`{effect, tech, ...}` of a carrier that already exists, or None.
+
+        REUSE ONLY WHEN THE CIVILIZATION FIELD MATCHES EXACTLY.  A carrier whose
+        `Civ` is one civilization is that civilization's grant; handing it to an
+        all-civilizations write would grant the unit to exactly one of the 63,
+        and handing an all-civilizations carrier to a one-civilization write
+        would silently widen it.  Both directions are a wrong edit that looks
+        like a success, so a mismatch builds a fresh carrier instead.
+        """
+        sp = self._enable_span(buf, uid, eff_start, eff_end)
+        if sp is None:
+            return None
+        try:
+            techs = L.locate_techs(buf, tail, gv)
+        except Exception:                            # noqa: BLE001
+            return None
+        for ti, row in enumerate(techs):
+            if row.get("effect_id") != sp["index"]:
+                continue
+            if row.get("civ") != civ_field:
+                continue
+            if row.get("required_techs"):
+                continue
+            return {"effect": sp["index"], "tech": ti, "civ": civ_field,
+                    "tech_bytes": 0, "reused": True, "name": sp["name"]}
+        return None
+
+    def _append_enable_carrier(self, tk, buf, gv, tail, uid, civ_field,
+                               eff_start, eff_end, eff_count, orig):
+        """Build the carrier and leave its steps in `orig`.
+
+        An effect record plus a CLONE of tech 332 'Outpost (make avail)': the
+        one technology in the shipped file that is owned by nobody (`Civ == -1`),
+        has no prerequisites and no research location, so it fires at 0:00 for
+        everyone.  Cloned rather than re-pointed because 332 also enables the
+        Outpost, and borrowing it would mean this edit could not be taken back
+        without taking that with it.
+        """
+        import struct
+        from aoe2mod.dat.techfields import read_tech_fields
+        from aoe2mod.dat.unitfields import Rec
+        from aoe2mod.intent import datgrant as DG
+        name = "DshEnable%d" % (uid,)
+        img = PP.effect_bytes(name, [DG.enable_command(uid)])
+        esteps = [(eff_start, 4, struct.pack("<i", eff_count + 1)),
+                  (eff_end, 0, img)]
+        orig.extend(esteps)
+        work, _ws = REC.apply_steps(bytearray(buf), esteps, inplace=True)
+        grown = len(work) - len(buf)
+        tsteps, tinfo = REC.plan_add_tech(work, gv, tail + grown, 332,
+                                          internal_name=name)
+        raw_img = tsteps[0][2]
+        spot = Rec(raw_img, gv)
+        read_tech_fields(spot)
+        where = {f[0]: (f[1], f[2]) for f in spot.fields}
+        patched = PP._patch_image(raw_img, where, {
+            "Civ": civ_field, "EffectID": eff_count,
+            "Type": 0, "IconID": -1, "Repeatable": 1,
+            "ResearchLocations.0.LocationID": -1,
+            "ResearchLocations.0.ResearchTime": 0,
+            "ResearchLocations.0.ButtonID": 0,
+            "ResourceCosts.0.Type": -1, "ResourceCosts.0.Amount": 0,
+            "ResourceCosts.0.Flag": 0,
+            "ResourceCosts.1.Type": -1, "ResourceCosts.1.Amount": 0,
+            "ResourceCosts.1.Flag": 0,
+            "ResourceCosts.2.Type": -1, "ResourceCosts.2.Amount": 0,
+            "ResourceCosts.2.Flag": 0})
+        for at, cut, add in tsteps:
+            orig.append((at - grown, cut, patched if add is raw_img else add))
+        return {"effect": eff_count, "tech": tinfo["id"], "civ": civ_field,
+                "tech_bytes": tinfo.get("bytes"), "reused": False, "name": name}
+
+    def _strip_enable_carrier(self, tk, buf, gv, tail, uid, eff_start,
+                              eff_end, eff_count, orig):
+        """Take the carrier back out: the effect record and its technology.
+
+        THIS IS THE OTHER HALF OF 加进去再拿掉.  `card_take` used to remove the
+        nine-byte training entry and the menu row and stop there, so a unit that
+        was granted and then taken off the card kept its enable bit: the button
+        disappeared from the building while the unit stayed buildable everywhere,
+        and 108 bytes of carrier stayed in the file forever (measured
+        2026-11-12: take left the file at base + 108).
+
+        Returns the same dict shape as `_enable_carrier`, or None when there is
+        nothing to strip.  Both deletions go into `orig` in ORIGINAL buffer
+        coordinates; the ordered accumulation in the caller converts them.
+        """
+        import struct
+        sp = self._enable_span(buf, uid, eff_start, eff_end)
+        if sp is None:
+            return None
+        techs = []
+        try:
+            techs = L.locate_techs(buf, tail, gv)
+        except Exception:                            # noqa: BLE001
+            techs = []
+        tinfo = None
+        for ti, row in enumerate(techs):
+            if row.get("effect_id") == sp["index"]:
+                tinfo = (ti, row)
+                break
+        # (1) drop the effect record.  Its own command count lives at
+        # `eff_start` and has to come down with it, or the block claims one more
+        # record than it holds.
+        orig.append((sp["start"], sp["end"] - sp["start"], b""))
+        orig.append((eff_start, 4, struct.pack("<i", eff_count - 1)))
+        # (2) drop the technology that pointed at it.  Computed against the
+        # buffer as it stands NOW, i.e. before (1) lands; the accumulation below
+        # moves it by however much (1) removed.
+        if tinfo is not None:
+            tsteps, _info = REC.plan_remove_tech(buf, gv, tail, tinfo[0])
+            orig.extend(tsteps)
+        return {"effect": sp["index"],
+                "tech": None if tinfo is None else tinfo[0],
+                "civ": -1 if tinfo is None else tinfo[1].get("civ"),
+                "stripped": True, "name": sp["name"]}
 
     def _card_splice(self, buf, steps, expect):
         """Apply a card splice to the live session buffer and prove the length.
@@ -1164,13 +1731,41 @@ class App(object):
 
         Nine bytes spliced into the unit's record plus a count, so this is a
         STRUCTURAL edit: every offset after it moves and the model is carried
-        across by `_relocate`, the same road `record_add` takes.
+        across by _relocate, the same road record_add takes.
+
+        AN EMPTY civ WRITES EVERY COPY.  The button hangs on the unit record, and
+        the unit records are duplicated once per civilization; writing one of them
+        edits one civilization (see _card_targets).
+
+        AND THE BUTTON IS ONLY HALF OF IT.  A train entry makes the button exist;
+        whether the game DRAWS it is decided by Enable/Disable Unit commands
+        (type 2), and the last one to fire wins.  Hand Cannoneers are the clean
+        demonstration: their only enabling command sits on a Bohemian technology
+        (tech 85, effect 174), so the other 62 civilizations never see the button
+        whatever their records say.  So this writes an appended effect carrying
+        (2, unit, 1, -1, 0.0) -- hung on a CLONE of the one globally owned carrier
+        in the file (tech 332 'Outpost (make avail)': civ == -1, no required
+        techs, no research location, so it fires at 0:00).  Cloned rather than
+        re-pointed: 332 also enables the Outpost, and borrowing it would mean this
+        edit could not be taken back without taking that with it.
+
+        The clone's Civ is the target civilization when exactly one was asked for,
+        and -1 when several were, so a single-civ grant does not quietly make the
+        unit available to the other 62.
         """
         import struct
-        import contextlib
-        import io
         from aoe2mod.dat import card as CARD
-        tk, civs, gv, civs_start, civ_index, civ_name = self._card_ctx(civ)
+        from aoe2mod.dat.techfields import read_tech_fields
+        from aoe2mod.dat.unitfields import Rec
+        from aoe2mod.intent import datgrant as DG
+        tk = self.tk
+        tk._ensure()
+        self._tail_ready(tk)
+        civs = tk._civs
+        gv = tk._parsed[3]
+        civs_start = tk._parsed[2]
+        tail = tk._parsed[4]
+        targets = self._card_targets(civ)
         try:
             builder = int(building)
             uid = int(unit)
@@ -1178,8 +1773,8 @@ class App(object):
             return {"ok": False, "error": "单位编号和建筑编号都要是整数"}
         slots, from_file = self._card_slots()
         button = 0 if box in (None, "") else int(box)
-        # Not `slots`: that is how many boxes ONE screen holds (15), while the
-        # engine honours ids up to 30 across two screens. Using the screen size
+        # Not slots: that is how many boxes ONE screen holds (15), while the
+        # engine honours ids up to 30 across two screens.  Using the screen size
         # as the write limit is how the second page stayed un-writable after the
         # grid learned to draw it.
         if not (CARD.ENGINE_FIRST <= button <= CARD.ENGINE_LAST):
@@ -1191,81 +1786,694 @@ class App(object):
                              % (box, CARD.ENGINE_FIRST, CARD.PAGE_BOXES,
                                 CARD.PAGE_COUNT, CARD.ENGINE_LAST,
                                 CARD.ENGINE_LAST)}
-        buf = self.session_raw(tk)
         try:
-            steps, info = CARD.plan_put_on_card(
-                buf, gv, civs_start, civ_index, uid, builder, button,
-                train_time=(int(seconds) if seconds not in (None, "") else 0),
-                civs=civs)
-        except CARD.CardError as exc:
-            return {"ok": False, "error": str(exc)}
+            train_time = 0 if seconds in (None, "") else int(seconds)
         except (TypeError, ValueError):
             return {"ok": False, "error": "训练时间要填整数秒"}
+        buf = self.session_raw(tk)
+        orig = []
+        made = []
+        skipped = []
+        for ci, name in targets:
+            try:
+                st, info = CARD.plan_put_on_card(
+                    buf, gv, civs_start, ci, uid, builder, button,
+                    train_time=train_time, civs=civs)
+            except CARD.CardError as exc:
+                skipped.append({"civ": name, "reason": str(exc)})
+                continue
+            orig.extend(st)
+            made.append((ci, name, info))
+        if not made:
+            first = skipped[0]["reason"] if skipped else ""
+            return {"ok": False,
+                    "error": "这个单位加不到任何文明的卡上：%s" % (first,)}
+        # --- the half that makes the engine draw it -------------------------
+        # ONE CARRIER PER UNIT, EVER.  The command is `type 2` -- one bit that
+        # says "this civilization may build this unit" -- and it names no box and
+        # no building, so a second copy says exactly what the first one says.
+        # Measured 2026-11-12: pressing unit 5 onto boxes 5, 6 and 7 left THREE
+        # effects all named `DshEnable5` and three identical clones of tech 332,
+        # 108 bytes each, 324 bytes of nothing.  A re-press on the same box added
+        # a fourth.  So the buffer is asked first and the carrier is only built
+        # when this unit has none.
+        eff_start, eff_end, eff_count = self._effect_window(tk, buf)
+        civ_field = -1 if len(made) > 1 else made[0][0]
+        try:
+            enables = (self._enable_carrier(tk, buf, gv, tail, uid, civ_field,
+                                           eff_start, eff_end)
+                       or self._append_enable_carrier(
+                           tk, buf, gv, tail, uid, civ_field,
+                           eff_start, eff_end, eff_count, orig))
+        except Exception as exc:                     # noqa: BLE001
+            return {"ok": False,
+                    "error": "按钮能写进卡里，但让引擎认这条按钮的那一步没算出来：%s"
+                             % (exc,)}
+        # Original coordinates -> one ordered plan.  Every step above was read
+        # against the buffer as it stands now, so the cumulative shift has to be
+        # added in offset order (splice_rules requires strictly ascending).
+        orig.sort(key=lambda s: s[0])
+        steps = []
+        acc = 0
+        for at, cut, add in orig:
+            steps.append((at + acc, cut, add))
+            acc += len(add) - cut
+        expect = acc
+        if len(made) > 1:
+            who = "全部 %d 个文明" % len(made)
+        else:
+            who = made[0][1] or "默认文明"
+        label = ("把第 %s 号单位加进第 %s 号建筑的第 %s 格（%s）"
+                 % (uid, builder, button, who))
         out = {"ok": True, "kind": "card-put", "unit": uid, "building": builder,
-               "box": button, "seconds": info["train_time"], "info": info,
+               "box": button, "seconds": train_time, "info": made[0][2],
+               "civ_all": len(made) > 1, "copies": len(made),
+               "civs": [n for _c, n, _i in made], "skipped": skipped,
                "slots": slots, "slots_from_file": from_file,
-               "label": "把第 %s 号单位加进第 %s 号建筑的第 %s 格"
-                        % (uid, builder, button)}
+               "enables": enables,
+               "expect": expect, "label": label}
         if dry:
             out["dry"] = True
+            out["bytes"] = len(buf)
             return out
-        # The LIVE buffer, and the length is checked afterwards.  Passing a copy
-        # here is how the first version lost the nine bytes while the history and
-        # the model both acted as if they had landed -- see this module's
-        # `_card_grew`.
-        writes = self._card_splice(buf, steps, expect=self._train_bytes())
-        note = {"unit": uid, "civ": civ_name or None, "field": "card_put",
-                "op": "card-put", "label": out["label"], "was": None,
-                "now": button, "building": builder,
+        writes = self._card_splice(buf, steps, expect=expect)
+        # THE OTHER HALF, and it is part of the SAME undo step.  The menu bytes
+        # are not in the .dat buffer, so `_hist_apply` cannot find them on its own:
+        # the before/after maps ride on the step and are swapped back with it.
+        # Without this, 撤回 puts the .dat back and leaves the menu claiming a
+        # button that no record trains -- the one state the game cannot draw.
+        panel_before = dict(self._panel_files)
+        out["panel"] = self._panel_add(made, uid, builder, space="units",
+                                       age_id=1)
+        panel_after = dict(self._panel_files)
+        note = {"unit": uid,
+                "civ": "*" if len(made) > 1 else (made[0][1] or None),
+                "field": "card_put", "op": "card-put", "label": label,
+                "was": None, "now": button, "building": builder,
                 "create": "card.entry"}
         for w in writes:
             w["struct"] = True
             w["note"] = dict(note)
+        if writes and panel_before != panel_after:
+            writes[0]["panel"] = {"before": panel_before, "after": panel_after}
         self._hist_push(writes)
         self._sess_dirty = True
         self._sess_struct = True
+        # The effect block grew, so the one cache _relocate keeps on purpose
+        # (_effects, because a civilization splice cannot move that block) is
+        # stale, and so is the (start, end, count) just read.
+        tk._effects = None
+        tk._effect_sec = None
         self._restructure(writes)
         self._stamp_write(out)
         out["bytes"] = len(self._sess)
-        out["undo_label"] = note["label"]
+        out["undo_label"] = label
+        return out
+
+    def _tech_open_edits(self, targets, tid, civ_all, fields, label=""):
+        """The edits that turn 这个文明研究不了 into 研究得了.
+
+        THREE WALLS stand between a research button and a technology, and all
+        three have to come down for the button to be worth putting there:
+
+        1. Civ on the technology RECORD.  A record whose Civ names one
+           civilization is that civilization.s technology; every other civ
+           cannot research it however many buttons point at it.  -1 means
+           所有人, two signed bytes, same width.
+        2. RequiredTechCount plus RequiredTechs.0..5.  These are the age and
+           prerequisite gates -- Elite Skirmisher requires Feudal Age, Bracer
+           requires Imperial -- and a button that is drawn but greyed out is
+           exactly what the player keeps reporting as 加了没用.  Seven signed
+           16-bit fields, all of them already in place.
+        3. THE DISABLE TABLE, the one that is not in the technology at all.
+           civ[tech_tree_id] is an INDEX INTO THE EFFECT BLOCK -- the
+           <Civ> Tech Tree effect -- and those effects carry type 102
+           Disable Tech commands (1,969 of them in this install).  That is what
+           actually hides a technology: Cannon Galleon.s own record says
+           Civ == -1 and asks for nothing unusual, yet 22 civilizations
+           disable it from their tech tree.  A command is eleven bytes,
+           <Bhhhf = (type, a, b, c, d), so (102, -1, -1, -1, 37.0) becomes
+           (8, 37, 12, -1, 1.0) -- effect command 8 Modify Tech with
+           b=12 meaning 0=disable / 1=enable tech -- with no byte moving and
+           no offset to fix up afterwards.  Measured: no civilization in this
+           install both disables and enables the same technology, so an enable
+           can never end up fighting an existing one and the result does not
+           depend on which command the engine reads last.
+
+           AND THE TABLE IS BIGGER THAN THE 63 TREES.  Of those 1,969 commands,
+           1,670 sit in the 63 <Civ> Tech Tree effects and 299 sit in 65 OTHER
+           effects -- and those other effects belong to technologies with
+           Civ == -1, no prerequisites and no research time, i.e. they fire for
+           EVERYBODY, unconditionally.  'Disable Regionals' (effect 79) alone
+           keeps 38 technologies switched off that no civilization's tree even
+           mentions: the regional make-avail technologies (Armored Elephant,
+           Dromon, Fire Lancer, Rocket Cart, Champi, Varangian Guard,
+           Mounted Crossbowman ...), 'Dark Age' (effect 104) holds ten
+           placeholders, and 'Paphos Naval' (effect 1145) is the last command
+           still disabling the Cannon Galleon after its tree was opened.  Those
+           are precisely the 加了没用 cases: the gate that got opened was not
+           the gate that was closed.  So the scan below covers EVERY effect,
+           not just the trees, and attributes each hit back to whichever
+           civilization owns the effect -- or to "everybody" when it owns none.
+
+        Returns (edits, report); each edit is (offset, packed, note) and is
+        exactly as wide as the bytes it replaces, so none of them can move an
+        offset and none of them needs a re-walk.
+        """
+        import struct
+        tk = self.tk
+        buf = self.session_raw(tk)
+        civs = getattr(tk, "_civs", None) or []
+        try:
+            effs = tk._effect_records()
+        except Exception:                                  # noqa: BLE001
+            effs = []
+        try:
+            techs = tk._tech_records()
+        except Exception:                                  # noqa: BLE001
+            techs = []
+        edits = []
+        report = {"civ_field": None, "prereq_cleared": False,
+                  "enabled": [], "already": [], "failed": [],
+                  "global": [], "blocked_global": []}
+        # (1) and (2) only make sense for 全部文明: a technology record is
+        # SHARED by all 63 civilizations, so opening its Civ or dropping its
+        # prerequisites opens it for everyone -- which is not what 只给这一个
+        # 文明 asked for.  The cost of not doing it is a greyed button, not a
+        # missing one.
+        if civ_all:
+            meta = fields.get("Civ")
+            if meta is not None:
+                off = int(meta["offset"])
+                was = struct.unpack_from("<h", buf, off)[0]
+                if was != -1:
+                    edits.append((off, struct.pack("<h", -1), {
+                        "tech": tid, "field": "Civ", "op": "tech-civ",
+                        "civ": "*", "label": label, "offset": off,
+                        "was": str(was), "now": "-1"}))
+                    report["civ_field"] = was
+            meta = fields.get("RequiredTechCount")
+            if meta is not None:
+                off = int(meta["offset"])
+                n = struct.unpack_from("<h", buf, off)[0]
+                if n:
+                    edits.append((off, struct.pack("<h", 0), {
+                        "tech": tid, "field": "RequiredTechCount",
+                        "op": "tech-free", "civ": "*", "label": label,
+                        "offset": off, "was": str(n), "now": "0"}))
+                    report["prereq_cleared"] = True
+                # The six slots go to -1 as well.  The count alone is what the
+                # engine reads, but the shipped file disagrees with its own walk
+                # on 264 records, so leaving stale ids behind a zero count is
+                # one more way for the two readers to differ.
+                for i in range(6):
+                    slot = fields.get("RequiredTechs.%d" % (i,))
+                    if slot is None:
+                        continue
+                    o = int(slot["offset"])
+                    was = struct.unpack_from("<h", buf, o)[0]
+                    if was == -1:
+                        continue
+                    edits.append((o, struct.pack("<h", -1), {
+                        "tech": tid, "field": "RequiredTechs.%d" % (i,),
+                        "op": "tech-free", "civ": "*", "label": label,
+                        "offset": o, "was": str(was), "now": "-1"}))
+                    report["prereq_cleared"] = True
+        # Every effect a civilization's tech tree owns, so the global sweep below
+        # can tell "this is somebody's tree" from "this fires for everybody".
+        trees = set()
+        for row in civs:
+            try:
+                tv = int(row.get("tech_tree_id"))
+            except (TypeError, ValueError):
+                continue
+            if 0 <= tv < len(effs):
+                trees.add(tv)
+        seen = set()
+        for row in targets:
+            ci = int(row[0])
+            name = str(row[1] or "")
+            tree = -1
+            if 0 <= ci < len(civs):
+                try:
+                    tree = int(civs[ci].get("tech_tree_id"))
+                except (TypeError, ValueError):
+                    tree = -1
+            if not (0 <= tree < len(effs)):
+                report["failed"].append({
+                    "civ": name,
+                    "reason": "这个文明的科技树效果编号是 %r，效果表里没有这一条，"
+                              "找不到它的禁用名单。" % (tree,)})
+                continue
+            hits = 0
+            for c in effs[tree].get("commands") or ():
+                off = c.get("_off_type")
+                if off is None or int(c.get("type") or 0) != 102:
+                    continue
+                try:
+                    if int(round(float(c.get("d") or 0))) != tid:
+                        continue
+                except (TypeError, ValueError):
+                    continue
+                off = int(off)
+                if off in seen:
+                    continue
+                seen.add(off)
+                edits.append((off, struct.pack("<Bhhhf", 8, tid, 12, -1, 1.0), {
+                    "tech": tid, "civ": name, "field": "DisableTech",
+                    "op": "tech-gate", "label": label, "offset": off,
+                    "was": "102", "now": "8/12"}))
+                hits += 1
+            (report["enabled"] if hits else report["already"]).append(name)
+        # AND THE 65 EFFECTS THAT ARE NOBODY'S TECH TREE.  These belong to
+        # technologies with Civ == -1, no prerequisites and no research time, so
+        # they fire unconditionally and their Disable Tech commands are not a
+        # civilization's opinion -- they are the file's.  'Disable Regionals'
+        # (effect 79) is the big one: it keeps 38 technologies switched off that
+        # no tree even names, and no amount of civ-tree rewriting touches it.
+        # Opening one of these opens the technology for everybody, which is the
+        # only reading available: a gate with no owner has no narrower scope.
+        for ei, eff in enumerate(effs):
+            if ei in trees:
+                continue
+            for c in eff.get("commands") or ():
+                off = c.get("_off_type")
+                if off is None or int(c.get("type") or 0) != 102:
+                    continue
+                try:
+                    if int(round(float(c.get("d") or 0))) != tid:
+                        continue
+                except (TypeError, ValueError):
+                    continue
+                off = int(off)
+                if off in seen:
+                    continue
+                seen.add(off)
+                owner = ""
+                for ti, trec in enumerate(techs):
+                    if trec.get("effect_id") != ei:
+                        continue
+                    owner = str(trec.get("name") or ("tech %d" % (ti,)))
+                    break
+                edits.append((off, struct.pack("<Bhhhf", 8, tid, 12, -1, 1.0), {
+                    "tech": tid, "civ": "*", "field": "DisableTech",
+                    "op": "tech-gate-global", "label": label, "offset": off,
+                    "was": "102", "now": "8/12",
+                    # NOT "effect": `_after_write` reads that key as an
+                    # effect-LIST write and then demands note["command"], which
+                    # a gate edit inside a cached effect record does not have
+                    # (measured: KeyError command).  These bytes are patched in
+                    # place, so no cache needs touching here at all.
+                    "gate_effect": ei,
+                    "effect_name": str(eff.get("name") or ""),
+                    "owner": owner}))
+                report["blocked_global"].append({
+                    "effect": ei, "effect_name": str(eff.get("name") or ""),
+                    "owner": owner})
+                if owner and owner not in report["global"]:
+                    report["global"].append(owner)
+        edits.sort(key=lambda e: e[0])
+        return edits, report
+    def card_put_tech(self, tech, building, box=None, seconds=None, civ=None,
+                      dry=True, title=None):
+        """Put a technology's research button on one building's card.
+
+        WHY THIS IS NOT `card_put`: a unit's training button lives on the
+        BUILDING (one `train_locations` entry per button, spliced into the
+        building's unit record), while a technology's research button lives on
+        the TECHNOLOGY (one `ResearchLocations` entry per button, inside the
+        technology's own record).  Two directions, two write paths, one screen.
+
+        WHY A FREE SLOT AND NOT A NEW ONE: `ResearchLocationCount` decides how
+        many entries the record has, so a third entry has to grow the record and
+        move every technology after it.  The shipped file already reserves the
+        slot -- 947 technologies carry exactly one entry whose `LocationID` is
+        -1, the sentinel for 「not placed anywhere」 -- so the common case is a
+        same-width rewrite of two numbers and a byte.  A technology with every
+        slot in use is refused by name instead of silently becoming a clone.
+        """
+        import struct
+        from aoe2mod.dat import card as CARD
+        tk = self.tk
+        tk._ensure()
+        self._tail_ready(tk)
+        # WHICH CIVILIZATIONS THIS IS FOR.  A technology record is NOT copied
+        # per civilization (there is one record, usually with `Civ` == -1,
+        # naming a research slot -- the technology is the same object in all
+        # 63), so the .dat half of this write is the same single edit whoever
+        # asks.  What DOES differ per civilization is the menu half and the
+        # availability gate, and those are what `targets` drives.
+        targets = self._card_targets(civ)
+        civ_all = len(targets) > 1
+        try:
+            tid = int(tech)
+            builder = int(building)
+        except (TypeError, ValueError):
+            return {"ok": False, "error": "科技编号和建筑编号都要是整数"}
+        button = 0 if box in (None, "") else int(box)
+        if not (CARD.ENGINE_FIRST <= button <= CARD.ENGINE_LAST):
+            return {"ok": False,
+                    "error": "格子号 %s 不能写：命令面板一页第 %d..%d 格、"
+                             "一共 %d 页，所以最大能写到第 %d 格。"
+                             % (box, CARD.ENGINE_FIRST, CARD.PAGE_BOXES,
+                                CARD.PAGE_COUNT, CARD.ENGINE_LAST)}
+        secs = 0 if seconds in (None, "") else int(seconds)
+        if secs < 0:
+            return {"ok": False, "error": "研究时间不能是负数"}
+        recs = tk._tech_records()
+        if not (0 <= tid < len(recs)):
+            return {"ok": False, "error": "没有第 %d 号科技" % (tid,)}
+        rec = recs[tid]
+        locs = rec.get("research_locations")
+        if locs is None:
+            return {"ok": False,
+                    "error": "第 %d 号科技的数据格式里没有「研究位置」这一节"
+                             "（这份文件太老，研究建筑写在记录里的一个数上），"
+                             "所以不能把它挂到某座建筑上。" % (tid,)}
+        if not locs:
+            return {"ok": False,
+                    "error": "第 %d 号科技一个研究位置都没有，"
+                             "这份数据没法靠改数字给它加一个。" % (tid,)}
+        # ALREADY ON THIS BOX IS NOT A REFUSAL -- it is a rewrite of the box that
+        # is already there.  The old refusal was the same wall the unit picker had
+        # (2026-11-11, verbatim: 【格子上有了东西，谁告诉你不能覆盖放更多的】),
+        # and the honest reading of "it is already here" is that pressing this box
+        # researches this technology, so the entry to edit is the existing one.
+        # Growing a second slot instead would put two buttons of the same
+        # technology on one box.
+        same = [i for i, L in enumerate(locs)
+                if (int(L.get("location_id") or 0) == builder
+                    and int(L.get("button_id") or 0) == button)]
+        free = [i for i, L in enumerate(locs)
+                if int(L.get("location_id") or 0) == -1]
+        if same:
+            free = []        # NO FREE SLOT IS NOT A REFUSAL ANY MORE.  It used to be -- 「第 %d 号
+        # 科技的 %d 个研究按钮都用在别的建筑上了（%s）。它没有空位…」 -- and 470
+        # of the 536 named technologies in the shipped file hit it, so most of the
+        # picker's technology list was a wall of refusals.  Reported 2026-11-10,
+        # verbatim: 「怎么建筑放不了，谁告诉你这个不能删的，都说了编辑所有都可以做，
+        # 不能有任何限制，除非是引擎无法识别运行」.
+        #
+        # WHY GROWING IS SAFE, measured rather than assumed: the research-location
+        # array is the LAST thing in a technology record, and for all 1,510 records
+        # in this install `ResearchLocationCount.offset + 2 + 9 * n == end` exactly
+        # (probe_tech_grow_point.py: 0 bad layouts, 0 leftover bytes).  So a new
+        # slot is nine bytes appended plus one on the count -- the same splice a
+        # unit's card entry is, and nothing after it has to move.  947 shipped
+        # technologies already carry one such slot with LocationID == -1, so the
+        # engine demonstrably reads a slot that names no building.
+        grow = not free and not same
+        slot = (same[0] if same else (len(locs) if grow else free[0]))        # `tk._tech_records()` is the positional walk (`walk_tech`), which knows
+        # the record's fields but NOT where it starts; `_tech_index()` is the
+        # offset scan, which knows `start`/`end` and is what `_tech_fields_of`
+        # needs to decode the record.  Both are cached, so asking for each from
+        # the source that actually has it costs nothing extra.
+        spot = self._tech_index().get(tid)
+        if spot is None:
+            return {"ok": False,
+                    "error": "科技索引里没有第 %d 号科技，没法定位它的字段地址。" % (tid,)}
+        fields = self._tech_fields_of(spot, tk)
+        name = rec.get("name") or ""
+        try:
+            _e = self._semantic().techs.get(tid)
+        except Exception:                                  # noqa: BLE001
+            _e = None
+        name_zh = ((_e.zh or _e.en) if _e is not None else "") or ""
+        label = ("把「%s」放到第 %s 号建筑的第 %s 格上"
+                 % (name_zh or name or ("科技 %d" % tid), builder, button))
+        # THE GATES, opened in the same undo step as the button (see
+        # `_tech_open_edits`): a button on a technology the engine has disabled
+        # for this civilization is a button the player never sees, which is the
+        # whole 加了没用 report.
+        gates, gate_report = self._tech_open_edits(targets, tid, civ_all,
+                                                  fields, label)
+        if grow:
+            # NINE BYTES APPENDED.  The count lives before the array and the
+            # array ends the record, so this is the same two-step splice
+            # `card.py:plan_put_on_card` does: bump the count (whose offset is
+            # before the insertion point, so it stays valid), then insert.
+            meta = fields.get("ResearchLocationCount")
+            if meta is None:
+                return {"ok": False,
+                        "error": "读不到 ResearchLocationCount 这个字段，这份文件的"
+                                 "科技记录布局不一样，这时候写进去会落到隔壁字段。"}
+            off = meta["offset"]
+            n = struct.unpack_from("<h", self.session_raw(tk), off)[0]
+            if n != len(locs):
+                return {"ok": False,
+                        "error": "第 %d 号科技的研究位置写着 %d 个，走出来的记录是 %d 个，"
+                                 "两边对不上，这份数据不能按偏移改" % (tid, n, len(locs))}
+            # HotKeyID -1 is what 990 of the 1,531 shipped slots already carry
+            # (measured), i.e. "no hotkey" is a state the engine reads.
+            entry = struct.pack("<hhBi", builder, secs, button, -1)
+            # The gate edits are exactly as wide as what they replace, so they
+            # ride in the same splice list without changing `expect`; they all
+            # sit in the effect block, i.e. before this record, so an ascending
+            # sort still gives `splice_rules` the order it requires.
+            steps = [(o, len(p), p) for o, p, _n in gates]
+            steps += [(off, 2, struct.pack("<h", n + 1)),
+                      (spot["end"], 0, entry)]
+            steps.sort(key=lambda s: s[0])
+            out = {"ok": True, "kind": "card-put-tech", "tech": tid,
+                   "tech_name": name_zh or name, "building": builder,
+                   "box": button, "seconds": secs, "slot": slot, "slots": n,
+                   "free_slots": 0, "grew": True, "label": label,
+                   "civ_all": civ_all, "civs": [r[1] for r in targets],
+                   "gates": gate_report}
+            if dry:
+                out["dry"] = True
+                out["gate_edits"] = [e[2]["field"] for e in gates]
+                return out
+            writes = self._card_splice(self.session_raw(tk), steps,
+                                       expect=len(entry))
+            note = {"tech": tid, "tech_name": name_zh or name,
+                    "field": "ResearchLocationCount", "label": label,
+                    "op": "card-tech-grow", "was": None, "now": entry.hex(),
+                    "offset": off}
+            for w in writes:
+                w["struct"] = True
+                w["note"] = dict(note)
+            # The menu half, riding on the same undo step as the bytes: a
+            # research button the build menu does not list is a button the
+            # player never sees pressed.
+            panel_before = dict(self._panel_files)
+            out["panel"] = self._panel_add(targets, tid, builder,
+                                          space="techs", age_id=1)
+            panel_after = dict(self._panel_files)
+            if panel_before != panel_after:
+                writes[0]["panel"] = {"before": panel_before,
+                                      "after": panel_after}
+            self._hist_push(writes)
+            self._sess_dirty = True
+            self._sess_struct = True
+            # `_restructure` throws the technology cache away (the record grew,
+            # so every offset in it moved by nine bytes), which is why the walk
+            # below is NOT patched by hand: the next `_tech_records()` re-walks
+            # the record from its shifted start and sees the new slot.  The gate
+            # edits changed effect commands, and a relocation whose rules all sit
+            # after the effect block deliberately keeps `_effects`, so that cache
+            # has to be dropped by hand here.
+            tk._effects = None
+            self._restructure(writes)
+            self._stamp_write(out)
+            out["bytes"] = len(self._sess)
+            out["undo_label"] = label
+            return out
+        want = [("ResearchLocations.%d.LocationID" % slot, struct.pack("<h", builder)),
+                ("ResearchLocations.%d.ResearchTime" % slot, struct.pack("<h", secs)),
+                ("ResearchLocations.%d.ButtonID" % slot, struct.pack("<B", button))]
+        plan = []
+        for field, packed in want:
+            meta = fields.get(field)
+            if meta is None:
+                return {"ok": False,
+                        "error": "读不到 %s 这个字段，这份文件的科技记录布局不一样，"
+                                 "这时候写进去会落到隔壁字段。" % (field,)}
+            off = meta["offset"]
+            before = bytes(self.session_raw(tk)[off:off + len(packed)])
+            plan.append({"field": field, "offset": off,
+                         "before": before.hex(), "after": packed.hex(),
+                         "changed": before != packed})
+        out = {"ok": True, "kind": "card-put-tech", "tech": tid,
+               "tech_name": name_zh or name, "building": builder, "box": button,
+               "seconds": secs, "slot": slot, "slots": len(locs),
+               "free_slots": len(free), "label": label, "plan": plan,
+               "civ_all": civ_all, "civs": [r[1] for r in targets],
+               "gates": gate_report}
+        if dry:
+            out["dry"] = True
+            out["gate_edits"] = [e[2]["field"] for e in gates]
+            return out
+        # ONE UNDO STEP holds the three slot numbers AND every gate (see
+        # `_tech_open_edits`), so 撤回 takes the button and the permission back
+        # together -- a button whose gate comes back a step later is a button
+        # that silently stopped working.
+        self._hist_begin()
+        group = None
+        try:
+            for field, packed in want:
+                off = fields[field]["offset"]
+                self._session_edit(off, packed, note={
+                    "tech": tid, "tech_name": name_zh or name, "field": field,
+                    "label": label, "op": "card-tech",
+                    "was": bytes(self.session_raw(tk)[off:off + len(packed)]).hex(),
+                    "now": packed.hex(), "offset": off}, hold=True)
+            for off, packed, note in gates:
+                self._session_edit(off, packed, note=dict(note), hold=True)
+            group = self._hist_group
+        finally:
+            self._hist_commit()
+        self._sess_dirty = True
+        # The menu half: `_panel_add` writes the build-menu JSON, which is a
+        # separate file from the .dat, so it hangs off the first step of the
+        # undo record exactly like `card_put` does.
+        panel_before = dict(self._panel_files)
+        out["panel"] = self._panel_add(targets, tid, builder,
+                                      space="techs", age_id=1)
+        panel_after = dict(self._panel_files)
+        if group and panel_before != panel_after:
+            group[0]["panel"] = {"before": panel_before,
+                                 "after": panel_after}
+        # The gate edits rewrote effect COMMANDS (type 102 -> 8/12), and
+        # `_after_write` only knows how to patch a command's float field, so the
+        # effect cache is dropped whole rather than patched.  `_raw` has to move
+        # with it: `_effect_records` rebuilds only while `_effects_raw is not
+        # _raw`, so a dropped cache over a stale snapshot just re-reads the same
+        # old bytes and every gate still looks closed (measured: the write
+        # landed, the second read said 21 civilizations still disable the
+        # technology).  Widths are unchanged, so the snapshot is still valid.
+        tk._effects = None
+        if tk._raw is not None:
+            tk._raw = bytes(self._sess)
+        # The card page is built from `tk._techs`, not from the buffer, so the
+        # write is invisible until this one entry is patched.  The widths are
+        # unchanged, so no offset can move and nothing else has to be re-read.
+        loc = rec["research_locations"][slot]
+        loc["location_id"] = builder
+        loc["research_time"] = secs
+        loc["button_id"] = button
+        # The prerequisite edits above are the SAME record, so the positional walk
+        # that produced `rec` is stale even though no offset moved: it holds the
+        # `required_techs` it read before the write, and 撤回 already drops this
+        # cache for the same reason.  Dropping it here is what makes the write
+        # and the undo read back the same shape.
+        tk._techs = None
+        self._stamp_write(out)
+        out["bytes"] = len(self._sess)
+        out["undo_label"] = label
         return out
 
     def card_take(self, unit, building, civ=None, dry=True, title=None):
-        """Take a unit off one building's card, leaving its other cards alone."""
+        """Take a unit off one building's card, leaving its other cards alone.
+
+        AN EMPTY civ TAKES EVERY COPY, for the same reason card_put writes every
+        copy: the entry lives on each civilization's own unit record, so a one
+        copy removal leaves the other 62 showing the button.
+        """
         from aoe2mod.dat import card as CARD
-        tk, civs, gv, civs_start, civ_index, civ_name = self._card_ctx(civ)
+        tk = self.tk
+        tk._ensure()
+        self._tail_ready(tk)
+        civs = tk._civs
+        gv = tk._parsed[3]
+        civs_start = tk._parsed[2]
+        tail = tk._parsed[4]
+        targets = self._card_targets(civ)
         try:
             builder = int(building)
             uid = int(unit)
         except (TypeError, ValueError):
             return {"ok": False, "error": "单位编号和建筑编号都要是整数"}
         buf = self.session_raw(tk)
-        try:
-            steps, info = CARD.plan_take_off_card(
-                buf, gv, civs_start, civ_index, uid, builder, civs=civs)
-        except CARD.CardError as exc:
-            return {"ok": False, "error": str(exc)}
+        orig = []
+        made = []
+        skipped = []
+        for ci, name in targets:
+            try:
+                st, info = CARD.plan_take_off_card(
+                    buf, gv, civs_start, ci, uid, builder, civs=civs)
+            except CARD.CardError as exc:
+                skipped.append({"civ": name, "reason": str(exc)})
+                continue
+            orig.extend(st)
+            made.append((ci, name, info))
+        if not made:
+            first = skipped[0]["reason"] if skipped else ""
+            return {"ok": False,
+                    "error": "这个单位不在任何文明的这座建筑的卡上：%s" % (first,)}
+        # THE GRANT GOES WITH THE LAST BUTTON.  card_put also writes an enable
+        # carrier (an effect record plus a cloned technology) so the engine will
+        # draw the button at all.  Leaving that behind when the button is gone
+        # makes the unit buildable where nothing offers it -- and it used to
+        # stay behind ALWAYS, so 加进去再拿掉 left 108 bytes and a live grant in
+        # the file (measured 2026-11-12).
+        #
+        # Only when this was the unit's LAST card, though: one unit can sit on
+        # several buildings (the villager is on the Town Centre and on every
+        # building it can raise), and revoking the grant because one of those
+        # buildings lost its button would break the others.
+        stripped = None
+        drop = [(ci, builder) for ci, _n, _i in made]
+        if not self._unit_on_any_card(tk, uid, drop=drop):
+            eff_start, eff_end, eff_count = self._effect_window(tk, buf)
+            try:
+                stripped = self._strip_enable_carrier(
+                    tk, buf, gv, tail, uid, eff_start, eff_end, eff_count, orig)
+            except Exception as exc:                 # noqa: BLE001
+                return {"ok": False,
+                        "error": "格子能拿下来，但撤掉「这个文明可以造它」那一位时"
+                                 "算错了：%s" % (exc,)}
+        orig.sort(key=lambda s: s[0])
+        steps = []
+        acc = 0
+        for at, cut, add in orig:
+            steps.append((at + acc, cut, add))
+            acc += len(add) - cut
+        expect = acc
+        if len(made) > 1:
+            who = "全部 %d 个文明" % len(made)
+        else:
+            who = made[0][1] or "默认文明"
+        label = ("把第 %s 号单位从第 %s 号建筑的卡上拿掉（%s）"
+                 % (uid, builder, who))
         out = {"ok": True, "kind": "card-take", "unit": uid, "building": builder,
-               "box": info.get("button"), "info": info,
-               "label": "把第 %s 号单位从第 %s 号建筑的卡上拿掉"
-                        % (uid, builder)}
+               "box": made[0][2].get("button"), "info": made[0][2],
+               "civ_all": len(made) > 1, "copies": len(made),
+               "civs": [n for _c, n, _i in made], "skipped": skipped,
+               "stripped": stripped, "expect": expect, "label": label}
         if dry:
             out["dry"] = True
+            out["bytes"] = len(buf)
             return out
-        writes = self._card_splice(buf, steps, expect=-self._train_bytes())
-        note = {"unit": uid, "civ": civ_name or None, "field": "card_take",
-                "op": "card-take", "label": out["label"], "was": None,
-                "now": None, "building": builder, "create": None}
+        writes = self._card_splice(buf, steps, expect=expect)
+        # Same as `card_put`: the menu delta rides on the step so 撤回 takes both
+        # halves back together.
+        panel_before = dict(self._panel_files)
+        out["panel"] = self._panel_remove(made, uid, space="units")
+        panel_after = dict(self._panel_files)
+        note = {"unit": uid,
+                "civ": "*" if len(made) > 1 else (made[0][1] or None),
+                "field": "card_take", "op": "card-take", "label": label,
+                "was": None, "now": None, "building": builder, "create": None}
         for w in writes:
             w["struct"] = True
             w["note"] = dict(note)
+        if writes and panel_before != panel_after:
+            writes[0]["panel"] = {"before": panel_before, "after": panel_after}
         self._hist_push(writes)
         self._sess_dirty = True
         self._sess_struct = True
+        # The carrier is gone from the effect block AND from the technology
+        # array, and `_relocate` deliberately keeps both caches when every rule
+        # sits after them, so they are dropped here by hand.
+        if stripped:
+            tk._effects = None
+            tk._effect_sec = None
+            tk._techs = None
         self._restructure(writes)
         self._stamp_write(out)
         out["bytes"] = len(self._sess)
-        out["undo_label"] = note["label"]
+        out["undo_label"] = label
         return out
 
     def card_time(self, unit, building, seconds, civ=None, dry=True,
@@ -1273,54 +2481,97 @@ class App(object):
         """How many seconds this unit takes to train, on this building's card.
 
         EQUAL WIDTH, one i16, so this is a field write: the offsets cannot move,
-        `_session_edit` carries it, and the model is patched in place.
+        _session_edit carries it, and the model is patched in place.  An empty
+        civ writes EVERY civilization's copy -- the number lives on each civ's
+        own unit record.
         """
         import struct
         from aoe2mod.dat import card as CARD
-        tk, civs, gv, civs_start, civ_index, civ_name = self._card_ctx(civ)
+        tk = self.tk
+        tk._ensure()
+        civs = tk._civs
+        gv = tk._parsed[3]
+        civs_start = tk._parsed[2]
+        targets = self._card_targets(civ)
         try:
             builder = int(building)
             uid = int(unit)
             secs = int(seconds)
         except (TypeError, ValueError):
             return {"ok": False, "error": "单位编号、建筑编号、秒数都要是整数"}
-        buf = self.session_raw(tk)
-        try:
-            got = CARD.entry_at(buf, gv, civs_start, civ_index, uid, builder,
-                                civs=civs)
-        except CARD.CardError as exc:
-            return {"ok": False, "error": str(exc)}
         if not (-32768 <= secs <= 32767):
             return {"ok": False, "error": "训练时间 %r 秒写不进 i16" % (seconds,)}
+        buf = self.session_raw(tk)
+        hits = []
+        skipped = []
+        for ci, name in targets:
+            try:
+                got = CARD.entry_at(buf, gv, civs_start, ci, uid, builder,
+                                    civs=civs)
+            except CARD.CardError as exc:
+                skipped.append({"civ": name, "reason": str(exc)})
+                continue
+            hits.append((name, got))
+        if not hits:
+            first = skipped[0]["reason"] if skipped else ""
+            return {"ok": False,
+                    "error": "这个单位不在任何文明的这座建筑的卡上：%s" % (first,)}
+        if len(hits) > 1:
+            who = "全部 %d 个文明" % len(hits)
+        else:
+            who = hits[0][0] or "默认文明"
+        _n0, got0 = hits[0]
+        label = "把第 %s 号单位的建造时间改成 %s 秒（%s）" % (uid, secs, who)
         out = {"ok": True, "kind": "card-time", "unit": uid, "building": builder,
-               "box": got.get("button"), "before": got.get("train_time"),
-               "after": secs, "offset": got["off_train_time"],
-               "label": "把第 %s 号单位的建造时间改成 %s 秒" % (uid, secs)}
+               "box": got0.get("button"), "before": got0.get("train_time"),
+               "after": secs, "offset": got0["off_train_time"],
+               "civ_all": len(hits) > 1, "copies": len(hits),
+               "civs": [n for n, _g in hits], "skipped": skipped,
+               "label": label}
         if dry:
             out["dry"] = True
-            out["bytes_changed"] = 2 if got.get("train_time") != secs else 0
+            out["bytes_changed"] = (
+                2 * len(hits)
+                if any(g.get("train_time") != secs for _n, g in hits) else 0)
             return out
-        note = {"unit": uid, "civ": civ_name or None, "field": "train_time",
-                "op": "card", "card_field": "train_time",
-                "label": out["label"], "was": got.get("train_time"),
-                "now": secs, "building": builder}
-        self._session_edit(got["off_train_time"], struct.pack("<h", secs),
-                           note=note)
+        packed = struct.pack("<h", secs)
+        self._hist_begin()
+        try:
+            for name, got in hits:
+                self._session_edit(got["off_train_time"], packed, note={
+                    "unit": uid, "civ": name, "field": "train_time",
+                    "op": "card", "card_field": "train_time", "label": label,
+                    "was": got.get("train_time"), "now": secs,
+                    "building": builder}, hold=True)
+        finally:
+            self._hist_commit()
+        self._sess_dirty = True
         self._stamp_write(out)
-        out["undo_label"] = note["label"]
+        out["bytes"] = len(self._sess)
+        out["undo_label"] = label
         return out
 
     # ---- pseudo pages -----------------------------------------------------
-    # A box in the command panel is a `button_id` 1..30, and the engine draws
-    # EVERY technology whose `ResearchLocations` names that pair, one at a time.
-    # So a box can cycle through an unlimited number of groups of units by
-    # carrying a chain of repeatable, free technologies that turn one group's
-    # train location off and the next one's on.  `aoe2mod/dat/pseudopage.py`
-    # holds the mechanism and its hazards; this is the interface to it.
+    # ONE PAGE IS ONE TECHNOLOGY, and what makes several technologies into
+    # 【页】 is not the technology data at all: it is a `Type: "Cycle"` record in
+    # `resources/_common/dat/linkedtechs.json`, whose members share one
+    # `(location_id, button_id)` pair.  The engine draws the group on that box
+    # and rotates it; each press shows the next member.  So a box cycles by
+    # carrying N technologies on that pair PLUS one Cycle record naming them --
+    # and the page bodies are ordinary technologies (free, 0 seconds) whose
+    # effects turn one batch of units' train location off and another's on.
+    # `aoe2mod/dat/pseudopage.py` holds the .dat half, `aoe2mod/game/linkedtechs.py`
+    # the JSON half; this is the interface to both.
+    #
+    # A PAGE IS THE PANEL, NOT A LIST: the paging button occupies one box, so a
+    # page has the other 14 boxes of that screen to put units in, and the box a
+    # unit lands in is the `button_id` in its own `train_locations` -- which is
+    # why `pseudo_page_put` writes a cell (`card.plan_slot`) as well as the page.
     #
     # 30 boxes per building is a hard ceiling (15 per screen, 2 screens, no pager
     # widget in `commandpanel.json`), which is why "more room" means "another
     # box" or "this box cycles" and never "a third screen".
+
     def _pseudo_cycles(self):
         """``{(building, button): [tech ids]}`` for the whole file, cached."""
         tk = self.tk
@@ -1341,6 +2592,10 @@ class App(object):
         """
         tk = self.tk
         tk._ensure()
+        # A read, but it reads through `_parsed[4]`; a model poisoned by an
+        # older build would answer with an English `struct` sentence instead of
+        # a page list, and the panel would render as empty rather than heal.
+        self._tail_ready(tk)
         effects = tk._effect_records()
         techs = tk._tech_records()
         cycles = self._pseudo_cycles()
@@ -1369,27 +2624,87 @@ class App(object):
                 if b != bld:
                     continue
                 rows.append({"box": n, "pages": len(ids),
-                             "page_list": PP.read_group(effects, techs, b, n)})
+                             "page_list": self._pseudo_titled(
+                                 PP.read_group(effects, techs, b, n),
+                                 b, n, civ)})
             out.update({"building": bld, "boxes_here": rows})
             return out
         group = PP.read_group(effects, techs, bld, btn)
         out.update({"building": bld, "box": btn, "pages": len(group),
-                    "page_list": group,
-                    "suggest_hide": PP.default_hide(group)})
+                    "page_list": self._pseudo_titled(group, bld, btn, civ),
+                    "suggest_hide": PP.default_hide(group),
+                    "cells": PP.content_boxes(btn),
+                    "slots": PP.CONTENT_SLOTS})
+        return out
+
+    def _pseudo_titled(self, group, building=None, box=None, civ=""):
+        # Add the NAME of every unit a page shows, and the CELL each one sits
+        # in, so the panel can draw a 14-slot grid instead of a bare list.
+        #
+        # A page's "on" list is a set of units, not a layout: where a unit is
+        # drawn comes from that unit's own train_locations entry (CARD.slot_of).
+        # That is also the engine's rule -- attribute 42 decides WHETHER a unit
+        # is trainable here, its own entry decides WHICH box it is drawn in --
+        # so the grid is derived, never stored on the page.
+        #
+        # "on" stays exactly as read_group built it: every writer indexes into
+        # it, and pseudo_page_put finds its page by object identity.
+        from aoe2mod.dat import card as CARD
+        sem = self._semantic()
+        cells = []
+        civs = None
+        civ_index = 0
+        if box is not None:
+            cells = PP.content_boxes(box)
+            try:
+                _tk, civs, _gv, _cs, civ_index, _cn = self._card_ctx(civ)
+            except Exception:                        # noqa: BLE001
+                civs = None
+        out = []
+        for page in group:
+            row = dict(page)
+            listed = []
+            placed = {}
+            for u in (page.get("on") or ()):
+                uid = int(u)
+                entry = sem.units.get(uid)
+                name = ""
+                if entry is not None:
+                    name = (entry.zh or entry.en or entry.display or "").strip()
+                item = {"unit": uid, "name": name or str(uid)}
+                listed.append(item)
+                if civs is not None:
+                    spot = None
+                    try:
+                        spot = CARD.slot_of(civs, civ_index, uid, int(building))
+                        if spot not in cells:
+                            spot = CARD.slot_of(civs, civ_index, uid, -1)
+                    except Exception:                # noqa: BLE001
+                        spot = None
+                    if spot in cells:
+                        placed.setdefault(int(spot), []).append(item)
+            row["on_list"] = listed
+            if box is not None:
+                row["cells"] = [{"box": b, "units": placed.get(b) or []}
+                                for b in cells]
+            out.append(row)
         return out
 
     def add_pseudo_page(self, building, box, name=None, on=(), hide=None,
                         civ="", seconds=0, donor=None, dry=True, title=None):
         """Append one page to a box.  Three appends, one pointer, one undo step.
 
-        Refuses the cases where the result would be a button that does something
-        other than what was asked:
-        * no units to show -- a page that turns nothing on is a page that turns
-          the box blank;
-        * units both shown and hidden -- the effect applies in order, so the
-          answer would depend on where in the record each unit appeared;
+        A PAGE STARTS EMPTY AND THAT IS THE POINT.  The screen turns a box into a
+        cycling button first, then the player fills the page one cell at a time
+        (asked 2026-11-11: 就不能直接让我选那个格子，创建一个伪翻页按钮).  So
+        `on` being empty is the normal case, not an error -- an empty page is
+        what the button looks like before anything is put in it.
+
+        Still refused, because the result would not be what was asked:
+        * units both shown and hidden in ONE call -- a contradiction the caller
+          typed, not something the default can produce;
         * a box outside 1..30 -- the engine reads it and never draws it;
-        * the same units as the box already shows -- the press would look like
+        * the same units as the page before it -- the press would look like
           nothing happened.
 
         `donor` defaults to the box's last existing page (which keeps the
@@ -1400,6 +2715,7 @@ class App(object):
         """
         tk = self.tk
         tk._ensure()
+        self._tail_ready(tk)
         from aoe2mod.dat import card as CARD
         try:
             bld = int(building)
@@ -1418,11 +2734,13 @@ class App(object):
             return {"ok": False, "error": "研究时间要填整数秒"}
         if not (0 <= secs <= 32767):
             return {"ok": False, "error": "研究时间 %r 秒写不进 i16" % (seconds,)}
+        # EMPTY IS ALLOWED, ON PURPOSE.  The screen turns a box into a cycling
+        # button first and the player then drops unit icons into the page one at
+        # a time (asked 2026-11-10: 「就不能直接让我选那个格子，创建一个伪翻页
+        # 按钮，再在这页里自己按格子来添加吗」).  At the moment the button is
+        # created the page genuinely shows nothing, so a refusal here would send
+        # the player back to typing unit ids into a text box.
         on_ids = [int(u) for u in (on or ()) if str(u).strip() != ""]
-        if not on_ids:
-            return {"ok": False,
-                    "error": "这一页要显示哪些单位？一个都没选的话，"
-                             "翻过去这个格子就是空的"}
         effects = tk._effect_records()
         techs = tk._tech_records()
         group = PP.read_group(effects, techs, bld, btn)
@@ -1444,7 +2762,8 @@ class App(object):
                              "一条效果里的命令是按顺序执行的，"
                              "同一批单位两头都写就是自相矛盾"
                              % "、".join(str(u) for u in overlap[:6])}
-        if group and sorted(set(on_ids)) == sorted(set(group[-1]["on"] or ())):
+        if (on_ids and group
+                and sorted(set(on_ids)) == sorted(set(group[-1]["on"] or ()))):
             return {"ok": False,
                     "error": "这一页要显示的单位和第 %d 页完全一样，"
                              "按下去看起来什么也没发生" % len(group)}
@@ -1464,10 +2783,14 @@ class App(object):
             return {"ok": False,
                     "error": "没有第 %s 号科技（这个文件里有 %d 条）"
                              % (donor_id, len(techs))}
-        label = "在第 %s 号建筑的第 %s 格加第 %s 页（显示 %d 种单位）" % (
-            bld, btn, len(group) + 1, len(set(on_ids)))
-        eff_start, eff_end, eff_count = tk._effect_section()
+        if on_ids:
+            label = "在第 %s 号建筑的第 %s 格加第 %s 页（显示 %d 种单位）" % (
+                bld, btn, len(group) + 1, len(set(on_ids)))
+        else:
+            label = ("把第 %s 号建筑的第 %s 格改成会翻页的按钮"
+                     "（第 %s 页，还是空的）" % (bld, btn, len(group) + 1))
         buf = self.session_raw(tk)
+        eff_start, eff_end, eff_count = self._effect_window(tk, buf)
         try:
             steps, info = PP.plan_add_page(
                 buf, tk._parsed[3], tk._parsed[4], eff_start, eff_end, eff_count,
@@ -1508,6 +2831,386 @@ class App(object):
         self._restructure(writes)
         self._stamp_write(out)
         out["bytes"] = len(self._sess)
+        out["page_list"] = self._pseudo_pages_here(tk, bld, btn)
+        out["undo_label"] = label
+        return out
+
+    def _effect_window(self, tk, buf=None):
+        """``(start, end, count)`` of the Effects block IN THE BUFFER WE WRITE.
+
+        NOT `tk._effect_section()`.  That one answers about the parse snapshot,
+        and the writer is about to splice into the SESSION buffer, which is a
+        different file the moment anything has grown.  Page edits read the
+        snapshot window and the session bytes together and walked 11 bytes
+        past the end of a one-command-longer block, answering
+        「效果段走到第 3738075 字节，段尾却在第 3738064 字节」, after which
+        no icon could be dropped into a page (reported 2026-11-11).
+        `stage_offsets` stops at the end of stage 5 and costs 0.24 s, which is
+        nothing next to the splice it guards.
+        """
+        import struct
+        from aoe2mod.dat import tablefields as TF
+        raw = self.session_raw(tk) if buf is None else buf
+        offs, _stats = TF.stage_offsets(raw, "5 ", quiet=True)
+        key = next(k for k in offs if k.startswith("5 Effects"))
+        start, end = offs[key]
+        count = struct.unpack_from("<i", raw, start)[0]
+        return start, end, count
+
+    def _pseudo_pages_here(self, tk, bld, btn, civ=""):
+        # The box pages, re-read from the bytes just written.
+        #
+        # Every page verb answers with this list so the panel can redraw its
+        # chips from the ANSWER instead of reloading the whole card (a full
+        # `/api/card` re-walks the 89 MB civ block).  The server is also the
+        # only one that knows what the splice did, so it is the honest source.
+        try:
+            group = PP.read_group(tk._effect_records(), tk._tech_records(),
+                                   bld, btn)
+        except Exception:                        # noqa: BLE001
+            return None
+        return self._pseudo_titled(group, bld, btn, civ)
+
+    def _pseudo_group(self, building, box):
+        """``(bld, btn, effects, techs, group)`` -- the shared prologue.
+
+        Every page verb starts by answering "which pages does this box have",
+        and each of them has to refuse the same three ways of getting it wrong
+        (a building id that is not a number, a box outside what the engine
+        draws, a box that has no pages yet).  Written once so the three verbs
+        cannot drift apart in the wording the player reads.
+        """
+        from aoe2mod.dat import card as CARD
+        try:
+            bld = int(building)
+            btn = int(box)
+        except (TypeError, ValueError):
+            return None, {"ok": False, "error": "建筑编号和格子号都要是整数"}
+        if not (CARD.ENGINE_FIRST <= btn <= CARD.ENGINE_LAST):
+            return None, {"ok": False,
+                          "error": "格子号 %d 不能写：命令面板一页第 %d..%d 格、"
+                                   "一共 %d 页，所以最大能写到第 %d 格。"
+                                   % (btn, CARD.ENGINE_FIRST, CARD.PAGE_BOXES,
+                                      CARD.PAGE_COUNT, CARD.ENGINE_LAST)}
+        # Same read-through as `pseudo_pages`: this is where an unverified tail
+        # used to surface as an English `unpack_from` sentence on the
+        # very click that was supposed to add a unit.
+        self._tail_ready()
+        effects = self.tk._effect_records()
+        techs = self.tk._tech_records()
+        group = PP.read_group(effects, techs, bld, btn)
+        if not group:
+            return None, {"ok": False,
+                          "error": "第 %s 号建筑的第 %s 格还不是伪翻页按钮："
+                                   "先给它建一页，再往页里放单位" % (bld, btn)}
+        return (bld, btn, effects, techs, group), None
+
+    def _pseudo_pick(self, group, page):
+        """The group entry the verb works on: ``page`` is 1-based, last by default."""
+        if page in (None, ""):
+            return group[-1], None
+        try:
+            k = int(page)
+        except (TypeError, ValueError):
+            return None, {"ok": False, "error": "第几页要是个整数"}
+        if not (1 <= k <= len(group)):
+            return None, {"ok": False,
+                          "error": "这一格只有 %d 页，没有第 %s 页"
+                                   % (len(group), page)}
+        return group[k - 1], None
+
+    def pseudo_page_put(self, building, box, unit, page=None, slot=None,
+                        mode="add", civ="", dry=True, title=None):
+        """Put ONE unit into ONE cell of a page, or take it out.  One undo step.
+
+        THE TWO HALVES OF "PUT IT IN THIS CELL".  A cell of a page is a box of
+        the command panel, and which box a unit is drawn in comes from the
+        unit's own train_locations entry, not from the page.  So this writes
+        twice:
+
+        1. the page's effect record -- attribute 42 turns the unit on for this
+           building and off for every other page of the same button
+           (pseudopage.sync_off derives the off list from ALL pages, which is
+           why one icon drop rewrites the group rather than one record);
+        2. the unit's train_locations entry -- one byte when the unit already
+           carries an entry (-1 placeholder or a real one), nine bytes when it
+           carries neither (card.plan_slot).  That is what makes the icon show
+           up in the cell the player clicked.
+
+        ORDER IS NOT NEGOTIABLE.  The effect block sits BEFORE the civilisation
+        block, so an effect splice that changes length moves every civ record,
+        and every train_locations offset with it.  The effect half therefore
+        goes first, the relocate runs, and the card half is planned against the
+        buffer and the civ list that exist afterwards.
+
+        A unit belongs to ONE page of the button.  Dropping it on another page
+        moves it: two pages both claiming a unit would leave the box showing a
+        mixture after either press.
+        """
+        tk = self.tk
+        tk._ensure()
+        self._tail_ready(tk)
+        got, err = self._pseudo_group(building, box)
+        if err:
+            return err
+        bld, btn, effects, techs, group = got
+        here, err = self._pseudo_pick(group, page)
+        if err:
+            return err
+        try:
+            uid = int(unit)
+        except (TypeError, ValueError):
+            return {"ok": False, "error": "单位编号要是个整数"}
+        if uid not in self._semantic().units:
+            return {"ok": False, "error": "没有第 %s 号单位" % (uid,)}
+        how = "add" if str(mode or "add").lower() != "del" else "del"
+        was_on = sorted(set(int(u) for u in (here.get("on") or ())))
+        if how == "add" and uid in was_on:
+            # NO REFUSALS HERE either.  Dropping a unit that is already on this
+            # page onto a different cell is the only way to move it: the cell
+            # lives in the unit's own train_locations entry, so "put it there"
+            # and "move it there" are the same byte.  Refusing would leave the
+            # player with drag-and-drop, which cannot invent a cell that does
+            # not exist yet.
+            how = "move"
+        if how == "del" and uid not in was_on:
+            return {"ok": False,
+                    "error": "第 %s 号单位本来就不在这一页上" % (uid,)}
+        cells = PP.content_boxes(btn)
+
+        # WHICH CELL.  An explicit slot wins; otherwise the unit keeps the cell
+        # it already occupies; otherwise it takes the first cell of this page no
+        # other unit is using, so an empty page fills left to right.
+        want = None
+        civs = None
+        civ_index = 0
+        try:
+            _tk, civs, _gv, _cs, civ_index, _cn = self._card_ctx(civ)
+        except Exception:                            # noqa: BLE001
+            civs = None
+        if how in ("add", "move"):
+            if slot not in (None, ""):
+                try:
+                    want = PP.check_slot(btn, slot)
+                except PP.PageError as exc:
+                    return {"ok": False, "error": str(exc)}
+            if want is None and civs is not None:
+                from aoe2mod.dat import card as CARD
+                spot = None
+                try:
+                    spot = CARD.slot_of(civs, civ_index, uid, bld)
+                    if spot not in cells:
+                        spot = CARD.slot_of(civs, civ_index, uid, -1)
+                except Exception:                    # noqa: BLE001
+                    spot = None
+                if spot in cells:
+                    want = spot
+                else:
+                    taken = set()
+                    for p in group:
+                        for other in (p.get("on") or ()):
+                            if int(other) == uid:
+                                continue
+                            try:
+                                taken.add(CARD.slot_of(civs, civ_index,
+                                                       int(other), bld))
+                            except Exception:        # noqa: BLE001
+                                pass
+                    for b in cells:
+                        if b not in taken:
+                            want = b
+                            break
+                    if want is None and cells:
+                        # EVERY CELL IS TAKEN.  A page can hold more units
+                        # than it has cells -- the Mule cart's page 1 is
+                        # already 14 for 14 -- and the 15th unit used to be
+                        # written into the page's effect with want=None,
+                        # which means no button_id in its train_locations:
+                        # on the page, counted, and invisible in game.  Stack
+                        # it on the first cell instead; one box may hold
+                        # several units and the engine trains the last one it
+                        # reaches (same rule as card.plan_put_on_card).
+                        want = cells[0]
+        if how == "add":
+            now_on = sorted(set(was_on) | {uid})
+        elif how == "move":
+            now_on = was_on
+        else:
+            now_on = sorted(set(was_on) - {uid})
+        # Every page of the box is recomputed, not just this one: a page's "off"
+        # list is derived from what the OTHER pages show, so dropping an icon
+        # into page 3 has to retract that unit from page 1's and 2's "off".
+        pages = [{"effect": p["effect"], "on": p["on"], "off": p["off"]}
+                 for p in group]
+        for p in pages:
+            if int(p["effect"]) == int(here["effect"]):
+                p["on"] = now_on
+            elif uid in (p["on"] or ()):
+                p["on"] = [u for u in p["on"] if int(u) != uid]
+        changes = PP.sync_off(pages, bld)
+        name = self._semantic().units[uid]
+        what = (name.zh or name.en or name.display or "").strip() or str(uid)
+        k = group.index(here) + 1
+        # NO「第 None 格」.  want is only known when the unit already has a
+        # cell in this box or the caller named one; a unit that has never
+        # stood in this building keeps want=None and the splice below lets
+        # the game pick the cell.  The old label pushed the raw None through
+        # %s and the undo line read 「…第 None 格放上 修道院」, which looks
+        # like a crash even though the write was correct.
+        where = "" if want is None else ("的第 %s 格" % (want,))
+        if how == "move":
+            label = "在第 %s 号建筑的第 %s 格第 %s 页里把 %s 挪到%s" % (
+                bld, btn, k, what, where or "别的格")
+        elif how == "add":
+            label = "在第 %s 号建筑的第 %s 格第 %s 页%s放上 %s" % (
+                bld, btn, k, where, what)
+        else:
+            label = "从第 %s 号建筑的第 %s 格第 %s 页里拿掉 %s" % (
+                bld, btn, k, what)
+        out = {"ok": True, "kind": "pseudo-page-put", "building": bld,
+               "box": btn, "page": k, "slot": want,
+               "tech": here.get("tech"), "effect": here.get("effect"),
+               "unit": uid, "unit_name": what, "mode": how,
+               "on": now_on, "hide": sorted(changes[int(here["effect"])]["off"]),
+               "page_list": None, "grew": 0, "label": label}
+        if dry:
+            out["dry"] = True
+            out["bytes"] = len(self.session_raw(tk))
+            return out
+
+        # (1) the page's commands.  Offsets are measured on the live buffer, so
+        # this is a 30-byte splice rather than a 93 MB copy.
+        buf = self.session_raw(tk)
+        eff_start, eff_end, _eff_count = self._effect_window(tk, buf)
+        try:
+            steps, info = PP.plan_rewrite_pages(buf, eff_start, eff_end, changes)
+        except PP.PageError as exc:
+            return {"ok": False, "error": str(exc)}
+        except Exception as exc:                     # noqa: BLE001
+            return {"ok": False, "error": "这一页没能算出来：%s" % (exc,)}
+        writes = self._card_splice(buf, steps, expect=info["delta"])
+        grew = info["delta"]
+        # THE FIRST HALF IS SPENT.  `_relocate` has already shifted every
+        # offset this write moved, including the tech block start and the tail,
+        # so handing the same list to a second `_restructure` below would shift
+        # them a second time: measured 2026-11-11, an 11-byte effect that made
+        # effect 6055 left `_parsed[4]` at 124510464 while the tech stage really
+        # started at 124510453, `locate_techs` walked past the last record and
+        # returned 0 technologies, and the button this method had just built
+        # vanished from the panel.
+        self._restructure(writes)
+        more = []
+
+        # (2) the cell, against the buffer the splice above produced.
+        if how in ("add", "move") and want is not None and civs is not None:
+            from aoe2mod.dat import card as CARD
+            try:
+                _tk2, civs2, gv, civs_start, ci2, _cn2 = self._card_ctx(civ)
+                ssteps, sinfo = CARD.plan_slot(
+                    self.session_raw(tk), gv, civs_start, ci2, uid, bld, want,
+                    civs=civs2)
+            except Exception as exc:                 # noqa: BLE001
+                return {"ok": False,
+                        "error": "这一页加上了，但它站不到第 %s 格：%s"
+                                 % (want, exc)}
+            if ssteps:
+                try:
+                    more = self._card_splice(self.session_raw(tk), ssteps,
+                                             expect=sinfo["delta"])
+                except Exception as exc:             # noqa: BLE001
+                    return {"ok": False,
+                            "error": "这一页加上了，但它站不到第 %s 格：%s"
+                                     % (want, exc)}
+                writes += more
+                grew += sinfo["delta"]
+                out["how"] = sinfo.get("how")
+                # THE BYTE IS NOT THE PAGE.  An equal-width slot write leaves
+                # `_relocate` with no rule to apply, so nothing re-walks the
+                # civ block and `CARD.slot_of` keeps answering with the cell
+                # the unit used to occupy.  Measured 2026-11-11: the unit was
+                # written into cell 16 and the grid came back empty with the
+                # unit still drawn in cell 1.
+                self._patch_slot(uid, bld, want)
+        note = {"unit": uid, "civ": str(civ or "").strip() or None,
+                "field": "pseudo_page", "op": "pseudo-page-unit",
+                "label": label, "was": None, "now": btn, "building": bld,
+                "tech": here.get("tech"), "effect": here.get("effect")}
+        for w in writes:
+            w["struct"] = True
+            w["note"] = dict(note)
+        self._hist_push(writes)
+        self._sess_dirty = True
+        self._sess_struct = True
+        tk._effects = None
+        tk._effect_sec = None
+        self._pseudo_gen = -1
+        # Only the cell half is new here; see `more = []` above.
+        if more:
+            self._restructure(more)
+        out["grew"] = grew
+        self._stamp_write(out)
+        out["bytes"] = len(self._sess)
+        out["page_list"] = self._pseudo_pages_here(tk, bld, btn, civ)
+        out["undo_label"] = label
+        return out
+
+    def pseudo_page_drop(self, building, box, page=None, civ="", dry=True,
+                         title=None):
+        """Remove one page.  The button goes back to a plain box when it was 1.
+
+        The page's technology record is cut out; its effect record is left as an
+        orphan because nothing points at it any more (see
+        ``pseudopage.plan_drop_page``).  Every other page keeps its own
+        ``EffectID``, so no renumbering happens and the box keeps working.
+        """
+        tk = self.tk
+        tk._ensure()
+        self._tail_ready(tk)
+        got, err = self._pseudo_group(building, box)
+        if err:
+            return err
+        bld, btn, _effects, _techs, group = got
+        here, err = self._pseudo_pick(group, page)
+        if err:
+            return err
+        k = group.index(here) + 1
+        buf = self.session_raw(tk)
+        try:
+            steps, info = PP.plan_drop_page(buf, tk._parsed[3], tk._parsed[4],
+                                            int(here["tech"]))
+        except Exception as exc:                     # noqa: BLE001
+            return {"ok": False, "error": "这一页没能删掉：%s" % (exc,)}
+        label = "删掉第 %s 号建筑的第 %s 格第 %s 页" % (bld, btn, k)
+        out = {"ok": True, "kind": "pseudo-page-drop", "building": bld,
+               "box": btn, "page": k, "tech": here.get("tech"),
+               "pages_left": len(group) - 1, "grew": info["delta"],
+               "label": label}
+        if dry:
+            out["dry"] = True
+            out["bytes"] = len(buf)
+            return out
+        writes = self._card_splice(buf, steps, expect=info["delta"])
+        note = {"unit": None, "civ": str(civ or "").strip() or None,
+                "field": "pseudo_page", "op": "pseudo-page-drop",
+                "label": label, "was": None, "now": btn, "building": bld,
+                "tech": here.get("tech"), "effect": here.get("effect")}
+        for w in writes:
+            w["struct"] = True
+            w["note"] = dict(note)
+        self._hist_push(writes)
+        self._sess_dirty = True
+        self._sess_struct = True
+        tk._techs = None
+        self._pseudo_gen = -1
+        self._restructure(writes)
+        self._stamp_write(out)
+        out["bytes"] = len(self._sess)
+        # civ is carried through: the grid is built from each unit's own
+        # train_locations IN THAT CIVILIZATION, so dropping a page without it
+        # repainted the grid from the default civ and a unit that only exists
+        # in the civ being edited vanished from the 14 cells until the panel
+        # was reopened.
+        out["page_list"] = self._pseudo_pages_here(tk, bld, btn, civ)
         out["undo_label"] = label
         return out
 
@@ -2261,6 +3964,44 @@ class App(object):
                     if tl.get("unit_id") == builder_id:
                         tl[field] = value
 
+    def _patch_slot(self, unit_id, builder_id, button):
+        """Put one written cell into the located model.
+
+        THE SAME LESSON AS `_patch_card_entry`, one level up.  A page cell is
+        the `button_id` byte inside a unit's `train_locations` entry, and
+        `CARD.slot_of` reads that entry out of `tk._civs`, not out of the
+        buffer.  When the byte write keeps the length (the common case: the
+        unit already carries a `-1` placeholder and only its box changes)
+        `_relocate` takes its equal-width branch and nothing re-walks the civ
+        block, so the panel would draw the unit in the cell it used to occupy.
+        Measured 2026-11-11: a unit written into cell 16 of page 1 came back
+        as cell 1 and the 14-cell grid drew empty.
+
+        Entry precedence follows `plan_slot`: a real entry naming this building
+        wins, otherwise the `-1` placeholder.  Every civ copy is patched for the
+        same reason `_patch_card_entry` does it -- the shipped file carries the
+        record 63 times and the card page may be read from any of them.
+        """
+        civs = getattr(self.tk, "_civs", None)
+        if not civs:
+            return
+        button = int(button)
+        for civ in civs:
+            for u in civ.get("units") or ():
+                if u.get("id") != int(unit_id):
+                    continue
+                here = u.get("train_locations") or ()
+                exact = None
+                loose = None
+                for tl in here:
+                    if tl.get("unit_id") == int(builder_id) and exact is None:
+                        exact = tl
+                    elif tl.get("unit_id") == -1 and loose is None:
+                        loose = tl
+                spot = exact if exact is not None else loose
+                if spot is not None:
+                    spot["button_id"] = button
+
     # ---- 撤回 / 重做 ------------------------------------------------------
     # WHY A HISTORY AT ALL: "放弃" already threw the whole session away, which is
     # fine for "start over" and useless for "that last number was wrong".  AGE3
@@ -2408,6 +4149,16 @@ class App(object):
         # the counter keeps claiming a total the file no longer has.  Reported
         # 2026-11-05 as 「列表还会还原」; the same in-place fix needs both halves.
         out["undone"] = self._step_notes(step)
+        # 撤回 is the OTHER way the file changes, and a screen parked in
+        # `live_wait` has to hear about it: the card panel used to redraw itself
+        # from the click handler that started the undo, which covered the button
+        # in this very screen and nothing else on the page.  Undo is also the path
+        # where a structural step re-parses, so `_gen_bump` already fired -- but
+        # a step made only of equal-width patches does not, and both must wake
+        # the same waiters.
+        self._live_bump()
+        out["v"] = self._live_v
+        out["gen"] = self._gen
         return out
 
     def redo(self):
@@ -2424,6 +4175,9 @@ class App(object):
         out = self.hist_state()
         out.update(self._session_counts())
         out["redone"] = self._step_notes(step)
+        self._live_bump()
+        out["v"] = self._live_v
+        out["gen"] = self._gen
         return out
 
     @staticmethod
@@ -2476,6 +4230,14 @@ class App(object):
         """
         buf = self.session_raw()
         structural = False
+        # THE MENU HALF OF THE STEP.  A menu edit is not in this buffer at all --
+        # it is a JSON file we owe the mod -- so the bytes cannot be found by
+        # offset.  The whole map is small (two files, ~1.6 MB of text) and the
+        # step carries both sides, so restoring is a pointer swap.
+        for w in writes:
+            if w.get("panel"):
+                self._panel_files = dict(w["panel"][side] or {})
+                break
         order = list(writes) if side == "after" else list(reversed(writes))
         for w in order:
             packed = w[side]
@@ -2489,6 +4251,35 @@ class App(object):
             self._restructure(writes, undo=(side == "before"))
         if any((w.get("note") or {}).get("op") == "rename" for w in writes):
             self._resync_display_ids()
+        # A technology's research button lives in the technology's own record, and
+        # `card_put_tech` patches `tk._techs` in place so the card page can see it
+        # before the file is saved.  Undo puts the bytes back and would leave that
+        # patch standing -- measured 2026-11-09: after a full undo the server still
+        # answered 「第 37 号科技已经在这座建筑的第 16 格上了」.  Re-walking the tech
+        # section costs 0.009 s, so dropping the cache is cheaper than patching it
+        # twice, and it cannot get out of step.
+        if any((w.get("note") or {}).get("op") in ("card-tech", "card-tech-grow")
+               for w in writes):
+            self.tk._techs = None
+            # ...and the bytes it re-walks have to be the ones on screen.  A
+            # technology write is EQUAL WIDTH, so `_restructure` never runs for
+            # it and `tk._raw` -- the snapshot every cache is rebuilt from --
+            # keeps whatever it held before the write.  Measured 2026-11-10: put
+            # tech 37 on barracks box 16, grow tech 22 a new slot (that one IS
+            # structural, so `_raw` became the grown file), then undo both.  The
+            # file was byte-identical to the original again, but `_raw` still
+            # held the grown copy, so re-walking it found 37 on box 16 and the
+            # next put was refused as 「第 37 号科技已经在这座建筑的第 16 格上了」.
+            #
+            # LENGTH IS NOT THE TEST.  An equal-width write changes CONTENT at a
+            # fixed offset, so the stale snapshot has exactly the right size --
+            # a first attempt that compared `len(tk._raw) != len(buf)` never
+            # fired and the bug survived it.  What is needed is the buffer's
+            # bytes, and the cost is one copy of the file on a gesture the player
+            # makes by hand: tech writes are rare, and the alternative is a cache
+            # walking bytes nobody can see.
+            if self.tk._raw is not None:
+                self.tk._raw = bytes(buf)
 
 
     def _session_counts(self):
@@ -2542,6 +4333,15 @@ class App(object):
         out["undo_label"] = hist["undo_label"]
         out["redo_label"] = hist["redo_label"]
         out["saved_to_memory"] = True
+        # THE WRITE ITSELF SAYS WHAT MOVED, so the click that made it does not
+        # have to ask again.  `v` is the value `live_wait` compares against; a
+        # screen that echoes it back is never told about its own change twice.
+        # Bumped here as well as in `_gen_bump` because not every write is
+        # structural: a training time is an equal-width patch that never
+        # re-parses, and it still changes what the next screen must draw.
+        self._live_bump()
+        out["v"] = self._live_v
+        out["gen"] = self._gen
         return out
 
     def _relocate(self, tk, writes, undo):
@@ -2570,7 +4370,18 @@ class App(object):
         rules = REL.splice_rules(writes, undo=undo)
         if not rules:
             # Every write in this edit kept its length, so no offset moved --
-            # there is nothing to relocate and nothing to re-derive.
+            # there is nothing to relocate and nothing to re-derive.  THE BYTES
+            # STILL CHANGED, THOUGH.  `tk._raw` is the snapshot every cache is
+            # rebuilt from, and an equal-width splice leaves it exactly the
+            # right SIZE while it describes a file that no longer exists.
+            # Measured 2026-11-10: dropping unit 74 onto page 1 of a pseudo
+            # button retracted it from page 2, the session buffer was right and
+            # `grew` was 0 -- but the panel kept drawing the old assignment,
+            # because `_effect_records` re-walked the pre-edit copy.  LENGTH IS
+            # NEVER THE TEST (same lesson as the technology writes below).
+            if tk._raw is not None:
+                tk._raw = bytes(self.session_raw(tk))
+            tk._effects = None
             return True
         # THIS IS AN OFFSET TOO.  It is the block's first byte, so a splice
         # anywhere before the civ block moves it exactly like the civs after it.
@@ -2620,28 +4431,48 @@ class App(object):
             # stream, so they cannot be trusted for writes.  Re-parse instead.
             return False
         raw = bytes(buf)
-        tk._raw = raw
-        tk._parsed = (raw, civs, civs_start, gv, new_tail, parsed[5])
-        stats = tk._stats
-        for ci in touched:
-            REL.sync_stats_civ(stats, ci, civs[ci])
+        # THE TAIL IS VERIFIED BEFORE IT IS STORED.  `chain_ok` above only asks
+        # whether the civ block ends where the tail says it does -- and both
+        # numbers come out of the same shift, so a shift that overshoots makes
+        # them agree on the wrong value.  A tail past the end of the file then
+        # survives in `_parsed[4]`, every later structural write shifts it
+        # again, and the drift compounds until something reads the i16 count
+        # at it and raises `unpack_from requires a buffer of at least N bytes`
+        # (seen by a player as `放不进这一页：error: unpack_from ...`, offset ==,
+        # the buffer length exactly).  Walking the technology block here is the
+        # only honest test: it reads the count AND every record behind it, so a
+        # tail that is merely out of range for the count fails just as loudly
+        # as one that is off by a few bytes.  Measured 8 ms.
+        if not (0 <= new_tail <= len(raw) - 2):
+            return False
         # The technology block STARTS at the tail, so a unit splice moves all of
         # it.  `walk_tech` keeps no byte offset and `locate_techs` costs 8 ms, so
         # re-reading is both cheaper and safer than shifting a list of rows.
         try:
             techs = L.locate_techs(raw, new_tail, gv)
         except Exception:
-            techs = None
-        if techs is not None:
-            stats["techs"] = techs
-            stats["tech_count"] = len(techs)
+            # Not a cache miss to shrug off: the tail cannot describe these
+            # bytes.  Fall back to a full reparse rather than store it.
+            return False
+        tk._raw = raw
+        tk._parsed = (raw, civs, civs_start, gv, new_tail, parsed[5])
+        stats = tk._stats
+        for ci in touched:
+            REL.sync_stats_civ(stats, ci, civs[ci])
+        stats["techs"] = techs
+        stats["tech_count"] = len(techs)
         tk._techs = None
         # `_effects` is deliberately NOT dropped: the effect block sits before
         # the civ block, so no splice inside a civ can move it, and re-reading it
         # is the one expensive cache in the set (4.905 s measured 2026-11-06).
+        # _field_census is a picture of the BYTES (value -> how many records
+        # store it), so a write makes every count in it wrong.  It was never in
+        # this list because it used to cover one column; now that it covers
+        # every field, a stale one would tell the player that a value they just
+        # introduced occurs zero times.
         for name in ("_field_index", "_tech_field_index", "_civ_spread",
-                     "_tech_census", "_fam", "_index", "_unit_lines",
-                     "_uifacts", "_fanout"):
+                     "_tech_census", "_field_census", "_fam", "_index",
+                     "_unit_lines", "_uifacts", "_utypes", "_fanout"):
             if hasattr(tk, name):
                 setattr(tk, name, None)
         for name in [k for k in list(vars(tk)) if k.startswith("_table_index_")]:
@@ -2691,7 +4522,8 @@ class App(object):
                      # rows of a file that now has 5,875 -- and the panel said
                      # the page had not been added.
                      "_techs", "_effect_sec",
-                     "_civ_spread", "_tech_census", "_fam", "_index",
+                     "_civ_spread", "_tech_census", "_field_census",
+                     "_fam", "_index",
                      "_unit_lines",
                      # `_uifacts` is the icon/class table `icon_for` reads: it
                      # is built from the unit records, so a cloned record is
@@ -2700,7 +4532,7 @@ class App(object):
                      # 57-byte placeholder while id 74 next to it was a 4,519-
                      # byte PNG.  `_fanout` folds the technology list into the
                      # effect cache, so a new technology stales it too.
-                     "_uifacts", "_fanout"):
+                     "_uifacts", "_utypes", "_fanout"):
             if hasattr(tk, name):
                 setattr(tk, name, None)
         for name in [k for k in list(vars(tk)) if k.startswith("_table_index_")]:
@@ -2746,8 +4578,7 @@ class App(object):
         new_name = str(name or "").strip()
         if not new_name:
             return {"ok": False, "error": "名字不能是空的"}
-        if tk._parsed is None:
-            tk._ensure()
+        self._tail_ready()
         buf = self.session_raw()
         gv = tk._parsed[3]
         civs_start = tk._parsed[2]
@@ -2966,8 +4797,7 @@ class App(object):
             return {"ok": False, "error": "只能给单位或科技增删记录，没有 %r 这种记录空间" % (kind,)}
         if op not in ("add", "dup", "del"):
             return {"ok": False, "error": "记录操作只有 add / dup / del，收到的是 %r" % (op,)}
-        if tk._parsed is None:
-            tk._ensure()
+        self._tail_ready()
         buf = self.session_raw()
         gv = tk._parsed[3]
         civs_start = tk._parsed[2]
@@ -3218,9 +5048,21 @@ class App(object):
                 tk0._raw = None
                 tk0._civs = None
                 tk0._stats = None
+                # THE SECTION BOUNDARIES TOO.  `_raw` is thrown away above, so
+                # every cache derived from it describes a file that no longer
+                # exists -- and a boundary that survived is worse than one that
+                # was never computed, because it LOOKS answered.  Measured
+                # 2026-11-10: 建一页, 放单位, 建第二页, 删一页, 放弃, 再建一页 ->
+                # 「第 1500 条效果的字符串标记是 0x06a5, 不是 0x0a60」.  The effect
+                # block had grown 87 bytes in the discarded session; `_effect_sec`
+                # still said where it used to end, so the walk landed 87 bytes
+                # short and refused -- correctly.  The next edit was dead until
+                # the process restarted.
                 for name in ("_field_index", "_tech_field_index", "_effects",
-                             "_civ_spread", "_tech_census", "_fam", "_index",
-                             "_unit_lines"):
+                             "_effect_sec", "_techs", "_civ_spread",
+                             "_tech_census", "_field_census", "_fam", "_index",
+                             "_unit_lines",
+                             "_uifacts", "_utypes", "_fanout"):
                     if hasattr(tk0, name):
                         setattr(tk0, name, None)
                 for name in [k for k in list(vars(tk0)) if k.startswith("_table_index_")]:
@@ -3255,6 +5097,9 @@ class App(object):
         # counts survive, the decoded numbers do not.
         self._drop_decoded_fields(getattr(self.tk, "_tech_field_index", None))
         self.tk._tech_census = None
+        # Same for the unit column census: 撤销 restored older bytes, so the
+        # values it reports as being in the file may no longer be there.
+        self.tk._field_census = None
         # The cross-civ histogram IS a picture of the bytes (value -> how many
         # copies store it), so every count in it is now wrong.  It costs 0.02 s
         # to rebuild, unlike the 11 s scan above.
@@ -3273,6 +5118,11 @@ class App(object):
         self._icon_slots = {}
         self._icon_owner = {}
         self._icon_items = []
+        # 放弃 means the menu edits did not happen either: the .dat half is being
+        # thrown away, so a row that only exists to make its button visible would
+        # be a button pointing at nothing.
+        self._panel_files = {}
+        self._panel_pools = {}
         return {"ok": True, "dirty": False, "pending": 0}
 
     @staticmethod
@@ -3364,7 +5214,19 @@ class App(object):
         tk = self.tk
         tk._ensure()
         edits = self.pending_edits()
-        if not edits:
+        # A PICTURE IS NOT AN EDIT, AND THAT IS THE POINT OF IN-PLACE ICONS.
+        # Repainting the slot a record already names touches no .dat byte, so
+        # it produces no pending edit -- and the old guard here answered
+        # "还没有任何改动，不用保存" to a session that had a brand-new picture in
+        # it.  Pictures and card files are their own kind of pending work, so
+        # they keep the save alive on their own.
+        # Count PICTURES, not files: `_icons` also carries the two merged
+        # tables, so its length reads as "4 处图标" for two repainted slots and
+        # the player cannot tell what the number means.
+        pictures = len([k for k in (self._icons or {})
+                        if k.lower().endswith((".dds", ".png", ".bmp"))])
+        panels = len(self._panel_files or {})
+        if not edits and not pictures and not panels:
             return {"ok": False, "error": "还没有任何改动，不用保存"}
         import os as _os
         import hashlib
@@ -3377,17 +5239,32 @@ class App(object):
             # Same session, same mod: 保存 must overwrite what the last 保存
             # wrote, not invent a second folder from this batch's first edit.
             name = self._last_title
-        elif len(edits) == 1:
-            e = edits[0]
-            name = "%s %s" % (_subject_of(e), e.get("label", e.get("field")))
+        elif edits:
+            if len(edits) == 1:
+                e = edits[0]
+                name = "%s %s" % (_subject_of(e),
+                                  e.get("label", e.get("field")))
+            else:
+                name = "%s %s 等 %d 项" % (
+                    _subject_of(edits[0]),
+                    edits[0].get("label", edits[0].get("field")),
+                    len(edits))
         else:
-            name = "%s %s 等 %d 项" % (_subject_of(edits[0]),
-                                       edits[0].get("label", edits[0].get("field")),
-                                       len(edits))
+            # A picture-only session has no edit to name the mod after, so it
+            # is named after the slots it repainted -- what the player will
+            # look for in the mod list.
+            labels = [str((it or {}).get('label') or '')
+                      for it in (self._icon_items or [])]
+            labels = [x for x in labels if x]
+            name = "图标 %s" % ("、".join(labels[:3]) or "新图")
         desc = "；".join("%s %s：%s → %s" % (
             e.get("label", e.get("field")), _subject_of(e), e.get("was"),
             e.get("now"))
             for e in edits[:12])
+        if pictures and not desc:
+            desc = "换图标：" + "、".join(
+                "槽 %s" % (it.get("slot"),)
+                for it in (self._icon_items or [])[:6])
         info = E.make_info(name, author="aoe2mod", description=desc)
         mod_dir = _os.path.join(_out_root(), _safe_dir(info["Title"]))
         # The string table rides along: a rename that only changed the .dat
@@ -3401,25 +5278,108 @@ class App(object):
         # (17 locale tables plus the two merged icon tables and one texture).
         _extra = dict(string_files or {})
         _extra.update(self._icons or {})
+        # AND THE MENU.  A `card_put` that only spliced the .dat would give the
+        # building a train entry the build panel never draws, because the panel
+        # list is a pre-baked artifact of the generator, not something the engine
+        # derives from the .dat at run time (measured 2026-10-15: the .dat half
+        # rendered in game while the build menu stayed empty).
+        _extra.update(self._panel_files or {})
+        # THE OTHER HALF OF A PAGE-TURNING BOX.  A page is a technology, and
+        # nothing in the .dat says which technologies form a cycle: that is the
+        # "Type": "Cycle" record in resources/_common/dat/linkedTechs.json, and
+        # without it the box draws N separate research buttons instead of one
+        # button that turns pages.  It rides in the same json_files map as the
+        # strings and the pictures for the same reason they do -- one call, one
+        # map, or one layer silently wins.
+        #
+        # emit_cycles returns None when no box has two pages yet, so a session
+        # that never touched a pager does not copy the player's 4 KB file into
+        # the mod: the mod's copy REPLACES the game's, and replacing it with a
+        # file that only knows about our boxes would drop every group the
+        # player's other mods installed.
+        try:
+            _boxes = LT.cycle_boxes(self._pseudo_cycles())
+            if _boxes:
+                _extra.update(LT.emit_cycles(tk.game_root, _boxes) or {})
+        except Exception as exc:                     # noqa: BLE001
+            out_cycles_error = "%s" % (exc,)
+        else:
+            out_cycles_error = None
         self._last_title = info["Title"]
-        man = E.emit_data_mod(mod_dir, bytes(self._sess), info,
+        # THE .DAT IS OPTIONAL, AND FOR A PICTURE IT IS DEAD WEIGHT.
+        #
+        # A new unit icon changes exactly two int16 in the whole 93 MB file (the
+        # record's IconID); everything else -- the texture, materials.json,
+        # icons.json -- is a loose file under widgetui/.  Shipping the .dat
+        # anyway made the emitter split the build into two mod folders, and the
+        # player had to enable both to see one picture.  Measured 2026-11-11: a
+        # single icon swap moved 4 bytes out of 93 MB, and the folder the player
+        # actually needed was the 400 KB one.
+        #
+        # So: if the buffer is byte-identical to the game's own file, do not put
+        # it in the mod.  The emitter then writes a widgetui-only mod, which is
+        # one folder, one enable, one restart.  A real data edit still ships the
+        # .dat and still splits at emitter.py:597 -- that shape is not a
+        # regression, it is the case where the .dat genuinely carries the change.
+        #
+        # The "and _extra" guard keeps the old graceful path: a pending edit that
+        # ended up byte-identical with nothing to override would otherwise hit
+        # ModError("没有东西可以做成模组") instead of the emitter's "this mod
+        # changes nothing" warning.
+        blob = bytes(self._sess)
+        # HOW TO ASK "IS THIS STILL THE GAME'S OWN FILE" WHEN NOBODY KEEPS ONE.
+        #
+        # The first draft compared the buffer with `tk._raw`, which is a trap:
+        # `session_raw()` seeds `_sess` from `bytearray(tk._raw)` (server.py:2906)
+        # and `_relocate`/`_replay` keep overwriting `tk._raw` with the EDITED
+        # bytes (server.py:3451, :3502, :3566), so the two are equal almost by
+        # construction -- the comparison said "unchanged" for a buffer full of
+        # edits, and every icon build still shipped the .dat.
+        #
+        # `session_dirty` is the honest signal: every write path sets it (eleven
+        # call sites, server.py:1366..:4081), undo-until-empty clears it back
+        # (`self._sess_dirty = bool(self._hist_at)`, server.py:3219), and
+        # `reset_session` zeroes it.  The `_raw is not None` guard is for the
+        # structural reset, which throws `_raw` away (server.py:4104) -- without
+        # it the comparison would raise on None.
+        same_as_game = (not self.session_dirty) and tk._raw is not None \
+            and blob == tk._raw
+        man = E.emit_data_mod(mod_dir,
+                              None if (same_as_game and _extra) else blob, info,
                               base_dir=tk.game_root, overwrite=True,
                               json_files=_extra or None)
-        raw2, how2 = _P.load_dat(man["dat"])
-        p2 = _P.Parser(raw2)
-        with contextlib.redirect_stdout(io.StringIO()):
-            p2.parse()
+        if man.get("dat"):
+            raw2, how2 = _P.load_dat(man["dat"])
+            p2 = _P.Parser(raw2)
+            with contextlib.redirect_stdout(io.StringIO()):
+                p2.parse()
+            reparse_ok = p2.r.pos == len(raw2)
+        else:
+            # Nothing was written into the .dat, so there is nothing to re-read.
+            how2 = ""
+            reparse_ok = True
         out = {"ok": True, "built": man["mod_dir"],
+               "linked_techs_error": out_cycles_error,
+               "linked_techs": any(
+                   k.endswith("linkedTechs.json") for k in (_extra or {})),
                "dat_bytes": man.get("dat_file_bytes"),
+               "carries_dat": bool(man.get("dat")),
                "reloaded_with": how2,
-               "reparse_ok": p2.r.pos == len(raw2),
+               "reparse_ok": reparse_ok,
                "applied": len(edits),
-               # An icon build is TWO mod folders, not one: the engine ignores
-               # `widgetui/` sitting next to a `.dat` (measured 2026-10-24,
-               # eleven builds empty and one split build drawing), so the
-               # emitter moves that layer into `<title>_ui`.  The page has to
-               # say so, because enabling only the data half reproduces the
-               # exact empty box this feature exists to fix.  Passing the
+               # A picture is pending work that produces no .dat edit, so a
+               # save can be "0 项改动" and still have done its job.  The
+               # count travels so the toast can say what actually landed.
+               "pictures": pictures,
+               "panels": panels,
+               # A build that carries a .dat AND widgetui files is still TWO
+               # folders:`emitter.split_ui_layer` moves the UI layer into
+               # `<title>_ui`, because the combination was measured to draw an
+               # empty box on 2026-10-24 (eleven same-folder builds empty, one
+               # split build drawing) -- whatever the reason, that shape is
+               # unproven and shipping it would gamble the player's icon.
+               # A picture-only build no longer carries a .dat (see above), so
+               # it is one folder and `ui_mod_dir` is None.  Passing the
                # manifest's own keys through rather than rebuilding them keeps
                # one source of truth for what landed on disk.
                "info": man.get("info"),
@@ -3428,6 +5388,8 @@ class App(object):
                "ui_files": man.get("ui_files"),
                "warnings": man.get("warnings") or [],
                "notes": man.get("notes") or [],
+               "pictures": pictures,
+               "panels": panels,
                "edits": [{"unit": e.get("unit"), "tech": e.get("tech"),
                           "field": e.get("field"), "label": e.get("label"),
                           "was": e.get("was"), "now": e.get("now")}
@@ -3496,9 +5458,20 @@ class App(object):
         """
         self.session_raw()
         hist = self.hist_state()
+        # A PICTURE IS PENDING WORK WITHOUT BEING AN EDIT.  An in-place icon
+        # repaint changes no .dat byte, so `pending_edits()` is 0 while the
+        # session holds a new picture -- and the header (and the close guard
+        # behind it) counted only edits, so it would let that picture go.
+        pics = [{"slot": it.get("slot"), "label": it.get("label"),
+                 "kind": it.get("kind")}
+                for it in (self._icon_items or [])]
         return {"ok": True, "dirty": self.session_dirty,
                 "bytes": len(self._sess),
-                "pending": len(self.pending_edits()),
+                "pending": len(self.pending_edits()) + len(pics)
+                + len(self._panel_files or {}),
+                "edits_pending": len(self.pending_edits()),
+                "pictures": pics,
+                "picture_count": len(pics),
                 # Which mod 保存 will write into.  Empty until the first save.
                 # The page puts this in the name box so the player can see that
                 # saving again updates that mod instead of making another one.
@@ -3706,6 +5679,84 @@ class App(object):
         cache[uid] = seen
         return seen
 
+    def _unit_read_ref(self, tk, civs, uid, civ=""):
+        """Which civilization's copy of `uid` the editor READS from.
+
+        Returns `(civ_all, civ_index, rec, fell_back)`.
+
+        WHY THIS EXISTS -- the list and the panel used to contradict each other.
+        With 全部文明 selected the pane shows ONE civilization's numbers, and the
+        reference was hard-wired to index 1 (British).  But a unit id does not
+        have to exist in every civilization: 529 of the 2,693 ids have no British
+        copy (276 of them inside 1..1700) and every one of those lives somewhere
+        else (Gaia's boar 48, gold mine 66, wolf 89, the fish 69 and 53).  The
+        grid lists those -- 1,651 named units, 363 of them without a British
+        copy -- so a player pointing at 「野猪」 got one red line saying
+        「「British」这个文明里没有第 48 号单位」: the list offered a row the
+        panel then refused to open.
+
+        BRITISH STAYS THE PREFERENCE, because that is the civilization the pane
+        has always quoted numbers from and changing it would move 1,363 ids onto
+        a different copy for no reason.  The fallback only fires where British
+        has nothing to quote, and `fell_back` travels to the page so the header
+        can say WHICH civilization the numbers came from instead of pretending
+        it is British.
+        """
+        want = str(civ or "").strip()
+        civ_all = want == "*"
+        idx = self._unit_index()
+        if not civ_all and want:
+            ci = tk._civ_index(want)
+            return False, ci, idx.get((ci, uid)), False
+        first = 1 if len(civs) > 1 else 0
+        rec = idx.get((first, uid))
+        if rec is not None:
+            return civ_all, first, rec, False
+        # Not in the reference civilization.  Pick the LOWEST civ index that has
+        # it -- deterministic, and for the Gaia-only ids that is 0, which is also
+        # the civilization those records belong to.
+        found = None
+        for (ci, u), r in idx.items():
+            if u != uid:
+                continue
+            if found is None or ci < found[0]:
+                found = (ci, r)
+                if ci == 0:
+                    break
+        if found is None:
+            return civ_all, first, None, False
+        return civ_all, found[0], found[1], True
+
+    def _unit_missing(self, tk, civs, uid, civ=""):
+        """The refusal for a unit id that is not where the caller looks.
+
+        Two different truths, and the old message blurred them into one: the
+        id exists but not in the civilization you named (British has no boar 48
+        -- Gaia does), or the id exists nowhere at all.  Saying
+        「这个文明里没有」 for the second case sent the reader looking for the
+        right civilization when there is none, so both are spelled out and the
+        first case names the civilizations that DO carry it.
+        """
+        owners = sorted({ci for (ci, u) in self._unit_index() if u == uid})
+        want = str(civ or "").strip()
+        if not owners:
+            return {"ok": False,
+                    "error": "第 %d 号单位在 %d 个文明里都没有记录" % (
+                        uid, len(civs))}
+        named = [civs[ci].get("name") for ci in owners[:6]
+                 if 0 <= ci < len(civs)]
+        where = "、".join(n for n in named if n) or "别的文明"
+        if len(owners) > 6:
+            where += " 等 %d 个文明" % (len(owners),)
+        if want and want != "*":
+            return {"ok": False,
+                    "error": "「%s」这个文明里没有第 %d 号单位；它只在 %s 里有" % (
+                        civs[tk._civ_index(want)].get("name"), uid, where),
+                    "owners": owners}
+        return {"ok": False,
+                "error": "第 %d 号单位只在 %s 里有" % (uid, where),
+                "owners": owners}
+
     def unit_fields(self, unit, civ="", group="", q=""):
         """Every field of one unit, labelled, grouped and ranged for a form.
 
@@ -3729,19 +5780,17 @@ class App(object):
         # records: measured, unit 74 carries 424 of its 434 fields identically in
         # all 63 copies, so writing "British's" HitPoints leaves a French player
         # with the old value while the tool reports success.
-        want = str(civ or "").strip()
-        civ_all = want == "*"
-        civ_index = (1 if len(civs) > 1 else 0) if (civ_all or not want) else (
-            tk._civ_index(want))
         try:
             uid = int(unit)
         except (TypeError, ValueError):
             return {"ok": False, "error": "单位编号要是数字，收到的是 %r" % (unit,)}
-        rec = self._unit_index().get((civ_index, uid))
+        # WHICH CIVILIZATION'S COPY IS BEING QUOTED, AND WHY IT MAY NOT BE THE
+        # PREFERRED ONE: 529 unit ids have no British copy and 363 of them are
+        # rows the grid lists -- see `_unit_read_ref`.
+        civ_all, civ_index, rec, fell_back = self._unit_read_ref(
+            tk, civs, uid, civ)
         if rec is None:
-            return {"ok": False,
-                    "error": "「%s」这个文明里没有第 %d 号单位" % (
-                        civs[civ_index].get("name"), uid)}
+            return self._unit_missing(tk, civs, uid, civ)
         allf = rec.get("fields") or self._fields_of(rec)
         e = self._semantic().units.get(uid)
         name = (e.zh or e.en or e.display) if e is not None else ""
@@ -3768,6 +5817,14 @@ class App(object):
                 row["enum_text"] = meta["enum"].get(f["value"])
             if meta.get("ro"):
                 row["ro"] = True
+            elif meta.get("soft"):
+                # SOFT read-only.  These are ordinary integers that happen to be
+                # shared or engine-interpreted -- a Wwise sound id, a tooltip
+                # text number, a scenario trigger flag.  Refusing them was the
+                # editor saying "no" to 20 columns that AGE writes without
+                # complaint; the row now stays editable and carries a warning
+                # the player can read before pressing 记下.
+                row["soft"] = True
             rows.append(row)
         # Sort by BYTE OFFSET, not by name.  The offsets already are the struct
         # order, so repeated members (`Attacks.0..N`) stay adjacent for free --
@@ -3792,16 +5849,29 @@ class App(object):
         # The enum-ish task columns ship a range ("0..255") and a hint that
         # lists four of the values.  Ask the file which values exist and how
         # often, so the form can offer them instead of asking for a number.
-        if any((r.get("group") == "task") for r in rows):
-            census = self._field_census()
-            for r in rows:
-                tail = r["name"].rsplit(".", 1)[-1]
-                c = census.get(tail)
-                if c and r["name"].count(".") >= 2:
-                    r["seen"] = {str(k): v for k, v in c.items()}
-                    r["seen_names"] = {
-                        str(k): FL.value_name(tail, k) or ("#%s" % k)
-                        for k in c}
+        census = self._field_census()
+        for r in rows:
+            # Look the column up by its FULL name and offer the values the file
+            # stores, whatever group it belongs to.  The old rule mounted this
+            # only on 任务 groups and only on names with two dots, so 361 of the
+            # 434 rows shipped with no picker at all and the editor read as
+            # "read the file, do not edit it".
+            c = census.get(r["name"])
+            if not c:
+                continue
+            tail = r["name"].rsplit(".", 1)[-1]
+            # Ship the commonest 32 per row and the TRUE count beside them.  434
+            # rows x 96 values is a 200 KB page for a list nobody scrolls; 32
+            # covers every enum-ish column in the file outright and the count
+            # tells the player when a column is really a number.
+            top = list(c.items())[:_SEEN_PER_ROW]
+            r["seen"] = dict((str(v), n) for v, n in top)
+            names = {}
+            for v, _n in top:
+                nm = FL.value_name(tail, v)
+                names[str(v)] = nm if nm else ("#%s" % v)
+            r["seen_names"] = names
+            r["seen_total"] = len(c)
         groups = []
         for gid, gzh in FL.GROUPS:
             n = sum(1 for r in allf if FL.group_of(r) == gid)
@@ -3816,6 +5886,11 @@ class App(object):
                 "civ_zh": _civ_zh_of(self.tk, civs[civ_index].get("name")),
                 "civ_index": civ_index,
                 "civ_all": civ_all, "civ_copies": copies,
+                # True when the preferred civilization has no copy of this
+                # record and the numbers come from `civ` instead.  The pane uses
+                # it to stop claiming 全部文明 quotes British when British has
+                # nothing to quote.
+                "civ_fell_back": bool(fell_back),
                 "type": rec["type"], "start": rec["start"], "end": rec["end"],
                 "bytes": rec["end"] - rec["start"],
                 "field_count": len(allf),
@@ -3848,17 +5923,29 @@ class App(object):
         stage = tk._parsed[3]
         seen = {}
         for rec in list(idx.values())[:_CENSUS_CAP]:
+            # fields_at decodes EVERY field of the record anyway; the old
+            # ".Tasks." filter threw all of that away and left 361 of the 434
+            # rows with no observed values at all -- which is why the editor
+            # offered a bare text box on them and the player asked why a value
+            # not written in the table could not even be picked.
             for name, f in UF.fields_at(raw, stage, rec["start"]).items():
-                if ".Tasks." not in name or not name.endswith(_CENSUS_TAILS):
-                    continue
-                tail = name.rsplit(".", 1)[-1]
-                seen.setdefault(tail, {})
                 v = f["value"]
-                if isinstance(v, float):
+                if isinstance(v, float) or isinstance(v, str):
                     continue
-                seen[tail][v] = seen[tail].get(v, 0) + 1
-        out = {k: dict(sorted(v.items(), key=lambda kv: (-kv[1], kv[0])))
-               for k, v in seen.items()}
+                # Keyed by FULL FIELD NAME, not by tail: ResourceCosts.2.Amount
+                # and ResourceCosts.3.Amount are different columns, and folding
+                # them onto "Amount" made each dropdown promise the numbers the
+                # other one owns.
+                hist = seen.setdefault(name, {})
+                hist[v] = hist.get(v, 0) + 1
+        # A genuinely continuous column (a coordinate, a speed) would otherwise
+        # carry one entry per record.  Keep the commonest ones and drop the
+        # tail: a dropdown is a shortcut to values that exist, and a value that
+        # is not in it is still typed into the box.
+        out = {}
+        for k, v in seen.items():
+            items = sorted(v.items(), key=lambda kv: (-kv[1], kv[0]))[:_CENSUS_VALUES]
+            out[k] = dict(items)
         tk._field_census = out
         return out
 
@@ -3885,14 +5972,18 @@ class App(object):
         civs = tk._civs
         # `civ="*"` = write every civilisation's copy of this unit.  See
         # `unit_fields` for why one copy is the wrong default.
-        want = str(civ or "").strip()
-        civ_all = want == "*"
-        civ_index = (1 if len(civs) > 1 else 0) if (civ_all or not want) else (
-            tk._civ_index(want))
-        rec = self._unit_index().get((civ_index, int(unit))) if str(unit).lstrip(
-            "-").isdigit() else None
+        try:
+            uid = int(unit)
+        except (TypeError, ValueError):
+            return {"ok": False, "error": "单位编号要是数字，收到的是 %r" % (unit,)}
+        # WHICH CIVILIZATION'S COPY IS READ -- see `_unit_read_ref`.  A write to
+        # 全部文明 walks every copy by name (below), so a reference civilization
+        # with no copy of this id is not a reason to refuse: the grid lists 363
+        # such ids and every one of them exists in some other civilization.
+        civ_all, civ_index, rec, _fell_back = self._unit_read_ref(
+            tk, civs, uid, civ)
         if rec is None:
-            return {"ok": False, "error": "这个文明里没有第 %s 号单位" % (unit,)}
+            return self._unit_missing(tk, civs, uid, civ)
         _flds = self._fields_of(rec)
         f = _flds.get(name)
         if f is None:
@@ -3906,6 +5997,14 @@ class App(object):
                     "error": "「%s」是只读的：%s" % (meta.get("zh", name),
                                                   meta.get("hint")
                                                   or "它的值由数据本身决定，改了会让整条记录读不下去。")}
+        # A SOFT field is writable but not safe to write blindly: 63 copies of a
+        # record can share one sound id, and a text number is a key into a table
+        # every other record also reads.  The write goes through; the reply
+        # carries the warning so the page can show it next to the result.
+        soft_note = None
+        if meta.get("soft"):
+            soft_note = meta.get("hint") or (
+                "这一列在多条记录之间共用，改完记得回到列表里看还有谁在用它。")
         kind = f["kind"]
         old = f["value"]
         try:
@@ -4007,6 +6106,11 @@ class App(object):
             out["already"] = same
             out["older"] = sorted({t["old"] for t in stale})
         if dry or not changed:
+            # The dry run is what the page shows first, so the caveat has to be
+            # here too -- otherwise 「先看看」 says nothing about sharing and the
+            # warning only shows up after the value has already been committed.
+            if soft_note:
+                out["warn"] = soft_note
             out["dry"] = True
             out["session_dirty"] = self.session_dirty
             out["pending"] = len(self.pending_edits())
@@ -4051,6 +6155,11 @@ class App(object):
             sp.pop(int(unit), None)
         self._stamp_write(out)
         out["hint"] = "已记在内存里，改完点「保存成 mod」一次写盘"
+        if soft_note:
+            # Writable, with the caveat attached.  The page prints this beside
+            # the confirmation so "it took" and "it took and also touched every
+            # other record that shares this id" are different messages.
+            out["warn"] = soft_note
         return out
 
     # ---- technologies ----------------------------------------------------
@@ -4278,6 +6387,10 @@ class App(object):
                 # it read-only HERE so the page draws no input box for it -- a
                 # box that always fails on submit teaches the player nothing.
                 row["ro"] = True
+            elif meta.get("soft"):
+                # A shared text number: writable, but every record pointing at
+                # that entry changes with it.  Same two-level rule as units.
+                row["soft"] = True
             c = census.get(fname)
             # Only offer the observed values when the list is short enough to
             # read.  `EffectID` has 1015 distinct values and `Name` 1226; a
@@ -4320,10 +6433,101 @@ class App(object):
     # record's `IconID` names.  Three of the four live in two JSON files that
     # the engine reads WHOLE from the mod in place of the shipped ones, so they
     # ship as complete merged tables rather than patches.
+    def _icon_slot_set(self, kind, record, civ=""):
+        """Every distinct IconID the record has across the write scope.
+
+        Returned as a sorted list because the CALLER has two questions with two
+        different answers: "can I keep the slot?" is yes only when this has
+        exactly one non-negative entry, and "why not?" is answered by printing
+        the list.  A caveat about the first draft: it returned [] for both "63
+        copies disagree" and "no such record", so the screen could only say
+        「不能原地换」 with no reason -- measured 2026-11-12, unit 74 across all
+        63 civs is 57 copies on slot 8 and 6 on slot 600 (the new DLC civs).
+        """
+        tk = self.tk
+        want = str(civ or "").strip()
+        if kind != "unit":
+            rec = self._tech_index().get(int(record))
+            if rec is None:
+                return []
+            got = (self._tech_fields_of(rec).get("IconID") or {}).get("value")
+            return [] if got is None or int(got) < 0 else [int(got)]
+        civ_all = want == "*"
+        if civ_all:
+            recs = [r for (ci, u), r in self._unit_index().items()
+                    if u == int(record)]
+        else:
+            civ_index = (1 if len(tk._civs) > 1 else 0) if not want else (
+                tk._civ_index(want))
+            got = self._unit_index().get((civ_index, int(record)))
+            recs = [got] if got is not None else []
+        slots = set()
+        for r in recs:
+            v = (self._fields_of(r).get("IconID") or {}).get("value")
+            if v is None or int(v) < 0:
+                continue
+            slots.add(int(v))
+        return sorted(slots)
+
+    def _icon_slots_of(self, kind, record, civ=""):
+        """The ONE slot this record can be repainted in place, or [].
+
+        One number means "every copy names the same slot", which is what an
+        in-place repaint needs: repainting a slot only helps the records that
+        point at it, so a unit whose copies disagree cannot be served by a
+        repaint -- it needs the IconID write.  An empty answer therefore means
+        "take the other path", never "no icons".
+        """
+        slots = self._icon_slot_set(kind, record, civ)
+        return slots if len(slots) == 1 else []
+
+    def _icon_sharers(self, slot, kind="unit", skip=()):
+        """Who else names this slot: [{"record", "label"}, ...].
+
+        The cost of an in-place swap is that a slot number is shared state --
+        slot 8 is what units 33, 74 and 299 all point at -- so the preview has
+        to say out loud which other units change with it.  One struct pass over
+        the cached record index (0.05 s for 136861 records, measured) and a name
+        lookup per hit; tech slots are counted the same way through the field.
+        """
+        import struct
+        raw = self.session_raw()
+        skip = {int(skip)} if isinstance(skip, int) else {
+            int(s) for s in (skip or ())}
+        hits = []
+        seen = set()
+        if kind == "unit":
+            for (ci, uid), rec in self._unit_index().items():
+                if int(uid) in skip or int(uid) in seen:
+                    continue
+                try:
+                    have = struct.unpack_from("<h", raw, rec["start"] + 51)[0]
+                except Exception:
+                    continue
+                if int(have) != int(slot):
+                    continue
+                seen.add(int(uid))
+                label = (self._fields_of(rec).get("Name") or {}).get("value")
+                hits.append({"record": int(uid), "label": str(label or "") or
+                             ("#%d" % int(uid))})
+        else:
+            for tid, rec in self._tech_index().items():
+                if int(tid) in skip:
+                    continue
+                v = (self._tech_fields_of(rec).get("IconID") or {}).get("value")
+                if v is None or int(v) != int(slot):
+                    continue
+                label = (self._tech_fields_of(rec).get("Name") or {
+                    }).get("value")
+                hits.append({"record": int(tid), "label": str(label or "") or
+                             ("#%d" % int(tid))})
+        hits.sort(key=lambda h: h["record"])
+        return hits[:12]
+
     def set_icon(self, kind="unit", record=None, civ="", path=None,
                  data_b64=None, filename=None, slot=None, dry=True,
-                 title=None):
-        """Point one record at a picture it does not share with anything.
+                 title=None, inplace=None):
+        """Point one record at a picture, in ONE mod folder when it can.
 
         `path` is a picture on this machine; `data_b64` is the same picture
         posted by the page (a browser cannot read a local path, so the file
@@ -4333,6 +6537,27 @@ class App(object):
         The picture is letterboxed onto a transparent square, never stretched
         and never cropped: a 200x100 logo squashed square looks wrong on a
         square button, and cropping hides most of it.
+
+        TWO WAYS TO GIVE A RECORD A PICTURE, and the default is the cheap one:
+
+        `inplace` (the default, `None` = auto) re-points the slot the record
+        ALREADY names at a brand-new material.  Nothing in the .dat moves, so
+        the build is one folder and one enable.  Measured 2026-10-24
+        (report_icon_layer.md, build v73d): that exact shape -- slot key
+        replaced with a new material name, the material and texture rows added
+        to the merged tables, the picture on disk -- draws in game; redefining
+        the SHIPPED material's own row instead draws the old picture, which is
+        why the name must be new.
+
+        THE COST OF IN-PLACE: a slot number is shared state.  Slot 8 is what
+        units 33, 74 and 299 all point at, so re-pointing 8 changes all three.
+        The preview lists them (`shares`) instead of hiding that.
+
+        `inplace=False` takes a fresh slot instead: the record's IconID is
+        rewritten, which is two int16 in the .dat -- and a build that carries a
+        .dat is split into two mod folders by the emitter, so the player has to
+        enable both.  That is the right trade when the slot is shared and the
+        player only wants this one unit to change.
         """
         from aoe2mod.game import iconart as IA
         tk = self.tk
@@ -4376,14 +6601,13 @@ class App(object):
             return {"ok": False, "error": str(exc)}
         name = ""
         if kind == "unit":
-            want = str(civ or "").strip()
-            civ_all = want == "*"
-            civ_index = (1 if len(tk._civs) > 1 else 0) if (
-                civ_all or not want) else tk._civ_index(want)
-            rec = self._unit_index().get((civ_index, int(record)))
+            # Same reference-civilization rule as the field pane: an id the
+            # preferred civilization does not carry is still repaintable, the
+            # copy is just read from wherever it lives -- see `_unit_read_ref`.
+            civ_all, civ_index, rec, _fell_back = self._unit_read_ref(
+                tk, tk._civs, int(record), civ)
             if rec is None:
-                return {"ok": False,
-                        "error": "这个文明里没有第 %s 号单位" % (record,)}
+                return self._unit_missing(tk, tk._civs, int(record), civ)
             name = (self._fields_of(rec).get("Name") or {}).get("value") or ""
         else:
             civ_all = False
@@ -4395,22 +6619,63 @@ class App(object):
         try:
             icons_doc, materials_doc = IA.shipped(tk.game_root)
             slot = int(slot) if slot not in (None, "") else None
-            art = IA.plan(icons_doc, materials_doc, src_path,
-                          stem=str(name) or None, slot=slot, kind=kind)
-            # Skip over numbers this session already handed out, and reuse the
-            # one a record already has: picking a second picture for the SAME
-            # record replaces it, it does not take a second slot.
-            mine = self._icon_owner.get((kind, int(record)))
-            if slot is not None:
-                pass
-            elif mine is not None:
-                art = IA.plan(icons_doc, materials_doc, src_path,
-                              stem=str(name) or None, slot=mine, kind=kind)
+            # CAN THIS RECORD KEEP THE SLOT IT ALREADY NAMES?  If the key on
+            # that slot resolves to a real file, the picture can be swapped by
+            # re-pointing the key at a NEW material -- nothing in the .dat
+            # moves, so the build is one folder and one enable (shape proven in
+            # game: report_icon_layer.md build v73d).  An explicit slot= names a
+            # number, which means the other path.
+            old_slots = [] if slot is not None else self._icon_slot_set(
+                kind, int(record), civ)
+            want_inplace = True if inplace is None else bool(inplace)
+            why_not_inplace = ""
+            if want_inplace:
+                if not old_slots:
+                    want_inplace = False
+                    why_not_inplace = "这条记录没有指向任何有效的图标槽"
+                else:
+                    for _s in old_slots:
+                        if (_s is None or _s < 0
+                                or IA.slot_source(icons_doc, materials_doc,
+                                                  _s, kind) is None):
+                            want_inplace = False
+                            why_not_inplace = (
+                                "图标槽 %s 在本机找不到贴图文件" % (_s,))
+                            break
+                    # REPAINT EVERY SLOT THE RECORD NAMES, NOT JUST THE ONE
+                    # THEY ALL AGREE ON.  A unit's 63 copies do not have to
+                    # share a slot -- measured 2026-11-12, unit 74 is 57 copies
+                    # on 8 and 6 on 600 (the DLC civs) -- and the first draft
+                    # gave up on in-place as soon as they disagreed, which sent
+                    # a 全文明 icon write down the IconID path: a .dat edit, two
+                    # folders, exactly the complaint this mode exists to fix.
+                    # Repainting BOTH slots is still zero .dat bytes and one
+                    # folder; the per-slot material names differ because the
+                    # stem carries the slot number.
+            arts = []
+            if want_inplace:
+                for _s in old_slots:
+                    arts.append(IA.plan(icons_doc, materials_doc, src_path,
+                                        stem=str(name) or None, slot=_s,
+                                        kind=kind, replace=True))
             else:
-                while art["slot"] in self._icon_slots.get(kind, ()):
+                art = IA.plan(icons_doc, materials_doc, src_path,
+                              stem=str(name) or None, slot=slot, kind=kind)
+                # Skip over numbers this session already handed out, and reuse
+                # the one a record already has: picking a second picture for
+                # the SAME record replaces it, it does not take a second slot.
+                mine = self._icon_owner.get((kind, int(record)))
+                if slot is not None:
+                    pass
+                elif mine is not None:
                     art = IA.plan(icons_doc, materials_doc, src_path,
-                                  stem=str(name) or None,
-                                  slot=art["slot"] + 1, kind=kind)
+                                  stem=str(name) or None, slot=mine, kind=kind)
+                else:
+                    while art["slot"] in self._icon_slots.get(kind, ()):
+                        art = IA.plan(icons_doc, materials_doc, src_path,
+                                      stem=str(name) or None,
+                                      slot=art["slot"] + 1, kind=kind)
+                arts = [art]
         except IA.IconError as exc:
             for t in cleanup:
                 try:
@@ -4418,11 +6683,16 @@ class App(object):
                 except OSError:
                     pass
             return {"ok": False, "error": str(exc)}
+        art = arts[0]
         # What the field says now, so the preview can print "8 -> 1000" rather
         # than only the destination.
         flds = (self._fields_of(rec) if kind == "unit"
                 else self._tech_fields_of(rec))
         was = (flds.get("IconID") or {}).get("value")
+        shares = []
+        if want_inplace:
+            for _s in old_slots:
+                shares.extend(self._icon_sharers(_s, kind, skip=int(record)))
         out = {"ok": True, "kind": kind, "record": int(record),
                "label": str(name), "civ": (str(civ or "")
                                            if kind == "unit" else ""),
@@ -4432,6 +6702,14 @@ class App(object):
                "files": [art["file_rel"], art["icons_rel"],
                          art["materials_rel"]],
                "was": was, "becomes": art["slot"],
+               "mode": ("inplace" if want_inplace else "newslot"),
+               # `slots` is every slot this ONE build repaints: normally one,
+               # more when the record copies disagree.  The screen prints the
+               # list, because naming a single slot would understate the write.
+               "slots": [a["slot"] for a in arts],
+               "files_all": [a["file_rel"] for a in arts],
+               "shares": shares,
+               "why_not_inplace": why_not_inplace,
                "copies": (len(tk._civs) if (kind == "unit" and civ_all)
                           else 1)}
         if dry:
@@ -4441,17 +6719,27 @@ class App(object):
                 except OSError:
                     pass
             out["dry"] = True
-            out["pending"] = len(self.pending_edits())
+            # A picture is pending work without being an edit: in-place
+            # repaints ship nothing into the .dat, so the count that only
+            # looked at edits would report 0 after a fresh preview.
+            out["pending"] = (len(self.pending_edits())
+                              + len(self._icon_items or []))
             return out
         # The record half.  Reusing the two field writers rather than packing
         # the bytes here keeps ONE refusal list, one history step and one
-        # `_after_write` for the whole program.
-        if kind == "unit":
-            wrote = self.set_unit_field(int(record), "IconID", art["slot"],
-                                        civ=civ, dry=False, title=title)
-        else:
-            wrote = self.set_tech_field(int(record), "IconID", art["slot"],
-                                        dry=False, title=title)
+        # `_after_write` for the whole program.  In-place mode skips it on
+        # purpose: the record already names the slot being repainted, so there
+        # is no number to change and no .dat byte to write.
+        wrote = {"ok": True, "skipped": "inplace"}
+        if not want_inplace:
+            if kind == "unit":
+                wrote = self.set_unit_field(int(record), "IconID",
+                                            art["slot"], civ=civ, dry=False,
+                                            title=title)
+            else:
+                wrote = self.set_tech_field(int(record), "IconID",
+                                            art["slot"], dry=False,
+                                            title=title)
         unchanged = False
         if not wrote.get("ok"):
             # The record already names this slot and the picture is the new
@@ -4478,27 +6766,32 @@ class App(object):
         # record cannot leave an orphan texture in the mod.
         grew = False
         try:
-            _side, _side2, _rgba = IA._rgba_from_picture(src_path,
-                                                        side=art["side"])
-            item = {"label": art["key"], "rgba": _rgba, "side": art["side"],
-                    "slot": art["slot"], "stem": art["material"],
-                    "kind": kind}
-            # ONE entry per slot: picking a second picture for the same record
-            # replaces its entry rather than adding a second one, because a
-            # duplicate key would make the merge refuse and the OLD picture
-            # ship while the record already names the new slot.
-            same = [i for i, it in enumerate(self._icon_items)
-                    if it["kind"] == kind and it["slot"] == art["slot"]]
-            if same:
-                self._icon_items[same[0]] = item
-            else:
-                self._icon_items.append(item)
-                grew = True
+            added = []
+            for _a in arts:
+                _side, _side2, _rgba = IA._rgba_from_picture(
+                    src_path, side=_a["side"])
+                item = {"label": _a["key"], "rgba": _rgba,
+                        "side": _a["side"], "slot": _a["slot"],
+                        "stem": _a["material"], "kind": kind,
+                        "replace": bool(want_inplace)}
+                # ONE entry per slot: picking a second picture for the same
+                # record replaces its entry rather than adding a second one,
+                # because a duplicate key would make the merge refuse and the
+                # OLD picture ship while the record already names the new slot.
+                same = [i for i, it in enumerate(self._icon_items)
+                        if it["kind"] == kind and it["slot"] == _a["slot"]]
+                if same:
+                    self._icon_items[same[0]] = item
+                else:
+                    self._icon_items.append(item)
+                    added.append(item)
+            grew = bool(added)
             files, metas = IA.emit_many(icons_doc, materials_doc,
                                         self._icon_items)
         except IA.IconError as exc:
-            if grew:
-                self._icon_items.pop()
+            for _it in added:
+                if _it in self._icon_items:
+                    self._icon_items.remove(_it)
             return {"ok": False, "error": str(exc), "record_written": wrote}
         finally:
             for t in cleanup:
@@ -4510,18 +6803,19 @@ class App(object):
         # every item, so the map is replaced rather than merged into.  Keeping
         # the old keys is exactly the bug noted on `_icon_items`.
         self._icons = dict(files)
-        self._icon_slots.setdefault(kind, set()).add(art["slot"])
+        for _a in arts:
+            self._icon_slots.setdefault(kind, set()).add(_a["slot"])
         self._icon_owner[(kind, int(record))] = art["slot"]
         out["wrote"] = wrote
-        if unchanged:
+        if unchanged or want_inplace:
             # Say it out loud: the record did not move, only the bytes behind
             # the slot it already named.
             out["record_unchanged"] = True
         out["icon_files"] = sorted(files)
-        out["texture_bytes"] = len(files.get(IA._mod_rel(art["file_rel"]))
-                                    or b"")
+        out["texture_bytes"] = sum(
+            len(files.get(IA._mod_rel(_a["file_rel"])) or b"") for _a in arts)
         out["shipping"] = len(self._icons)
-        out["pending"] = len(self.pending_edits())
+        out["pending"] = len(self.pending_edits()) + len(self._icon_items or [])
         out["session_dirty"] = self.session_dirty
         return out
 
@@ -4557,6 +6851,10 @@ class App(object):
                     "error": "「%s」是只读的：%s" % (
                         meta.get("zh", name),
                         meta.get("hint") or "它的值由数据本身决定，改了会让整条记录读不下去。")}
+        soft_note = None
+        if meta.get("soft"):
+            soft_note = meta.get("hint") or (
+                "这个文本编号是多条记录共用的，改它等于改了所有指向同一格的科技。")
         kind = f["kind"]
         if kind == "str":
             # A string is length-prefixed, so a fixed-width write cannot express
@@ -4607,6 +6905,10 @@ class App(object):
                "ref_before": self._tech_ref(name, old),
                "ref_after": self._tech_ref(name, new)}
         if dry or not changed:
+            # Same reason as the unit path: a shared text number warns on the
+            # dry run, not only after the write is already in.
+            if soft_note:
+                out["warn"] = soft_note
             out["dry"] = True
             out["session_dirty"] = self.session_dirty
             out["pending"] = len(self.pending_edits())
@@ -4623,6 +6925,8 @@ class App(object):
             "was": old, "now": new, "kind": kind, "offset": off})
         self._stamp_write(out)
         out["hint"] = "已记在内存里，改完点「保存成 mod」一次写盘"
+        if soft_note:
+            out["warn"] = soft_note
         return out
 
     # ---- the effect list of one technology ------------------------------
@@ -4922,7 +7226,11 @@ class App(object):
             # A civ record's own unit counts are the check on its derived start,
             # and `_civ_fields` reports them.  Dropping them here is what made
             # the first version print `真实单位记录数 0` for all 63 records.
-            for extra in ("civ_name", "pointer_count", "unit_count"):
+            # The tech-tree table carries a `kind` (age / building / unit /
+            # research) and the record`s own ID: four layouts share one table,
+            # so `fields_at` cannot pick a reader without them.
+            for extra in ("civ_name", "pointer_count", "unit_count",
+                          "kind", "id"):
                 if extra in rec:
                     row[extra] = rec[extra]
             out[rec["index"]] = row
@@ -5645,18 +7953,24 @@ class App(object):
         return {"ok": True, "changed": True, "dropped": pending,
                 "dat": real, "meta": self.meta()}
 
-    def script_files(self, dept=""):
-        """Every `.per`/`.ai`/`.xs` a player could open, for a chooser."""
+    def script_files(self, dept="", profile_root=None):
+        """Every `.per`/`.ai`/`.xs` a player could open, for a chooser.
+
+        `profile_root` exists for probes: pointing this at a temp fixture is the
+        only way to check the local-mod listing without reading the player's own
+        profile.  Omitted, the account is whatever `pick_account` finds.
+        """
         from aoe2mod.game import aifiles as AF
         try:
-            items = AF.entries(self.game_root, dept=dept or None)
+            items = AF.entries(self.game_root, profile_root=profile_root,
+                               dept=dept or None)
         except Exception as exc:
             return {"ok": False, "error": _sentence(exc)}
         return {"ok": True, "files": items, "max_bytes": AF.MAX_BYTES}
 
-    def script_read(self, path):
+    def script_read(self, path, profile_root=None):
         from aoe2mod.game import aifiles as AF
-        text, err = AF.read(path, self.game_root)
+        text, err = AF.read(path, self.game_root, profile_root=profile_root)
         if err:
             return {"ok": False, "error": err}
         return {"ok": True, "path": os.path.abspath(path), "text": text,
@@ -5670,6 +7984,54 @@ class App(object):
             return {"ok": False, "error": err}
         return {"ok": True, "path": os.path.abspath(path), "bytes": written,
                 "dept": AF.dept_of(path)}
+
+    def script_local_save(self, dept="ai", text="", script_name="",
+                          mod_name="", profile_root=None, account=None,
+                          path="", screen=""):
+        """Put a generated script into a local mod the engine actually loads.
+
+        Reported 2026-11-10: 「这个生成的东西应该放local去」.  The three boxes on
+        this screen used to offer only "write back into a file that already
+        exists", and every file they could reach was either one of the game's 53
+        shipped .per files or an empty profile copy -- so the thing just generated
+        had nowhere to land.  A local mod is the one place a script is loaded
+        without colliding with the game's own scripts.
+
+        Writes the script, then makes the mod visible and enabled: an info.json
+        when the folder has none, and a mod-status.json entry appended after the
+        existing mods (never at 0 -- pushing every other mod's priority down is a
+        change the player did not ask for).
+        """
+        from aoe2mod.game import aifiles as AF
+        # One memory PER SCREEN, not per department: the AI box and the 整份 AI 脚本
+        # box both write .per files, and sharing one slot would let the whole-
+        # script save hijack the name the hand-written box uses next.
+        key = "%s/%s" % ((screen or "").strip().lower() or "any",
+                         (dept or "ai").strip().lower())
+        # The page may name the exact file the chooser is showing, which is the
+        # most literal reading of "update this one".  Parsed here rather than in
+        # JS so the split `mods/local/<mod>/resources/_common/<ai|xs>` has one
+        # implementation, and it only ever YIELDS a name: the write still goes
+        # through `local_mod_dir`, which cannot leave mods/local.
+        if path:
+            got = AF.local_target_of(path)
+            if got:
+                script_name = script_name or got[1]
+                mod_name = mod_name or got[0]
+        last = self._last_script.get(key) or {}
+        # An empty box means "the same file as last time", not "a new file with
+        # a generated name": the second press of this button is an update.
+        try:
+            r = AF.save_local(dept, text,
+                              script_name=script_name or last.get("name", ""),
+                              mod_name=mod_name or last.get("mod", ""),
+                              profile_root=profile_root, account=account)
+        except ValueError as exc:
+            return {"ok": False, "error": _sentence(exc)}
+        self._last_script[key] = {"name": r.get("name") or "",
+                                  "mod": r.get("mod") or "",
+                                  "path": r.get("path") or ""}
+        return r
 
     def build(self, intents, title=None, author="", description="", out_dir=None,
               title_auto=False, install=False, profile_root=None):
@@ -5877,7 +8239,7 @@ class App(object):
             return others or 1
         return 1
 
-    def install(self, mod_dir, name=None, enabled=True, position=0,
+    def install(self, mod_dir, name=None, title=None, enabled=True, position=0,
                 profile_root=None):
         """Copy a built mod into the profile.
 
@@ -5885,11 +8247,25 @@ class App(object):
         one thing a test must never do is edit the player's real mod list, which
         is the mistake that made `_probe/test_install.py` fail for reasons that
         had nothing to do with installing.
+
+        `name` is the FOLDER, `title` is what the mod manager shows.  They used
+        to be the same argument, which is why every mod built here showed up
+        under its folder name; `title` defaults to `name` so a caller that only
+        knows one value keeps the old behaviour.
         """
-        r = self.tk.install(mod_dir, name=name, title=name, enabled=enabled,
-                            position=position, overwrite=True,
+        r = self.tk.install(mod_dir, name=name,
+                            title=(name if title is None else title),
+                            enabled=enabled, position=position, overwrite=True,
                             profile_root=profile_root)
         return {"ok": True, "installed": r}
+
+    def set_mod_info(self, name, title=None, author=None, description=None):
+        """Retitle / re-describe an installed mod.  The folder name stays put."""
+        r = self.tk.set_mod_info(name, title=title, author=author,
+                                 description=description)
+        return {"ok": True, "info": r, "mods": _mods_brief(self.tk),
+                "running_warning": r.get("running_warning"),
+                "game_running": r.get("game_running")}
 
     def mods(self):
         return {"ok": True, "mods": _mods_brief(self.tk)}
@@ -6099,6 +8475,37 @@ class App(object):
         return self.tk.repair_apply(name, out_dir=out_dir,
                                     profile_root=profile_root)
 
+    # ---- the version archive, as a panel ----------------------------------
+    # 53 official `.dat` builds live in `<tool>/dat_archive/` (moved there
+    # 2026-11-10, see `aoe2mod/mod/archives.py`).  They are what makes the
+    # upgrade engine able to answer "what did the author change" after a patch,
+    # and until now the only place the screen mentioned them was one sentence
+    # inside the upgrade panel.  A player who is told "the archive has 53" must
+    # be able to see WHICH -- otherwise the number is a claim, not a fact.
+
+    def archive_info(self, game_root=None):
+        """Which generations of the game's `.dat` this tool has kept."""
+        return self.tk.archive_info(game_root=game_root)
+
+    def open_archive_folder(self):
+        """Open `dat_archive/` in Explorer.  One folder this process owns."""
+        from aoe2mod.mod import archives as AR
+        try:
+            d = AR.archive_dir()
+        except Exception as exc:                        # noqa: BLE001
+            return {"ok": False, "error": "找不到档案文件夹：%s" % exc}
+        opened = False
+        try:
+            if hasattr(os, "startfile"):
+                os.startfile(d)                         # noqa: S606 - our own folder
+                opened = True
+            else:
+                opened = bool(webbrowser.open("file://" + d))
+        except Exception:                               # noqa: BLE001
+            # NOT a failure: the folder exists and the page prints its path.
+            # Same reasoning as `open_log_folder` above.
+            opened = False
+        return {"ok": True, "dir": d, "opened": opened}
     # ---- carrying a mod's edits onto a NEW official build ----------------
     #
     # `repair_*` answers with the intent vocabulary, which cannot express an
@@ -6107,8 +8514,16 @@ class App(object):
     # The two calls below ask the same question at the byte level instead, which
     # is what makes a mod that added a unit survive a patch.
 
+    def upgrade_candidates(self, profile_root=None):
+        """Which installed mods ship a `.dat`, WITHOUT checking any of them.
+
+        Read-only and cheap: one directory walk, no `.dat` opened.  Forwarded
+        so the screen can draw one chip per mod and narrow the check down.
+        """
+        return self.tk.upgrade_candidates(profile_root=profile_root)
+
     def upgrade_check(self, name=None, profile_root=None, limit=40,
-                      base_dat=None, new_dat=None):
+                      base_dat=None, new_dat=None, names=None):
         """Can each installed data mod be carried onto today's official build?
 
         Read-only.  Before looking, it files the game's current `.dat` into the
@@ -6118,7 +8533,7 @@ class App(object):
         """
         return self.tk.upgrade_check(name=name, profile_root=profile_root,
                                      limit=limit, base_dat=base_dat,
-                                     new_dat=new_dat)
+                                     new_dat=new_dat, names=names)
 
     def upgrade_apply(self, name=None, mod_dat=None, out_dir=None, title=None,
                       base_dat=None, new_dat=None, install=True,
@@ -6508,6 +8923,46 @@ def _mod_card(m):
     return info, thumb
 
 
+def _live_dat_mods(rows, require_exists=False):
+    """The enabled data mods, in the order the engine will check them.
+
+    WHICH mod wins a file conflict is not a guess and not a convention of this
+    repository: the game says so itself.  Two strings ship with it, both inside
+    `AoE2DE_s.exe`'s string table and both saying the same thing in every
+    language (`resources/<lang>/strings/key-value/key-value-strings-utf8.txt`):
+
+        IDS_MODMGR_PRIORITY_EXPLANATION
+          "In case of file conflicts between mods, the loaded file will come
+           from the highest priority enabled mod (mods higher up in the list)."
+          中文: "如果模组间发生文件冲突，将加载启用更高优先级的模组 (列表中排在
+                 上面的模组文件)。"
+        IDS_MODMGR_PRIORITY_ROLLOVER
+          "When searching for files, enabled mods at the top of the list are
+           checked first, winning any file conflicts over other mods."
+
+    So the list is walked TOP-DOWN and the first one holding a given file wins:
+    the winner is the SMALLEST `Priority` number, because `locations.
+    renumber_priorities` keeps `Priority` equal to the 1-based array position.
+    This function used to sort the other way (biggest number first), which named
+    the BOTTOM-most mod as the winner.  Measured 2026-11-12: a freshly installed
+    mod at the top (`Priority 1`) made the page say the game was reading a
+    workshop mod at `Priority 27` instead -- the exact opposite, on the one
+    screen whose whole job is answering "is my edit ever loaded".
+
+    Rows keep the input shape; `ships_dat` and `enabled` are required, and
+    `require_exists` additionally drops entries whose folder was renamed away.
+    """
+    live = [r for r in rows if r.get("ships_dat") and r.get("enabled")]
+    if require_exists:
+        live = [r for r in live if r.get("exists")]
+    # `priority` is 1-based and `None` only for a hand-edited status file; a
+    # missing number sorts last rather than first, because an entry we cannot
+    # place must never be reported as the winner.
+    live.sort(key=lambda r: (r.get("priority") is None,
+                             r.get("priority") or 0))
+    return live
+
+
 def _mods_brief(tk):
     """Mods, with the fields a screen shows and nothing that leaks a path.
 
@@ -6536,8 +8991,7 @@ def _mods_brief(tk):
     # Among the ENABLED data mods, which one wins is decided by the game, not by
     # us: the highest priority.  Saying "13 compete" without saying which one is
     # in front would tell the player there is a problem and hide the answer.
-    live = [r for r in out if r["ships_dat"] and r["enabled"]]
-    live.sort(key=lambda r: -(r.get("priority") or 0))
+    live = _live_dat_mods(out)
     for i, r in enumerate(live):
         r["dat_rank"] = i + 1
     for r in out:
@@ -6899,6 +9353,40 @@ def make_handler(app):
                     ext = os.path.splitext(full)[1].lower()
                     return _file(self, full, _CTYPES.get(ext, "application/octet-stream"))
                 return _json(self, {"ok": False, "error": "no such file"}, 404)
+            if path == "/api/online/peek":
+                # Everything the online page needs on first paint.
+                #
+                # One round trip on purpose: the page should know in the same
+                # frame whether to draw the sign-in card or the grid, and asking
+                # twice would flash one before the other.  It fetches NO listing
+                # -- an unauthenticated player must see "请先登录" immediately
+                # instead of a spinner that ends in an error.
+                return self._guard(lambda: ON.peek())
+            if path == "/api/online/find":
+                q = _query(self.path)
+                text = (q.get("q") or [""])[0]
+                raw_tags = (q.get("tags") or [""])[0]
+                tag_ids = []
+                for piece in raw_tags.split(","):
+                    piece = piece.strip()
+                    if piece.isdigit():
+                        tag_ids.append(int(piece))
+                try:
+                    page = int((q.get("page") or ["1"])[0])
+                except ValueError:
+                    page = 1
+                fresh = (q.get("fresh") or [""])[0] == "1"
+                sort = (q.get("sort") or ["recentpopular"])[0]
+                return self._guard(lambda: ON.find(
+                    text=text, tags=tag_ids, sort=sort, page=page, fresh=fresh))
+            if path == "/api/online/detail":
+                q = _query(self.path)
+                try:
+                    mod_id = int((q.get("id") or ["0"])[0])
+                except ValueError:
+                    mod_id = 0
+                fresh = (q.get("fresh") or [""])[0] == "1"
+                return self._guard(lambda: ON.detail(mod_id, fresh=fresh))
             if path == "/api/meta":
                 return self._guard(lambda: app.meta())
             if path == "/api/locale":
@@ -6938,6 +9426,29 @@ def make_handler(app):
                 q = _query(self.path)
                 key = (q.get("key") or [""])[0]
                 return self._guard(lambda: {"ok": True, "job": J.snapshot(key)})
+            if path == "/api/live":
+                # THE ONE THING THE PAGE WAITS ON.  A screen sends the `v` it
+                # already has and this blocks until a write moves it or 20 s
+                # pass, then answers with the same counters every write verb
+                # reports.  Nothing on the page has to guess a delay, and
+                # nothing has to re-read 93 MB to find out whether it changed.
+                #
+                # A long poll and not an event stream: `Handler` speaks
+                # HTTP/1.0, so an open chunked response is cut by the first
+                # reload -- and a reload is what a player does when a screen
+                # looks stuck.  One request per change also costs nothing at
+                # rest, unlike the 2 s timer the diagnostics block runs.
+                q = _query(self.path)
+                since = (q.get("since") or [""])[0]
+                try:
+                    secs = float((q.get("wait") or [""])[0] or 20.0)
+                except ValueError:
+                    secs = 20.0
+                # Clamped: a page that asked for an hour would pin a worker
+                # thread (ThreadingHTTPServer, one per connection) until the
+                # window closes, and the pool is the browser's, not ours.
+                secs = max(0.5, min(secs, 25.0))
+                return self._guard(lambda: app.live_wait(since, secs))
             if path == "/api/log":
                 # The About page draws the last few operations.  A GET on
                 # purpose: it reads one text file and changes nothing, and the
@@ -7134,11 +9645,15 @@ def make_handler(app):
                 # The game's ai/ + xs/ folders and the player's own copies.
                 # Reading a directory listing, not a file, so a 53-file folder
                 # costs one scandir per subdirectory.
+                q = _query(self.path)
                 return self._guard(lambda: app.script_files(
-                    _query(self.path).get("dept", [""])[0]))
+                    q.get("dept", [""])[0],
+                    profile_root=q.get("profile_root", [None])[0]))
             if path == "/api/script-read":
+                q = _query(self.path)
                 return self._guard(lambda: app.script_read(
-                    _query(self.path).get("path", [""])[0]))
+                    q.get("path", [""])[0],
+                    profile_root=q.get("profile_root", [None])[0]))
             if path == "/api/animations":
                 # The list of moments this unit's art actually has.  One small
                 # JSON answer; the pictures come from /api/film, one per click.
@@ -7199,6 +9714,18 @@ def make_handler(app):
                 q = _query(self.path)
                 return self._guard(lambda: app.repair_check(
                     profile_root=(q.get("profile_root", [None])[0] or None)))
+            if path == "/api/upgrade-candidates":
+                # Asked BEFORE the check button, not after it: one walk, no
+                # `.dat` opened, ~40 ms.  Its answer is what the tick list is
+                # drawn from, so a check can be narrowed to the mods the player
+                # is willing to wait for -- the full set is 11 minutes.
+                #
+                # `q` is bound HERE for the same reason the two branches below
+                # say so: a name read only inside a lambda becomes a cell
+                # variable that is unbound on the other paths.
+                q = _query(self.path)
+                return self._guard(lambda: app.upgrade_candidates(
+                    profile_root=(q.get("profile_root", [None])[0] or None)))
             if path == "/api/upgrade-check":
                 # Same reason as /api/repair-check: one parse of the official
                 # stream plus one per mod that is not already current, so this
@@ -7211,13 +9738,27 @@ def make_handler(app):
                 # makes it a cell variable that is unbound on the other paths,
                 # and the failure is `NameError: cannot access free variable`
                 # at call time -- which reads like a broken button, not a bug.
+                #
+                # `names` is the tick list: comma-separated folder names the
+                # player left checked.  Without it the check walks everything --
+                # eleven minutes -- and the roster route above exists precisely
+                # so that wait can be shortened.
                 q = _query(self.path)
                 return self._guard(lambda: app.upgrade_check(
                     name=(q.get("name", [None])[0] or None),
                     profile_root=(q.get("profile_root", [None])[0] or None),
                     limit=int(q.get("limit", ["40"])[0] or 40),
                     base_dat=(q.get("base_dat", [None])[0] or None),
+                    names=(q.get("names", [None])[0] or None),
                     new_dat=(q.get("new_dat", [None])[0] or None)))
+            if path == "/api/archive-info":
+                # Cheap enough to be a page load: it files the current `.dat`
+                # (0.120 s the first time, 0.039 s after) and then reads the
+                # index.  No mod is parsed, so unlike `/api/upgrade-check` this
+                # is not a button.
+                q = _query(self.path)
+                return self._guard(lambda: app.archive_info(
+                    game_root=(q.get("game_root", [None])[0] or None)))
             return _json(self, {"ok": False, "error": "no such route"}, 404)
 
         # ---- actions ----
@@ -7287,6 +9828,43 @@ def make_handler(app):
                     civ=payload.get("civ"),
                     seconds=payload.get("seconds") or 0,
                     donor=payload.get("donor"),
+                    dry=bool(payload.get("dry", False)),
+                    title=payload.get("title")))
+            if path in ("/api/pseudo-page-put", "/api/pseudo-page-del"):
+                # Put ONE unit into an existing page / take it out.  Split from
+                # /api/pseudo-pages because that one CREATES a page (81-byte
+                # technology + 18-byte effect) while this one rewrites the
+                # command list of a page that is already there (11 bytes per
+                # unit).  Same spelling as the card routes: "box" from the page,
+                # "button" from the sentence reader.
+                _pbox = payload.get("box", payload.get("button"))
+                _pmode = (payload.get("mode") or "").strip().lower()
+                if path == "/api/pseudo-page-del":
+                    _pmode = "del"
+                return self._guard(lambda: app.pseudo_page_put(
+                    payload.get("building", payload.get("builder")), _pbox,
+                    payload.get("unit", payload.get("u")),
+                    page=payload.get("page"),
+                    slot=payload.get("slot"),
+                    mode=_pmode or "add",
+                    civ=payload.get("civ"),
+                    dry=bool(payload.get("dry", False)),
+                    title=payload.get("title")))
+            if path == "/api/pseudo-page-drop":
+                _pbox = payload.get("box", payload.get("button"))
+                return self._guard(lambda: app.pseudo_page_drop(
+                    payload.get("building", payload.get("builder")), _pbox,
+                    page=payload.get("page"),
+                    civ=payload.get("civ"),
+                    dry=bool(payload.get("dry", False)),
+                    title=payload.get("title")))
+            if path == "/api/card-put-tech":
+                return self._guard(lambda: app.card_put_tech(
+                    payload.get("tech"),
+                    payload.get("building", payload.get("builder")),
+                    box=payload.get("box", payload.get("button")),
+                    seconds=payload.get("seconds"),
+                    civ=payload.get("civ"),
                     dry=bool(payload.get("dry", False)),
                     title=payload.get("title")))
             if path == "/api/card-take":
@@ -7448,6 +10026,11 @@ def make_handler(app):
                 # can read out of a file picker; `dry` decides preview or write,
                 # and both go through `App.set_icon` so the slot the preview
                 # names is the slot the record gets.
+                # Absent = let the server pick: in-place when the record
+                # already names a slot that resolves to a real file.  The page
+                # only sends this to ASK for the other answer.
+                _ip = payload.get("inplace")
+                _ip = None if _ip is None else bool(_ip)
                 return self._guard(lambda: app.set_icon(
                     kind=payload.get("kind") or "unit",
                     record=payload.get("record", payload.get("id")),
@@ -7455,7 +10038,8 @@ def make_handler(app):
                     data_b64=payload.get("data_b64"),
                     filename=payload.get("filename"),
                     slot=payload.get("slot"),
-                    dry=bool(payload.get("dry", True))))
+                    dry=bool(payload.get("dry", True)),
+                    inplace=_ip))
             if path == "/api/record-rename":
                 # The door the field editor has been pointing at since the day
                 # it made `Name` read-only: 「要改请用「重命名」」.
@@ -7483,8 +10067,18 @@ def make_handler(app):
             if path == "/api/install":
                 return self._guard(lambda: app.install(
                     payload["mod_dir"], name=payload.get("name"),
+                    title=payload.get("title"),
                     enabled=payload.get("enabled", True),
                     position=int(payload.get("position") or 0)))
+            if path == "/api/mod-info":
+                # Rename / re-describe an installed mod.  Deliberately separate
+                # from `/api/install`: installing copies a folder, this edits one
+                # file in place, and conflating them would tempt a rename to
+                # recopy a 100 MB `.dat`.
+                return self._guard(lambda: app.set_mod_info(
+                    payload["name"], title=payload.get("title"),
+                    author=payload.get("author"),
+                    description=payload.get("description")))
             if path == "/api/mod-move-to":
                 return self._guard(lambda: app.move_mod_to(
                     payload["name"], payload["position"],
@@ -7540,11 +10134,32 @@ def make_handler(app):
                 # be opened.  Scheme-free, unlike `/api/open-url`: this opens
                 # ONE folder this process owns, never a path from the page.
                 return self._guard(lambda: app.open_log_folder())
+            if path == "/api/archive-open":
+                # Same shape as `/api/log-open` and for the same reason: one
+                # folder this process owns, no path from the page.
+                return self._guard(lambda: app.open_archive_folder())
             if path == "/api/dat-set":
                 # Switching the file under the whole session: the toolkit is
                 # rebuilt and every cache dropped, because a 93 MB buffer and
                 # 400 decoded field records belong to ONE file.
                 return self._guard(lambda: app.set_dat(payload.get("path") or ""))
+            if path == "/api/script-local-save":
+                # The generated script goes into a LOCAL MOD, not into the
+                # game's own ai/ folder.  Reported 2026-11-10 「这个生成的东西应该
+                # 放local去」: a local mod is the only place the engine loads a
+                # script from without colliding with the 53 shipped .per files.
+                # The folder name is fixed by this route, never taken from the
+                # sentence, so nothing a player types can steer it out of
+                # mods/local.
+                return self._guard(lambda: app.script_local_save(
+                    payload.get("dept") or "ai",
+                    payload.get("text") or "",
+                    script_name=payload.get("name") or "",
+                    mod_name=payload.get("mod") or "",
+                    profile_root=payload.get("profile_root"),
+                    account=payload.get("account"),
+                    path=payload.get("path") or "",
+                    screen=payload.get("screen") or ""))
             if path == "/api/script-write":
                 # Guarded in `aifiles.check_save`: only the game's ai/ + xs/
                 # folders and the player's own two copies of them.  A route that
@@ -7573,9 +10188,23 @@ def make_handler(app):
             route = getattr(self, "_op_route", "") or ""
             payload = getattr(self, "_op_payload", None) or {}
             started = time.time()
+            # ONE WRITE, ONE WAKE-UP.  A mutating operation is a sequence of
+            # splices, reparses and counter updates, and every one of them used
+            # to notify the waiting screens on its own -- so a parked screen
+            # could be woken by the REPARSE, in the middle of the step, and be
+            # handed counters that described a half-applied file (measured
+            # 2026-11-11 on 撤回: bytes already back at the base, `undo` still
+            # 1).  Gripping here means the numbers keep rising but nobody is
+            # woken until the answer to this very request is complete.
+            gripped = bool(route)
+            if gripped:
+                app._live_grip()
             try:
                 got = fn()
             except Exception as exc:                   # noqa: BLE001
+                if gripped:
+                    app._live_ungrip()
+                    gripped = False
                 tb = traceback.format_exc(limit=4)
                 if route and OPLOG.logs(route):
                     OPLOG.record(route=route, ok=False,
@@ -7585,6 +10214,8 @@ def make_handler(app):
                                  ms=(time.time() - started) * 1000)
                 return _json(self, {"ok": False, "error": _sentence(exc),
                                     "where": tb})
+            if gripped:
+                app._live_ungrip()
             if route and OPLOG.logs(route):
                 OPLOG.record(route=route,
                              ok=bool(got.get("ok", True)) if isinstance(got, dict) else True,
@@ -7635,15 +10266,24 @@ def make_handler(app):
     return Handler
 
 
-# Columns whose value is a name the player picks from a list, not a number to
-# type.  The census (below) learns which names actually occur.
-_CENSUS_TAILS = ("TaskType", "ActionType", "GatherType", "TargetDiplomacy",
-                 "CarryCheck", "ClassID", "TerrainID", "ResourceIn",
-                 "ResourceOut", "WorkFlag2", "CombatLevelFlag")
+# How many distinct values a dropdown keeps.  96 is past the point where anyone
+# scrolls: the columns a player edits have a handful of values (TaskType has 27
+# kinds in the whole file), and the ones that overflow are coordinates and
+# speeds, where the number is typed anyway.
+_CENSUS_VALUES = 96
+
+# How many values ONE ROW ships to the page.  The census knows up to
+# _CENSUS_VALUES of them; sending all of those for 434 rows is a 200 KB JSON
+# for a list nobody scrolls.  Every enum-ish column in the shipped file fits
+# inside 32 (TaskType has 27 kinds in total), and seen_total tells the page
+# when a column is really a number with a long tail.
+_SEEN_PER_ROW = 32
 
 # 136,861 records x 434 fields is 27 s of decoding for a table that does not
 # change inside a session.  24,000 records is ~5 s and already covers every
 # value that occurs (measured: ActionType saturates at 27 kinds by record 306).
+# The scan now counts EVERY integer column, not just the任务 ones -- the decode
+# was already being paid, so the only extra cost is the dict.
 _CENSUS_CAP = 24000
 
 
@@ -7870,6 +10510,16 @@ def serve(port=0, game_root=None, host="127.0.0.1", warm=False):
                 # the first version of this thread held `app.tk` and the splash sat
                 # at 0 % for the whole run because no parse had started.
                 app.tk.version
+                # File today's `.dat` into the version shelf the moment the
+                # tool opens.  This is the ONE guaranteed view of a machine with
+                # the game installed that happens before a patch, so it is where
+                # the shelf fills itself: a build captured here is the evidence
+                # the next patch's upgrade pass needs, and once Steam has
+                # replaced the file there is nowhere else to get it.  Measured
+                # 2026-11-10: 0.120 s the first time, 0.039 s when already
+                # stored, and it is idempotent, so the warm thread pays the
+                # inflate and no write on every later launch.
+                app.tk.archive_official()
             except BaseException as exc:              # noqa: BLE001
                 from aoe2mod import progress as PG
                 PG.fail("读取游戏数据失败：%s" % exc)
