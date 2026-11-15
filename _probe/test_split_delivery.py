@@ -201,6 +201,24 @@ def main():
     check(E.ui_only_path(os.path.join("resources", "_common", "wpfg", "x.xaml")) is False,
           "nor wpfg, where no measurement exists either way")
 
+    print("=== D2. the （界面） suffix survives the 100-byte title cap")
+    # The failure is silent and reproduces the exact confusion the suffix exists
+    # to prevent: `_fit_title` cuts from the RIGHT, so a title that already sits
+    # near the cap loses the （界面） and both halves carry the SAME name in the
+    # mod list.  Measured 2026-11-12 on an auto title of 90 bytes: the UI half
+    # came back byte-identical to the data half.
+    long_title = "单位 882 把第 882 号单位从第 12 号建筑的卡上拿掉（全部 63 个文明）"
+    fitted = E._fit_title_stem(long_title, "（界面）")
+    check(fitted.endswith("（界面）"),
+          "a long title still ends in the interface marker", fitted)
+    check(fitted != long_title,
+          "so the two halves cannot carry the same name", fitted)
+    check(E.title_bytes(fitted) <= E.TITLE_MAX_BYTES,
+          "and the result still fits the engine caps it in bytes",
+          E.title_bytes(fitted))
+    check(E._fit_title_stem("单位「SPRMN」 生命值", "（界面）") == "单位「SPRMN」 生命值（界面）",
+          "a short title is left untouched apart from the marker")
+
     print("=== E. uninstalling one half removes the other")
     # The build output folder is `<name>_ui`, but the INSTALLED folder is named after
     # the title, and `install()` names the interface half `<base title>（界面）`.  Both

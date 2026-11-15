@@ -1,16 +1,19 @@
 # -*- coding: utf-8 -*-
-"""伪翻页：一个格子上挂一串可重复研究的科技，点一下换一批能训练的单位。
+"""伪翻页：一个格子上挂一串科技，点一下换出另一批能训练的单位。
 
-这一段钉住三件事，每一件都是本功能上线前真的错过的那种错：
+这一段钉住四件事，每一件都是本功能上线前真的错过的那种错：
 
-1. 读：OFF 命令不是必需的（一个格子的第一页没有东西可关），但要挡住
-   「顺便解锁一个单位的独特科技」——所以「没有 OFF 时，所有真的付费的造价
-   必须为 0」。Gothic Anarchy（450 金）不算一页，Cycle 1 算。
-2. 写：加一页 = 效果记录（18 + 11×命令数）+ 科技记录，`EffectID` 指过去，
-   `ResearchLocations` 落到问的那一格，`Repeatable = 1`，造价 0，研究 0 秒。
-   服务端一步撤销，撤销后逐字节回原。
-3. 快路径：`fast_effects` 与 `locate_effects` 逐条一致，段尾不对就抛——
-   两个实现互相印证不是证据，但「不一致就报错」是。
+1. 一页 = 一条科技。让「好几条科技」变成「好几页」的不是科技数据，是
+   `resources/_common/dat/linkedTechs.json` 里一条 `Type: "Cycle"` 记录：
+   成员共享同一个 `(location_id, button_id)`，引擎就在那一格上轮换。
+2. 页的内容 = 效果命令类型 0 写属性 42（训练地点）：`d = -1` 关、
+   `d = 建筑编号` 开。写的是「其它所有页 on 的并集」，不是上一页——
+   否则乱按两下就会有两批单位同时可训练。
+3. 「单位落在这一页的第几格」不由页决定：单位自己的 `train_locations` 里
+   那个 `button_id` 才是它的格子，所以往一页的某一格放单位要同时写两处
+   （`pseudopage.sync_off`/`plan_rewrite_pages` 写页，`card.plan_slot` 写格）。
+4. 快路径：`fast_effects` 与逐条走查一致，段尾不对就抛——两个实现互相
+   印证不是证据，但「不一致就报错」是。
 """
 import io
 import json
@@ -325,8 +328,14 @@ def main():
           "the card asks the route after it draws")
     check('el("span", "cardcyc", cyc.pages + " 页")' in page_html,
           "a cyc box carries a page count badge, not a research-button count")
-    check('" 页" : " 项科技"' in page_html,
-          "and the overflow line says 页 when the box pages")
+    # The overflow line counts RESEARCH BUTTONS, never screens: it used to
+    # switch to 「还有 N 页」 once the box had pages, which turned 8 unpainted
+    # buttons into 8 screens.  The screens have the badge; the line has the
+    # buttons.  Measured 2026-11-11 on the Barracks' 第 6 格.
+    check('"还有 " + (techList.length - room) + " 项科技"' in page_html,
+          "and the overflow line counts research buttons, not screens")
+    check("if (!cyc || !cyc.pages) return;" in page_html,
+          "one page is already a pseudo button, so it carries a badge too")
     check("function drawCycleBlock(host, box)" in page_html,
           "the strip draws the page list")
     check("drawCycleBlock(host, CARD_SLOT);" in page_html
@@ -335,11 +344,42 @@ def main():
           page_html.count("drawCycleBlock(host, CARD_SLOT);"))
     check("正在生产" in page_html and "都会被取消" in page_html,
           "the warning names what a page turn cancels")
-    check('id = "card-cyc-add"' in page_html.replace("go.id", "id")
-          or 'go.id = "card-cyc-add"' in page_html,
+    check('go.id = "card-cyc-add"' in page_html,
           "there is a 再加一页 button")
-    check("/[^0-9]+/" in page_html,
-          "the unit field reads numbers out of paste, and ignores the rest")
+    # The shape the player asked for (2026-11-10): pick the box, make ONE pseudo
+    # button out of it, then fill each page by clicking icons -- no ids to type.
+    # So the panel must (a) create an EMPTY page, (b) draw one tile per unit on
+    # that page with a dashed tile that opens the picker already aimed at it, and
+    # (c) send the click to the page route rather than to the box's card route.
+    check("on: [], seconds: 0" in page_html,
+          "the button creates an empty page, not one seeded with unit ids")
+
+    check("function cycPageGrid(box, page, p)" in page_html,
+          "each page is drawn as a grid of tiles")
+    # A PAGE IS THE PANEL, not a list.  The grid has to be the fourteen boxes
+    # the game draws beside the paging button, each one labelled with the
+    # game s own box number, or the player cannot match a tile here to a box
+    # in game -- which is the whole point of asking here instead of typing
+    # ids (2026-11-11: 就不能直接让我选那个格子).
+    check("const cells = p.cells || [];" in page_html,
+          "the grid is the server s cell list, not the unit list")
+    check('tile.appendChild(el("span", "n", String(cell.box)));' in page_html,
+          "every tile is labelled with the box number the engine reads")
+    check('tile.onclick = function () { cardPickOpenPage(box, page, cell.box); };'
+          in page_html,
+          "clicking an empty cell opens the picker aimed at that cell")
+    check("function cardPickCells(box, page)" in page_html,
+          "and the picker offers the same fourteen boxes as chips")
+    check('slot: slot,' in page_html,
+          "the click carries the aimed cell to /api/pseudo-page-put")
+    check("let CARD_PICKSLOT = null;" in page_html,
+          "which cell is aimed is window state, like the page")
+    check('api("/api/pseudo-page-put"' in page_html
+          and 'api("/api/pseudo-page-del"' in page_html
+          and 'api("/api/pseudo-page-drop"' in page_html,
+          "the three page routes are wired: add, take one out, drop the page")
+    check("if (CARD_PICKPAGE_AT !== null)" in page_html,
+          "the picker decides between 「放进格子」 and 「放进这一页」 at click time")
 
     # ------------------------------------------------------------------ 7
     section("7. undo a page and add another: the editor trusts the bytes it has")
@@ -379,6 +419,36 @@ def main():
           "the file is back to the byte it started at",
           post("/api/session-info", {}).get("bytes"))
 
+    # ------------------------------------------------------------------ 8
+    section("8. 放弃, then edit again: the discarded session must not poison the next one")
+    # `reset_session` throws `tk._raw` away and lets `_ensure()` re-read the
+    # game's own file, but it used to keep the SECTION BOUNDARY it had measured
+    # on the discarded bytes.  That boundary is a number, so it looks answered.
+    # Measured 2026-11-10 in the panel: 建一页, 放单位, 建第二页, 删一页, 放弃,
+    # 再建一页, 再放单位 -> 「第 1500 条效果的字符串标记是 0x06a5，不是 0x0a60」,
+    # and every later edit died the same way until the process restarted.
+    post("/api/session-reset", {})
+    base = post("/api/session-info", {}).get("bytes")
+    for step in ({"on": [], "name": "Gone1"},
+                 {"on": [], "name": "Gone2"}):
+        post("/api/pseudo-pages", dict(step, building=12, box=18, dry=False))
+    post("/api/pseudo-page-del", {"building": 12, "box": 18, "unit": 83, "page": 1})
+    post("/api/session-reset", {})
+    check(post("/api/session-info", {}).get("bytes") == base,
+          "放弃 puts the file back to the byte it started at", base)
+    again = post("/api/pseudo-pages", {"building": 12, "box": 18, "on": [],
+                                       "name": "After", "dry": False})
+    check(again.get("ok") is True,
+          "and the very next page lands, not a string-marker complaint",
+          again.get("error"))
+    put = post("/api/pseudo-page-put", {"building": 12, "box": 18, "unit": 83,
+                                        "page": 1, "dry": False})
+    check(put.get("ok") is True, "with a unit in it", put.get("error"))
+    post("/api/session-reset", {})
+    check(post("/api/session-info", {}).get("bytes") == base,
+          "and the cleanup lands back on the same byte",
+          post("/api/session-info", {}).get("bytes"))
+
     return report()
 
 
@@ -387,10 +457,11 @@ def report():
     if FAILS:
         print("PSEUDO PAGES: %d CHECK(S) FAILED -> %r" % (len(FAILS), FAILS))
         return 1
-    print("PSEUDO PAGES: ONE BOX CAN CARRY ANY NUMBER OF SCREENS -- A PAGE IS A "
-          "FREE, REPEATABLE TECHNOLOGY THAT TURNS ONE BATCH OF UNITS ON WHERE "
-          "ANOTHER BATCH WAS TURNED OFF, AND THE READER, THE WRITER, THE "
-          "RELOCATE SHORTCUT AND THE PANEL ALL AGREE ON WHAT ONE IS")
+    print("PSEUDO PAGES: ONE BOX CAN CARRY ANY NUMBER OF PAGES -- A PAGE IS ONE "
+          "TECHNOLOGY ON THAT BOX PLUS ONE Cycle RECORD IN linkedTechs.json, ITS "
+          "EFFECTS TURN ONE BATCH OF UNITS ON WHERE THE OTHER PAGES HAD THEM OFF, "
+          "THE CELL A UNIT LANDS IN IS THE button_id IN ITS OWN train_locations, "
+          "AND THE READER, THE PAGE WRITER, THE CELL WRITER AND THE PANEL AGREE")
     return 0
 
 

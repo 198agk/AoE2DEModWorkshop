@@ -11,7 +11,7 @@
     "verify_quick": "python _probe/run_suites.py",
     "verify_long": "python _probe/run_long.py",
     "suites": {
-      "python": 220,
+      "python": 233,
       "node": 1
     },
     "python": "C:\\Users\\26913\\.dsh\\dsh-runtimes\\dsh-primary-runtime\\dependencies\\python\\python.exe"
@@ -316,6 +316,7 @@
       "/api/ai-lang-meta",
       "/api/ai-meta",
       "/api/animations",
+      "/api/archive-info",
       "/api/art",
       "/api/browse",
       "/api/card",
@@ -330,6 +331,7 @@
       "/api/icon",
       "/api/icons",
       "/api/job",
+      "/api/live",
       "/api/locale",
       "/api/log",
       "/api/meta",
@@ -352,6 +354,7 @@
       "/api/techtree-icons",
       "/api/unit-effects",
       "/api/update-check",
+      "/api/upgrade-candidates",
       "/api/upgrade-check"
     ],
     "post": [
@@ -359,9 +362,11 @@
       "/api/ai-script-check",
       "/api/ai-script-edit",
       "/api/ai-sentences",
+      "/api/archive-open",
       "/api/build",
       "/api/card-move",
       "/api/card-put",
+      "/api/card-put-tech",
       "/api/card-take",
       "/api/card-time",
       "/api/dat-set",
@@ -376,6 +381,8 @@
       "/api/open-url",
       "/api/parse",
       "/api/plan",
+      "/api/pseudo-page-del",
+      "/api/pseudo-page-drop",
       "/api/pseudo-pages",
       "/api/rebuild",
       "/api/recipe",
@@ -386,6 +393,7 @@
       "/api/record-rename",
       "/api/redo",
       "/api/repair-apply",
+      "/api/script-local-save",
       "/api/script-write",
       "/api/session-info",
       "/api/session-intents",
@@ -403,7 +411,7 @@
   "wording": {
     "file": "aoe2mod/schema/locales/zh.json",
     "locale": "zh",
-    "keys": 57
+    "keys": 58
   },
   "delivery": {
     "single_mod": "一份模组：只有 .dat，或只有 widgetui —— 单一策略的意图",

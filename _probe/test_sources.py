@@ -177,6 +177,108 @@ def main():
     check('const order = {game: 0, mode: 1, mod: 2};' in page,
           "the .dat list is ordered install, mode, mod")
 
+    head("6  what the screen generates lands in a local mod, not in the game")
+    # Reported 2026-11-10 「这个生成的东西应该放local去」: a generated .per used to
+    # have no destination at all -- the only writable folders were the game's own
+    # 53 shipped scripts and an empty profile copy.  The destination is now
+    # mods/local/<mod>/resources/_common/<ai|xs>/, plus an info.json and a
+    # mod-status.json entry, because a folder with no entry is invisible in the
+    # in-game list and can neither be enabled nor ordered.
+    tmp = tempfile.mkdtemp(prefix="aoe2_local_")
+    try:
+        root = os.path.join(tmp, "prof")
+        acct = os.path.join(root, "76561198406248391")
+        os.makedirs(os.path.join(acct, "mods", "local"))
+        os.makedirs(os.path.join(acct, "mods", "subscribed"))
+        for sub in ("ai", "xs"):
+            os.makedirs(os.path.join(acct, "resources", "_common", sub))
+        game = os.path.join(tmp, "game")
+        for sub in ("ai", "xs"):
+            os.makedirs(os.path.join(game, "resources", "_common", sub))
+        r = AF.save_local("ai", "(defrule\n\t(true)\n=>\n\t(chat-to-all \"hi\")\n)\n",
+                          script_name="我的AI", profile_root=root,
+                          account=acct)
+        want = os.path.join(acct, "mods", "local", AF.DEFAULT_MOD,
+                            "resources", "_common", "ai", "我的AI.per")
+        check(os.path.isfile(want), "the generated .per is inside mods/local",
+              r.get("path"))
+        check(r.get("rel") == "resources/_common/ai/我的AI.per",
+              "and the route says the path inside the mod", r.get("rel"))
+        info = os.path.join(acct, "mods", "local", AF.DEFAULT_MOD, "info.json")
+        check(os.path.isfile(info) and r.get("info_created"),
+              "the mod folder got an info.json")
+        doc = json.loads(io.open(os.path.join(acct, "mods",
+                                             "mod-status.json"),
+                                 encoding="utf-8").read())
+        names = [m.get("Path") for m in doc.get("Mods") or []]
+        check("local//%s" % AF.DEFAULT_MOD in names,
+              "and an entry, so the game can enable it", names)
+        check(all(m.get("Enabled") for m in doc.get("Mods") or []),
+              "the entry is enabled without the player doing anything")
+        check(r.get("enabled") is True and r.get("priority"),
+              "the reply carries enabled + priority", r)
+        # A second save must not rewrite the info.json the player may have
+        # edited, and must not append the mod twice.
+        info_fh = io.open(info, "w", encoding="utf-8", newline="\n")
+        info_fh.write('{"Author":"me","CacheStatus":0,'
+                      '"Description":"edited by hand","Title":"%s"}'
+                      % AF.DEFAULT_MOD)
+        info_fh.close()
+        r2 = AF.save_local("xs", "void main() {\n}\n", script_name="我的XS",
+                           profile_root=root, account=acct)
+        check(r2.get("info_created") is False,
+              "an existing info.json is left alone")
+        keep = io.open(info, encoding="utf-8").read()
+        check("edited by hand" in keep,
+              "with the player's own Description intact", keep[:60])
+        doc2 = json.loads(io.open(os.path.join(acct, "mods",
+                                              "mod-status.json"),
+                                  encoding="utf-8").read())
+        check(len(doc2.get("Mods") or []) == 1,
+              "and the mod is not listed twice", len(doc2.get("Mods") or []))
+        # The chooser must offer it back, first in the list, labelled as a mod.
+        got = AF.entries(game_root=game, profile_root=root, account=acct)
+        check(got and got[0]["scope"] == "mod",
+              "the local mod sorts first in the chooser",
+              [(e["scope"], e["rel"]) for e in got])
+        check({e["rel"] for e in got if e["scope"] == "mod"}
+              == {"我的AI.per", "我的XS.xs"},
+              "both departments came back", [e["rel"] for e in got])
+        text, err = AF.read(want, game_root=game, profile_root=root,
+                            account=acct)
+        check(err is None and "chat-to-all" in text,
+              "and the file reads back through the same guard", err)
+        # A folder name typed by the player cannot escape mods/local.
+        r3 = AF.save_local("ai", "(defrule\n\t(true)\n=>\n)\n",
+                           script_name="../../escape", mod_name="../../escape",
+                           profile_root=root, account=acct)
+        here = os.path.normcase(os.path.abspath(r3["mod_dir"]))
+        base = os.path.normcase(os.path.join(acct, "mods", "local"))
+        check(here.startswith(base + os.sep),
+              "a name with .. in it cannot leave mods/local", r3["mod_dir"])
+        check(".." not in r3["name"] and os.sep not in r3["name"]
+              and os.path.dirname(os.path.abspath(r3["path"]))
+              == os.path.join(os.path.abspath(r3["mod_dir"]),
+                              "resources", "_common", "ai"),
+              "and the script name is cleaned too", (r3["name"], r3["rel"]))
+        # Empty text is refused with a sentence, not written as an empty file.
+        try:
+            AF.save_local("ai", "   \n  ", profile_root=root, account=acct)
+            check(False, "an empty script is refused")
+        except ValueError as exc:
+            check("空" in str(exc), "an empty script is refused in Chinese", exc)
+    finally:
+        import shutil
+        shutil.rmtree(tmp, ignore_errors=True)
+
+    for frag, why in (
+            ('id="lang-ai-local"', "the AI box offers 放进本地模组"),
+            ('id="lang-xs-local"', "the XS box offers it too"),
+            ('id="lang-plan-local"', "and the whole-script box does"),
+            ('api("/api/script-local-save", body)',
+             "and the button calls the local-save route")):
+        check(frag in page, why, frag)
+
     print("\nDAT / SCRIPT SOURCES: %s"
           % ("PASS" if not FAILS else "FAILED -> %s" % FAILS))
     return 1 if FAILS else 0

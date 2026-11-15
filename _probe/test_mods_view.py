@@ -164,7 +164,53 @@ def main():
           page.count("#mods.cards .words .desc {") == 1
           and page.count("#mods.cards .words .who {") == 1)
 
-    # ---- 4. the browser harness pins the same contract ---------------------
+    # ---- 4b. the repair rows reuse `.mod`, so the override must exist ------
+    # `#repair` builds each result row as `el("div", "mod")` -- the same class the
+    # mod LIST uses, and that one is a 30px single line with the controls inline.
+    # Reused verbatim, three blocks of text (title / badge+counts / sentence) were
+    # squeezed into that 30px and printed on top of each other in the shipped
+    # build (screenshot in 变更日志.md, 2026-11-10).  What is pinned here is the
+    # CONTRACT -- the override exists, it is scoped to `#repair`, and the list's
+    # own `.mod` rule is untouched -- not the pixels.
+    import re as _re
+    mod_rule = _re.search(r"\n  \.mod \{[^}]*height: 30px[^}]*\}", page)
+    check("the mod list's own row is still the fixed 30px line",
+          mod_rule is not None, "not found")
+    rep_rule = _re.search(r"\n  #repair \.mod \{([^}]*)\}", page)
+    check("#repair rows override the fixed height they inherited",
+          rep_rule is not None and "height: auto" in rep_rule.group(1)
+          and "align-items: flex-start" in rep_rule.group(1),
+          rep_rule.group(1)[:120] if rep_rule else "not found")
+    check("...and stop claiming to be draggable",
+          rep_rule is not None and "cursor: default" in rep_rule.group(1),
+          rep_rule.group(1)[:120] if rep_rule else "not found")
+    # Every override is scoped: a bare `.mod { height: auto }` would squash the
+    # list, and the next person to read the file would not see why.
+    scoped = _re.findall(r"\n  #repair [^{]*\{", page)
+    check("every repair-only rule is scoped to #repair",
+          len(scoped) >= 5 and page.count("\n  #repair .mod {") == 1,
+          "%d scoped rules" % len(scoped))
+
+    # ---- 4c. four verdicts, four colours -----------------------------------
+    # The badge used to be `"stat" + (good ? "" : " dim")`, and `.dim` is only
+    # defined for `.detailtext` -- so "this version cannot be carried forward"
+    # drew in the same green as "one click and it is done".  Colour is how the
+    # player scans nineteen rows, so the mapping is pinned as text AND measured
+    # in the harness (the harness can compute a className; this file cannot).
+    urow = page[page.index("function upgradeRow(r)"):]
+    urow = urow[:urow.index("\n}\n") + 3]
+    check("the verdict badge is not coloured by a class that does nothing",
+          '" dim"' not in urow and "good ?" not in urow, urow[:160])
+    check("each verdict maps to its own pill",
+          'r.verdict === "mergeable" ? ""' in urow
+          and 'r.verdict === "conflicts" ? " warn"' in urow
+          and 'r.verdict === "impossible" ? " bad"' in urow
+          and ': " plain"' in urow, urow[:200])
+    check("the two pills this page relies on are declared",
+          page.count("#repair .stat.warn {") == 1
+          and page.count("#repair .stat.plain {") == 1)
+
+    # ---- 5. the browser harness pins the same contract ---------------------
     harness = io.open(os.path.join(ROOT, "_probe", "ui_page_harness.js"),
                       encoding="utf-8").read()
     check("the browser harness pins the same contract",

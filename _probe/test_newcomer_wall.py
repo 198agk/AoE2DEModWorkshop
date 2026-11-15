@@ -103,9 +103,13 @@ def main():
     check("rank 1 exists exactly when one of them is enabled",
           bool(enabled) == bool(firsts), (len(enabled), len(firsts)))
     if enabled:
+        # Rank 1 = the one the engine reaches first = the SMALLEST Priority
+        # number, because Priority 1 sits at the top of the engine's list and
+        # the game loads "mods higher up in the list"
+        # (IDS_MODMGR_PRIORITY_EXPLANATION).
         check("rank 1 is the highest priority",
-              firsts[0]["priority"] == max(m["priority"] for m in enabled),
-              (firsts[0]["priority"], max(m["priority"] for m in enabled)))
+              firsts[0]["priority"] == min(m["priority"] for m in enabled),
+              (firsts[0]["priority"], min(m["priority"] for m in enabled)))
         check("the count it reports is the number competing",
               firsts[0]["dat_competing"] == len(enabled),
               (firsts[0]["dat_competing"], len(enabled)))

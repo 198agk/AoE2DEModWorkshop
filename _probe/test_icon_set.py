@@ -19,10 +19,14 @@ What is being pinned, and why each part could be false:
    a same-value write, so the branch that says "the record did not need to
    change" is load-bearing -- without it the tool reports failure AFTER the
    merge table has already swapped the image.
-5. A save that makes TWO folders must say so.  The engine ignores `widgetui/`
-   next to a `.dat`; the emitter moves it to `<title>_ui` and puts that in the
-   manifest; `save_session` used to answer with five keys, none of them that, so
-   the player enabled the data half, launched, and saw the empty box again.
+5. A save that makes TWO folders must say so -- and a picture does not have to
+   make two.  The engine ignores `widgetui/` next to a `.dat`; the emitter moves
+   it to `<title>_ui` and puts that in the manifest, and `save_session` used to
+   answer with five keys, none of them that, so the player enabled the data
+   half, launched, and saw the empty box again.  The other half of the same
+   fact: a record that keeps its slot needs no `.dat` edit at all, so that
+   build is ONE folder (section 7b).  The two shapes are pinned separately
+   because they are the two answers the player is choosing between.
 6. The page's wire key must be readable by the contract checker.  It matches
    keys with `[A-Za-z_]+`, so `data_b64` parsed as `data_b` and the route read
    as ignoring a key the page sends.  The pattern is fixed, not the key, because
@@ -124,11 +128,15 @@ def main():
     b64 = "data:image/png;base64," + base64.b64encode(one).decode("ascii")
 
     t0 = time.time()
+    # `inplace=False` throughout sections 2-7: those checks are about the
+    # NEW-SLOT path (a record that has to be renumbered), which is still the
+    # only way to change one unit on a shared slot.  The in-place path has its
+    # own section below, because its whole point is the opposite answer.
     d_path = app.set_icon(kind="unit", record=74, civ="British", path=p1,
-                          dry=True)
+                          dry=True, inplace=False)
     dry_s = time.time() - t0
     d_b64 = app.set_icon(kind="unit", record=74, civ="British", data_b64=b64,
-                         filename="x.png", dry=True)
+                         filename="x.png", dry=True, inplace=False)
     check("a preview writes nothing",
           d_path.get("ok") and d_path.get("dry") is True
           and not app._icons, "%.2f s" % dry_s)
@@ -144,8 +152,10 @@ def main():
           "%r -> %r" % (d_path.get("was"), d_path.get("becomes")))
 
     # ---- 3. two records, two slots ---------------------------------------
-    a = app.set_icon(kind="unit", record=74, civ="British", path=p1, dry=False)
-    b = app.set_icon(kind="unit", record=83, civ="British", path=p2, dry=False)
+    a = app.set_icon(kind="unit", record=74, civ="British", path=p1,
+                     dry=False, inplace=False)
+    b = app.set_icon(kind="unit", record=83, civ="British", path=p2,
+                     dry=False, inplace=False)
     check("two records get two slots",
           a.get("ok") and b.get("ok") and a["slot"] != b["slot"],
           (a.get("slot"), b.get("slot")))
@@ -162,7 +172,8 @@ def main():
 
     # ---- 4. same record, second picture: replace, do not refuse -----------
     first_tex = {k: v for k, v in app._icons.items() if k.endswith(".dds")}
-    c = app.set_icon(kind="unit", record=74, civ="British", path=p2, dry=False)
+    c = app.set_icon(kind="unit", record=74, civ="British", path=p2,
+                     dry=False, inplace=False)
     check("a second picture for the same record succeeds",
           c.get("ok") is True, c.get("error"))
     check("...in the SAME slot", c.get("slot") == a["slot"],
@@ -182,11 +193,17 @@ def main():
          "要给出这要换图标的记录编号"),
         (app.set_icon(kind="building", record=74, path=p1),
          "只有单位和科技有图标"),
+        # 999999 exists in NO civilization, so since _unit_missing was split
+        # (server.py:5727, 2026-11-12) the sentence is the "nowhere at all"
+        # one, not "not in this civilization".  Asserting the old wording sent
+        # the reader looking for the right civilization when there is none --
+        # which is exactly the confusion the split exists to remove.
         (app.set_icon(kind="unit", record=999999, civ="British", path=p1),
-         "这个文明里没有第 999999 号单位"),
+         "第 999999 号单位在 63 个文明里都没有记录"),
         (app.set_icon(kind="tech", record=999999, path=p1),
          "没有第 999999 号科技"),
-        (app.set_icon(kind="unit", record=74, civ="British", slot=9, path=p1),
+        (app.set_icon(kind="unit", record=74, civ="British", slot=9, path=p1,
+                      inplace=False),
          "图标槽只能取"),
         (app.set_icon(kind="unit", record=74, civ="British"),
          "没有给出要用的图片"),
@@ -194,6 +211,13 @@ def main():
     for got, must in bad:
         check("refuses: %s" % must, got.get("ok") is False
               and must in str(got.get("error")), got.get("error"))
+    # ...and the "nowhere at all" refusal must NOT blame a civilization: that
+    # wording is reserved for ids that exist somewhere else (see the docstring
+    # of `_unit_missing`).  Two truths, two sentences.
+    nowhere = app.set_icon(kind="unit", record=999999, civ="British", path=p1)
+    check("an id that exists nowhere does not blame a civilization",
+          "这个文明里没有" not in str(nowhere.get("error")),
+          nowhere.get("error"))
     check("a refused picture writes no icon state",
           len(app._icons) == 4, sorted(app._icons))
 
@@ -214,7 +238,11 @@ def main():
     check("the pictures stay in memory: an orphan texture is cheaper than a "
           "record pointing at nothing", len(app._icons) == 4, sorted(app._icons))
 
-    # ---- 7. a save says there are TWO folders ---------------------------
+    # ---- 7. a save that moved IconID says there are TWO folders ----------
+    # Every write above was `inplace=False`, i.e. a real .dat edit, so this
+    # save MUST still split and MUST still say so.  The one-folder case is a
+    # different session and it gets its own section (7b): conflating them was
+    # how the tool shipped a build nobody could enable correctly.
     outdir = os.path.join(ROOT, "_out", "_nailicon")
     os.environ["AOE2MOD_BUILD_OUT"] = outdir
     man = app.save_session(title="nail icon save")
@@ -247,6 +275,91 @@ def main():
           and not any(r.startswith("widgetui/") for r in dat_landed),
           sorted(dat_landed))
 
+    # ---- 7b. a save that did NOT move IconID is ONE folder ---------------
+    # This is the whole point of in-place: the record already names the slot,
+    # so the picture is three files under widgetui/ and nothing else.  A save
+    # that still carried a .dat would be split by the emitter and the player
+    # would be back to enabling two mods for one picture -- the complaint this
+    # mode exists to answer.
+    one = S.App()
+    one.session_raw()
+    ip = one.set_icon(kind="unit", record=74, civ="British", path=p1,
+                      dry=False)
+    check("an icon swap defaults to in-place", ip.get("mode") == "inplace",
+          (ip.get("mode"), ip.get("error")))
+    check("...which leaves the record's IconID alone",
+          ip.get("record_unchanged") is True and _icon_id(one, 74) == ip["slot"],
+          (_icon_id(one, 74), ip.get("slot")))
+    check("...and therefore has no pending .dat edit",
+          one.pending_edits() == [], len(one.pending_edits()))
+    check("the preview lists the other units on that slot",
+          isinstance(ip.get("shares"), list) and
+          any(s.get("record") == 33 for s in ip["shares"]),
+          ip.get("shares"))
+    check("a picture alone is enough to save",
+          one.session_info().get("picture_count") == 1
+          and one.session_info().get("pending") == 1,
+          one.session_info().get("pending"))
+    man1 = one.save_session(title="nail icon inplace")
+    check("the one-folder save succeeds", man1.get("ok") is True,
+          man1.get("error"))
+    check("it carries no .dat", man1.get("carries_dat") is False,
+          man1.get("carries_dat"))
+    check("it reports NO second folder", man1.get("ui_mod_dir") is None,
+          man1.get("ui_mod_dir"))
+    only = []
+    for base, _dirs, fs in os.walk(man1.get("built") or ""):
+        only += [os.path.relpath(os.path.join(base, f), man1.get("built"))
+                 .replace(os.sep, "/") for f in fs]
+    check("one folder holds the picture and both tables",
+          any(r.endswith(".dds") for r in only)
+          and "widgetui/icons.json" in only
+          and "widgetui/materials.json" in only, sorted(only))
+    check("...and no .dat anywhere in it",
+          not any(r.endswith(".dat") for r in only), sorted(only))
+    check("...and no sibling folder was written",
+          not os.path.isdir((man1.get("built") or "") + "_ui"),
+          (man1.get("built") or "") + "_ui")
+    merged = json.loads(one._icons["widgetui/icons.json"].decode("utf-8"))
+    shipped_i, _shipped_m = IA.shipped(_game_root())
+    moved = [k for k in shipped_i["Units"]
+             if merged["Units"].get(k) != shipped_i["Units"][k]]
+    check("re-pointing touches exactly the slot it repainted",
+          moved == [str(ip["slot"]).zfill(3)],
+          (moved, str(ip["slot"]).zfill(3)))
+
+    # ---- 7c. "all civilizations" is STILL one folder ---------------------
+    # The complaint this whole mode answers was heard while the write scope
+    # said 全部文明, and the first draft of in-place gave up there: unit 74 has
+    # 57 copies on slot 8 and 6 on slot 600 (the DLC civs), the slots did not
+    # agree, so the write fell back to renumbering IconID -- a .dat, two
+    # folders, the exact thing being fixed.  A record that names TWO slots is
+    # still repaintable: two textures, two material rows, zero .dat bytes.
+    allc = S.App()
+    allc.session_raw()
+    ipa = allc.set_icon(kind="unit", record=74, civ="*", path=p1, dry=False)
+    check("an all-civ icon write stays in-place",
+          ipa.get("mode") == "inplace",
+          (ipa.get("mode"), ipa.get("why_not_inplace")))
+    check("...and repaints every slot the record names, not just one",
+          sorted(ipa.get("slots") or []) == [8, 600], ipa.get("slots"))
+    check("...with a texture per slot",
+          len(set(ipa.get("files_all") or [])) == 2, ipa.get("files_all"))
+    check("...and it still has no pending .dat edit",
+          allc.pending_edits() == [], len(allc.pending_edits()))
+    mana = allc.save_session(title="nail icon all civs")
+    check("the all-civ save is ONE folder too",
+          mana.get("ok") is True and mana.get("carries_dat") is False
+          and mana.get("ui_mod_dir") is None,
+          (mana.get("carries_dat"), mana.get("ui_mod_dir")))
+    onlya = []
+    for base, _dirs, fs in os.walk(mana.get("built") or ""):
+        onlya += [os.path.relpath(os.path.join(base, f), mana.get("built"))
+                  .replace(os.sep, "/") for f in fs]
+    check("...holding two textures and no .dat",
+          len([r for r in onlya if r.endswith(".dds")]) == 2
+          and not any(r.endswith(".dat") for r in onlya), sorted(onlya))
+
     # ---- 8. the route is in do_POST and reads the page's keys ------------
     get_at = server.index("        def do_GET(self):")
     post_at = server.index("        def do_POST(self):")
@@ -267,7 +380,9 @@ def main():
           "A-Za-z0-9_" in contract, "was [A-Za-z_]+")
 
     # ---- 10. the page: box, picker, preview, write, pending bar ----------
-    check("the pane grows the box", "drawIconBox(pane, d);" in page)
+    check("the pane grows the box",
+          "drawIconBox(t.body, d);" in page,
+          "the strip owns the <details>, so the box fills a body")
     check("the box has a file picker",
           'pick.type = "file"' in page and 'pick.id = "ed-icon-file"' in page)
     check("it accepts the three formats the reader can actually open",
@@ -275,15 +390,31 @@ def main():
     check("the write button starts disabled",
           'go.id = "ed-icon-go";' in page and "go.disabled = true;" in page)
     check("the preview is the SERVER's answer, not a guess",
-          'api("/api/icon-set", {kind: kind, record: id, civ: edCiv(),\n'
+          'api("/api/icon-set", {kind: kind, record: id, civ: edScopeCiv(),\n'
+          '      inplace: !!inplace,\n'
           '      data_b64: data, filename: filename, dry: true});' in page)
+    check("the write sends the same scope and the same switch",
+          'api("/api/icon-set", {kind: kind, record: id, civ: edScopeCiv(),\n'
+          '        inplace: !!inplaceBox.checked,' in page)
+    check("the switch is a visible checkbox, not a hidden rule",
+          'inplaceBox.id = "ed-icon-inplace";' in page
+          and 'inplaceBox.type = "checkbox";' in page
+          and "原地换" in page)
     check("the picture beside the summary is the chosen file",
           "shot.src = String(fr.result || \"\");" in page,
           "the new slot is not in icons.json until the save")
     check("the preview says the picture is padded, not cropped",
           "留白" in page and "不拉伸也不裁" in page)
-    check("the preview warns about the split",
-          "模组会拆成两个文件夹" in page)
+    check("the preview says WHICH of the two shapes this build is",
+          "一个文件夹" in page and "模组会拆成两个文件夹" in page,
+          "one folder only when the record keeps its slot")
+    check("the preview names every slot the write repaints",
+          "(plan.slots || [plan.slot]).join" in page,
+          "a record can name two slots across 63 civs")
+    check("the preview names the units that share the slot",
+          "plan.shares" in page and "也指在同一个号上" in page)
+    check("a refused in-place says why, not just switches shape",
+          "plan.why_not_inplace" in page and "没法原地换" in page)
     check("the same-record case is named, not reported as a new slot",
           "j.record_unchanged" in page)
     check("the pending bar is refilled from the server after a write",
@@ -291,6 +422,17 @@ def main():
           and "edSyncPending();" not in page)
     check("the save toast names BOTH titles",
           "两个模组都要启用" in page and "(j.ui_info || {}).Title" in page)
+    check("an icon-only save does not read as \"0 项改动\"",
+          "function landedWhat(j)" in page and "j.pictures" in page
+          and page.count("+ landedWhat(j) +") == 2,
+          "a picture is pending work with no .dat edit")
+    check("the write toast lists the slots it actually wrote",
+          "(j.slots || [j.slot]).join" in page
+          and page.count("(j.slots || [j.slot]).join") == 1,
+          "one list, used by every sentence after a write")
+    check("the status line under the button names the same slots",
+          'was.textContent = "槽 " + slotText + " · 保存后生效"' in page
+          and 'was.textContent = "槽 " + slotText + " · 还没写入"' in page)
 
     bad_checks = [c for c in CHECKS if not c[1]]
     print()
@@ -300,9 +442,9 @@ def main():
         print("ICON SET: %d CHECK(S) FAILED" % len(bad_checks))
         return 1
     print("ICON SET: A PICTURE IS NOT A NUMBER -- IT IS A TEXTURE, A MATERIAL "
-          "ROW, A TEXTURE ROW AND A KEY THAT MUST ALL NAME THE SAME SLOT, TWO "
-          "RECORDS NEVER SHARE ONE, A SECOND PICTURE REPLACES THE FIRST, AND "
-          "THE SAVE SAYS THE BUILD IS TWO MODS BECAUSE IT IS")
+          "ROW, A TEXTURE ROW AND A KEY THAT MUST ALL NAME THE SAME SLOT.  A "
+          "PICTURE ALONE CAN KEEP THE NUMBER THE RECORD ALREADY HAS, AND THEN "
+          "THE BUILD IS ONE FOLDER; MOVING THE NUMBER COSTS A .dat AND TWO.")
     return 0
 
 

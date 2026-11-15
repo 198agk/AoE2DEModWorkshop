@@ -320,9 +320,14 @@ def main():
     check("the caption reads the headers",
           "X-Film-Poses" in html and "X-Film-Truncated" in html)
     df = body_of(html, "drawFields")
-    check("drawFields puts the block above the field rail",
-          "drawFilm(pane, d)" in df and
-          df.index("drawFilm(pane, d)") < df.index('el("div", "fgroup")'))
+    # 2026-11-11: 看动画 left the pane.  Drawn above the field rail it cost a
+    # permanent 26px band plus a 56px 换图标 band, and the first editable row
+    # fell below the fold -- the screen read as read-only.  It is one shut
+    # `<details id="edfilm">` inside the record strip (#edtools) now, still
+    # above the rail, and still lazy.
+    check("drawFields puts the block in the strip above the field rail",
+          'edTool(tools, "edfilm"' in df and
+          df.index('edTool(tools, "edfilm"') < df.index('el("div", "fgroup")'))
     check("and a tech record does not get it",
           'edKindOf(d) !== "tech"' in df)
     draw = body_of(html, "drawFilm")
@@ -395,7 +400,19 @@ def main():
                 "() => { const s = document.querySelector('#edpane .edhead .s');"
                 " return s && s.textContent.indexOf('编号 83') >= 0; }",
                 timeout=120000)
+            # 2026-11-11: 看动画 moved into the shut record strip (#edtools) so
+            # that the first editable row clears the fold -- 271px of record
+            # chrome sat between the title and the table.  The box is a
+            # `details` inside it now, so opening it is a click on its summary
+            # and nothing renders until that click (edges are lazy on purpose:
+            # the film costs one JSON plus one PNG per open).
             pg.wait_for_selector("#edfilm", timeout=60000)
+            check("看动画 is one shut line in the strip",
+                  not pg.query_selector("#edfilm").get_attribute("open"))
+            pg.click("#edfilm > summary")
+            # Opening the strip fills the box; the picture itself still waits
+            # for 看原图, so the shot is hidden until the click below.
+            pg.wait_for_selector("#ed-film-open", timeout=60000)
             check("the block is there and collapsed",
                   pg.query_selector("#ed-film-shot").is_hidden())
             pg.click("#ed-film-open")

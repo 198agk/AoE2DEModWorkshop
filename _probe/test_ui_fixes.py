@@ -103,7 +103,9 @@ with sync_playwright() as p:
     check(pg.evaluate("() => document.querySelector('#ed-civ').value") == "British",
           "but the VALUE stays the .dat spelling the API takes",
           pg.evaluate("() => document.querySelector('#ed-civ').value"))
-    scope = pg.evaluate("() => Array.from(document.querySelectorAll('#edpane .fgroup button'))"
+    # 2026-11-11: the write-scope chips share one row with the field filter now
+    # (#fbar), so they are no longer `.fgroup` inside the pane.
+    scope = pg.evaluate("() => Array.from(document.querySelectorAll('#fbar button'))"
                         ".map(b => b.textContent).filter(t => t.indexOf('只改') === 0)")
     check(bool(scope) and all(not s.isascii() for s in scope),
           "the write-scope chip is Chinese too", scope)
@@ -160,8 +162,14 @@ with sync_playwright() as p:
     check(shape["footH"] <= 180,
           "the card stays under 180px in a 821px window", shape["footH"])
 
-    # 4. the 0/-1 legend
-    leg = pg.evaluate("() => { const d = document.querySelector('.flegend');"
+    # 4. the 0/-1 legend.  2026-11-11: it is a shut `<details id="edlegend">`
+    # inside the record strip now, and its body is filled on first open, so the
+    # probe has to open it before reading.  The words are the assertion; where
+    # they sit on the page is not.
+    pg.evaluate("() => { const d = document.getElementById('edlegend');"
+                " if (d) d.open = true; }")
+    pg.wait_for_timeout(300)
+    leg = pg.evaluate("() => { const d = document.querySelector('#edlegend');"
                       " return d ? d.innerText : null; }")
     check(leg and "-1" in leg and "0" in leg,
           "a legend explains -1 and 0 where the numbers are", (leg or "")[:60])

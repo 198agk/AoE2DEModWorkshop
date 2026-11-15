@@ -172,7 +172,7 @@ def main(argv=None):
 
     # The claim is "no Python needed".  Assert it rather than trusting the copy:
     # if a python.exe or a .py ever reappears here, this is the place to notice.
-    # The 8 tables the engine reads at run time.  Listed by hand on purpose: the
+    # The 13 tables the engine reads at run time.  Listed by hand on purpose: the
     # check is "every path some Rust file asks for actually exists here", and a
     # list derived from the same walk that produced the copy could not fail.
     # (`dat_baseline.json` is a test fixture, not a runtime input, hence absent.)
@@ -180,6 +180,12 @@ def main(argv=None):
                 "effect_offsets.json", "entity_names.json", "sprite_art.json",
                 "stat_offsets.json", "tech_offsets.json", "civ_trees.json",
                 "tech_effects.json", "stat_mirrors.json",
+                # `desktop/aoe2mod-serve/src/sentences.rs:616` opens this one to
+                # spell a civilisation in Chinese; a missing table narrows the
+                # sentence reader without failing it, which is why it was easy
+                # to leave out of a hand-written list (it was, until
+                # 2026-11-13).
+                "civ_names.json",
                 # Without this one, every family edit silently writes ONE record
                 # (the villager becomes 63 writes instead of 1,701) and the
                 # screen still says "built ok" -- a missing table that reads as a

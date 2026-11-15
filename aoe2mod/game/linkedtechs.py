@@ -169,7 +169,7 @@ def next_name_id(doc, start=DEFAULT_NAME_ID):
 
 
 def add_group(doc, techs, name_id=None, comment="", kind="MutuallyExclusive",
-              local=True):
+              local=True, starting_tech=None, instant=None):
     """Append one group.  ``doc`` is mutated and returned.
 
     Refusals are deliberate and each is a sentence a player can act on:
@@ -178,6 +178,25 @@ def add_group(doc, techs, name_id=None, comment="", kind="MutuallyExclusive",
     * an unknown ``Type`` would be written and then silently ignored;
     * a technology that is already in a group would end up governed by two
       records, and the shipped file never does that (0 of 20 groups overlap).
+
+    A ``Cycle`` group is shaped differently from the other two, and the
+    difference is not cosmetic -- it is what the engine reads:
+
+        {"NameId": 424010, "Comment": "Merchant Trade Rates",
+         "Type": "Cycle", "StartingTech": 1215, "Instant": true,
+         "Techs": [1215, 1216, 1217]}
+
+    All four shipped cycles (424010 / 424012 / 424013 / 424014) carry
+    ``StartingTech`` and ``Instant`` and carry NO ``Local`` key; every
+    MutuallyExclusive and Toggleable group in the same file carries ``Local``
+    first and neither of those two.  Measured 2026-11-11 by reading
+    ``D:/Games/Steam/steamapps/common/AoE2DE/resources/_common/dat/linkedTechs.json``
+    byte for byte.
+
+    ``StartingTech`` defaults to the first member, which is what all four
+    shipped cycles say.  ``Instant`` defaults to true for Cycle (a flip button
+    that made the player wait out a research animation is not a flip button).
+    Both are refused when they contradict the member list.
     """
     techs = [int(t) for t in techs]
     if len(techs) < 2:
@@ -200,14 +219,43 @@ def add_group(doc, techs, name_id=None, comment="", kind="MutuallyExclusive",
             % "、".join("#%d（%s）" % (k, v) for k, v in sorted(taken.items())))
     if name_id is None:
         name_id = next_name_id(doc)
-    doc.setdefault("LinkedTechs", []).append({
-        "NameId": int(name_id),
-        "Comment": comment,
-        "Local": bool(local),
-        "Type": kind,
-        "Techs": techs,
-    })
+    if kind == "Cycle":
+        first = int(starting_tech) if starting_tech is not None else techs[0]
+        if first not in techs:
+            raise LinkedTechError(
+                "第一页（起始科技 %d）不在这一组的成员里。" % (first,))
+        rec = {
+            "NameId": int(name_id),
+            "Comment": comment,
+            "Type": kind,
+            "StartingTech": first,
+            "Instant": True if instant is None else bool(instant),
+            "Techs": techs,
+        }
+    else:
+        rec = {
+            "NameId": int(name_id),
+            "Comment": comment,
+            "Local": bool(local),
+            "Type": kind,
+            "Techs": techs,
+        }
+    doc.setdefault("LinkedTechs", []).append(rec)
     return doc
+
+
+def drop_group(doc, name_id):
+    """Remove one group by ``NameId``.  True when something was removed.
+
+    Used when the player deletes the last page of a flip button: the group
+    would otherwise name technologies that no longer exist, and the engine
+    reads the file before it reads the .dat.
+    """
+    want = int(name_id)
+    before = len(groups(doc))
+    doc["LinkedTechs"] = [g for g in groups(doc)
+                          if int(g.get("NameId", -1) or -1) != want]
+    return len(groups(doc)) != before
 
 
 def serialize(doc, style=None):
@@ -245,6 +293,93 @@ def emit_files(doc, style=None):
     """``{relative path with / separators: bytes}`` for the mod emitter."""
     return {LINKED_TECHS_REL.replace(os.sep, "/"): serialize(doc, style)}
 
+
+def cycle_boxes(pages_by_box, minimum=2):
+    """Turn the pages this session wrote into ``Cycle`` group descriptions.
+
+    ``pages_by_box`` is ``{(building, button): [tech ids]}`` -- exactly what
+    ``pseudopage.read_cycles`` reports for the file being saved.  A box with
+    ONE page is not a cycle: pressing it is a plain research button, and the
+    engine draws it as one, which is the honest thing for the first page a
+    player builds.
+
+    The starting technology is the LOWEST id of the box.  That is not arbitrary:
+    a page's units are usually already on the building when the box is first
+    built (that is what ``card_put`` wrote), and the pages after it only become
+    visible once a page turns them on -- so the earliest record is the one whose
+    effect matches what the building already shows.  The shipped cycles are all
+    written that way too (424010 starts at 1215, the first of 1215/1216/1217).
+    """
+    out = []
+    for (bld, btn), ids in sorted((pages_by_box or {}).items()):
+        techs = [int(t) for t in (ids or ())]
+        if len(techs) < int(minimum):
+            continue
+        out.append({"building": int(bld), "button": int(btn),
+                    "techs": techs, "starting": min(techs)})
+    return out
+
+
+def sync_cycles(doc, boxes, comment=""):
+    """Make ``doc`` carry exactly the ``Cycle`` groups ``boxes`` describe.
+
+    Returns ``(added, removed)``.  ``removed`` counts records this call had to
+    drop, and every one of them shared a technology with a box being written:
+    the engine refuses to have one technology governed by two records (the
+    shipped file never does it, 0 of 20 groups overlap), so a stale record from
+    an earlier save of the same box has to go before the new one can land.
+
+    Groups that touch none of our technologies are left exactly as they are --
+    the player's own 20-odd groups, and any other mod's, survive byte for byte
+    as far as the JSON encoder can express them.
+    """
+    mine = set()
+    for box in boxes or ():
+        mine.update(int(t) for t in (box.get("techs") or ()))
+    if not mine:
+        return 0, 0
+    keep, removed = [], 0
+    for g in groups(doc):
+        held = set()
+        for t in (g.get("Techs") or ()):
+            try:
+                held.add(int(t))
+            except (TypeError, ValueError):
+                continue
+        if held & mine:
+            removed += 1
+            continue
+        keep.append(g)
+    doc["LinkedTechs"] = keep
+    added = 0
+    for box in boxes or ():
+        techs = [int(t) for t in (box.get("techs") or ())]
+        if len(techs) < 2:
+            continue
+        label = comment or ("%s 第 %d 格" % (box.get("building"), box.get("button")))
+        add_group(doc, techs, comment=label, kind="Cycle",
+                  starting_tech=box.get("starting"))
+        added += 1
+    return added, removed
+
+
+def emit_cycles(game_root, boxes, comment=""):
+    """``{mod relative path: bytes}`` for the file with our cycles added.
+
+    ``None`` when there is nothing to write, so a save that never touched a
+    flip button does not ship a copy of a 3.9 KB file the player already has
+    (a mod file REPLACES the player's, so copying it also freezes every other
+    mod's groups at this moment in time).
+    """
+    boxes = [b for b in (boxes or ()) if len(b.get("techs") or ()) >= 2]
+    if not boxes:
+        return None
+    doc, _note = load(game_root)
+    style = detect_style(shipped_bytes(game_root))
+    added, removed = sync_cycles(doc, boxes, comment=comment)
+    if not added:
+        return None
+    return emit_files(doc, style)
 
 def describe(tech_names, kind, comment=""):
     """The sentence the preview and the mod title both use."""

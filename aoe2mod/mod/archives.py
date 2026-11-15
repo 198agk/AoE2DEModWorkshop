@@ -39,15 +39,36 @@ its cross-generation fallback is a last resort the caller is told about via
 
 WHERE THE BLOBS LIVE
 
-`%LOCALAPPDATA%\\aoe2de-mod-workshop\\dat_archive\\<sha256[:16]>.dat`, beside
-`builds.json`, for the same reason `provenance.py` documents: a mod folder must keep
-the exact shape published mods have (`info.json` + `thumbnail.*` at the root), and no
-published mod carries an extra file of ours.  The state dir is resolved ONLY through
-`provenance.state_dir()`, so `AOE2MOD_STATE_DIR` / `AOE2MOD_STATE` isolate tests from
-the player's real records.
+`<tool>/dat_archive/<sha256[:16]>.dat` -- inside the tool's own folder, beside `log/`
+and `_mods_out/`, and NOT under `%LOCALAPPDATA%`.
+
+This moved on 2026-11-10, at the player's request ("let the tool keep a copy of the
+official data in the tool's own folder every time the game updates it").  The old
+location was inherited from `provenance.py`'s reasoning -- a local state file keeps
+every mod folder shaped like a published mod -- and that reasoning still holds for
+`builds.json`.  But the shelf is not a record of what this machine did; it is the
+DATA the upgrade engine reasons from.  It ships with the tool, it travels when the
+folder is copied to another machine, and a `%LOCALAPPDATA%` folder is the first
+thing a disk cleaner deletes.  Measured before the move: 53 blobs, 328,554,973
+bytes, 2019-10-18 (VER 6.6) through 2026-10-27 (VER 8.9).
+
+Three overrides, in this order:
+
+  `AOE2MOD_ARCHIVE_DIR`        the shelf itself, verbatim (a player who keeps it
+                               elsewhere)
+  `AOE2MOD_STATE_DIR` / `AOE2MOD_STATE`
+                               keeps the old `<state>/dat_archive` layout, so every
+                               suite written before the move stays isolated
+  nothing                      `<tool>/dat_archive`
+
+A shelf left behind in the old place is ADOPTED, not ignored: the first call copies
+the blobs across and repoints the index (`_adopt_legacy`).  Silently starting from an
+empty shelf would look exactly like "the archive was deleted", and would turn every
+installed mod in the list into an `impossible`.
 
 A blob is stored as the bare raw-deflate stream the engine reads -- not the inflated
-93 MB.  Eight builds of this size would be 746 MB inflated against 95 MB compressed.
+93 MB.  Fifty-three builds of this size are 4.9 GB inflated against 313 MB compressed,
+which is the difference between a shelf worth shipping and one that is not.
 Every read re-inflates and re-hashes, and a blob that no longer matches its own name
 is reported as missing rather than raised: a truncated file is a fact about the disk,
 not an exception for the screen to catch.
@@ -80,21 +101,138 @@ DAT_REL = os.path.join("resources", "_common", "dat", "empires2_x2_p1.dat")
 STATE_VERSION = 1
 ARCHIVE_DIR = "dat_archive"
 INDEX_FILE = "dat_archive.json"
+#: The BUILD LEDGER: one row per Steam manifest this shelf was assembled from,
+#: with the date that manifest appeared on Steam.  The index above answers "which
+#: .dat do I hold"; this answers "when was that build live" -- two different
+#: questions, and only the ledger can answer the second.  It is generated beside
+#: the shelf (see MANIFEST.csv, same rows in CSV for a human with Excel), ships
+#: with it, and is joined to the index by raw_sha256: a row here that names a
+#: build we do not hold is not printed as if we had it.
+BUILDS_FILE = "index.json"
 BLOB_SUFFIX = ".dat"
 #: 16 hex chars = 64 bits.  An accidental collision needs two `.dat` builds whose
 #: first 8 bytes of hash agree; the full sha256 stays in the index and is re-checked
 #: on every read, so a collision would be caught rather than served.
 BLOB_NAME_CHARS = 16
-#: Keep this many builds by default: a patch cycle is monthly and a rebuild may need
-#: the build the user's mod was made from a couple of patches ago.
-PRUNE_KEEP = 8
+#: The shelf itself, when a caller wants it somewhere other than the tool folder.
+ARCHIVE_DIR_ENV = "AOE2MOD_ARCHIVE_DIR"
+
+#: How many blobs to keep when nobody says otherwise.  ZERO MEANS EVERYTHING.
+#:
+#: This used to be 8 ("a couple of patches ago"), written when the shelf was a cache.
+#: It is not a cache any more: the whole point of the 2026-11-10 move is that the
+#: history IS the product, and a mod made three patches ago is exactly the mod that
+#: needs carrying.  So `prune()` now deletes nothing without an explicit count, and
+#: nothing in the tree calls it -- 53 blobs are 313 MB against 93 MB of `.dat` per
+#: build, paid once, and the whole shelf is what makes a patch survivable.
+PRUNE_KEEP = 0
+
+
+def tool_root():
+    r"""The folder the player calls "the tool" -- where `log/` and `dat_archive/` go.
+
+    Same three-levels-up-from-the-package walk, and the same "never write inside
+    `app/`" rule, as `aoe2mod/ui/server.py:_tool_root`, and for the same measured
+    reason (2026-11-02: build output that landed in `app/_mods_out/` grew the
+    package from 50.9 MB to 1.7 GB).  A shipped layout is::
+
+        <tool>/aoe2-mod-workshop.exe
+        <tool>/runtime/...
+        <tool>/app/aoe2mod/mod/archives.py     <- this file, two levels under app/
+
+    so the walk stops at `<tool>`, not at `<tool>/app`.
+
+    Written out again rather than imported from the UI layer: `_probe/test_archives.py`
+    imports this module alone, and `from ..ui import server` would drag the whole
+    HTTP server into an engine test that only wants to hash a blob.
+    """
+    here = os.path.dirname(os.path.abspath(__file__))
+    root = os.path.dirname(os.path.dirname(here))
+    if os.path.basename(root).lower() == "app":
+        bundle = os.path.dirname(root)
+        if os.path.isdir(os.path.join(bundle, "runtime")):
+            return bundle
+    return root
+
+
+def legacy_dir():
+    """Where the shelf lived before 2026-11-10; kept so it can be adopted once."""
+    return os.path.join(PV.state_dir(), ARCHIVE_DIR)
+
+
+#: One adoption attempt per process: a failed copy must not be retried on every
+#: `index_path()` call, and `load_index()` sits on the page-load path.
+_ADOPTED = False
+
+
+def _adopt_legacy(d):
+    """Carry a shelf left at the old location into `d`, once.
+
+    Copies the blobs, repoints every `path`, then writes the index.  The old folder
+    is left alone: a half-finished adoption must not destroy the only copy, the copy
+    is idempotent, and a later run finishes it.  Failures are swallowed -- an empty
+    shelf costs one rebuild, while raising here would take the screen down on a
+    page load.
+    """
+    global _ADOPTED
+    if _ADOPTED:
+        return
+    _ADOPTED = True
+    legacy = legacy_dir()
+    if os.path.abspath(legacy) == os.path.abspath(d):
+        return
+    if not os.path.isdir(legacy):
+        return
+    src = os.path.join(legacy, INDEX_FILE)
+    dst = os.path.join(d, INDEX_FILE)
+    if not os.path.isfile(src) or os.path.isfile(dst):
+        return
+    try:
+        with open(src, "rb") as fh:
+            doc = json.loads(fh.read().decode("utf-8-sig"))
+        got = doc.get("entries")
+        if not isinstance(got, dict):
+            return
+        for sha, ent in got.items():
+            if not isinstance(ent, dict) or not isinstance(sha, str):
+                continue
+            name = sha[:BLOB_NAME_CHARS] + BLOB_SUFFIX
+            blob_src = os.path.join(legacy, name)
+            blob_dst = os.path.join(d, name)
+            if os.path.isfile(blob_src) and not os.path.isfile(blob_dst):
+                shutil.copyfile(blob_src, blob_dst)
+            ent["path"] = blob_dst
+            if os.path.isfile(blob_dst):
+                ent["file_bytes"] = os.path.getsize(blob_dst)
+        tmp = dst + ".tmp"
+        with open(tmp, "w", encoding="utf-8", newline="\n") as fh:
+            json.dump(doc, fh, ensure_ascii=False, indent=2, sort_keys=True)
+            fh.write("\n")
+        os.replace(tmp, dst)
+    except Exception:                                   # noqa: BLE001
+        return
 
 
 def archive_dir():
-    """Where the blobs live; created on first use."""
-    d = os.path.join(PV.state_dir(), ARCHIVE_DIR)
+    """Where the blobs live; created on first use.
+
+    The tool folder, unless a caller says otherwise.  The `AOE2MOD_STATE_DIR` branch
+    exists so a suite that isolates its state does not also spend 313 MB writing into
+    the real shelf -- and does not adopt the player's shelf into a temp folder.
+    """
+    override = os.environ.get(ARCHIVE_DIR_ENV)
+    isolated = bool(os.environ.get(PV.STATE_DIR_ENV)
+                    or os.environ.get(PV.STATE_DIR_ENV_NATIVE))
+    if override:
+        d = os.path.abspath(override)
+    elif isolated:
+        d = os.path.join(PV.state_dir(), ARCHIVE_DIR)
+    else:
+        d = os.path.join(tool_root(), ARCHIVE_DIR)
     if not os.path.isdir(d):
         os.makedirs(d)
+    if not override and not isolated:
+        _adopt_legacy(d)
     return d
 
 
@@ -144,6 +282,57 @@ def save_index(ix):
         fh.write("\n")
     os.replace(tmp, path)
     return path
+
+
+def builds_path():
+    return os.path.join(archive_dir(), BUILDS_FILE)
+
+
+def load_builds():
+    """Every manifest the shelf was assembled from, oldest first.
+
+    A missing or damaged ledger reads as EMPTY rather than raising, for the same
+    reason a damaged index does: the blobs are the product, and a shelf that can
+    still inflate 53 builds is not made useless by a broken side-car.  The panel
+    falls back to "this tool first stored it on <date>", which it can always
+    know, instead of printing a date it cannot.
+
+    Rows are normalised here rather than in the caller because the file is
+    written by a harvest script that has changed shape once already (it carried
+    `file` paths before it carried `gid`), and a panel that trusted the raw
+    dict would break on the next harvest.
+    """
+    try:
+        with open(builds_path(), "rb") as fh:
+            doc = json.loads(fh.read().decode("utf-8-sig"))
+    except (IOError, OSError, ValueError):
+        return []
+    rows = doc.get("files") if isinstance(doc, dict) else None
+    if not isinstance(rows, list):
+        return []
+    out = []
+    for r in rows:
+        if not isinstance(r, dict):
+            continue
+        sha = str(r.get("raw_sha256") or "").strip().lower()
+        if not sha:
+            continue
+        try:
+            raw_bytes = int(r.get("raw_bytes") or 0)
+            file_bytes = int(r.get("file_bytes") or 0)
+        except (TypeError, ValueError):
+            raw_bytes = file_bytes = 0
+        out.append({"date": str(r.get("date") or "")[:10],
+                    "time": str(r.get("time") or "")[:8],
+                    "gid": str(r.get("gid") or ""),
+                    "ver": str(r.get("ver") or ""),
+                    "raw_bytes": raw_bytes,
+                    "file_bytes": file_bytes,
+                    "sha256": sha,
+                    "dup_of": str(r.get("dup_of") or ""),
+                    "branch": str(r.get("branch") or "")})
+    out.sort(key=lambda r: (r["date"], r["time"], r["gid"]))
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -387,11 +576,15 @@ def describe():
 def prune(keep=PRUNE_KEEP):
     """Delete the oldest blobs beyond `keep`.  The newest entry is never deleted.
 
-    Returns the list of removed shas.  `keep <= 0` is treated as 1: pruning the
-    build the game currently ships would delete the very thing the next rebuild
-    needs, and no caller means that.
+    Returns the list of removed shas.  `keep <= 0` removes NOTHING and returns an
+    empty list: since 2026-11-10 the shelf is the product (see `PRUNE_KEEP`), and a
+    default that trimmed to one build would delete the generation the next patch has
+    to carry a mod out of.  A caller that really wants a window passes a positive
+    count.
     """
-    keep = max(1, int(keep or 1))
+    keep = int(keep or 0)
+    if keep <= 0:
+        return []
     rows = entries()                      # newest first
     if len(rows) <= keep:
         return []
@@ -446,7 +639,7 @@ def size_candidates(ver=None):
     return {"sizes": out, "ver": ver, "entries": sum(len(v) for v in out.values())}
 
 
-def pick_base(ver, prefer_len=None):
+def pick_base(ver, prefer_len=None, exclude=None):
     """Choose an archived build of one generation WITHOUT diffing anything.
 
     ``best_base`` answers "which archived build is closest to this stream", and
@@ -461,11 +654,19 @@ def pick_base(ver, prefer_len=None):
 
     Returns ``{"sha256", "raw", "ver", "raw_bytes", "exact_len", "candidates"}``
     or the empty shape when this generation was never archived.
+
+    ``exclude`` drops shas from the pool.  The one caller that needs it is
+    ``upgrade._load_pair``, and what it drops is the NEW stream -- the build the
+    mod is being carried onto.  Today's build is always in the shelf (the tool
+    notes it on every launch), and it always sorts first by ``first_seen``, so
+    without this the "before" would silently be "after" and every mod that added
+    records would come back as "nothing to carry" on exactly the day it matters.
     """
     ix = load_index()
+    skip = set(exclude or ())
     rows = []
     for sha, ent in ix["entries"].items():
-        if not isinstance(ent, dict):
+        if not isinstance(ent, dict) or sha in skip:
             continue
         if ver and ent.get("ver") != ver:
             continue

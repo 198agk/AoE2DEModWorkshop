@@ -28,7 +28,9 @@ Run: python -X utf8 -u _probe/test_upgrade_guard.py
 """
 import os
 import sys
+import tempfile
 import time
+import zlib
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -60,6 +62,42 @@ def fx(case, part):
                         "resources", "_common", "dat", "empires2_x2_p1.dat")
 
 
+def _unarchived_copy(new_dat):
+    """The shipped stream with its version header relabelled ``VER 9.9``.
+
+    Same byte length as the real header (``VER 8.9`` and ``VER 9.9`` are both
+    seven characters plus the NUL), so nothing but the generation string
+    changes and the file is still a structurally valid .dat.
+    """
+    raw = UP._inflate(new_dat)
+    if raw is None:
+        raise SystemExit("cannot read %s" % new_dat)
+    head, sep, rest = raw.partition(b"\x00")
+    fake = b"VER 9.9" + (sep or b"\x00") + rest
+    out_dir = os.path.join("_probe", "_tmp", "unarchived")
+    os.makedirs(out_dir, exist_ok=True)
+    out = os.path.join(out_dir, "empires2_x2_p1.dat")
+    c = zlib.compressobj(6, zlib.DEFLATED, -15)
+    with open(out, "wb") as fh:
+        fh.write(c.compress(fake) + c.flush())
+    return out
+
+
+def _solo_archive(new_dat):
+    """Point the archive at a fresh directory holding exactly one build.
+
+    ``archive_dir()`` honours ``AOE2MOD_ARCHIVE_DIR`` before anything else (that
+    is how the shelf lives outside the source tree at all), so one assertion can
+    run against a scratch shelf without touching the real one.  The single entry
+    is the SHIPPED stream -- which is what a new install looks like after its
+    first launch, before any patch has arrived.
+    """
+    d = tempfile.mkdtemp(prefix="arch_solo_")
+    os.environ[AR.ARCHIVE_DIR_ENV] = d
+    AR.note_file(new_dat, label="game")
+    return d
+
+
 def main():
     by = installed()
     new = fx("mod_touches_a", "new")
@@ -68,22 +106,62 @@ def main():
         return 2
 
     # --- 1. a generation we never archived is refused, not guessed ----------
+    #
+    # This has to be a synthetic file now, not a real mod.  The case used to
+    # ride on `297820_`, whose header says VER 7.8 and which was refused only
+    # because 7.8 had never been archived; once the 2019-onward sweep filled
+    # the archive with all eleven generations, 7.8 exists and that mod is
+    # refused for a DIFFERENT reason (its target is 8.9, a different layout).
+    # A test that changes its reason when the archive grows is not guarding
+    # anything, so the "no archived build of this generation" branch gets its
+    # own input: the shipped file with its version header rewritten.
+    synth = _unarchived_copy(new)
+    t = time.time()
+    why = None
+    try:
+        UP.analyze(mod_dat=synth)
+    except UP.UpgradeError as exc:
+        why = str(exc)
+    dt = time.time() - t
+    ok("a generation with no archived base is refused", why is not None,
+       why and why[:40])
+    ok("that refusal says what to do about it",
+       why is not None and "记录官方数据" in why, why and why[-40:])
+    ok("and it decides from the index, without parsing 48 MB", dt < 2.0,
+       "%.2fs" % dt)
+    ok("the archive really has no build of that generation",
+       not AR.size_candidates("VER 9.9")["sizes"],
+       str(sorted(AR.size_candidates("VER 9.9")["sizes"])))
+
+    # ... and an old generation that IS archived is carried across by
+    # re-encoding, not refused.  This used to be the mirror of case 1 --
+    # "we have a base, but it is the wrong generation, so refuse" -- and that
+    # stopped being true once _port_plan existed: records are re-encoded field
+    # by field into the target layout, so a 7.8 base and an 8.9 target no
+    # longer mean "the offsets cannot be moved".  What must still hold is the
+    # opposite promise: if it says it crossed, it has to SAY that records were
+    # re-encoded, it has to have found a base of the mod's own generation, and
+    # nothing may be left in the unmapped list.
     old = [n for n in by if n.startswith("297820_")]
     if old:
-        name = old[0]
-        t = time.time()
-        why = None
-        try:
-            UP.analyze(mod_dat=by[name])
-        except UP.UpgradeError as exc:
-            why = str(exc)
-        dt = time.time() - t
-        ok("a generation with no archived base is refused", why is not None,
-           why and why[:40])
-        ok("that refusal says what to do about it",
-           why is not None and "记录官方数据" in why, why and why[-40:])
-        ok("and it decides from the index, without parsing 48 MB", dt < 2.0,
-           "%.2fs" % dt)
+        # analyze() answers with a report instead of raising (only upgrade()
+        # raises), so the verdict is read off the report here.
+        rep_old = UP.analyze(mod_dat=by[old[0]])
+        said = " ".join([str(rep_old.get("summary") or "")]
+                        + [str(x) for x in (rep_old.get("notes") or [])])
+        ok("a mod from an archived OLD generation crosses instead of refusing",
+           rep_old["verdict"] in (UP.MERGEABLE, UP.CONFLICTS),
+           rep_old["verdict"] + " :: " + said[:60])
+        ok("and it says in words that the records were re-encoded",
+           "重新编码" in said, said[:60])
+        ok("and its base really is that older generation",
+           rep_old["base"]["ver"] == "VER 7.8",
+           "%s vs mod %s, target %s" % (rep_old["base"]["ver"],
+                                         rep_old["mod"]["ver"],
+                                         rep_old["new"]["ver"]))
+        ok("and nothing was left behind as uncarryable",
+           not (rep_old.get("unmapped") or []),
+           str((rep_old.get("unmapped") or [])[:1]))
 
     # --- 2. a mod with its own record set goes structural, not refused ------
     own = [n for n in by if n.startswith("19968_")]
@@ -140,6 +218,35 @@ def main():
            rep["counts"]["units_added"] == 1, str(rep["counts"]))
         ok("the report says the lengths differed",
            any("长度不同" in n for n in rep["notes"]), rep["notes"][:1])
+
+    # --- 3b. an archive holding ONLY today's build cannot be a "before" ----
+    #
+    # The tool notes the shipped .dat on every launch, so today's build is
+    # always the newest entry of its generation.  A caller whose archive holds
+    # nothing else therefore gets that very stream back as the base; "base ==",
+    # "new" then reads as "nothing to carry", and on patch day -- the day this
+    # whole feature exists for -- the official changes stay outside the mod
+    # while the report says the mod is already current.  A mod that added or
+    # removed records (a different length from every build) is exactly the shape
+    # that lands here, so this is not a corner case: it is a new user's first
+    # run.  It must refuse and say which half is missing.
+    if os.path.isfile(mod):
+        _solo_archive(new2)
+        try:
+            why = None
+            try:
+                UP.analyze(mod_dat=mod, new_dat=new2)
+            except UP.UpgradeError as exc:
+                why = str(exc)
+            ok("an archive with only today's build refuses to merge",
+               why is not None, (why or "no refusal")[:40])
+            ok("and names the missing half instead of saying up to date",
+               why is not None and "只存了今天这一份" in why, (why or "")[:60])
+            ok("and offers both ways out",
+               why is not None and "base_dat" in why and "下一次游戏更新" in why,
+               (why or "")[-60:])
+        finally:
+            os.environ.pop(AR.ARCHIVE_DIR_ENV, None)
 
     # --- registry of sizes is cheap and honest ------------------------------
     sizes = AR.size_candidates("VER 8.9")

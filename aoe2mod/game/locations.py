@@ -1136,6 +1136,106 @@ def set_mod_enabled(profile_root, name, enabled, kind="local", account=None,
             "running_warning": _running["running_warning"]}
 
 
+def set_mod_info(profile_root, name, title=None, author=None,
+                 description=None, kind="local", account=None, backup=True):
+    """Rewrite the parts of an installed mod's `info.json` the player can type.
+
+    What the engine reads, and what this does NOT touch:
+
+    * `Title` is the name the mod manager shows.  It is NOT the folder name --
+      the folder is found from `mod-status.json`'s `Path`, so renaming a mod
+      never moves a directory and never breaks an installed save.  The status
+      entry's own `Title` is updated to match, because that is what the list
+      renders.
+    * `Description` / `Author` are shown in the mod manager and nowhere else.
+      `Description` may be empty and may be any length; `Author` may not be
+      empty (see `emitter.validate_info`), so an old file with no author falls
+      back instead of refusing the edit.
+
+    Every other key the file already had is carried over verbatim -- community
+    mods ship `Unpublished`, `thumbnail`, `previewIcon` and friends, and a
+    rename that quietly dropped them would unpublish the mod.
+
+    A `<folder>_ui` sibling keeps its pairing: its Title is rewritten to
+    `<new title>（界面）` so `ui/server._pair_rows` still matches the two halves.
+    Its folder name stays put, exactly like the data half's.
+    """
+    from ..mod import emitter as E
+
+    if account:
+        acc = account
+    elif os.path.isdir(os.path.join(profile_root, "mods")):
+        acc = profile_root
+    else:
+        acc = pick_account(profile_root)
+    folder, kind, _how = resolve_mod_any(profile_root, name, kind=kind,
+                                        account=acc)
+    target = os.path.join(account_mods_dir(acc, kind), folder)
+    if not os.path.isdir(target):
+        raise FileNotFoundError(
+            "没找到叫「%s」的模组：模组列表里没有它，模组文件夹里也没有这个文件夹。"
+            "它可能已经被删掉或者改名了，刷新一下列表再试。" % (name,))
+
+    def _merged(path, want_title):
+        old = E.read_info_soft(os.path.join(path, "info.json"))
+        info = dict((k, v) for k, v in old.items() if isinstance(k, str))
+        info["Title"] = want_title or str(old.get("Title") or
+                                          os.path.basename(path))
+        info["Author"] = str(old.get("Author") or "aoe2mod")
+        info["Description"] = str(old.get("Description") or "")
+        if "CacheStatus" not in info:
+            info["CacheStatus"] = 0
+        return info
+
+    want = (title or "").strip()
+    info = _merged(target, want)
+    if author is not None:
+        info["Author"] = author.strip() or info["Author"]
+    if description is not None:
+        info["Description"] = description
+    problems = E.validate_info(info)
+    if problems:
+        raise ValueError(" ".join(problems))
+
+    ui_dir = target.rstrip("\\/") + "_ui"
+    ui_title = None
+    if os.path.isdir(ui_dir):
+        ui_title = E._fit_title_stem(info["Title"], "\uff08\u754c\u9762\uff09")
+
+    doc, acc, _ = read_status_doc(profile_root, account=acc)
+    rel = "%s//%s" % (kind, folder)
+    found = None
+    for e in doc.get("Mods", []):
+        if e.get("Path") == rel:
+            found = e
+            break
+    status_updated = False
+    if found is not None:
+        found["Title"] = info["Title"]
+        status_updated = True
+        if ui_title:
+            ui_rel = "%s//%s" % (kind, os.path.basename(ui_dir))
+            for e in doc.get("Mods", []):
+                if e.get("Path") == ui_rel:
+                    e["Title"] = ui_title
+                    break
+
+    info_path = E.write_info_json(target, info)
+    if ui_title:
+        E.write_info_json(ui_dir, _merged(ui_dir, ui_title))
+    if status_updated:
+        write_status_doc(acc, doc, backup=backup)
+    _running = running_note()
+    return {"account": acc, "name": name, "folder": folder, "kind": kind,
+            "title": info["Title"], "author": info["Author"],
+            "description_length": len(info["Description"]),
+            "info_path": info_path, "path_field": rel,
+            "status_updated": status_updated,
+            "ui_title": ui_title,
+            "game_running": _running["game_running"],
+            "running_warning": _running["running_warning"]}
+
+
 def sha256_file(path):
     import hashlib
     h = hashlib.sha256()

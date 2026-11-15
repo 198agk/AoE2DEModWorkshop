@@ -23,8 +23,12 @@ Supporting measurements:
     `PrereqTech`/`PrereqIconSet`/`PrereqIconIndex`/`PrereqStyle`/`PrereqStringID`
     on 17,228 entries, `RequiredUnitID` on 28,728 -- i.e. it is built to say
     "you need X", which is what a **preview** does.
-  * The panel's mtime (2026-09-23) is **19 days older** than the engine that reads
-    it (2026-10-12), and the same day as the 62 per-civ tree files.
+  * The panel's on-disk mtime is **not** an invariant: this docstring used to record
+    it as "19 days older than the engine", which held on 2026-10-12 and stopped
+    holding on 2026-11-12 when Steam's validation re-downloaded the panel with a
+    fresh mtime and identical bytes.  Section E now compares bytes against the
+    archived vanilla copy instead -- the question that matters is "is this the
+    shipped panel", not "which of two files from one patch is older".
 
 Two product consequences:
 
@@ -194,8 +198,22 @@ check("and every one of them is absent from the Builder's `Units` list",
 print("     -> 'absent from a `Units` array' is NOT 'absent from the panel'.")
 
 print()
-print("E  mtimes: the panel predates the engine by 19 days")
+print("E  the panel on disk is the one Steam shipped, not a fixture a probe wrote")
+# This section used to assert "the panel file is OLDER than the engine that reads
+# it" -- an observation from 2026-10-12, when the panel and the 62 tree files all
+# carried the 2026-09-23 patch mtime.  Steam re-downloads files it finds changed:
+# on 2026-11-12 23:22:44 its validation replaced futuravailableunits.json with
+# byte-identical content and a fresh mtime, so the panel became NEWER than the
+# .exe (23:19:46) without a byte of data changing.  mtime ordering between two
+# files of the same patch is not an invariant and never was.
+#
+# What the census above actually needs is that the panel being measured is the
+# shipped one.  A probe that installs a fixture (see _probe/_tmp/install_into_game.py,
+# which wrote a mod's .dat into the game folder on 2026-11-12) would invalidate
+# every number in sections A-D while leaving all of them "passing".  So the check
+# compares bytes against the archived vanilla copy when that archive exists.
 import datetime                                            # noqa: E402
+import hashlib                                             # noqa: E402
 mt = {}
 for rel in ("resources/_common/dat/futuravailableunits.json",
             "resources/_common/dat/CivTechTrees/SICILIANS.json",
@@ -204,20 +222,31 @@ for rel in ("resources/_common/dat/futuravailableunits.json",
     if os.path.exists(p):
         mt[rel] = datetime.datetime.fromtimestamp(os.path.getmtime(p))
         print("     %-52s %s" % (rel, mt[rel]))
-if len(mt) == 3:
-    panel_m = mt["resources/_common/dat/futuravailableunits.json"]
-    exe_m = mt["AoE2DE_s.exe"]
-    check("the panel file is OLDER than the engine that reads it",
-          panel_m < exe_m, "panel=%s exe=%s" % (panel_m, exe_m))
+print("     (mtimes are printed as facts, not asserted: Steam rewrites them)")
+
+
+def _sha(p):
+    h = hashlib.sha256()
+    with open(p, "rb") as fh:
+        for chunk in iter(lambda: fh.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+PANEL_REL = "resources/_common/dat/futuravailableunits.json"
+panel_live = os.path.join(GAME, PANEL_REL.replace("/", os.sep))
+VANILLA = os.path.join(ROOT, "_cache", "vanilla_dat", "futuravailableunits.json")
+if os.path.isfile(panel_live) and os.path.isfile(VANILLA):
+    a, b = _sha(panel_live), _sha(VANILLA)
+    check("the panel in the game folder is byte-identical to the archived vanilla",
+          a == b, "live=%s vanilla=%s" % (a[:16], b[:16]))
+    print("     live %s / archived vanilla %s" % (a[:16], b[:16]))
 else:
-    missing = ["resources/_common/dat/futuravailableunits.json",
-               "resources/_common/dat/CivTechTrees/SICILIANS.json",
-               "AoE2DE_s.exe"]
-    check("all three files exist so the mtime comparison can run",
-          False, "missing: %s" % [m for m in missing if m not in mt])
+    print("     (no archived vanilla copy at _cache/vanilla_dat -- "
+          "content check skipped, not asserted)")
 
 print()
-print("PANEL-VS-TREE: 99.4%% identical.  The in-game experiment decides which copy")
+print("PANEL-VS-TREE: 99.4% identical.  The in-game experiment decides which copy")
 print("  to PRIORITIZE, not whether the product works -- writing both, as")
 print("  aoe2mod/api.py does, is correct either way.")
 for n in fails:

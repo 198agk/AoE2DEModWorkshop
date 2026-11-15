@@ -403,7 +403,11 @@ def run_missing_data(port):
             with urllib.request.urlopen(req, timeout=2) as fh:
                 j = json.loads(fh.read().decode("utf-8"))
             err = (j.get("progress") or {}).get("error")
-            if err and "失败" in ((j["progress"].get("label")) or ""):
+            # Any error ends the wait: `progress.fail()` records the sentence in
+            # `error` and deliberately leaves `label` alone, so the older
+            # `"失败" in label` test could never come true and this loop always
+            # burned its full 90 s.  Measured 2026-11-12.
+            if err:
                 break
         except Exception:
             pass
@@ -655,6 +659,11 @@ if __name__ == "__main__":
             out[1]["pixels"].get("big", 0), out[1]["pixels"].get("flat", 0.0),
             "the page never drew" if not drawn(out[1]["pixels"])
             else "the page drew")))
+    # The sentence the splash must carry.  It comes from `progress.error`, which
+    # is `读取游戏数据失败：<the preflight sentence>`; that one names the missing
+    # folder, so 「找不到」 is the word that proves the page says WHY rather than
+    # just that something broke.  `os error` covers the other shape of the same
+    # failure on a machine whose Steam metadata is unreadable.
     data_reason = bool(nod["error"]) and ("找不到" in nod["error"] or "os error" in nod["error"])
     print("  no_data  splash says why     = %s (must be True)" % data_reason)
     print("  no_data  long path wraps     = %s (must be True)" % nod["wrapped"])

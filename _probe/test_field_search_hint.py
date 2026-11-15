@@ -108,7 +108,7 @@ def main():
     ph = placeholder_map()
     print("=== 1. every editor table has a sentence of its own ===")
     want = ["graphic", "sound", "effect", "terrain", "restriction", "colour",
-            "task", "civ"]
+            "task", "civ", "map", "tail", "techtree"]
     for t in want:
         ck("%s has a placeholder" % t, t in ph, sorted(ph))
     ck("no two tables share the same examples",

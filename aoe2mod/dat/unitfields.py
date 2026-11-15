@@ -290,11 +290,18 @@ def _building(r):
     r.f32("Building.GarrisonHealRate")
     r.f32("Building.GarrisonRepairRate")
     r.i16("Building.PileUnit")
-    # parser.py skips this raw (`r.skip(LOOTABLE_RES_COUNT)`); it keeps the
-    # value opaque because the 6-byte table is a packed struct, not 6 fields.
-    p = r.pos
-    r.skip(P.LOOTABLE_RES_COUNT)
-    r.fields.append(("Building.LootingTable", p, "raw", None))
+    # LootingTable: genieutils `Building.cpp:105` serializes it as
+    # `serialize<uint8_t>(LootingTable, LOOTABLE_RES_COUNT)` -- six independent
+    # u8 switches, one per resource, NOT a packed struct.  AGE exposes them as
+    # six separate number controls (`AGE_Frame/Units.cpp:4928-4935`: Stone /
+    # Wood / Ore / Gold / Food / Goods Loot Switch), so one opaque "raw" row
+    # left the last six bytes of every building record both invisible and
+    # uneditable.  Measured on the shipped .dat: 30,809 building records carry
+    # only three distinct tables -- [0,0,0,0,0,0] x 28,730, [1,1,0,1,1,0] x
+    # 1,890, [0,0,0,1,0,0] x 189 -- which is exactly what six on/off bytes look
+    # like, and is why they read as u8 rather than as a 6-byte blob.
+    for i in range(P.LOOTABLE_RES_COUNT):
+        r.u8("Building.LootingTable.%d" % i)
 
 
 def _dead_fish(r):

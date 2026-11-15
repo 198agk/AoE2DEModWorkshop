@@ -29,7 +29,7 @@ What this pins, in order:
    601 slots, 65 hold a value somewhere, 24 differ between civilizations, 536 are
    zero in all 63 -- and 初始食物/木材/石料/黄金 (91..94) are zero in all 63, so
    the sentence "the lobby sets starting resources, not this file" is true.
-8. The page reaches it: a tenth tab exists, the loader knows the kind, and the
+8. The page reaches it: a tab exists, the loader knows the kind, and the
    pane renders without sideways scroll at the real window size.
 """
 import json
@@ -70,6 +70,22 @@ def read(path):
     import io
     return io.open(path, encoding="utf-8").read()
 
+
+
+_ZH_DIGITS = {"一": 1, "二": 2, "三": 3, "四": 4, "五": 5,
+              "六": 6, "七": 7, "八": 8, "九": 9, "十": 10}
+
+
+def _zh_num(word):
+    """`十一` / `十` / `九` -> int.  Only the form the page actually writes."""
+    if word == "十":
+        return 10
+    if word.startswith("十"):
+        return 10 + _ZH_DIGITS.get(word[1:], 0)
+    if "十" in word:
+        head, _sep, tail = word.partition("十")
+        return _ZH_DIGITS.get(head, 0) * 10 + (_ZH_DIGITS.get(tail, 0) if tail else 0)
+    return _ZH_DIGITS.get(word, 0)
 
 def section(title):
     print("\n=== %s ===" % (title,))
@@ -283,7 +299,17 @@ def main():
     ck("a tab exists for it", 'data-edkind="civ"' in page)
     ck("the tab is in the table kinds the loader knows",
        re.search(r'ED_TABLES\s*=\s*\[[^\]]*"civ"', page, re.S) is not None)
-    ck("the page counts ten tabs", "十个页签" in page)
+    # The count in the copy has to equal the buttons on the row, whatever the
+    # number is: pinning 十 would fail the day a family gets an address, which
+    # punishes the feature it guards (the tab-row pin in test_table_tabs.py
+    # made the same point).
+    _n_tabs = len(re.findall(r'data-edkind="', page))
+    ck("the page states a tab count",
+       re.search(r"([一二三四五六七八九十]+)个页签", page) is not None)
+    ck("...and it matches the buttons on the row",
+       (_zh_num(re.search(r"([一二三四五六七八九十]+)个页签", page).group(1))
+        if re.search(r"([一二三四五六七八九十]+)个页签", page) else -1) == _n_tabs,
+       (_n_tabs, page.count("个页签")))
     ck("the page explains the 536 zeros", "536" in page)
     ck("the page says the lobby sets starting resources", "大厅" in page)
 
@@ -311,8 +337,12 @@ def main():
                 taps = pg.eval_on_selector_all(
                     "div.edtabs button[data-edkind]",
                     "els => els.map(e => e.textContent)")
-                ck("ten tabs with 文明 last",
-                   len(taps) == 10 and taps[-1] == "文明", taps)
+                # 文明 is the last RECORD table; the three file-block tabs
+                # follow it because they are not record lists.
+                ck("文明 is the last record table",
+                   "文明" in taps and taps.index("文明") == _n_tabs - 4, taps)
+                ck("the tab row ends with the three file blocks",
+                   taps[-3:] == ["地图块", "全局数值", "科技树"], taps)
                 pg.click('[data-edkind="civ"]')
                 pg.wait_for_function(
                     "() => { const c = document.querySelector('#edcount');"
@@ -326,7 +356,7 @@ def main():
                   const body = pane.querySelector('.fbody');
                   return {
                     count: (document.querySelector('#edcount') || {}).textContent,
-                    fieldRows: pane.querySelectorAll('table.f tr').length,
+                    fieldRows: pane.querySelectorAll('table.f tr:not(.fhint)').length,
                     overflowX: body ? body.scrollWidth - body.clientWidth : -1,
                     rows: document.querySelectorAll('#edlist .edrow').length,
                     first: pane.querySelector('table.f td.fl').textContent,
@@ -352,6 +382,10 @@ def main():
                 ck("the pane counts the civilizations",
                    st["count"].replace(" ", "") == "%d/%d" % (_civ_total, _civ_total),
                    st["count"])
+                # `.fhint` rows are the Chinese explanations, which `ED_HINT`
+                # draws under a field and which can be switched off.  Field rows
+                # are what this number is about; counting the explanations too
+                # would make a copy change look like a layout change.
                 ck("609 rows: 608 fields + the header row",
                    st["fieldRows"] == 609, st["fieldRows"])
                 ck("nothing scrolls sideways", st["overflowX"] == 0,

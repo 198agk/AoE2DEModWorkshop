@@ -16,6 +16,11 @@
 | `_txtcount.js` `_txtcount2.js` `_txtcount3.js` `_txtcount.py` | 数渲染后可见字符数（同一件事试了四遍） |
 | `_patch_handoff_done.py` | 往交接文档里写"已完成"标记 |
 | `_stage1_compare.txt` | Rust 与 Python 的 stage 1 游标对拍输出 |
+| `_page_check.js` | 2026-10 的页面脚本**整份快照**（1875 行），当年在 node 里直接跑它量点击链。
+  它里面那份 `checkRepairs()` 已经过时：打的是 `/api/repair-check`、判定是
+  `auto`/`manual`/`impossible`/`identical`/`no_dat`，而现行页面打 `/api/upgrade-check`、
+  判定是 `mergeable`/`conflicts`/`impossible`/`up_to_date`。**不要再拿它当页面现状的对照物**，
+  现行的页面门禁是 `_probe/ui_page_harness.js`（它从 `index.html` 里现取脚本，不是快照）。 |
 | `compare_rust_stage1.py` | 上面那份输出的生成脚本 |
 | `fix_mcp_patch.py` | 修 MCP 配置的一次性补丁 |
 | `probe_dll_bisect.py` `probe_dll_chain.py` | 二分定位缺哪个 DLL（结论：`0xC0000135`） |

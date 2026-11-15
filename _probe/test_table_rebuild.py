@@ -25,6 +25,12 @@ TMP = tempfile.mkdtemp(prefix="tblrebuild_")
 os.environ["AOE2MOD_STATE_DIR"] = os.path.join(TMP, "state")
 os.environ["AOE2MOD_BUILD_OUT"] = os.path.join(TMP, "out")
 os.environ.pop("AOE2MOD_DAT_STAMP", None)
+# `rebuild()` installs with `profile_root=None` -- the player's REAL profile --
+# so the rebuild below registered a real mod-status entry ("tbl one field") in
+# the list the game's mod manager draws.  Point the profile at this temp dir.
+sys.path.insert(0, HERE)
+import _sandbox as SB
+SB.temp_profile(TMP)
 
 FAILS = []
 

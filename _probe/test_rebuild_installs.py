@@ -19,12 +19,51 @@ import urllib.request
 import _paths as P
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+ROOT = os.path.dirname(HERE)
 BUNDLE = P.BUNDLE
 EXE = os.path.join(BUNDLE, 'aoe2-mod-workshop.exe')
 PORT = 7824
 BASE = 'http://127.0.0.1:%d' % PORT
 TITLE = 'gate rebuild'
 STALE_SHA = hashlib.sha256(b'stale').hexdigest()
+
+# A GATE MUST NOT LEAVE ANYTHING IN THE PLAYER'S MOD LIST.
+#
+# This suite POSTs /api/build with install:true, which writes a real entry into
+# mod-status.json.  Its `finally` only removed the folder, so every full-suite
+# run left a "gate rebuild" row behind -- measured 2026-11-12: the run put it
+# back at Priority 1, Enabled=true, beside a real player mod that had to share
+# the list with it.  Point the whole server at a THROWAWAY profile instead: the
+# install then lands there and dies with the temp dir.
+TMP = os.path.join(os.environ.get("TEMP", "."), "aoe2mod-rebuild-installs")
+
+
+def _sandbox():
+    """A throwaway profile + state, both deleted by the caller."""
+    if os.path.isdir(TMP):
+        shutil.rmtree(TMP, ignore_errors=True)
+    state = os.path.join(TMP, "_state")
+    os.makedirs(state)
+    with open(os.path.join(state, "builds.json"), "w", encoding="utf-8") as fh:
+        fh.write('{"builds":{}}')
+    # AN EMPTY PROFILE, NOT A COPY.  The player's mods folder is 2.5 GB
+    # (161 MB local + 2.3 GB subscribed, measured 2026-11-12) and this suite
+    # does not read a single one of those mods -- it only needs somewhere for
+    # `install_mod` to write.  `find_profile_root` accepts any directory that
+    # holds `mods/mod-status.json`, so an empty one is a complete profile and
+    # the copy cost drops from minutes to nothing.
+    app = os.path.join(TMP, "app")
+    os.makedirs(os.path.join(app, "mods"))
+    with open(os.path.join(app, "mods", "mod-status.json"), "w",
+              encoding="utf-8") as fh:
+        fh.write('{"Mods":[],"Unsub":[]}')
+    env = dict(os.environ)
+    env["AOE2MOD_PROFILE"] = app
+    env["AOE2MOD_STATE"] = state
+    env["AOE2MOD_BUILD_OUT"] = os.path.join(TMP, "out")
+    env["AOE2MOD_STAT_OFFSETS"] = os.path.join(ROOT, "_golden", "stat_offsets.json")
+    env["AOE2MOD_ENTITY_NAMES"] = os.path.join(ROOT, "_golden", "entity_names.json")
+    return env
 
 fails = []
 
@@ -68,9 +107,11 @@ def sha(path):
 def main():
     if not os.path.isfile(EXE):
         sys.exit('no shipped exe: %s' % EXE)
+    env = _sandbox()
     proc = subprocess.Popen(
         [EXE, '--port', str(PORT)],
-        cwd=BUNDLE, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        cwd=BUNDLE, env=env,
+        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
     )
     installed = None
     try:
@@ -127,8 +168,10 @@ def main():
             proc.wait(timeout=20)
         except subprocess.TimeoutExpired:
             proc.kill()
-        if installed and os.path.isdir(installed):
-            shutil.rmtree(installed, ignore_errors=True)
+        # The whole sandbox goes, not just the folder: the mod-status entry it
+        # wrote lives inside TMP too, so the player's list is untouched.
+        if TMP and os.path.isdir(TMP):
+            shutil.rmtree(TMP, ignore_errors=True)
 
     print()
     if fails:

@@ -228,6 +228,27 @@ def _preview_values(edits, limit=6, resource=None):
     return out
 
 
+_VER_RE = None
+
+
+def _ver_tuple(text):
+    """`"VER 8.9"` -> `(8, 9)` for sorting a shelf from newest generation down.
+
+    A string sort puts `VER 7.10` before `VER 7.9` and a raw `None` anywhere at
+    random, and this list is the first thing a player reads after a patch -- the
+    order it is in says whether the shelf is current.  Anything unparseable sorts
+    last rather than raising: the panel lists what it has, and a generation the
+    head could not be read from is a fact worth showing at the bottom.
+    """
+    global _VER_RE
+    if _VER_RE is None:
+        import re as _re
+        _VER_RE = _re.compile(r"(\d+)(?:\.(\d+))?")
+    m = _VER_RE.search(str(text or ""))
+    if not m:
+        return (-1, -1)
+    return (int(m.group(1)), int(m.group(2) or 0))
+
 class Toolkit(object):
     """An open game install, ready to answer questions and build mods."""
 
@@ -242,11 +263,24 @@ class Toolkit(object):
         self._fam = None
         self._techs = None
         self._effects = None
+        self._effects_raw = None
         self._fanout = None
         # `(start, end, count)` of the Effects block.  Separate from `_effects`
         # because the address survives a rebuild of the records and because the
         # page editor needs it before it has read a single command.
         self._effect_sec = None
+        # WHICH BYTES THE CACHE DESCRIBES.
+        #
+        # A cache that only remembers the numbers remembers them about the
+        # WRONG FILE the moment `_raw` is replaced, and the failure is not a
+        # wrong answer but a refusal: `fast_effects` / `effect_spans` walk to the
+        # end of the block and check they landed on it, so a stale `end` that is
+        # 11 bytes short of a grown effect block answers
+        # 「效果段走到第 3738075 字节，段尾却在第 3738064 字节」 and the player
+        # cannot put a second unit on a page they just made (reported
+        # 2026-11-11).  Identity, not length: an equal-width splice leaves the
+        # SIZE exactly right and the contents wrong, so no size test can see it.
+        self._effect_sec_raw = None
         self._civtrees = None
         self._civtrees_dir_present = None
         # `{unit id: [civ, ...]}` -- who can EVER build each unit, derived from
@@ -259,6 +293,7 @@ class Toolkit(object):
         self._sprites = None
         self._icons = None
         self._uifacts = None
+        self._utypes = None
         self._index = None
         # String ids this SESSION invented, `{string id: text}`.  A rename
         # writes a new id into the record because the old one is shared (5079
@@ -558,7 +593,17 @@ class Toolkit(object):
     def _tech_records(self):
         self._ensure()
         if self._techs is None:
-            self._techs = L.locate_techs(self._raw, self._parsed[4], self._parsed[3])
+            tail = self._parsed[4]
+            # A tail that cannot even hold the i16 count is a broken model, not
+            # a broken file: the buffer grew or shrank under `_relocate` and the
+            # pointer did not follow.  Saying so in Chinese beats letting
+            # `unpack_from` raise an English sentence with no noun in it.
+            if not (0 <= int(tail) <= len(self._raw) - 2):
+                raise ValueError(
+                    "科技段的起点 %d 落到了这份数据外面（一共 %d 字节），"
+                    "说明刚才那次结构改动没把偏移跟上。请点「放弃本次改动」重来一次。"
+                    % (tail, len(self._raw)))
+            self._techs = L.locate_techs(self._raw, tail, self._parsed[3])
         return self._techs
 
     def _effect_section(self):
@@ -570,12 +615,13 @@ class Toolkit(object):
         than trusted from the parse, because an append is what changes it.
         """
         self._ensure()
-        if self._effect_sec is None:
-            offs, _stats = TF.stage_offsets(self._raw, "5 ")
+        if self._effect_sec is None or self._effect_sec_raw is not self._raw:
+            offs, _stats = TF.stage_offsets(self._raw, "5 ", quiet=True)
             key = next(k for k in offs if k.startswith("5 Effects"))
             start, end = offs[key]
             count = struct.unpack_from("<i", self._raw, start)[0]
             self._effect_sec = (start, end, count)
+            self._effect_sec_raw = self._raw
         return self._effect_sec
 
     def _effect_records(self):
@@ -593,12 +639,23 @@ class Toolkit(object):
         layout it was not written against.
         """
         self._ensure()
-        if self._effects is None:
+        if self._effects is None or self._effects_raw is not self._raw:
             start, end, _count = self._effect_section()
             try:
                 self._effects, _pos = PP.fast_effects(self._raw, start, end)
             except Exception:
                 self._effects, _start = L.locate_effects(self._raw)
+            # WHICH BYTES THE CACHE DESCRIBES, recorded for the same reason
+            # `_effect_sec_raw` is: an equal-width splice leaves the SIZE right
+            # and the CONTENTS wrong, so only identity can say the cache is
+            # stale.
+            #
+            # Leaving this unassigned made the test above vacuously true -- every
+            # read rebuilt from `self._raw`, i.e. from the PRISTINE file, so a number
+            # written into the session buffer read back as the old one.  Measured
+            # 2026-11-12 by test_effect_list: the buffer held 100.0 and the next list
+            # still said 15.0.
+            self._effects_raw = self._raw
         return self._effects
 
     def _sibling_building_with_tech(self, building_id):
@@ -713,20 +770,20 @@ class Toolkit(object):
             got = self.icons.picture(IC.TECHS, raw.get("icon_id"))
             got["witness"] = "technologies are always drawn from the Techs table"
             return got
-        if kind != "unit":
-            # NOT "only units and technologies have icons" -- that would be
-            # false.  A castle is unit 82 in this game's data and resolves to a
-            # build-menu button, and the Buildings table is real.  What is
-            # narrow is this function's accept-list, so say that instead.
-            #
-            # No English here either: this text goes through the same
-            # player-facing check as every other refusal.  The caller-facing
-            # name of the kind ("building") is deliberately not printed -- a
-            # screen never sends it, and a person reading the sentence needs to
-            # know what to do, not which enum to pass.
+        # "building" is not a third table -- in this game's data a building IS a
+        # unit record whose type is 80, so the SAME resolve answers it, build-
+        # menu button and all.  Until 2026-11-10 this branch refused the word
+        # ("这里只认「单位」和「科技」两种…按单位查它就有图"), which was true and
+        # useless: the picker had no way to ask for buildings, so nothing ever
+        # sent the word and nobody could reach a building by looking.
+        if kind not in ("unit", "building"):
+            # Nothing else exists: this file has exactly two record tables, and
+            # the one thing that IS a filter (buildings) is handled above.  The
+            # sentence a screen shows must name what to do, not which enum to
+            # pass, so it names the two lists the window actually offers.
             return {"ok": False,
-                    "why": "这里只认「单位」和「科技」两种。建筑在游戏数据里"
-                           "本来就是单位记录，按单位查它就有图。"}
+                    "why": "没有这种图：窗口里只有「单位 / 建筑」和「科技」两"
+                           "种列表。"}
         facts = self._unit_facts().get(entity_id)
         if facts is None:
             return {"ok": False,
@@ -768,9 +825,17 @@ class Toolkit(object):
         # A unit's TYPE does not vary by civilization (measured: 0 ids differ),
         # so the first record's value speaks for all of them, and a producer that
         # is a building (type 80) means this unit is trained, not placed.
-        for row in facts.values():
+        for uid, row in facts.items():
             row["building"] = any(types.get(p) == 80 for p in row["producers"]
                                   if p not in (None, -1))
+            # The record's own type, kept here because this is the one pass that
+            # already walks every record.  `browse(kind="building")` filters on it:
+            # in this game's data a building IS a unit record whose type is 80, so
+            # "buildings" is not a separate table to read, it is a filter on the
+            # unit table (measured 2026-11-10: 489 type-80 records, 426 of them
+            # named, while the card page's building dropdown offered 48).
+            row["type"] = types.get(uid)
+        self._utypes = types
         self._uifacts = facts
         return facts
 
@@ -837,8 +902,21 @@ class Toolkit(object):
         resolving a texture per row, which costs a 0.17 s pass per request.
         """
         ix = self.index()
-        table = ix.units if kind == "unit" else ix.techs
-        facts = self._unit_facts() if kind == "unit" else None
+        # A BUILDING IS A UNIT RECORD WHOSE TYPE IS 80.  There is no separate
+        # building table in this game's data, so "buildings" is a filter on the
+        # unit list, not a third list.  Reported 2026-11-10, verbatim: 「怎么建筑
+        # 放不了，谁告诉你这个不能删的，都说了编辑所有都可以做，不能有任何限制，
+        # 除非是引擎无法识别运行」 -- the picker had no way to say "buildings" at
+        # all, so the only route to one was to guess its name.  Measured on this
+        # install: 489 type-80 records, 426 of them named, against the 48 hosts
+        # the card page's dropdown offered.
+        kind = str(kind or "unit").strip().lower()
+        if kind == "building":
+            table = ix.units
+        else:
+            table = ix.units if kind == "unit" else ix.techs
+        facts = None if kind == "tech" else self._unit_facts()
+        types = (self._utypes or {}) if kind == "building" else {}
         q = str(query or "").strip().lower()
         # A number is an id, not a name.  Until 2026-11-08 this filter only looked
         # at `zh`/`en`/`internal`, so typing `5073` into any search box returned
@@ -853,15 +931,21 @@ class Toolkit(object):
             e = table[uid]
             if not e.is_visible:
                 continue
+            if kind == "building" and types.get(uid) != 80:
+                # Type 80 is this game's own word for "building"
+                # (`aoe2mod/dat/parser.py:UNIT_TYPE_BUILDING`).  Every other
+                # type is filtered out here rather than by a name list, so a
+                # mod that renumbers its buildings still lists them.
+                continue
             if q and uid != qid \
                     and q not in (e.zh or "").lower() \
                     and q not in (e.en or "").lower() \
                     and q not in (e.internal or "").lower():
                 continue
-            if kind == "unit":
-                icon_id = (facts.get(uid) or {}).get("icon_id")
-            else:
+            if kind == "tech":
                 icon_id = (getattr(e, "_extra", None) or {}).get("icon_id")
+            else:
+                icon_id = (facts.get(uid) or {}).get("icon_id")
             rows.append({"id": uid, "kind": kind, "name": e.display,
                          "en": e.en, "zh": e.zh,
                          "has_icon": bool(icon_id and int(icon_id) > 0),
@@ -6843,11 +6927,119 @@ class Toolkit(object):
                 "archive": AR.archive_dir(),
                 "describe": AR.describe()}
 
+    def archive_info(self, game_root=None):
+        """The version shelf as rows a panel can print.
+
+        Filed FIRST (`note_official`), then described: opening the panel is one
+        of the two moments the tool is guaranteed to be looking at a machine with
+        the game installed, so it is a place the shelf can fill itself from.
+        Idempotent, so the second visit costs the inflate (0.075 s) and no write.
+
+        Generations are grouped, not listed one blob per row: 53 rows of
+        "VER 8.9 / 93,272,287" is a dump, and the question a player asks after a
+        patch is "which versions do you have" -- the answer is 11 rows plus a
+        count.
+
+        TWO CLOCKS, and they are not the same clock.  `first_seen` is when THIS
+        TOOL copied the file; the shelf's `index.json` is the build ledger, one
+        row per Steam manifest with the date that manifest went live.  The panel
+        printed the first as if it were the second ("最早 2026-11-09" under a
+        VER 6.6 build from 2019), which is why every generation now carries its
+        own `builds` list and its real `first_date`/`last_date`.  When the ledger
+        is absent -- a shelf seeded by opening the tool once, with no harvest
+        behind it -- `dated` is False and the caller must fall back to
+        `first_seen` and SAY it is a store date, not invent a release date.
+        """
+        from .mod import archives as AR
+        today = None
+        try:
+            today = AR.note_official(game_root or self.game_root)
+        except Exception:                               # noqa: BLE001
+            today = None
+        try:
+            got = AR.describe()
+        except Exception as exc:                        # noqa: BLE001
+            return {"ok": False, "error": "%s: %s" % (type(exc).__name__, exc)}
+        cur = (today or {}).get("sha256") if isinstance(today, dict) else None
+        gens = {}
+        held = set()
+        for e in got.get("entries") or []:
+            ver = e.get("ver") or "读不出代次"
+            g = gens.get(ver)
+            if g is None:
+                g = gens[ver] = {"ver": ver, "count": 0, "raw_bytes": 0,
+                                 "file_bytes": 0, "current": False,
+                                 "first_seen": None, "sha256": None}
+            g["count"] += 1
+            g["raw_bytes"] = max(g["raw_bytes"], int(e.get("raw_bytes") or 0))
+            g["file_bytes"] += int(e.get("file_bytes") or 0)
+            if e.get("sha256") == cur:
+                g["current"] = True
+                g["sha256"] = cur
+            if not g["first_seen"] or (e.get("first_seen") or "") < g["first_seen"]:
+                g["first_seen"] = e.get("first_seen")
+            if e.get("sha256"):
+                held.add(e.get("sha256"))
+        # The ledger is a side-car: a shelf without one still answers "what do I
+        # hold", it just cannot answer "when was it live", and says so per row.
+        try:
+            ledger = AR.load_builds()
+        except Exception:                               # noqa: BLE001
+            ledger = []
+        by_ver = {}
+        sha_of_gid = {}
+        for b in ledger:
+            by_ver.setdefault(b.get("ver") or "", []).append(b)
+            if b.get("gid"):
+                sha_of_gid[b["gid"]] = b.get("sha256") or ""
+
+        def _held(b):
+            # Bytes we hold under this build's own name, or under an earlier
+            # build's name: `dup_of` names the gid with the same content, and a
+            # ledger row can point at a gid the shelf only ever stored once.
+            if (b.get("sha256") or "") in held:
+                return True
+            return bool(b.get("dup_of")) and sha_of_gid.get(b["dup_of"], "") in held
+        for g in gens.values():
+            sub = []
+            for b in by_ver.get(g["ver"]) or []:
+                sub.append({"date": b.get("date") or "",
+                            "time": b.get("time") or "",
+                            "gid": b.get("gid") or "",
+                            "raw_bytes": int(b.get("raw_bytes") or 0),
+                            "file_bytes": int(b.get("file_bytes") or 0),
+                            "sha256": b.get("sha256") or "",
+                            "dup_of": b.get("dup_of") or "",
+                            "held": _held(b)})
+            g["builds"] = sub
+            g["builds_count"] = len(sub)
+            g["first_date"] = sub[0]["date"] if sub else None
+            g["last_date"] = sub[-1]["date"] if sub else None
+            g["dated"] = bool(sub)
+        rows = sorted(gens.values(), key=lambda g: _ver_tuple(g["ver"]), reverse=True)
+        return {"ok": True, "dir": got.get("dir"), "count": got.get("count"),
+                "bytes": got.get("bytes"), "rows": rows,
+                "gens": len(rows), "current": cur,
+                "builds": len(ledger), "dated": bool(ledger)}
+
     def _upgrade_targets(self, profile_root, name=None, limit=40):
-        """Installed mods that ship their own `.dat`, as upgrade candidates."""
+        """Installed mods that ship their own `.dat`, as upgrade candidates.
+
+        One mod can be on disk twice.  A rebuild is always installed as
+        `local//<name>` (see `upgrade_apply`), while the copy it was carried
+        forward from stays in `subscribed/` as a disabled entry -- Steam owns
+        that folder, and writing into it just gets downloaded over again.  Both
+        entries ship the same `.dat`, so a plain walk lists the mod twice and,
+        worse, keeps offering the stale subscribed copy after it has already
+        been rebuilt: "全部一键适配" would then rebuild the same mod on every
+        press and never run out of work.  The newer copy wins -- `local` first,
+        then enabled -- and the loser is dropped, in the order the player's own
+        list puts them.
+        """
         from .game import locations as G
         from .mod import archives as AR
-        out = []
+        best = {}
+        order = []
         for row in G.list_mods(profile_root):
             if not row.get("exists"):
                 continue
@@ -6858,13 +7050,48 @@ class Toolkit(object):
                 continue
             row = dict(row)
             row["dat"] = dat
-            out.append(row)
-            if limit and len(out) >= int(limit):
-                break
+            key = row.get("name")
+            rank = (1 if row.get("kind") == "local" else 0,
+                    1 if row.get("enabled") else 0)
+            seen = best.get(key)
+            if seen is None:
+                order.append(key)
+                best[key] = (rank, row)
+            elif rank > seen[0]:
+                best[key] = (rank, row)
+        out = [best[k][1] for k in order]
+        if limit:
+            out = out[:int(limit)]
         return out
 
+    def upgrade_candidates(self, profile_root=None):
+        """Installed mods that ship their own `.dat`, WITHOUT parsing any of them.
+
+        Cost is the whole point of this route.  The CHECK parses: 41 to 71 s
+        measured for a mod that really has to be merged, 0.58 s for one already
+        current, 666 s for the nineteen on this machine (2026-11-10) -- eleven
+        minutes behind one button that shows only the word 检查中.  This walk
+        opens no `.dat` and answers in ~40 ms, so the screen can list the mods
+        first and let the player leave out the ones not worth waiting for.
+        """
+        from .game import locations as G
+        prof = profile_root or G.find_profile_root()
+        rows = []
+        for row in self._upgrade_targets(prof, limit=0):
+            try:
+                size = os.path.getsize(row["dat"])
+            except OSError:
+                size = 0
+            rows.append({"name": row["name"],
+                         "title": row.get("title") or row["name"],
+                         "enabled": row.get("enabled"),
+                         "kind": row.get("kind"),
+                         "bytes": size})
+        return {"ok": True, "profile_root": prof, "mods": rows,
+                "count": len(rows)}
+
     def upgrade_check(self, name=None, profile_root=None, limit=40,
-                      base_dat=None, new_dat=None):
+                      base_dat=None, new_dat=None, names=None):
         """Can each installed data mod be carried onto today's official `.dat`?
 
         Read-only: nothing is rebuilt, installed or deleted.  Every row says one
@@ -6876,13 +7103,49 @@ class Toolkit(object):
         hash, compare).  A mod that really has to be merged pays one parse of the
         new official stream, which the parse cache and the upgrade slot cache
         turn into a load on later runs (1.32 s warm vs 4.37 s cold, 2026-11-09).
+
+        ``names`` narrows the walk to an explicit set of folder names, which is
+        how the screen lets the player check three mods instead of nineteen.  It
+        cannot be expressed through ``limit``: a limit is a prefix of the walk,
+        and the three a player wants are rarely the first three.  Progress for
+        this call goes through ``jobs`` under the key "upgrade", weighted by the
+        size of each mod's `.dat`, because the fraction the engine reports is
+        per mod and the wait the player is watching spans all of them.
         """
         from .mod import upgrade as UP
         from .game import locations as G
+        from aoe2mod import jobs as J
         prof = profile_root or G.find_profile_root()
         official = self.archive_official()
+        wanted = None
+        if names:
+            if isinstance(names, str):
+                wanted = set(n.strip() for n in names.split(",") if n.strip())
+            else:
+                wanted = set(names)
+        targets = self._upgrade_targets(prof, name=name,
+                                        limit=0 if wanted else limit)
+        if wanted is not None:
+            targets = [r for r in targets if r.get("name") in wanted]
+        # Weight, not count: one mod can be 96 MB and take a minute while another
+        # answers in half a second, and a bar that advances one nineteenth per
+        # mod would sit still for the whole minute and then jump.
+        weights = []
+        for row in targets:
+            try:
+                weights.append(max(1, int(os.path.getsize(row["dat"]))))
+            except OSError:
+                weights.append(1)
+        J.begin("upgrade", "检查自带数据文件的模组", sum(weights) or 1)
+        walked = 0
         rows = []
-        for row in self._upgrade_targets(prof, name=name, limit=limit):
+        for target_no, row in enumerate(targets):
+            weight = weights[target_no]
+            here = walked
+
+            def _tick(_label, frac, _here=here, _w=weight):
+                J.update("upgrade", _here + _w * max(0.0, min(1.0, frac)))
+            walked += weight
             rec = {"name": row["name"],
                    "title": row.get("title") or row["name"],
                    "enabled": row.get("enabled"),
@@ -6891,7 +7154,8 @@ class Toolkit(object):
                    "path": row["path"], "dat": row["dat"], "ok": False}
             try:
                 rep = UP.analyze(mod_dat=row["dat"], base_dat=base_dat,
-                                 new_dat=new_dat, game_root=self.game_root)
+                                 new_dat=new_dat, game_root=self.game_root,
+                                 on_step=_tick)
             except UP.UpgradeError as exc:
                 rec["verdict"] = UP.IMPOSSIBLE
                 rec["error"] = str(exc)
@@ -6899,15 +7163,19 @@ class Toolkit(object):
                 # Zeroes, not a missing key: every row has the same shape so a
                 # caller can print counts without asking whether this one was
                 # refused before it got that far.
-                rec["counts"] = {"edits": 0, "conflicts": 0, "units_added": 0,
-                                 "units_removed": 0, "units_replaced": 0,
-                                 "techs_added": 0, "techs_removed": 0,
-                                 "tables_added": 0, "tables_removed": 0,
-                                 "unmapped": 0}
+                # Taken from the engine rather than spelled out here.  The copy
+                # that used to sit here stopped at ten keys while the engine
+                # emitted twelve: once a tech or flat-table record whose LENGTH
+                # the author changed started travelling as a whole-record copy,
+                # techs_replaced and tables_replaced appeared in every report
+                # except the refused ones.  A caller printing those got
+                # undefined, on exactly the rows a player reads twice.
+                rec["counts"] = dict(UP._empty_counts())
                 rec["conflict_count"] = 0
                 rec["unmapped_count"] = 0
                 rec["notes"] = [str(exc)]
                 rec["seconds"] = None
+                J.update("upgrade", walked)
                 rows.append(rec)
                 continue
             except Exception as exc:                    # noqa: BLE001
@@ -6917,15 +7185,12 @@ class Toolkit(object):
                 rec["verdict"] = None
                 rec["error"] = "%s: %s" % (type(exc).__name__, exc)
                 rec["summary"] = "读不了这个模组：" + rec["error"]
-                rec["counts"] = {"edits": 0, "conflicts": 0, "units_added": 0,
-                                 "units_removed": 0, "units_replaced": 0,
-                                 "techs_added": 0, "techs_removed": 0,
-                                 "tables_added": 0, "tables_removed": 0,
-                                 "unmapped": 0}
+                rec["counts"] = dict(UP._empty_counts())
                 rec["conflict_count"] = 0
                 rec["unmapped_count"] = 0
                 rec["notes"] = []
                 rec["seconds"] = None
+                J.update("upgrade", walked)
                 rows.append(rec)
                 continue
             rec.update({
@@ -6935,6 +7200,12 @@ class Toolkit(object):
                 "seconds": rep.get("seconds"),
                 "mod": rep["mod"], "base": rep["base"], "new": rep["new"],
                 "summary": UP.describe(rep),
+                # The effect table is the one place where "how many records"
+                # says nothing about whether the port worked: a technology
+                # points at an effect by position, so what matters is how many
+                # pointers had to move.  Passed through so the page can print
+                # that instead of counting table rows.
+                "effects": rep.get("effects") or {},
                 "notes": rep["notes"],
                 "conflict_count": len(rep["conflicts"]),
                 "unmapped_count": len(rep["unmapped"]),
@@ -6944,7 +7215,9 @@ class Toolkit(object):
                 "conflicts": rep["conflicts"][:8],
                 "unmapped": rep["unmapped"][:8],
             })
+            J.update("upgrade", walked)
             rows.append(rec)
+        J.finish("upgrade")
         # Same split the page prints, computed once here so two surfaces cannot
         # disagree about how many mods need work.
         ready = [r for r in rows if r.get("verdict") in (UP.MERGEABLE,
@@ -6983,6 +7256,57 @@ class Toolkit(object):
         except Exception as exc:                        # noqa: BLE001
             return {"title": None, "state_file": None,
                     "why_not": "%s: %s" % (type(exc).__name__, exc)}
+
+    def _upgrade_install(self, mod_dir, row, title, profile_root, notes):
+        """Put a rebuilt mod in place of the copy it was carried forward from.
+
+        A rebuild always lands in `local/`, even when the original came from
+        `subscribed/`: Steam validates that folder and would put the old bytes
+        back on the next check.  So the old entry is switched OFF rather than
+        overwritten -- and said out loud, because a mod sitting on disk twice
+        with one copy quietly off is what a player finds days later and cannot
+        explain.
+
+        `position` is a 0-based index into the status file, while `priority`
+        is the 1-based number the player reads.  Passing the number straight
+        through put the rebuild one slot BELOW the copy it replaced (measured
+        2026-11-10 on a three-mod sandbox: the old subscribed entry kept 2 and
+        the new local one landed at 3).
+        """
+        from .game import locations as G
+        old = row or {}
+        name = old.get("name") or os.path.basename(mod_dir.rstrip("\\/"))
+        pri = int(old.get("priority") or 0)
+        man = self.install(mod_dir, name=name, title=title, kind="local",
+                           enabled=True, position=max(0, pri - 1),
+                           profile_root=profile_root, overwrite=True)
+        prev = None
+        if old.get("kind") and old["kind"] != "local":
+            prev = {"name": name, "kind": old["kind"],
+                    "enabled_before": bool(old.get("enabled"))}
+            if prev["enabled_before"]:
+                try:
+                    G.set_mod_enabled(profile_root, name, False,
+                                      kind=old["kind"])
+                    prev["disabled"] = True
+                except Exception as exc:                   # noqa: BLE001
+                    prev["disabled"] = False
+                    prev["why_not"] = "%s: %s" % (type(exc).__name__, exc)
+            else:
+                # Already off: nothing to hand over, but say so rather than
+                # leave the caller to guess why the old copy is still listed.
+                prev["disabled"] = False
+                prev["note"] = "原来那份本来就没开着，没动它"
+            man["previous"] = prev
+            if notes is not None:
+                notes.append(
+                    "新版装成本地模组「%s」，订阅目录里那份还在：%s"
+                    % (name,
+                       "已经关掉，游戏只会读新装的这份"
+                       if prev.get("disabled")
+                       else prev.get("why_not")
+                       or prev.get("note") or "没有动它"))
+        return man
 
     def upgrade_apply(self, name=None, mod_dat=None, out_dir=None, title=None,
                       base_dat=None, new_dat=None, install=True,
@@ -7045,12 +7369,8 @@ class Toolkit(object):
         if rep.get("out"):
             rep["provenance"] = self._upgrade_remember(rep, title)
             if install:
-                rep["installed"] = self.install(
-                    rep["out"]["mod_dir"],
-                    name=(row or {}).get("name") or UP._safe_name(title),
-                    title=title, enabled=True,
-                    position=(row or {}).get("priority") or 0,
-                    profile_root=prof, overwrite=True)
+                rep["installed"] = self._upgrade_install(
+                    rep["out"]["mod_dir"], row, title, prof, rep["notes"])
         return rep
 
     def update_check(self, profile_root=None, game_dat=None,
@@ -7271,6 +7591,23 @@ class Toolkit(object):
             break
         first["paired"] = paired
         return first
+
+    def set_mod_info(self, name, title=None, author=None, description=None,
+                     kind="local", profile_root=None, account=None):
+        """Rewrite the player-editable text in an installed mod's `info.json`.
+
+        Renaming is the reason this exists: the mod manager shows `Title`, so a
+        mod built from a pile of sentences ends up called "dsh 给村民换张图…"
+        forever.  `locations.set_mod_info` does the writing and keeps the folder
+        name alone -- that name is what `mod-status.json`'s `Path` points at, so
+        touching it would orphan the mod in the engine's own list.
+        """
+        from .game import locations as G
+        prof = profile_root or G.find_profile_root()
+        got = G.set_mod_info(prof, name, title=title, author=author,
+                             description=description, kind=kind,
+                             account=account)
+        return got
 
 
 def open_toolkit(game_root=None, dat_path=None):

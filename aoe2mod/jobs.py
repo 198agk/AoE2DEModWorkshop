@@ -37,10 +37,22 @@ _LOCK = threading.Lock()
 # long job only needs a name.
 _jobs = {}
 
+# Bumped by every `begin()`, never rewound -- not even by `reset()`.  This is
+# what lets a page tell "the job I am waiting for" from "the job that was in the
+# slot a second ago": the bar is drawn BEFORE the request that starts the job,
+# so the first poll can land on the PREVIOUS snapshot, which is finished and
+# reads 100 %.  Measured 2026-11-13 on the mod-upgrade check: the bar sat at
+# 100 % for the whole eleven minutes, because that stale answer also said
+# `running: false` and the poller stopped.  A monotonic id makes the stale
+# answer identifiable instead of merely plausible.
+_SEQ = 0
+
 
 def begin(key, label, total):
     """Start (or restart) the job `key`.  `total` is in the unit `update` gets."""
+    global _SEQ
     with _LOCK:
+        _SEQ += 1
         _jobs[key] = {
             "label": label,
             "total": max(1, int(total)),
@@ -48,6 +60,7 @@ def begin(key, label, total):
             "started": time.time(),
             "finished": None,
             "error": None,
+            "seq": _SEQ,
         }
 
 
@@ -81,19 +94,26 @@ def fail(key, message):
 
 
 def snapshot(key):
-    """`{key,label,percent,done,total,elapsed,running,error}`.  Never raises."""
+    """`{key,label,percent,done,total,elapsed,running,error,seq}`.  Never raises.
+
+    `seq` is the id `begin()` handed this run.  A caller that knows which run it
+    is waiting for (it can pass the id it saw, or compare against the id it saw
+    before it made its request) can drop an answer that belongs to the run
+    before -- which is the case that used to freeze a bar at 100 %.
+    """
     with _LOCK:
         job = _jobs.get(key)
         if job is None:
             return {"key": key, "label": "", "percent": 0, "done": 0,
                     "total": 0, "elapsed": 0.0, "running": False,
-                    "error": None, "known": False}
+                    "error": None, "known": False, "seq": 0}
         label = job["label"]
         total = job["total"]
         done = job["done"]
         started = job["started"]
         finished = job["finished"]
         error = job["error"]
+        seq = job.get("seq", 0)
     end = finished or time.time()
     return {
         "key": key,
@@ -105,6 +125,7 @@ def snapshot(key):
         "running": started is not None and finished is None and not error,
         "error": error,
         "known": True,
+        "seq": seq,
     }
 
 

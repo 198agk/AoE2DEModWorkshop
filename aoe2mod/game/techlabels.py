@@ -161,13 +161,13 @@ FIELD_META = {
     "RequiredTechs.5": dict(zh="前置科技 6", group="effect", lo=-1, hi=32767),
 
     # ---- 文本与图形 -------------------------------------------------------
-    "LanguageDLLName": dict(zh="名称文本编号", group="text", ro=True,
+    "LanguageDLLName": dict(zh="名称文本编号", group="text", soft=True,
                             hint="指向界面文本表里这条科技的名字。改它不会改名字，只会指错。"),
-    "LanguageDLLDescription": dict(zh="说明文本编号", group="text", ro=True,
+    "LanguageDLLDescription": dict(zh="说明文本编号", group="text", soft=True,
                                    hint="指向研究按钮下面的说明文字。"),
-    "LanguageDLLHelp": dict(zh="帮助文本编号", group="text", ro=True,
+    "LanguageDLLHelp": dict(zh="帮助文本编号", group="text", soft=True,
                             hint="指向鼠标悬停时的长说明。"),
-    "LanguageDLLTechTree": dict(zh="科技树文本编号", group="text", ro=True,
+    "LanguageDLLTechTree": dict(zh="科技树文本编号", group="text", soft=True,
                                 hint="指向科技树面板里那一格显示的文字。"),
 
     # ---- 其他 -------------------------------------------------------------

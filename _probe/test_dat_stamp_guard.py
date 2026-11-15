@@ -53,6 +53,19 @@ def check(label, ok, detail=""):
     return ok
 
 
+def DS_raw_sha(path):
+    """sha256 of a table file, in 1 MiB chunks (stat_offsets.json is 19.6 MB)."""
+    import hashlib
+    h = hashlib.sha256()
+    with open(path, "rb") as fh:
+        while True:
+            chunk = fh.read(1 << 20)
+            if not chunk:
+                break
+            h.update(chunk)
+    return h.hexdigest()
+
+
 def eq(label, got, want):
     return check("%s :: %r" % (label, want) if got != want else label,
                  got == want, "" if got == want else "got %r" % (got,))
@@ -177,7 +190,7 @@ def main():
               -1 < pos_stamp < pos_cache, "%s vs %s" % (pos_stamp, pos_cache))
 
         print("\n=== 7. the SHIPPED folder carries the stamp ===")
-        from _probe.make_bundle import DEFAULT_OUT
+        from _probe.make_bundle import DEFAULT_OUT, SCAFFOLDING
         app_golden = os.path.join(DEFAULT_OUT, "app", "_golden", "dat_stamp.json")
         if os.path.isdir(DEFAULT_OUT):
             check("the bundle has app/_golden/dat_stamp.json",
@@ -188,6 +201,36 @@ def main():
                     ROOT, "_golden", "dat_stamp.json"), encoding="utf-8").read())
                 eq("and it is the same stamp the repo measures against",
                    shipped.get("dat"), here.get("dat"))
+                # THE TABLES THE STAMP VOUCHES FOR MUST MATCH IT.  A bundle can
+                # carry a correct stamp and a 19.6 MB table measured from some
+                # other `.dat` -- that is what happened (2026-11-12: repo
+                # `21632d17…`, bundle `59e9ba56…`, and every shipped write landed
+                # 27-36 bytes off with ok:true).  The stamp passing while the
+                # table beside it contradicts it is the worst possible state, so
+                # the shipped copy is hashed here, not assumed to be the repo's.
+                want = shipped.get("tables") or {}
+                golden_dir = os.path.join(DEFAULT_OUT, "app", "_golden")
+                stale, absent = [], []
+                for name, sha in sorted(want.items()):
+                    if name in SCAFFOLDING:
+                        continue
+                    got_path = os.path.join(golden_dir, name)
+                    if not os.path.isfile(got_path):
+                        absent.append(name)
+                        continue
+                    got = DS_raw_sha(got_path)
+                    if got != sha:
+                        stale.append("%s: bundle %s… vs stamp %s…"
+                                     % (name, got[:12], sha[:12]))
+                check("every shipped table hashes to what the stamp says",
+                      not stale, "; ".join(stale))
+                # A table the stamp names but the folder does not hold means the
+                # folder predates `copy_golden` copying tables at all.  It is not
+                # a hash mismatch, so it does not fail here, but it is worth
+                # saying out loud: the bundle is older than this rule.
+                if absent:
+                    print("  --   named by the stamp, not in this bundle yet"
+                          " (rebuild it): %s" % ", ".join(absent))
         else:
             print("  --   no bundle at %s, skipping the shipped check" % DEFAULT_OUT)
             check("make_bundle.py copies the stamp", "copy_golden" in

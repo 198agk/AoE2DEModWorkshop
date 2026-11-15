@@ -168,6 +168,26 @@ def _materials(materials_doc):
     return by_name, textures
 
 
+def _free_material(name, by_name, textures):
+    """The same name, or the first free one built from it, for a replace.
+
+    A replace re-points a slot the record ALREADY uses, so the material name
+    derived from the record name is usually the name the slot's current
+    material already has when the slot came from this tool -- and appending a
+    second MaterialDef with a duplicate name makes the engine resolve whichever
+    it reads first.  Numbering here is idempotent together with `_clean_stem`
+    (which re-applies the "_<slot>" suffix): `unit_SPRMN_8` -> `unit_SPRMN_8_2`.
+    """
+    if name not in by_name and name not in textures:
+        return name
+    for n in range(2, 100):
+        cand = "%s_%d" % (name, n)
+        if cand not in by_name and cand not in textures:
+            return cand
+    raise IconError("材质名「%s」已经排到 %d 了，还是撞名，换个记录名吧"
+                    % (name, 100))
+
+
 def _slice_uv(tex_entry):
     """The UV rect of an atlas slice, kept so a reskin does not lose the frame."""
     return {k: tex_entry.get(k) for k in ("imageTLX", "imageTLY",
@@ -194,6 +214,41 @@ def atlas_source(materials_doc, material_name):
                 return {"file": tex.get("FileName"),
                         "uv": _slice_uv(tex),
                         "atlas": at.get("Name")}
+    return None
+
+
+def slot_source(icons_doc, materials_doc, slot, kind="unit"):
+    """-> what a slot ALREADY points at: dict(material, file, type), or None.
+
+    This is the question the in-place swap asks before it decides it can skip
+    the .dat: if a record already names a slot whose material resolves to a real
+    file, the picture can be replaced by re-pointing THAT key at a fresh
+    material -- nothing in the .dat moves, so the build is one folder.
+    A slot with no key, or a key whose material is missing (the 206 shipped
+    placeholders in 757..999 have a name but no MaterialDef at all -- measured
+    2026-11-11), answers None: there is nothing to re-point, and a loose file on
+    that slot would be read by nobody.
+    """
+    spec = SECTIONS[kind]
+    table = icons_doc.get(spec["section"]) or {}
+    material = table.get(_key(slot))
+    if not material or material in (None, "None"):
+        return None
+    by_name, textures = _materials(materials_doc)
+    d = by_name.get(material) or {}
+    kind_of = d.get("Type")
+    if kind_of == "Atlas":
+        got = atlas_source(materials_doc, material)
+        if not got or not got.get("file"):
+            return None
+        return {"material": material, "file": got["file"], "type": "Atlas"}
+    if kind_of == "Texture":
+        tex = textures.get(d.get("TextureRef") or material) \
+            or textures.get(material) or {}
+        if not tex.get("FileName"):
+            return None
+        return {"material": material, "file": tex["FileName"],
+                "type": "Texture"}
     return None
 
 
@@ -293,7 +348,8 @@ def _rgba_from_picture(path, side=SIDE):
                         % (os.path.basename(path), exc))
 
 
-def plan(icons_doc, materials_doc, picture, stem=None, slot=None, kind="unit"):
+def plan(icons_doc, materials_doc, picture, stem=None, slot=None, kind="unit",
+         replace=False):
     """-> what the build will do, without doing it.
 
     Returns the slot, the material name, the two file paths and the picture's
@@ -301,20 +357,33 @@ def plan(icons_doc, materials_doc, picture, stem=None, slot=None, kind="unit"):
     `kind` picks the section: units and techs are separate tables AND separate
     texture folders, and the one shipped precedent used a different file format
     for each, so a single "icon" shape would be wrong for one of them.
+
+    `replace=True` means "this slot is ALREADY the one the record uses" -- the
+    in-place swap.  It lifts the two refusals that exist to stop a NEW picture
+    from landing on somebody else's slot (the free-number floor and the
+    "already taken" check), because here the slot is not being taken, it is
+    being re-pointed.  Measured 2026-10-24 (report_icon_layer.md v73d): a slot
+    re-pointed at a brand-new material name, with that material and its texture
+    row in the merged tables and the picture on disk, draws -- while redefining
+    the SHIPPED material's own row draws the old picture.  That is the whole
+    reason this mode exists: it needs no .dat, so the build is one folder.
     """
     spec = SECTIONS[kind]
     if slot is None:
         slot = next_slot(icons_doc, kind)
     slot = int(slot)
-    floor = FIRST_FREE[kind]
+    floor = FIRST_FREE[kind] if not replace else 0
     if slot < floor or slot > MAX_SLOT:
         raise IconError("图标槽只能取 %d..%d，拿到的是 %d" % (floor, MAX_SLOT, slot))
     table = icons_doc.get(spec["section"]) or {}
-    if str(slot) in table and table[str(slot)] not in (None, "None"):
+    if (not replace and str(slot) in table
+            and table[str(slot)] not in (None, "None")):
         raise IconError("第 %d 号图标槽已经被「%s」占了，换一个号"
                         % (slot, table[str(slot)]))
     by_name, textures = _materials(materials_doc)
     material = _clean_stem(stem, slot, kind)
+    if replace:
+        material = _free_material(material, by_name, textures)
     if material in by_name:
         raise IconError("材质表里已经有叫「%s」的材质了，换个名字" % material)
     if material in textures:
@@ -333,7 +402,7 @@ def _key(slot):
 
 
 def _merge_one(icons, materials, label, rgba, side=SIDE, slot=None,
-               stem=None, kind="unit"):
+               stem=None, kind="unit", replace=False):
     """Add ONE icon to tables that are ALREADY deep copies.
 
     Split out of `emit` because a session that changes three icons would
@@ -352,12 +421,16 @@ def _merge_one(icons, materials, label, rgba, side=SIDE, slot=None,
         slot = next_slot(icons, kind)
     slot = int(slot)
     material = _clean_stem(stem, slot, kind)
+    if replace:
+        material = _free_material(material, *_materials(materials))
     file_rel = "%s/%s%s" % (spec["texture_dir"], material, spec["ext"])
     key = _key(slot)
 
     table = icons.setdefault(spec["section"], {})
-    if key in table and table[key] not in (None, "None"):
+    if (not replace and key in table and table[key] not in (None, "None")):
         raise IconError("第 %d 号图标槽已经被「%s」占了" % (slot, table[key]))
+    # In replace mode this overwrites the slot's OWN entry -- the picture the
+    # record already points at -- and leaves every other key alone.
     table[key] = material
 
     materials.setdefault("Materials", []).append(
@@ -403,7 +476,8 @@ def emit_many(icons_doc, materials_doc, items):
         meta, blob = _merge_one(icons, materials, it.get("label"), it["rgba"],
                                 side=it.get("side") or SIDE,
                                 slot=it.get("slot"), stem=it.get("stem"),
-                                kind=it.get("kind") or "unit")
+                                kind=it.get("kind") or "unit",
+                                replace=bool(it.get("replace")))
         files[_mod_rel(meta["file_rel"])] = blob
         metas.append(meta)
     files[ICONS_REL.replace(os.sep, "/")] = _dump(icons)

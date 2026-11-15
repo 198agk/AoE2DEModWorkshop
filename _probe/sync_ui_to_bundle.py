@@ -26,6 +26,26 @@ PAIRS = [("aoe2mod/ui/static", "app/aoe2mod/ui/static"),
 MARKER = 'id="nav-card"'
 
 
+def _force_writable(func, target, exc):
+    """Clear the read-only bit and retry.
+
+    Measured 2026-11-09: `shutil.rmtree` on the bundle's static folder died with
+    `PermissionError: [WinError 5] 拒绝访问` on `art/preview-girl.jpg` -- the file
+    is shipped read-only (-r-xr-xr-x), and Windows refuses to unlink a read-only
+    file.  A sync step that crashes on a healthy bundle is worse than no step,
+    so the delete gets the same treatment every copy tool gives it: chmod, retry.
+    """
+    try:
+        os.chmod(target, 0o700 if os.path.isdir(target) else 0o600)
+    except OSError:
+        pass
+    func(target)
+
+
+def _rmtree(path):
+    shutil.rmtree(path, onexc=_force_writable)
+
+
 def main():
     ok = True
     for rel_src, rel_dst in PAIRS:
@@ -35,11 +55,20 @@ def main():
             print("REFUSING: missing", src)
             return 1
         if os.path.isdir(dst):
-            shutil.rmtree(dst)
+            _rmtree(dst)
+        # `__init__.py` is a PACKAGE MARKER, not a cache.  This list used to
+        # drop it (d4f6d70), and because this sync rebuilds `app/aoe2mod/schema`
+        # from scratch it deleted `aoe2mod/schema/__init__.py` on every run --
+        # one step after `sync_app_package.py` had copied it in.
+        # Measured 2026-11-09: the four-step ship cycle could never pass,
+        # `test_bundle_package_sync.py` always ended with
+        #   FAIL aoe2mod/schema/__init__.py is in the repo but not in the bundle
+        # and the only way to green was re-running step 1 alone, which left
+        # step 2's page/schema sync unverified.  Bytecode is still dropped;
+        # package markers are not.
         shutil.copytree(
             src, dst,
-            ignore=shutil.ignore_patterns("__pycache__", "*.pyc", "*.pyo",
-                                          "__init__.py"))
+            ignore=shutil.ignore_patterns("__pycache__", "*.pyc", "*.pyo"))
         n = sum(len(f) for _b, _d, f in os.walk(dst))
         print("  %-28s -> %-34s %3d files" % (rel_src, rel_dst, n))
 

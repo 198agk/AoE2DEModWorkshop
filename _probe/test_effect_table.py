@@ -218,7 +218,13 @@ def main():
 
 if __name__ == "__main__":
     import tempfile
+    sys.path.insert(0, HERE)
+    import _sandbox as SB
     _st = tempfile.mkdtemp(prefix="aoe2_fxt_")
     os.environ["AOE2MOD_STATE_DIR"] = _st
     os.environ["AOE2MOD_BUILD_OUT"] = os.path.join(_st, "out")
+    # `app.rebuild("fx one number")` installs with `profile_root=None` = the
+    # player's REAL profile, so the rebuild below used to leave an entry in the
+    # list the game shows.  The state dir above only covers the builds record.
+    SB.temp_profile(_st)
     sys.exit(main())

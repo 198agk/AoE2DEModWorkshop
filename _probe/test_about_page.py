@@ -168,6 +168,27 @@ def main():
     check("...and the failure says what to do instead",
           "复制不了" in page and "手动选中" in page)
 
+    # The two buttons on a link row wrap as ONE group.  Measured 2026-11-09 at
+    # 1360px: row 478px, address 292px, so "复制链接" sat on the first line at
+    # x=396 and "浏览器打开" fell to the second at x=0 -- one button right of the
+    # address and one far left, which reads as two unrelated rows.  A plain pair
+    # of siblings cannot be pinned: the flex algorithm is free to split them.
+    check("both buttons of a row live in one group",
+          re.search(r"\.abact \{ flex: none; display: flex; gap: 8px; "
+                    r"margin-left: auto; \}", page) is not None)
+    for kind in ("fan", "bili", "gh"):
+        block = re.search(r'<span class="abact">\s*'
+                          r'<button class="chip" id="about-copy-%s">[^<]*</button>\s*'
+                          r'<button class="chip" id="about-open-%s">[^<]*</button>\s*'
+                          r'</span>' % (kind, kind), body)
+        check("the %s row keeps its two buttons in that group" % kind,
+              block is not None)
+    check("the log row groups its two buttons too",
+          re.search(r'<span class="abact">\s*'
+                    r'<button class="chip" id="log-open">[^<]*</button>\s*'
+                    r'<button class="chip" id="log-refresh">[^<]*</button>\s*'
+                    r'</span>', body) is not None)
+
     # --- 6. the version line quotes this run ------------------------------
     check("drawAbout takes the meta object",
           re.search(r"function drawAbout\(meta\)", page) is not None)

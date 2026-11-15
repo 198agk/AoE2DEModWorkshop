@@ -21,6 +21,11 @@ EXE = os.path.join(OUT, "aoe2-mod-workshop.exe")
 SRC = r"C:\Users\26913\Games\Age of Empires 2 DE\76561198406248391"
 TMP = os.path.join(os.environ["TEMP"], "aoe2mod-e2e-shipped")
 PORT = 7807
+# An 8x8 red square as base64 PNG: a preview and a build need a decodable
+# picture and nothing else, and a file on disk would make this test depend on
+# a path that only exists on this machine.
+TINY_PNG_B64 = ("iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAYAAADED76LAAAAEklEQVR42mP4"
+                "z8DwHx9mGBkKAMLXf4HVAzL9AAAAAElFTkSuQmCC")
 
 
 def post(path, obj):
@@ -35,6 +40,41 @@ def get(path):
     return json.loads(
         urllib.request.urlopen("http://127.0.0.1:%d%s" % (PORT, path),
                                timeout=120).read().decode())
+
+
+def kill_engine_child():
+    """Kill the shipped runtime python this exe started, if it outlived it.
+
+    `taskkill /IM aoe2-mod-workshop.exe` kills the shell only.  The child python
+    keeps the listening socket for a few more seconds, and because Windows lets a
+    second socket bind a port the dying one still accepts on, a request can land
+    on the corpse.  The child is identified by executable path, never by image
+    name -- `python.exe` is also the name of the interpreter running this test.
+    """
+    exe_dir = os.path.dirname(os.path.abspath(os.path.join(OUT, "x")))
+    script = ("Get-CimInstance Win32_Process -Filter \"Name='python.exe'\" | "
+              "Where-Object { $_.ExecutablePath -like '" + exe_dir + "*' } | "
+              "ForEach-Object { Stop-Process -Id $_.ProcessId -Force }")
+    subprocess.run(["powershell", "-NoProfile", "-Command", script],
+                   capture_output=True)
+
+
+def port_free(port, secs=60):
+    """Block until nothing holds a LISTEN socket on `port`."""
+    cmd = ("(Get-NetTCPConnection -LocalPort %d -State Listen " % port
+           + "-ErrorAction SilentlyContinue | Measure-Object).Count")
+    t0 = time.time()
+    while time.time() - t0 < secs:
+        out = subprocess.run(["powershell", "-NoProfile", "-Command", cmd],
+                             capture_output=True, text=True)
+        try:
+            busy = int(out.stdout.strip().split()[0]) > 0
+        except Exception:
+            busy = False
+        if not busy:
+            return True
+        time.sleep(1)
+    return False
 
 
 def main():
@@ -57,7 +97,8 @@ def main():
 
     subprocess.run(["taskkill", "/IM", "aoe2-mod-workshop.exe", "/F"],
                    capture_output=True)
-    time.sleep(1)
+    kill_engine_child()
+    port_free(PORT)
     p = subprocess.Popen([EXE, "--port", str(PORT)], cwd=OUT, env=env,
                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     ok = True
@@ -74,14 +115,22 @@ def main():
         # filled after the 93 MB walk. Waiting on the port made the first build
         # in this test fail with "游戏数据还没读完" -- a correct refusal, and a
         # test that measured its own impatience.
+        ready = False
         for _ in range(240):
             time.sleep(0.25)
             try:
                 pr = get("/api/progress")
                 if (pr.get("progress") or {}).get("ready"):
+                    ready = True
                     break
             except Exception:
                 pass
+        # Say it out loud.  A silent wait loop turns "the engine never came up"
+        # into an exception at the first request, and the report then blames the
+        # product instead of the launch.
+        note("engine reached READY", ready)
+        if not ready:
+            raise SystemExit(1)
 
         # 1. a unit sentence, one call, no explicit intent
         pr = post("/api/parse", {"text": "村民血量改成1000"})
@@ -130,6 +179,39 @@ def main():
         t = post("/api/mod", {"name": "E2E村民血量", "enabled": False})
         off = [m for m in t["mods"] if m["name"] == "E2E村民血量"]
         note("toggle off", bool(off) and off[0]["enabled"] is False)
+
+        # 7. A PICTURE, END TO END, THROUGH THE SHIPPED PROGRAM.
+        # The player's complaint on 2026-11-11 was that one icon cost two mod
+        # folders to enable.  A record that keeps the slot it already names
+        # writes no .dat byte, so this save must produce ONE folder with no
+        # .dat and no `_ui` sibling.  Asserted on the disk the program wrote,
+        # not on the answer's own claim.
+        icp = post("/api/icon-set", {"kind": "unit", "record": 74,
+                                     "civ": "British", "dry": False,
+                                     "filename": "gate.png",
+                                     "data_b64": TINY_PNG_B64})
+        note("icon-set writes in place", icp.get("ok") is True
+             and icp.get("mode") == "inplace"
+             and icp.get("record_unchanged") is True,
+             " 槽 %s，待保存 %s" % (icp.get("slot"), icp.get("pending")))
+        sv = post("/api/session-save", {"title": "E2E图标一个文件夹",
+                                        "install": False})
+        one = sv.get("built") or ""
+        sib = one + "_ui"
+        dats = os.path.join(one, "resources", "_common", "dat",
+                            "empires2_x2_p1.dat")
+        tex = os.path.join(one, "widgetui", "textures", "ingame", "units")
+        note("icon save is ONE folder", sv.get("ok") is True
+             and one and os.path.isdir(one)
+             and not os.path.isdir(sib)
+             and not os.path.isfile(dats)
+             and os.path.isdir(tex),
+             " %s（无 .dat、无 _ui 兄弟目录）dat=%s tex=%s sib=%s ok=%s"
+             % (os.path.basename(one or "?"), os.path.isfile(dats),
+                os.path.isdir(tex), os.path.isdir(sib), sv.get("ok")))
+        note("icon save reports no ui half", sv.get("ui_mod_dir") is None
+             and (sv.get("info") or {}).get("Title") == "E2E图标一个文件夹",
+             " 标题 %s" % ((sv.get("info") or {}).get("Title"),))
     finally:
         p.terminate()
         try:

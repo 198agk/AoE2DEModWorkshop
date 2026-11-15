@@ -158,19 +158,36 @@ def main():
 
     try:
         post("/api/session-reset", {})
-        start = {b["button"]: b["count"] for b in card_of(68)["boxes"] if b["count"]}
-        check(start == {}, "the mill has no train button anywhere to begin with", start)
-        before = card_of(68)
+        # Which building has no card is a property of the FILE, not a constant.
+        # The mill has 0 entries in the vanilla data and 1 in the mod this
+        # session can be loaded with (box 11) -- the first version of this check
+        # hard-coded 68 and went red on data it had never looked at.
+        def empty_building():
+            seen = card_of(12).get("buildings") or []
+            for b in seen:
+                got = card_of(int(b["id"]))
+                used = {x["button"]: x["count"] for x in got["boxes"] if x["count"]}
+                if not used:
+                    return int(b["id"]), got
+            return None, None
+
+        which, before = empty_building()
+        check(which is not None, "some building in this file has no card at all",
+              which)
+        start = {b["button"]: b["count"] for b in before["boxes"] if b["count"]}
+        check(start == {}, "and it has no train button anywhere to begin with", start)
         check(before.get("pages") == [1] and before.get("page_count") == 2,
               "the engine still HAS a second screen even though this card is empty",
               (before.get("pages"), before.get("page_count")))
+        if which is None:
+            raise RuntimeError("no empty building in this file")
 
-        done = post("/api/card-put", {"unit": 83, "building": 68, "box": 16,
+        done = post("/api/card-put", {"unit": 83, "building": which, "box": 16,
                                      "seconds": 12, "dry": False})
         wrote += 1
         check(bool(done.get("ok")), "box 16 accepts a unit on an empty card",
               done.get("error") or done.get("label"))
-        after = card_of(68)
+        after = card_of(which)
         box16 = [b for b in after["boxes"] if b["button"] == 16]
         check(len(box16) == 1 and box16[0]["count"] == 1,
               "and the card, read back, shows it", box16 and box16[0]["count"])
@@ -185,7 +202,7 @@ def main():
               "and the second screen is now one this card uses", after.get("pages"))
 
         for bad, why in ((31, "past the second screen"), (0, "the box the engine hides")):
-            r = post("/api/card-put", {"unit": 93, "building": 68, "box": bad,
+            r = post("/api/card-put", {"unit": 93, "building": which, "box": bad,
                                        "dry": False})
             msg = r.get("error") or ""
             check(r.get("ok") is False and "不能写" in msg and "第 30 格" in msg,
@@ -195,8 +212,12 @@ def main():
             info = post("/api/session-info", {})
             for _ in range(int(info.get("undo") or 0)):
                 post("/api/undo", {})
-            back = {b["button"]: b["count"] for b in card_of(68)["boxes"] if b["count"]}
-            check(back == {}, "and undoing puts the empty card back to empty", back)
+            back = {b["button"]: b["count"]
+                    for b in card_of(which)["boxes"] if b["count"]}
+            # Against the baseline that was READ, not against `{}`: an empty
+            # card in some files already carries an entry the tool did not write.
+            check(back == start, "and undoing puts the empty card back to empty",
+                  (back, start))
         except Exception as exc:                            # noqa: BLE001
             check(False, "the section cleans up after itself", exc)
 

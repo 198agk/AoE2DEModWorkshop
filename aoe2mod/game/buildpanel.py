@@ -401,6 +401,52 @@ def insert_entry(text, key, building_id, entry, space=UNITS_KEY):
         + text[arr_lo + 1:]
 
 
+def ensure_array(text, key, building_id, space=UNITS_KEY):
+    """Give building `building_id` an empty `space` array if it has none.
+
+    A BUILDING THE FILE ONLY KNOWS AS SOMETHING YOU CAN PUT DOWN has no
+    Units/Techs key at all -- building 598 (Outpost) is exactly
+    {"ID": 598, "Name": "Outpost", "RequiredAge": 1} in all 68 panels, and so
+    are most of the wall/tower/mill blocks.  Asking `insert_entry` for their
+    Units array raises "has no Units array", which reads like a refusal but is
+    only a missing key: the generator omits an array that would be empty.
+
+    So write the key, empty, in the file's own shape (CRLF, the same indent as
+    the other keys of that block), and let `insert_entry` fill it -- that path
+    already knows how to expand an empty array into a multi-line element list,
+    and the pair stays inverse: removing the last element leaves an empty array
+    behind, which is what the generator would have written.
+
+    Returns the text unchanged when the array already exists.
+    """
+    for b_start, b_end, b_id in _building_objects(text, key):
+        if b_id != building_id:
+            continue
+        at = text.find('"%s":' % space, b_start, b_end)
+        if at != -1:
+            return text
+        first_key = text.find('"', b_start + 1, b_end)
+        if first_key == -1:
+            raise PanelError("civ %r building %r is an empty object, so there "
+                             "is no indentation to copy" % (key, building_id))
+        line = text.rfind("\n", b_start, first_key) + 1
+        pad = " " * (first_key - line)
+        inner_end = b_end
+        while text[inner_end - 1] in " \r\n\t":
+            inner_end -= 1
+        return (text[:inner_end] + ',\r\n%s"%s": []' % (pad, space)
+                + text[inner_end:])
+    raise PanelError("civ %r has no building %r" % (key, building_id))
+
+
+def lists_node(text, key, building_id, node_id, space=UNITS_KEY):
+    """True when `building_id` already holds `node_id` in that array."""
+    span = _array_span(text, key, building_id, space)
+    if span is None:
+        return False
+    return bool(_entry_spans(text, span[0], span[1], node_id))
+
+
 def remove_entry(text, key, node_id, space=UNITS_KEY):
     """Remove every entry for ``node_id`` from the civ's ``space`` arrays.
 

@@ -203,6 +203,115 @@ def set_button(raw, gv, civs_start, civ_index, unit_id, builder_id, button,
     return before, int(button), off
 
 
+def slot_of(civs, civ_index, unit_id, builder_id):
+    """第 unit_id 号单位落在 builder_id 这座建筑的第几格，没有就 None。
+
+    两种形状都算：真正的 (builder_id, box) 条目，和 (-1, box) 占位条目。
+    建筑自己的条目优先，因为 plan_slot 写的时候是这个顺序：一个单位只要
+    还带着这座建筑的真条目，引擎就按那条画，先读占位会让面板显示一个
+    游戏里根本不会出现的格子。
+    """
+    if civs is None:
+        raise CardError("要传定位过的文明列表（Toolkit._civs），解析出来的 stats 里没有训练位置")
+    rec = None
+    for u in civs[civ_index]["units"]:
+        if u["id"] == unit_id:
+            rec = u
+            break
+    if rec is None:
+        return None
+    loose = None
+    for tl in rec.get("train_locations") or ():
+        who = tl.get("unit_id")
+        if who == builder_id:
+            return tl.get("button_id")
+        if who == -1 and loose is None:
+            loose = tl.get("button_id")
+    return loose
+
+
+def slot_map(civs, civ_index, building, units, boxes=None):
+    """{box: [unit ids]}，一页上这批单位各占哪一格。
+
+    boxes 传一页能用的格号列表时，落在这些格子之外的记到 None 这个键下，
+    这样调用方看得见它，而不是把它悄悄丢掉。
+    """
+    out = {}
+    for u in units or ():
+        uid = int(u)
+        b = slot_of(civs, civ_index, uid, building)
+        if boxes is not None and b not in boxes:
+            b = None
+        out.setdefault(b, []).append(uid)
+    return out
+
+
+def plan_slot(raw, gv, civs_start, civ_index, unit_id, builder_id, button,
+              civs=None, width=None):
+    """Make ``unit_id`` sit in box ``button`` ON ``builder_id``: plan only.
+
+    Returns ``(steps, info)`` where ``info["delta"]`` is how many bytes the
+    steps add (0 or ``TRAIN_ENTRY_BYTES``).  Three cases, in the order the
+    shipped data prefers them:
+
+    1. the unit already names this building -> one byte, same width;
+    2. the unit names no building but carries a ``-1`` placeholder entry ->
+       one byte on that entry (this is the shape every mod page after the
+       first one uses: ``(-1, box)`` plus attribute 42 at run time);
+    3. neither -> append a ``(-1, button)`` entry, nine bytes.
+
+    ``width`` overrides the entry size when ``newunit`` disagrees with the
+    file; it exists because `plan_put_on_card` reads the same constant and a
+    caller that already knows the answer should not be able to disagree.
+    """
+    if civs is None:
+        raise CardError("need the located civ list (Toolkit._civs)")
+    rec = None
+    for u in civs[civ_index]["units"]:
+        if u["id"] == unit_id:
+            rec = u
+            break
+    if rec is None:
+        raise CardError("第 %s 号单位在这个文明里没有记录" % unit_id)
+    button = _check_button(button)
+    here = rec.get("train_locations") or ()
+    for tl in here:
+        if tl.get("unit_id") != builder_id:
+            continue
+        off = _entry(raw, gv, civs_start, civ_index, unit_id, builder_id,
+                     civs)
+        was = raw[off]
+        if int(was) == int(button):
+            return [], {"unit": unit_id, "building": builder_id,
+                         "button": int(button), "was": int(was),
+                         "delta": 0, "how": "same"}
+        steps = [(off, 1, struct.pack("<B", int(button)))]
+        return steps, {"unit": unit_id, "building": builder_id,
+                       "button": int(button), "was": int(was),
+                       "delta": 0, "how": "moved"}
+    for tl in here:
+        if tl.get("unit_id") != -1:
+            continue
+        off = _entry(raw, gv, civs_start, civ_index, unit_id, -1, civs)
+        was = raw[off]
+        if int(was) == int(button):
+            return [], {"unit": unit_id, "building": builder_id,
+                         "button": int(button), "was": int(was),
+                         "delta": 0, "how": "same"}
+        steps = [(off, 1, struct.pack("<B", int(button)))]
+        return steps, {"unit": unit_id, "building": builder_id,
+                       "button": int(button), "was": int(was),
+                       "delta": 0, "how": "rewrote"}
+    steps, info = plan_put_on_card(raw, gv, civs_start, civ_index, unit_id,
+                                  -1, button, train_time=0, civs=civs)
+    info = dict(info)
+    info.update({"building": builder_id, "was": None,
+                 "delta": (width if width is not None
+                           else NU.TRAIN_ENTRY_BYTES),
+                 "how": "added"})
+    return steps, info
+
+
 def plan_move(raw, gv, civs_start, civ_index, unit_id, builder_id, button,
               civs=None):
     """What `move` would write: ``(writes, got)`` with equal-width writes.
@@ -383,12 +492,25 @@ def plan_put_on_card(raw, gv, civs_start, civ_index, unit_id, builder_id,
     n = struct.unpack_from("<h", raw, count_off)[0]
     if n < 0:
         raise CardError("第 %s 号单位的建造表项数是 %d，读不通" % (unit_id, n))
-    for tl in rec.get("train_locations") or ():
-        if tl.get("unit_id") == builder_id:
-            raise CardError(
-                "第 %s 号单位已经在这座建筑的第 %s 格上了；换格子用它自己的按钮"
-                % (unit_id, tl.get("button_id")))
     button = _check_button(button)
+    # NO REFUSALS HERE.  Not "the same building already has it" (dropped
+    # 2026-11-09, 「谁告诉你不能重复的」) and now not "this exact box
+    # already has it" either.
+    #
+    # The box guard survived because it looked reasonable: pressing the same
+    # icon twice on one box should be a no-op, not a duplicate.  It is not a
+    # no-op, though, and it is not even visible: `train_locations` carries
+    # EVERY entry the civ has, including the ones the panel is filtering out
+    # by era, so a player looking at a Dark Age view of a Stable saw an empty
+    # box 14, pressed 斥候, and was told 「第 5 号单位已经在这一格上了」 about
+    # an entry that was not on screen (reported 2026-11-11).  Answering with
+    # the state the player cannot see is worse than the duplicate it
+    # prevents: two entries on one box are drawn as one button and are
+    # harmless, and a second copy is what the player asked for.
+    #
+    # What is still refused is anything the file cannot hold: a box outside
+    # 1..30 (`_check_button` above), a count that does not read, and a
+    # train time that does not fit in i16.
     tt = int(train_time or 0)
     if not (-32768 <= tt <= 32767):
         raise CardError("训练时间 %r 秒写不进 i16" % (train_time,))
@@ -422,17 +544,23 @@ def plan_take_off_card(raw, gv, civs_start, civ_index, unit_id, builder_id,
                        civs=None):
     """Cut the train location that puts ``unit_id`` on ``builder_id``'s card.
 
-    Refuses on the LAST entry.  A record with zero entries parses fine (the
-    shipped data has 904 of them per civ), but a unit that trains nowhere is not
-    what "take it off the card" means -- so the refusal names the door that does
-    mean it instead of quietly emptying the list.
+    THE LAST ENTRY CAN GO TOO.  This used to refuse when `n <= 1` with
+    「第 N 号单位只有这一条建造项…」, on the reasoning that a unit that trains
+    nowhere is not what "take it off the card" means.  Reported 2026-11-10,
+    verbatim: 「怎么建筑放不了，谁告诉你这个不能删的，都说了编辑所有都可以做，
+    不能有任何限制，除非是引擎无法识别运行」 -- and the engine does read a
+    zero-entry record fine: the shipped data already has 904 of them per
+    civilisation, and every record that carries a name but no build menu is one.
+    The write itself was always self-consistent (count -1 plus nine bytes
+    removed); only the guard stood in the way, so the guard is gone.
     """
     got = entry_at(raw, gv, civs_start, civ_index, unit_id, builder_id, civs)
     n = struct.unpack_from("<h", raw, got["count_off"])[0]
-    if n <= 1:
+    if n <= 0:
+        # Not a policy: there is no entry to cut, and cutting one would make the
+        # count negative and the record unreadable.
         raise CardError(
-            "第 %s 号单位只有这一条建造项，删掉它这个单位就谁都不训练了；"
-            "要删记录请用「删除这一条」" % (unit_id,))
+            "第 %s 号单位的建造表已经是 0 项，没有可以拿掉的建造项" % (unit_id,))
     at = got["off_train_time"]
     steps = [(got["count_off"], 2, struct.pack("<h", n - 1)),
              (at, NU.TRAIN_ENTRY_BYTES, b"")]

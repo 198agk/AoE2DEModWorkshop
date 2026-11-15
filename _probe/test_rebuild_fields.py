@@ -38,6 +38,9 @@ OUT = os.path.join(TMP, "out")
 STATE_ENV = "AOE2MOD_STATE_DIR"
 OUT_ENV = "AOE2MOD_BUILD_OUT"
 
+sys.path.insert(0, HERE)
+import _sandbox as SB
+
 FAILS = []
 
 
@@ -70,6 +73,10 @@ def main():
     # write into the player's real builds record.
     os.environ[STATE_ENV] = STATE
     os.environ[OUT_ENV] = OUT
+    # `a.rebuild(title)` installs with `profile_root=None`, which is the player's
+    # REAL profile: every rebuild below registered a real mod-status entry.  The
+    # state dir override above does not cover that -- it is the builds record.
+    SB.temp_profile(TMP)
 
     from aoe2mod.ui.server import App
     a = App()

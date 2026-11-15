@@ -104,8 +104,34 @@ def _member_keys(obj):
     return keys
 
 
+def _variable_body(html, at, name):
+    """Keys a call site fills through `const body = {...}` + `body.k = ...`.
+
+    Two routes post a body that is built across a dozen statements rather than
+    written as a literal at the call: `/api/script-local-save` assembles it from
+    three text boxes plus two optional ones (`saveLocalScript`), and
+    `/api/record-add` does the same.  Reading only literals reported
+    `/api/script-local-save` as "a route the page never calls" while the page
+    called it on every 放进本地模组 press -- a guard that lies in the direction
+    of deleting a live route.  The window is bounded by the declaration: keys
+    belong to the function that declares the object, not to the file.
+    """
+    decl = re.search(r"(?m)^\s*(?:const|let|var)\s+%s\s*=\s*\{" % re.escape(name),
+                     html[:at])
+    if not decl:
+        return set()
+    start = decl.end() - 1
+    obj = _object_at(html, start)
+    keys = _member_keys(obj)
+    # Statements between the literal and the call mutate the same object.
+    for m in re.finditer(r"\b%s\.([A-Za-z_][A-Za-z0-9_]*)\s*=(?!=)" % re.escape(name),
+                         html[decl.end():at]):
+        keys.add(m.group(1))
+    return keys
+
+
 def page_bodies(html):
-    """{route: set(keys)} for every `api("/api/...", { ... })` call."""
+    """{route: set(keys)} for every `api("/api/...", body)` call."""
     out = {}
     for m in re.finditer(r'api\(\s*"(/api/[a-z\-]+)"\s*,\s*\{', html):
         route = m.group(1)
@@ -114,6 +140,9 @@ def page_bodies(html):
         if not keys:
             print("  .. (no literal members found for %s)" % route)
         out.setdefault(route, set()).update(keys)
+    for m in re.finditer(r'api\(\s*"(/api/[a-z\-]+)"\s*,\s*([A-Za-z_$][\w$]*)\s*\)', html):
+        keys = _variable_body(html, m.start(), m.group(2))
+        out.setdefault(m.group(1), set()).update(keys)
     return out
 
 
@@ -148,12 +177,26 @@ def server_reads(src):
     # cut off by pattern rather than by splitting on the shared prefix: splitting
     # on `"\n            if path =="` left an empty head, and every route then
     # looked like it read nothing (five false failures, all the same cause).
-    parts = re.split(r'(?=\n\s*if path == ")', posts)
+    # A branch may dispatch SEVERAL routes at once -- `if path in ("/api/x",
+    # "/api/y"):` -- and the two spellings have to produce the same map.  Before
+    # The twelve spaces are load-bearing: `if path == "..."` also appears INSIDE
+    # a branch (one route dispatches a nested `if path == "/api/x-del"`), and an
+    # indentation-blind split cut that outer branch in half -- which is how a
+    # route ended up reading only its own first three keys.
+    # this, the tuple head was invisible, its whole body was absorbed by the
+    # branch above it, and the routes inside it then reported "the page posts to
+    # /api/pseudo-page-put and the server handles it :: no" plus one phantom
+    # "ignored: ['box']".  Both were parser artefacts, not contract breaks.
+    parts = re.split(r'(?=\n {12}if path (?:== .|in \())', posts)
     for part in parts:
         m = re.match(r'\n\s*if path == "(/api/[a-z\-]+)"\s*:', part)
+        routes = [m.group(1)] if m else []
         if not m:
-            continue
-        head = part[m.end():]
+            t = re.match(r'\n\s*if path in \(([^)]*)\)\s*:', part)
+            if not t:
+                continue
+            routes = re.findall(r'"(/api/[a-z\-]+)"', t.group(1))
+        head = part[(m or t).end():]
         required = set(re.findall(r'payload\[\s*"([A-Za-z_][A-Za-z0-9_]*)"\s*\]', head))
         optional = set(re.findall(r'payload\.get\(\s*"([A-Za-z_][A-Za-z0-9_]*)"', head))
         if not required and not optional:
@@ -165,7 +208,9 @@ def server_reads(src):
                     r'payload\[\s*"([A-Za-z_][A-Za-z0-9_]*)"\s*\]', body))
                 optional |= set(re.findall(
                     r'payload\.get\(\s*"([A-Za-z_][A-Za-z0-9_]*)"', body))
-        out[m.group(1)] = (required, optional)
+        for route in routes:
+            req, opt = out.get(route, (set(), set()))
+            out[route] = (req | required, opt | optional)
     return out
 
 

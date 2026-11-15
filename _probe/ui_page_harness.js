@@ -645,29 +645,57 @@ let BUILD_WARNINGS = [];
 // stub that answered the OLD route (`/api/repair-check`, verdicts
 // `auto/manual/impossible`) left this harness green while the page asked a
 // question nobody answered -- 2026-11-09.
+// The batch checks below run this fixture a second time, and the apply stub
+// rewrites `UPGRADE_ANSWER` in place.  Without a pristine copy the second run
+// would start from one `up_to_date` row and prove nothing.
 let UPGRADE_ANSWER = {
   ok: true, count: 4,
   official: { ok: true, count: 12 },
   mods: [
+    // The `summary` strings below are the ENGINE's own shape, not a prose
+    // paraphrase: `aoe2mod/mod/upgrade.py:2376 describe(rep)` opens with
+    // 「判定：」「要搬的改动：」「耗时：」, and on a refusal it puts the SAME
+    // sentence in `summary` and in `notes[0]` (measured against the shipped
+    // route 2026-11-10: `297820_10 倍资源文明联盟3倍科技` returned one sentence
+    // twice).  A stub of one-line prose let the page print the whole block and
+    // still pass -- which is exactly how 19 rows of doubled text shipped.
     { name: "dsh test v46", title: "村民血量一组", verdict: "mergeable",
       enabled: true, counts: { edits: 5 }, conflict_count: 0, unmapped_count: 0,
-      summary: "作者的 5 处改动都能搬到新版上。", notes: [] },
+      summary: "判定：mergeable\n要搬的改动：5 处字段\n作者的 5 处改动都能搬到新版上。\n耗时：0.62 秒",
+      notes: [] },
     { name: "167396_Red Alert 2 MOD", title: "Red Alert 2", verdict: "conflicts",
       enabled: true, counts: { edits: 555 }, conflict_count: 2,
       unmapped_count: 0,
-      summary: "作者的改动搬得过去，但官方也动了其中 2 处。", notes: [] },
+      summary: "判定：conflicts\n要搬的改动：555 处字段\n官方也改过同一处：2 处（按你的改法）\n耗时：1.24 秒",
+      notes: [] },
     { name: "10 倍资源", title: "10 倍资源文明联盟3倍科技", verdict: "impossible",
       enabled: true, counts: { edits: 0 }, conflict_count: 0,
       unmapped_count: 0,
-      summary: "这一版搬不过去：它的记录布局和存档的那几版都不一样。",
-      notes: [] },
+      summary: "判定：impossible\n要搬的改动：0 处字段\n档案库里还没有 VER 7.8 这一代的官方数据。\n耗时：0.51 秒",
+      notes: ["档案库里还没有 VER 7.8 这一代的官方数据。"] },
     { name: "dsh test v61", title: "自己的图标", verdict: "up_to_date",
       enabled: true, counts: { edits: 0 }, conflict_count: 0,
       unmapped_count: 0,
-      summary: "这份 .dat 已经是新版了，不用动。", notes: [] },
+      summary: "判定：up_to_date\n要搬的改动：0 处字段\n这份 .dat 已经是新版了，不用动。\n耗时：0.58 秒",
+      notes: [] },
   ],
 };
+// A deep copy taken before anything mutates the fixture. `repairChecks()`
+// clicks a row button, and the apply stub rewrites the answer in place, so by
+// the time the batch checks run the live fixture holds a single `up_to_date`
+// row. Rerunning from that would prove nothing about a batch of two.
+const UPGRADE_PRISTINE = JSON.parse(JSON.stringify(UPGRADE_ANSWER));
 const repairedNow = [];
+// What the page actually POSTed, not just WHICH mod: a batch that silently
+// flipped `official_wins` to true would keep the names right and carry the
+// official value over the author's edit, which is the one outcome the row
+// button asks a question about.
+const appliedBodies = [];
+// The roster route's answer.  Empty for every check that drives the scan
+// directly (a roster in the way would mean those checks test the roster), and
+// filled in by rosterChecks() to prove the chip list is drawn and is what
+// decides the scope of the run.
+let CANDIDATES = null;
 
 // What /api/ai-meta and /api/ai-sentences answer.  The whole point of this entry
 // is that the model's output is SENTENCES and nothing else, so the stub hands
@@ -844,6 +872,15 @@ const sandbox = {
         || url.indexOf("/api/repair-check") === 0) {
       return { json: async () => UPGRADE_ANSWER };
     }
+    // The roster route: one directory walk, no .dat opened.  It is what the
+    // FIRST press of 检查自带数据文件的模组 asks, so the chip list is drawn
+    // before anything is parsed.  Left empty by default, because the other
+    // checks drive the check directly and a roster in their way would mean they
+    // test the roster instead.
+    if (url.indexOf("/api/upgrade-candidates") === 0) {
+      return { json: async () => CANDIDATES || { ok: true, profile_root: "/tmp/p",
+        mods: [], count: 0 } };
+    }
     // The AI entry.  Note the answer carries no intent, no plan and no bytes --
     // only the sentences a model would have written.  If a future page tried to
     // build straight from this, there would be nothing here to build from.
@@ -862,6 +899,7 @@ const sandbox = {
         || url.indexOf("/api/repair-apply") === 0) {
       const body = opt && opt.body ? JSON.parse(opt.body) : {};
       repairedNow.push(body.name);
+      appliedBodies.push(body);
       // An upgrade reinstalls, so it carries the same game-running answer as
       // install/rebuild.  After a successful upgrade the row must read as
       // nothing-left-to-do, because the whole claim is "same edits, same base
@@ -977,7 +1015,11 @@ const fn = new Function(
   "setPickKind: setPickKind, PICK: () => PICK, PINS: () => PINS, " +
   "dropOnSay: dropOnSay, DRAGGING: () => DRAGGING, " +
   "checkUpdates: checkUpdates, rebuildAll: rebuildAll, " +
-  "checkRepairs: checkRepairs, REPAIR: () => REPAIR_ANSWER, " +
+  "checkRepairs: checkRepairs, adaptAll: adaptAll, " +
+  "TODO: () => ADAPT_TODO, UPGRADE_FIXTURE: () => UPGRADE_ANSWER, " +
+  "APPLIED: () => appliedBodies, " +
+  "REPAIRED: () => repairedNow, " +
+  "UPGRADE_VERDICT_ZH: UPGRADE_VERDICT_ZH, " +
   "aiBoot: aiBoot, doAI: doAI, " +
   "renderMods: renderMods, setModsView: setModsView, MODSVIEW: () => MODSVIEW, " +
   "loadDatPicker: loadDatPicker, " +
@@ -2082,9 +2124,83 @@ function updateChecks() {
   }).then(() => {
     check("the banner disappears once nothing is stale",
           ids.banner.className.indexOf("open") < 0, ids.banner.className);
-    return repairChecks();
+    return rosterChecks();
   }).catch((e) => { fails.push("the update banner threw: " + e.message);
                     console.log("FAIL the update banner threw :: " + e.stack);
+                    finish(); });
+}
+
+// ---- the roster: which mods, before anything is parsed -------------------
+// The check reads every installed .dat, which is 666 s for nineteen of them
+// (measured 2026-11-10).  So the first press draws one chip per mod and parses
+// nothing until 检查选中的 is pressed (m19827).  What can go wrong is not
+// cosmetic: a chip list that cannot be emptied is a list that lies about what
+// "clean" means, a 检查选中的 that stays pressable with nothing ticked starts a
+// run over zero mods, and a scope that does not reach the request would check
+// nineteen after the player ticked two -- which is the complaint in m19874.
+function rosterChecks() {
+  CANDIDATES = { ok: true, profile_root: "/tmp/p", count: 3, mods: [
+    { name: "mod-a", title: "模组甲", enabled: true, kind: "subscribed", bytes: 12000000 },
+    { name: "mod-b", title: "模组乙", enabled: false, kind: "local", bytes: 9000000 },
+    { name: "mod-c", title: "模组丙", enabled: true, kind: "local", bytes: 4000000 },
+  ] };
+  const before = posted.length;
+  return page.checkRepairs().then(() => {
+    const box = ids.repair;
+    const chips = walk(box, []).filter((n) => n.className.indexOf("chip") === 0);
+    // 检查选中的 wears its count ("检查选中的 3 个"), so the actions are found by
+    // prefix; the mod chips by title.
+    const btnOn = (pre) => chips.filter((n) => text(n).indexOf(pre) === 0)[0] || null;
+    const labelled = (lbl) => chips.filter((n) => text(n) === lbl)[0] || null;
+    check("the first press draws a chip per mod instead of parsing them",
+          chips.filter((n) => text(n).indexOf("模组") === 0).length === 3,
+          JSON.stringify(chips.map((n) => text(n))));
+    check("nothing was parsed yet",
+          !posted.slice(before).some((p) => p.url.indexOf("/api/upgrade-check") === 0),
+          JSON.stringify(posted.slice(before).map((p) => p.url)));
+    // A button that cannot change anything is a broken button: the whole roster
+    // starts ticked, so 全选 has nothing to do and 全不选 has everything to do.
+    check("a fully ticked roster disables 全选 and offers 全不选",
+          labelled("全选").disabled === true && labelled("全不选").disabled === false,
+          JSON.stringify([labelled("全选").disabled, labelled("全不选").disabled]));
+    labelled("全不选").onclick({ target: labelled("全不选") });
+    const after = () => walk(box, []).filter((n) => n.className.indexOf("chip") === 0);
+    check("全不选 clears every chip",
+          after().filter((n) => n.className.split(/\s+/).indexOf("on") >= 0).length === 0,
+          JSON.stringify(after().map((n) => n.className)));
+    check("and then 检查选中的 refuses to run over nothing",
+          btnOn("检查选中的").disabled === true,
+          JSON.stringify(text(btnOn("检查选中的"))));
+    check("while 全选 becomes the way back",
+          labelled("全选").disabled === false && labelled("全不选").disabled === true,
+          JSON.stringify([labelled("全选").disabled, labelled("全不选").disabled]));
+    labelled("全选").onclick({ target: labelled("全选") });
+    check("全选 ticks them all back",
+          after().filter((n) => n.className.split(/\s+/).indexOf("on") >= 0).length === 3,
+          JSON.stringify(after().map((n) => n.className)));
+    // Untick one: the scope sentence and the request must both say "two".
+    const third = after().filter((n) => text(n).indexOf("模组丙") === 0)[0];
+    third.onclick({ target: third });
+    check("unticking one names the new count on the button",
+          text(btnOn("检查选中的")).indexOf("2 个") >= 0,
+          JSON.stringify(text(btnOn("检查选中的"))));
+    const mark = posted.length;
+    const go = btnOn("检查选中的");
+    return go.onclick({ target: go }).then(() => {
+      const call = posted.slice(mark)
+        .filter((p) => p.url.indexOf("/api/upgrade-check") === 0)[0];
+      check("the request names exactly the ticked mods",
+            !!call && call.url.indexOf("names=mod-a%2Cmod-b") >= 0,
+            call ? call.url : JSON.stringify(posted.slice(mark).map((p) => p.url)));
+      check("a run started from the roster does not ask for the roster again",
+            !posted.slice(mark).some((p) => p.url.indexOf("/api/upgrade-candidates") === 0),
+            JSON.stringify(posted.slice(mark).map((p) => p.url)));
+      CANDIDATES = null;
+      return repairChecks();
+    });
+  }).catch((e) => { fails.push("the roster threw: " + e.message);
+                    console.log("FAIL the roster threw :: " + e.stack);
+                    CANDIDATES = null;
                     finish(); });
 }
 
@@ -2125,11 +2241,57 @@ function repairChecks() {
           flat.indexOf("能一键适配") >= 0 && flat.indexOf("这一版搬不过去") >= 0
             && flat.indexOf("impossible") < 0 && flat.indexOf("mergeable") < 0,
           flat);
+    // The engine writes `summary` as the panel's OWN lines (判定 / 要搬的改动 /
+    // … / 耗时), so a page that prints the block verbatim repeats the badge and
+    // the count row above it -- and on a refusal, repeats the one sentence that
+    // lives in `summary` AND `notes[0]`.  Both are counted here because both
+    // looked fine in a screenshot: the old panel drew them on top of each other
+    // inside a 30px row, so "the text is there" was true and unreadable.
+    const times = (hay, needle) => hay.split(needle).length - 1;
+    check("the engine's 判定 line is not printed under the badge that says it",
+          flat.indexOf("判定：") < 0, flat);
+    check("the engine's 要搬 line is not printed under the count row",
+          flat.indexOf("要搬的改动：") < 0, flat);
+    check("耗时 is moved onto the count row, once per row",
+          times(flat, "耗时：") === 4, JSON.stringify(times(flat, "耗时：")));
+    check("a refusal that is in both summary and notes is printed once",
+          times(flat, "档案库里还没有 VER 7.8 这一代的官方数据。") === 1,
+          JSON.stringify(times(flat, "档案库里还没有 VER 7.8 这一代的官方数据。")));
+    // Colour is the only thing that separates nineteen rows at a glance, and
+    // the page used to put the same green pill on every verdict: `.stat` with
+    // a `.dim` that only exists for `.detailtext`, so a mod that cannot be
+    // carried forward looked exactly like one the button fixes.
+    const badgesOf = (v) => walk(box, []).filter((n) => n.className
+      && n.className.indexOf("stat") === 0
+      && text(n) === (page.UPGRADE_VERDICT_ZH[v] || v));
+    check("a fixable verdict wears the plain success pill",
+          badgesOf("mergeable").every((n) => n.className === "stat"),
+          JSON.stringify(badgesOf("mergeable").map((n) => n.className)));
+    check("a verdict the official patch touched is not drawn as a clean pass",
+          badgesOf("conflicts").every((n) => n.className === "stat warn"),
+          JSON.stringify(badgesOf("conflicts").map((n) => n.className)));
+    check("a row this tool cannot carry forward is drawn as a refusal",
+          badgesOf("impossible").every((n) => n.className === "stat bad"),
+          JSON.stringify(badgesOf("impossible").map((n) => n.className)));
+    check("a row with nothing to do is drawn quietly, not as a pass",
+          badgesOf("up_to_date").every((n) => n.className === "stat plain"),
+          JSON.stringify(badgesOf("up_to_date").map((n) => n.className)));
     const btn = walk(box, []).find((n) => n.className === "chip"
       && text(n) === "适配新版本");
     RUNNING = true;
-    return btn ? btn.onclick({ target: btn }) : null;
-  }).then(() => {
+    const mark = posted.length;
+    return btn ? btn.onclick({ target: btn }).then(() => mark) : null;
+  }).then((mark) => {
+    // The re-ask after a row upgrade is about THAT mod.  It used to pass no
+    // names, which the route reads as "every candidate" -- so pressing one row's
+    // button set the tool reading all nineteen .dat files again (m19874:
+    // "工具自己去把别的检查了").  The URL is the proof, not the row text.
+    const again = posted.slice(mark)
+      .filter((p) => p.url.indexOf("/api/upgrade-check") === 0);
+    check("re-asking after one row asks about that one mod",
+          again.length === 1 && again[0].url.indexOf("names=") >= 0
+            && again[0].url.indexOf("dsh%20test%20v46") >= 0,
+          JSON.stringify(again.map((p) => p.url)));
     check("the upgrade posts the installed mod's own folder name",
           repairedNow.length === 1 && repairedNow[0] === "dsh test v46",
           JSON.stringify(repairedNow));
@@ -2145,9 +2307,105 @@ function repairChecks() {
           walk(ids.repair, []).filter((n) => n.className === "chip"
             && text(n) === "适配新版本").length === 0, text(ids.repair));
     RUNNING = false;
-    return intentListChecks();
+    return adaptAllChecks();
   }).catch((e) => { fails.push("the repair box threw: " + e.message);
                     console.log("FAIL the repair box threw :: " + e.stack);
+                    finish(); });
+}
+
+// ---- the batch button -----------------------------------------------------
+// Nineteen rows each needing one press is not the "one-click update" the panel
+// promises, so there is a second button that walks the same route.  Three
+// things about it can go wrong without anything else on this screen noticing:
+//   (1) it is offered when nothing is actionable, which teaches the player to
+//       ignore it;
+//   (2) it stops at the first mod that throws, so a batch of nineteen is a
+//       batch of however many came first;
+//   (3) it flips `official_wins` and carries the official value over the
+//       author's edit -- the exact outcome the row button asks a question
+//       about, silently applied to every row at once.
+// The body of each POST is recorded for (3): names alone would still look
+// right with the flag inverted.
+function adaptAllChecks() {
+  // repairChecks() clicked a row button, and the apply stub rewrites the
+  // fixture in place; start from the pristine copy so this run sees two
+  // actionable rows, as a screen with nineteen mods does.
+  // Assigned here, in the harness scope, because that is where the stub reads
+  // it: an assignment made from inside the page creates a page-scope variable
+  // and leaves the stub answering from the spent fixture.
+  UPGRADE_ANSWER = JSON.parse(JSON.stringify(UPGRADE_PRISTINE));
+  repairedNow.length = 0;
+  appliedBodies.length = 0;
+  ids.toast.textContent = "";
+  let mark = posted.length;
+  return page.checkRepairs().then(() => {
+    mark = posted.length;
+    const all = ids["btn-repair-all"];
+    check("the batch button appears when something can be batched",
+          all && !all.classList.contains("hide"),
+          all ? all.className : "no #btn-repair-all");
+    // Not cosmetic: `repairChecks()` counts the row buttons by their exact
+    // wording, so a batch button sharing it would be counted as a third
+    // row button and the screen would offer the same action twice.
+    check("and it does not wear the row button's wording",
+          all && text(all) !== "适配新版本",
+          all ? JSON.stringify(text(all)) : "");
+    // The queue is the answer the rows were drawn from, not a second query:
+    // two sources for "what needs work" is how a batch and a list disagree.
+    check("the queue is exactly the actionable rows, in screen order",
+          JSON.stringify(page.TODO().map((r) => r.name))
+            === JSON.stringify(["dsh test v46", "167396_Red Alert 2 MOD"]),
+          JSON.stringify(page.TODO().map((r) => r.name)));
+    return page.adaptAll().then(() => mark);
+  }).then((mark) => {
+    // The re-ask after a batch is about the mods the BATCH rebuilt.  It used to
+    // pass no names -- "every candidate" -- so adapting two mods quietly set the
+    // tool reading all nineteen .dat files, which is what m19874 saw as the tool
+    // checking things nobody asked about.
+    const again = posted.slice(mark)
+      .filter((p) => p.url.indexOf("/api/upgrade-check") === 0);
+    check("re-asking after a batch names the mods the batch rebuilt",
+          again.length === 1 && again[0].url.indexOf("names=") >= 0
+            && again[0].url.indexOf("Red%20Alert") >= 0
+            && again[0].url.indexOf("dsh%20test%20v46") >= 0,
+          JSON.stringify(again.map((p) => p.url)));
+    // Both, not the first one: a batch that stopped at a throwing mod is the
+    // failure this button exists to avoid, and it looks identical here unless
+    // the names are counted.
+    check("the batch carries every actionable mod, not just the first",
+          repairedNow.length === 2
+            && repairedNow[0] === "dsh test v46"
+            && repairedNow[1] === "167396_Red Alert 2 MOD",
+          JSON.stringify(repairedNow));
+    check("each press keeps the author's edit (official_wins false)",
+          appliedBodies.length === 2
+            && appliedBodies.every((b) => b.official_wins === false
+                                 && b.install === true),
+          JSON.stringify(appliedBodies));
+    // Said out loud, because the player did not answer the conflict question
+    // for these rows: they answered it for one, or for none.
+    check("the batch says which mods the official patch also touched",
+          text(ids.repair).indexOf("Red Alert 2") >= 0
+            && text(ids.repair).indexOf("按作者的改法") >= 0,
+          text(ids.repair));
+    // One toast, and it must be the summary -- `toast()` overwrites, so four
+    // calls in a row would leave the failure list on screen for four seconds
+    // and then nothing.
+    check("the batch reports its result in one toast",
+          text(ids.toast).indexOf("2 个") >= 0
+            && (text(ids.toast).match(/已适配/g) || []).length === 1,
+          JSON.stringify(text(ids.toast)));
+    // Re-asked, not assumed: the stub answers the second query with one
+    // already-current row, so the button must have withdrawn itself.
+    check("the button withdraws once the work is done",
+          ids["btn-repair-all"].classList.contains("hide"),
+          ids["btn-repair-all"].className);
+    check("and the rows were re-read from the route, not assumed",
+          text(ids.repair).indexOf("本来就是新版") >= 0,
+          text(ids.repair));
+    return intentListChecks();
+  }).catch((e) => { fails.push("the batch button threw: " + e.message);
+                    console.log("FAIL the batch button threw :: " + e.stack);
                     finish(); });
 }
 

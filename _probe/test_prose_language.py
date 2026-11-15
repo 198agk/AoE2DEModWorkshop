@@ -360,7 +360,16 @@ def main():
           gone)
     check("icon_for: the refusal has no English words",
           not LATIN_WORD.search(_drop_paths(gone.get("why") or "")), gone)
-    odd = tk.icon_for("building", 82)
+    # A building IS a unit record whose type is 80, so "building" is answered by
+    # the same resolve rather than refused (2026-11-10: the picker had no way to
+    # ask for buildings, so nothing could reach a building by looking).  What is
+    # left to refuse is a word that names no list at all.
+    built = tk.icon_for("building", 82)
+    check("icon_for answers a building by its unit record",
+          built.get("ok") is True, built)
+    check("icon_for: the building answer names a picture",
+          bool(built.get("material")), built)
+    odd = tk.icon_for("tree", 1)
     check("icon_for refuses a kind it does not take", odd.get("ok") is False, odd)
     check("icon_for: that refusal has no English words",
           not LATIN_WORD.search(_drop_paths(odd.get("why") or "")), odd)

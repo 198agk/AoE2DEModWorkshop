@@ -37,6 +37,8 @@ record points at -- and refused for writing, in one sentence, by `plan()`.
 """
 from __future__ import annotations
 
+import contextlib
+import io
 import struct
 
 from . import parser as P
@@ -98,6 +100,28 @@ TABLES = {
     # 0.0006 s once the unit tab has been opened, and says so on screen.
     "civ": {"stage": "7 UnitHeaders", "count": "civ_count",
             "list": "civs", "zh": "文明"},
+    # The three below are not record families: they are the structures that sit
+    # BETWEEN the record families, and until now not one of their numbers had an
+    # address on any screen.  AGE3 shows them under TerrainBlock (General tab)
+    # and TechTrees, which is why they are the last three of its thirteen tabs
+    # this tool could not reach.
+    #
+    # "map" is the 25 scalars that follow the 200 terrain records -- the tile
+    # grid the game uses to convert between map cells and screen pixels.
+    # Measured 2026-11-12: 63 bytes at 3588524, all 25 values named.
+    "map": {"stage": "4 TerrainBlock+RandomMaps", "count": "terrains_used2",
+            "list": "terrains", "zh": "地图块"},
+    # "tail" is the seven i32 counters between the last technology and the tech
+    # tree (DatFile.h calls them History totals).  Measured: stage 10 begins at
+    # 93206865 and the seven values are 30/7/14/700/1400/5/10.
+    "tail": {"stage": "10 Tail+TechTree", "count": "time_slice",
+             "list": "tech_tree", "zh": "全局数值"},
+    # "techtree" is 550 connection lines -- 4 ages, 37 buildings, 269 units,
+    # 240 researches -- and every line carries an 84-byte Common block the game
+    # reads to lay out the tech tree.  This is the one table AGE3 gives four
+    # tabs to (TechTrees: Ages / Buildings / Units / Research).
+    "techtree": {"stage": "10 Tail+TechTree", "count": "total_unit_tech_groups",
+                 "list": "tech_tree", "zh": "科技树连线"},
 }
 
 #: Every scalar of a graphic record, as (name, kind, offset-from-somewhere).
@@ -162,9 +186,12 @@ GRAPHIC_META = {
                              "100 = 整个图形都用队伍色）。"),
     "TransparentSelection": dict(zh="选中透视", lo=0, hi=1,
                                  hint="1 = 被遮挡时也能看到轮廓。"),
-    "Coordinates.0": dict(zh="偏移 X", lo=-32768, hi=32767),
-    "Coordinates.1": dict(zh="偏移 Y", lo=-32768, hi=32767),
-    "Coordinates.2": dict(zh="偏移 Z", lo=-32768, hi=32767),
+    "Coordinates.0": dict(zh="偏移 X", lo=-32768, hi=32767,
+                          hint="图形相对锚点左右挪多少像素。正数往右，负数往左。"),
+    "Coordinates.1": dict(zh="偏移 Y", lo=-32768, hi=32767,
+                          hint="图形相对锚点上下挪多少像素。正数往下，负数往上。"),
+    "Coordinates.2": dict(zh="偏移 Z", lo=-32768, hi=32767,
+                          hint="图形离地多高，用来把飞行单位、旗帜之类抬到空中。"),
     "Coordinates.3": dict(zh="锚点", lo=-32768, hi=32767,
                           hint="单位站在图形上的哪个像素，决定它看起来"\
                                "贴不贴地。"),
@@ -193,7 +220,16 @@ GRAPHIC_META = {
                     "改它等于把两个单位的图对调。"),
     "MirroringMode": dict(zh="镜像方式", lo=0, hi=8,
                           hint="向左走时怎么翻图：0 不翻，1/2 水平翻，3 用单独的镜像帧。"),
-    "EditorFlag": dict(zh="编辑器标记", lo=0, hi=255),
+    "EditorFlag": dict(zh="编辑器标记", lo=0, hi=255,
+                        hint="只给地图编辑器看的分类标记，游戏运行时不用它。保持原值即可。"),
+    # 图形记录最前面是三个带长度前缀的字符串。名字必须在这里登记，否则字段表
+    # 会把内部英文名直接倒给玩家。三条都只读：改了长度会挤掉后面的字段。
+    "Name": dict(zh="图形名字", ro=True,
+                 hint="这条图形自己的名字（例如 Barracks ORIE Age3）。字符串，只读。"),
+    "FileName": dict(zh="源文件名", ro=True,
+                     hint="生成这条图形时用的 .slp 文件名。多数记录这里是空的，只读。"),
+    "ParticleEffect": dict(zh="粒子特效名", ro=True,
+                           hint="挂在这条图形上的粒子特效名。大多数记录是空的，只读。"),
 }
 
 SOUND_META = {
@@ -464,7 +500,9 @@ TERRAIN_META = {
                      hint="运行时的内存指针，存在文件里也没有意义。"),
     "SoundID": dict(zh="音效编号", lo=-1, hi=2147483647,
                     hint="走在这个地形上的脚步声（指向「音效」表）。"),
-    "WwiseSoundID": dict(zh="Wwise 音效编号", lo=0, hi=4294967295),
+    "WwiseSoundID": dict(zh="Wwise 音效编号", lo=0, hi=4294967295,
+                         hint="走在这个地形上的脚步声的 Wwise 事件编号。0 = 不用新版音频，"
+                         "改走上面那条老音效。"),
     "WwiseSoundStopID": dict(zh="Wwise 停止编号", lo=0, hi=4294967295,
                              hint="离开这个地形时用来停掉上面那段声音。"),
     "BlendPriority": dict(zh="混合优先级", lo=-2147483648, hi=2147483647,
@@ -518,10 +556,134 @@ COLOUR_META = {
                                 hint="选中单位时闪的第一种颜色。"),
     "UnitSelectionColor2": dict(zh="选中色 2", lo=0, hi=2147483647,
                                 hint="选中单位时闪的第二种颜色。"),
-    "MinimapColor2": dict(zh="小地图副色", lo=0, hi=2147483647),
-    "MinimapColor3": dict(zh="小地图副色 2", lo=0, hi=2147483647),
+    "MinimapColor2": dict(zh="小地图副色", lo=0, hi=2147483647,
+                          hint="小地图上给这个玩家画第二层标记时用的颜色。原版多数是 -1，表示不用。"),
+    "MinimapColor3": dict(zh="小地图副色 2", lo=0, hi=2147483647,
+                          hint="小地图上的第三个颜色，同样多数是 -1。"),
     "StatisticsText": dict(zh="统计文字颜色", lo=-1, hi=2147483647,
                            hint="计分板上一行文字的颜色编号。-1 = 不指定。"),
+}
+
+#: The 25 scalars that follow the 200 terrain records.  Names come from
+#: `genieutils/include/genie/dat/TerrainBlock.h`; the values quoted in the hints
+#: are measured on the shipped file (2026-11-12) and the wording follows AGE3
+#: General tab (`General.cpp`), which prints the same 25 under "Tile Sizes" and
+#: "Miscellaneous useless terrain data".
+_MAP_META = {
+    "MapMinX": dict(zh="地图最小 X",
+                     hint="整块地图的左边界（像素）。引擎靠这六个值把格子换算成屏幕位置。"),
+    "MapMinY": dict(zh="地图最小 Y", hint="整块地图的上边界（像素）。"),
+    "MapMaxX": dict(zh="地图最大 X", hint="整块地图的右边界（像素）。"),
+    "MapMaxY": dict(zh="地图最大 Y", hint="整块地图的下边界（像素）。"),
+    "MapMaxXplus1": dict(zh="地图最大 X + 1",
+                         hint="右边界再往右一格，画格子时用来算整块宽度。"),
+    "MapMaxYplus1": dict(zh="地图最大 Y + 1",
+                         hint="下边界再往下一格，画多层地形时用来算高度。"),
+    "TerrainsUsed2": dict(zh="实际用地形数", lo=0, hi=32767,
+                          hint="200 个地形槽里真正被用到的数量，这份数据是 134。"),
+    "BordersUsed": dict(zh="实际用边界数", lo=0, hi=32767,
+                        hint="地形边界（TerrainBorder）用了几个，这份数据是 0。"),
+    "MaxTerrain": dict(zh="最大地形编号", lo=0, hi=32767,
+                       hint="地图上出现过的最大的地形编号，这份数据是 0。"),
+    "TileWidth": dict(zh="瓦片宽", lo=0, hi=32767,
+                      hint="一个菱形瓦片的像素宽度，这份数据是 96。"),
+    "TileHeight": dict(zh="瓦片高", lo=0, hi=32767,
+                       hint="一个菱形瓦片的像素高度，这份数据是 48。"),
+    "TileHalfHeight": dict(zh="瓦片半高", lo=0, hi=32767,
+                           hint="TileHeight 的一半，这份数据是 24。"),
+    "TileHalfWidth": dict(zh="瓦片半宽", lo=0, hi=32767,
+                          hint="TileWidth 的一半，这份数据是 48。"),
+    "ElevHeight": dict(zh="抬高一级差多少", lo=0, hi=32767,
+                       hint="地面抬高一级差多少像素，这份数据是 24。"),
+    "CurRow": dict(zh="当前行", hint="存档时停在哪一行；新建的地图是 0。"),
+    "CurCol": dict(zh="当前列", hint="存档时停在哪一列；新建的地图是 0。"),
+    "BlockBegRow": dict(zh="分块起始行", hint="地图分块渲染的起始行，这份数据是 0。"),
+    "BlockEndRow": dict(zh="分块结束行", hint="地图分块渲染的结束行，这份数据是 0。"),
+    "BlockBegCol": dict(zh="分块起始列", hint="地图分块渲染的起始列，这份数据是 0。"),
+    "BlockEndCol": dict(zh="分块结束列", hint="地图分块渲染的结束列，这份数据是 0。"),
+    "SearchMapPtr": dict(zh="寻路图指针", ro=True,
+                         hint="内存里寻路数组的地址，文件里留的是残值，改它只会让下一次存档更奇怪。"),
+    "SearchMapRowsPtr": dict(zh="寻路图行指针", ro=True,
+                             hint="同上，内存地址的残值，不是一个能读懂的数值。"),
+    "AnyFrameChange": dict(zh="是否每帧重画", lo=0, hi=255,
+                           hint="0 = 地形只在变化时更新，1 = 每帧重画。这份数据是 0。"),
+    "MapVisibleFlag": dict(zh="地图可见标记", lo=0, hi=255,
+                           hint="0 = 不可见，1 = 可见。这份数据是 0（这就是为什么打开地图编辑器之前它什么都不画）。"),
+    "FogFlag": dict(zh="迷雾标记", lo=0, hi=255,
+                    hint="1 = 开战争迷雾。这份数据是 1。"),
+}
+
+#: The seven i32 counters that sit between the last tech and the tech tree.
+#: Order and names from `genieutils/include/genie/dat/DatFile.h` (/// History
+#: totals); the labels are AGE3 TechTrees tab History Totals, the values are
+#: measured on the shipped file.
+_TAIL_FIELDS = (
+    ("TimeSlice", "时间切片", "一回合被切成多少份，引擎用它给历史统计算速率。这份数据是 30。"),
+    ("UnitKillRate", "单位击杀率", "历史统计里每击杀一个单位记多少分。这份数据是 7。"),
+    ("UnitKillTotal", "单位击杀总分", "击杀分数的封顶。这份数据是 14。"),
+    ("UnitHitPointRate", "单位生命率", "历史统计里每一点生命记多少分。这份数据是 700。"),
+    ("UnitHitPointTotal", "单位生命总分", "生命分数的封顶。这份数据是 1400。"),
+    ("RazingKillRate", "拆建筑率", "拆掉一座建筑记多少分。这份数据是 5。"),
+    ("RazingKillTotal", "拆建筑总分", "拆建筑分数的封顶。这份数据是 10。"),
+)
+_TAIL_META = dict((n, dict(zh=z, hint=h)) for n, z, h in _TAIL_FIELDS)
+
+#: Fields every tech-tree connection has.  The Status / LocationInAge /
+#: LineMode enumerations are copied verbatim from AGE3 `TechTrees.cpp`
+#: (StatusHelp / LocationInAgeHelp / LineModeHelp, lines 2519-2524).
+_TECHTREE_META = {
+    "ID": dict(zh="编号",
+               hint="这条连线指向的东西的编号：时代是 1 到 4，建筑、单位、科技各自是它自己的编号。"),
+    "Status": dict(zh="状态", lo=0, hi=255,
+                   hint="0 无 / 1 无 / 2 玩家可用 / 3 玩家不可用 / 4 正在研究或建造 / 5 已完成 / 6 结束。文件里存的多数是 2。"),
+    "CommonSlotsUsed": dict(zh="用掉的连线槽", lo=0, hi=10,
+                            hint="后面的 20 个槽填了几个。画科技树时从这个节点引出的线就这么多。"),
+    "NumBuildingLevels": dict(zh="建筑层数", lo=0, hi=255,
+                              hint="这个时代在建筑页上占几层，原版是 0。"),
+    "MaxAgeLength": dict(zh="这个时代最长连线", lo=0, hi=255,
+                         hint="时代之间连线的最大长度，原版是 0。"),
+    "LineMode": dict(zh="连线模式",
+                     hint="0 科技：第一个时代 / 1 时代 / 2 单位：竖线第一个 / 3 单位：不是第一个 / 4 科技 / 5 建筑：有一条以上连线 / 6 建筑：没有连线。"),
+    "LocationInAge": dict(zh="在时代里的位置",
+                          hint="0 隐藏 / 1 第一个 / 2 第二个。AGE3 的 LocationInAgeHelp 就是这三个。"),
+    "UpperBuilding": dict(zh="挂在哪座建筑下",
+                          hint="这条连线从哪座建筑引出来；-1 表示没有上层建筑。"),
+    "VerticalLine": dict(zh="竖线编号",
+                         hint="同一条升级链上的竖线序号，越大越靠右。"),
+    "RequiredResearch": dict(zh="需要先研究哪个科技",
+                             hint="单位升级链上用：-1 表示它是链上第一个，否则填上一步的科技编号。"),
+    "EnablingResearch": dict(zh="哪个科技解锁它",
+                             hint="-1 表示一开始就有；否则要研究了这个科技才出现在科技树上。"),
+    # The three group-count bytes.  They say how many i32 IDs follow, so
+    # changing one changes the width of this record and of every record after
+    # it -- AGE3 lets you type over them, this screen does not.
+    "BuildingsCount": dict(zh="后面有几座建筑", lo=0, hi=255, ro=True,
+                            hint="这条记录后面跟着几个建筑编号。改它会改变整条记录的长度，所以只读。"),
+    "UnitsCount": dict(zh="后面有几个单位", lo=0, hi=255, ro=True,
+                        hint="这条记录后面跟着几个单位编号。改它会改变整条记录的长度，所以只读。"),
+    "TechsCount": dict(zh="后面有几个科技", lo=0, hi=255, ro=True,
+                        hint="这条记录后面跟着几个科技编号。改它会改变整条记录的长度，所以只读。"),
+}
+
+#: Per-slot families: the name is `<head>.<n>`, so the Chinese label has to be
+#: built from the head instead of written 10 times per connection (550
+#: connections x 20 slots would be 11,000 hand-written entries).
+_TECHTREE_FAMILY = {
+    "Buildings": ("建筑组第 %s 个", "这个时代能建的建筑编号之一。"),
+    "Units": ("单位组第 %s 个", "这个时代能出的单位编号之一。"),
+    "Techs": ("科技组第 %s 个", "这个时代能研究的科技编号之一。"),
+    "BuildingsPerZone": ("第 %s 个区域几座建筑",
+                         "AGE3 里叫 Buildings per zone：时代页按区域分栏，这里写每栏放几座建筑。"),
+    "GroupLengthPerZone": ("第 %s 个区域多长",
+                           "AGE3 里叫 Group length per zone：每栏的分组长度。"),
+    "UnitsTechsTotal": ("第 %s 个时代的总数",
+                        "AGE3 里叫 Units & Techs by Age：这个时代画出来的单位加科技总数。"),
+    "UnitsTechsFirst": ("第 %s 个时代的首项",
+                        "AGE3 里叫 Units & Techs @ 1st by Age：这个时代第一个画出来的编号。"),
+    "CommonUnitResearch": ("第 %s 个连线槽指向",
+                           "槽里填的是单位或科技的编号，画科技树时从它引线。"),
+    "CommonMode": ("第 %s 个槽的类型",
+                   "0 时代或科技层级 / 1 建筑 / 2 单位 / 3 科技。决定引线连到哪一栏。"),
 }
 
 #: Human name for each table, for a refusal sentence.
@@ -536,16 +698,27 @@ _TABLES_STOP = {"graphic": "3 ", "sound": "3 ", "effect": "5 ",
                 # is stage 4.  Both sit before the 3.2 MB graphic table, so the
                 # walk is cheaper than the graphic one, not dearer.
                 "restriction": "2 ", "colour": "2 ", "terrain": "5 ",
-                # UnitTasks are stage 7, one stage before the 89 MB civ block.
-                # Measured: stages 1-7 cost 5.9 s on the shipped file, and that
-                # is the whole price of this table -- the 10 s civ block is
-                # never entered.
-                "task": "8 ",
+                # UnitTasks are stage 7.  Stopping at "8 " made the walk enter
+                # stage 8 -- the 89 MB civ block, read_civ x 63 -- and threw the
+                # answer away.  Measured on two files (2026-11-12): "7 " gives
+                # 2329 records, leftover 0, in 0.19 s / 0.24 s; "8 " gives the
+                # same 2329 records in 5.04 s / 6.47 s.  Same answer, 25x the
+                # price, and it was the freeze the progress bar could not fill.
+                "task": "7 ",
                 # Civs stops at stage 7 on purpose: stage 7's END is the civ
                 # block's first byte, so the 89 MB block is never entered.  Its
                 # record starts come from the unit index -- see TABLES["civ"].
                 # Stopping at "8 " instead cost 4.43 s for the same answer.
-                "civ": "7 "}
+                "civ": "7 ",
+                # The terrain block's own scalars sit after the 200 terrain
+                # records, inside stage 4 -- the same stop the terrain table
+                # uses, so the walk is already paid for.
+                "map": "5 ",
+                # The seven global counters and the tech tree are the whole of
+                # stage 10, which is the END of the file -- there is no cheaper
+                # stop.  Measured 2026-11-12: 5.5 s, and 5.4 s of that is the
+                # 89 MB civ block that has to be stepped over to reach it.
+                "tail": "10 ", "techtree": "10 "}
 
 
 def _meta(table):
@@ -565,6 +738,12 @@ def _meta(table):
         return TASK_META
     if table == "civ":
         return CIV_META
+    if table == "map":
+        return _MAP_META
+    if table == "tail":
+        return _TAIL_META
+    if table == "techtree":
+        return _TECHTREE_META
     return {}
 
 
@@ -612,6 +791,14 @@ def _meta_for(table, name):
                                if out["hint"] else "这份数据里 63 个文明全是 0")
             return out
         return {}
+    if table == "techtree":
+        # 550 connections x 20 slots: the label has to be built from the
+        # head, not written 11,000 times.
+        head, _dot, rest = name.partition(".")
+        if head in _TECHTREE_FAMILY and rest.isdigit():
+            zh, hint = _TECHTREE_FAMILY[head]
+            return dict(zh=zh % rest, hint=hint)
+        return {}
     if "." in name:
         slot = name.rsplit(".", 1)[-1]
         if slot in _SLOT_META:
@@ -634,7 +821,7 @@ class _StageStop(Exception):
     """
 
 
-def stage_offsets(raw, upto="3 "):
+def stage_offsets(raw, upto="3 ", quiet=False):
     """`{stage name: (start, end)}` from one pass over stages 1..`upto`.
 
     Measured 2026-11-02: stopping after stage 3 costs 0.35 s on a 93 MB file,
@@ -674,11 +861,24 @@ def stage_offsets(raw, upto="3 "):
         orig = P.Parser._stage
         P.Parser._stage = stage
         try:
-            p = P.Parser(raw)
-            try:
-                p.parse()
-            except _StageStop:
-                pass
+            # `quiet` silences the per-stage banner `Parser._stage` prints.
+            # The page editor asks for this window once per dropped icon, and
+            # five lines of stage arithmetic per click is not log, it is noise.
+            # Still inside the lock: stdout is process wide.
+            sink = io.StringIO() if quiet else None
+            if sink is None:
+                p = P.Parser(raw)
+                try:
+                    p.parse()
+                except _StageStop:
+                    pass
+            else:
+                with contextlib.redirect_stdout(sink):
+                    p = P.Parser(raw)
+                    try:
+                        p.parse()
+                    except _StageStop:
+                        pass
         finally:
             P.Parser._stage = orig
     return {name: (start, end) for name, start, end in p.stage_offsets}, p.stats
@@ -904,6 +1104,41 @@ def scan(raw, table="graphic", civ_starts=None, civ_ends=None,
         return out, start + (end - start) - (pos + 36 * n)
 
 
+    if table == "map":
+        # Stage 4 is 200 terrain records, then these 25 scalars, then the
+        # RandomMaps block.  The walk is shared with the terrain table on
+        # purpose: two copies of "where do the records end" is how a layout
+        # drifts, and a drifted width here would name a padding byte.
+        _recs, after = _scan_terrains(raw, stats.get("game_version"))
+        r = P.Reader(raw, P.GV_C32)
+        r.pos = after
+        _terrain_block_tail(r, True)
+        stop = r.pos
+        P.read_random_maps(r)
+        return [{"index": 0, "start": after, "end": stop}], end - r.pos
+
+    if table == "tail":
+        # Seven i32 counters between the last technology and the tech tree.
+        # One record each, so the picker says 「单位击杀率」 instead of
+        # 「全局数值 · 第 2 个字段」.
+        out = [{"index": i, "start": start + 4 * i, "end": start + 4 * i + 4}
+               for i in range(len(_TAIL_FIELDS))]
+        r = P.Reader(raw, P.GV_C32)
+        r.pos = start + 4 * len(_TAIL_FIELDS)
+        P.read_tech_tree(r)
+        return out, end - r.pos
+
+    if table == "techtree":
+        # Stage 10 begins with the seven counters, not with the tree:
+        # the tree header starts 4 * 7 = 28 bytes in.  Reading from
+        # `start` would take the first counter as the age count and
+        # report 30 ages.
+        gv = stats.get("game_version")
+        r = P.Reader(raw, P.GV_C32 if gv is None else gv)
+        r.pos = start + 4 * len(_TAIL_FIELDS)
+        out = _techtree_walk(r, False)
+        return out, end - r.pos
+
     # Graphics: walk the same stream the parser walked, using the record count
     # it reported, and derive each record's end from the next record's start.
     #
@@ -969,22 +1204,162 @@ def _colour_count_at(raw, stats):
     return r.pos
 
 
-def _terrain_block_tail(r):
-    """The 33 named scalars `read_terrain_block` reads AFTER the 200 records.
+_MAP_TAIL = (
+    ("MapMinX", "f32"), ("MapMinY", "f32"),
+    ("MapMaxX", "f32"), ("MapMaxY", "f32"),
+    ("MapMaxXplus1", "f32"), ("MapMaxYplus1", "f32"),
+    ("TerrainsUsed2", "i16"), ("BordersUsed", "i16"),
+    ("MaxTerrain", "i16"),
+    ("TileWidth", "i16"), ("TileHeight", "i16"),
+    ("TileHalfHeight", "i16"), ("TileHalfWidth", "i16"),
+    ("ElevHeight", "i16"),
+    ("CurRow", "i16"), ("CurCol", "i16"),
+    ("BlockBegRow", "i16"), ("BlockEndRow", "i16"),
+    ("BlockBegCol", "i16"), ("BlockEndCol", "i16"),
+    ("SearchMapPtr", "u32"), ("SearchMapRowsPtr", "u32"),
+    ("AnyFrameChange", "u8"), ("MapVisibleFlag", "u8"), ("FogFlag", "u8"),
+)
+
+#: `TileSize` is 19 x (Width, Height, DeltaY) and sits BEFORE the 200 records,
+#: so it is not part of this block; `General.cpp` prints it under "Tile Sizes".
+assert len(_MAP_TAIL) == 25
+assert set(_MAP_META) == set(n for n, _k in _MAP_TAIL), (_MAP_META.keys() ^ set(n for n, _k in _MAP_TAIL))
+
+
+def _terrain_block_tail(r, want_fields=False):
+    """The 25 named scalars `read_terrain_block` reads AFTER the 200 records.
 
     Copied from `parser.read_terrain_block` line for line, for the same reason
     `unitfields` copies `read_unit`: the proven reader is the layout, and this
     module measures its own walk against it.
+
+    The walk used to throw its values away -- it existed only to move `r.pos`
+    past the block.  `want_fields=True` keeps them, because these scalars are
+    the tile grid the engine uses to convert between map cells and pixels, and
+    until now not one of them had an address on any screen.
     """
-    r.f32(); r.f32(); r.f32(); r.f32(); r.f32(); r.f32()
-    r.i16()                                        # terrains_used2
-    r.i16()                                        # borders_used
-    r.i16()                                        # max_terrain
-    r.i16(); r.i16(); r.i16(); r.i16(); r.i16()    # tile_* / elev_height
-    r.i16(); r.i16()                               # cur_row / cur_col
-    r.i16(); r.i16(); r.i16(); r.i16()             # block_* rows and cols
-    r.u32(); r.u32()                               # search map pointers
-    r.u8(); r.u8(); r.u8()                         # any_frame_change / visible / fog
+    out = {}
+    for name, kind in _MAP_TAIL:
+        pos = r.pos
+        val = getattr(r, kind)()
+        if want_fields:
+            out[name] = {"offset": pos, "kind": kind, "value": val}
+    return out
+
+
+
+def _techtree_record(r, want_fields, kind):
+    """One tech-tree connection, read the way `parser.read_*_connection` does.
+
+    Returns `(id, fields)`.  `kind` picks the layout and it has to: the four
+    families disagree about field order (a unit connection carries
+    UpperBuilding + VerticalLine, a research connection carries three ID
+    groups), so one reader per family is the honest shape.  A single generic
+    walker would have to guess at widths, which is the bug that once ran the
+    graphic walk off the end of the file.
+    """
+    out = {}
+
+    def put(name, fkind, fn, **extra):
+        pos = r.pos
+        val = fn()
+        if want_fields:
+            row = {"offset": pos, "kind": fkind, "value": val}
+            row.update(extra)
+            out[name] = row
+        return val
+
+    def group(head):
+        # `<count byte>` then that many i32.  The count is a read-only FIELD,
+        # not a decoder: it is the record's own width, so a screen that let a
+        # player type over it would rewrite the rest of the table.
+        n = put(head + "Count", "u8", r.u8, ro=True)
+        for i in range(n):
+            put("%s.%d" % (head, i), "i32", r.i32)
+
+    def common():
+        # techtree::Common, 84 bytes: SlotsUsed, 10 x UnitResearch, 10 x Mode.
+        put("CommonSlotsUsed", "i32", r.i32)
+        for i in range(10):
+            put("CommonUnitResearch.%d" % i, "i32", r.i32)
+        for i in range(10):
+            put("CommonMode.%d" % i, "i32", r.i32)
+
+    ident = put("ID", "i32", r.i32)
+    put("Status", "u8", r.u8)
+    if kind == "age":
+        group("Buildings")
+        group("Units")
+        group("Techs")
+        common()
+        put("NumBuildingLevels", "u8", r.u8)
+        for i in range(10):
+            put("BuildingsPerZone.%d" % i, "u8", r.u8)
+        for i in range(10):
+            put("GroupLengthPerZone.%d" % i, "u8", r.u8)
+        put("MaxAgeLength", "u8", r.u8)
+        put("LineMode", "i32", r.i32)
+    elif kind == "building":
+        group("Buildings")
+        group("Units")
+        group("Techs")
+        common()
+        put("LocationInAge", "u8", r.u8)
+        for i in range(P.AGES):
+            put("UnitsTechsTotal.%d" % i, "u8", r.u8)
+        for i in range(P.AGES):
+            put("UnitsTechsFirst.%d" % i, "u8", r.u8)
+        put("LineMode", "i32", r.i32)
+        put("EnablingResearch", "i32", r.i32)
+    elif kind == "unit":
+        put("UpperBuilding", "i32", r.i32)
+        common()
+        put("VerticalLine", "i32", r.i32)
+        group("Units")
+        put("LocationInAge", "i32", r.i32)
+        put("RequiredResearch", "i32", r.i32)
+        put("LineMode", "i32", r.i32)
+        put("EnablingResearch", "i32", r.i32)
+    else:
+        put("UpperBuilding", "i32", r.i32)
+        group("Buildings")
+        group("Units")
+        group("Techs")
+        common()
+        put("VerticalLine", "i32", r.i32)
+        put("LocationInAge", "i32", r.i32)
+        put("LineMode", "i32", r.i32)
+    return ident, out
+
+
+def _techtree_walk(r, want_fields):
+    """All the tech-tree connections in file order, each with its byte range.
+
+    The 550 records are four families in one run: 4 ages, 37 buildings, 269
+    units, 240 technologies on the shipped file.  `read_tech_tree` keeps only
+    the five counts, so this walk is the only thing that knows where each
+    connection starts -- which is what makes it editable at all.
+    """
+    age_count = r.u8()
+    building_count = r.u8()
+    # TechTree.cpp guards the unit count with an inline getGameVersion() call,
+    # so it is int16 only from C32 onward; the research count is int16 only
+    # for the CCV2 build.  Same two guards as `parser.read_tech_tree`.
+    unit_count = r.i16() if r.gv >= P.GV_C32 else r.u8()
+    research_count = r.i16() if r.gv == P.GV_CCV2 else r.u8()
+    r.i32()                                        # total_unit_tech_groups
+    out = []
+    for kind, n in (("age", age_count), ("building", building_count),
+                    ("unit", unit_count), ("research", research_count)):
+        for _ in range(n):
+            at = r.pos
+            ident, flds = _techtree_record(r, want_fields, kind)
+            row = {"index": len(out), "start": at, "end": r.pos,
+                   "kind": kind, "id": ident}
+            if want_fields:
+                row["fields"] = flds
+            out.append(row)
+    return out
 
 
 def _scan_effects(raw, start, end, recs):
@@ -1291,6 +1666,18 @@ def record_name(raw, gv, rec, table="graphic", names=None):
             r.i16()                                    # total_probability
             _m, name = r.debug_string()
             return (name or "").strip()
+        if table == "map":
+            return "地图块标量"
+        if table == "tail":
+            i = rec.get("index")
+            if isinstance(i, int) and 0 <= i < len(_TAIL_FIELDS):
+                return _TAIL_FIELDS[i][1]
+            return "全局数值 %s" % (i,)
+        if table == "techtree":
+            who = {"age": "时代", "building": "建筑",
+                   "unit": "单位", "research": "科技"}.get(
+                       rec.get("kind"), "连线")
+            return "%s %s" % (who, rec.get("id"))
         r = P.Reader(raw, P.GV_C32 if gv is None else gv)
         r.pos = rec["start"]
         _m, name = r.debug_string()
@@ -1317,6 +1704,25 @@ def fields_at(raw, gv, rec, table="graphic"):
         return _task_fields(raw, gv, rec)
     if table == "civ":
         return _civ_fields(raw, gv, rec)
+    if table == "map":
+        r = P.Reader(raw, P.GV_C32 if gv is None else gv)
+        r.pos = rec["start"]
+        return _terrain_block_tail(r, True)
+    if table == "tail":
+        i = rec["index"]
+        name = _TAIL_FIELDS[i][0]
+        return {name: {"offset": rec["start"], "kind": "i32",
+                       "value": struct.unpack_from("<i", raw,
+                                                   rec["start"])[0]}}
+    if table == "techtree":
+        # Re-read this one record from its own start.  550 records cost 1 ms,
+        # and it keeps ONE walker instead of a second, derived copy of four
+        # layouts.
+        rr = P.Reader(raw, P.GV_C32 if gv is None else gv)
+        rr.pos = rec["start"]
+        _ident, flds = _techtree_record(rr, True,
+                                        rec.get("kind") or "unit")
+        return flds
     base = _strings_end(raw, rec["start"])
     out = {}
     for name, kind, off in _GRAPHIC_TAIL:

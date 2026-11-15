@@ -279,7 +279,7 @@ def main():
                   const body = document.querySelector('#edpane .fbody');
                   return {
                     count: c ? c.textContent : null,
-                    fieldRows: document.querySelectorAll('#edpane table.f tr').length,
+                    fieldRows: document.querySelectorAll('#edpane table.f tr:not(.fhint)').length,
                     overflowX: body ? body.scrollWidth - body.clientWidth : -1,
                     title: (pane.querySelector('.edhead .t') || {}).textContent,
                     firstLabel: (document.querySelector('#edpane table.f td.fl')
@@ -290,6 +290,10 @@ def main():
                 ck("the pane counts the task table",
                    st["count"].replace(" ", "") == "400/%d" % _task_total,
                    st["count"])
+                # `.fhint` rows are the Chinese explanations, which `ED_HINT`
+                # draws under a field and which can be switched off.  Field rows
+                # are what this number is about; counting the explanations too
+                # would make a copy change look like a layout change.
                 ck("33 rows (32 fields + the header row)",
                    st["fieldRows"] == 33, st["fieldRows"])
                 ck("nothing scrolls sideways", st["overflowX"] == 0,

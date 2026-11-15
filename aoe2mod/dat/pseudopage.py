@@ -1,84 +1,81 @@
 # -*- coding: utf-8 -*-
-"""pseudopage.py -- more command-panel pages than the panel has boxes.
+"""pseudopage.py -- one box on a building card that turns into a page turner.
 
-WHAT THE PANEL REALLY HAS
--------------------------
-`widgetui/commandpanel.json` gives the left panel exactly 15 `CommandButton`
-widgets (5 columns x 3 rows, named ``Button11``..``Button53``), and the engine
-draws a second screen of 15 for the same building.  There is no third screen and
-no widget to add one: measured on the retail client, the panel JSON carries 170
-widgets and not one of them is a pager (the red arrow that flips the two screens
-is drawn by the engine, not described by data).  So 30 boxes per building is a
-hard ceiling and writing box 31 or later produces bytes the engine reads and
-never draws.
+A PAGE-TURNING BOX, AND WHAT IT ACTUALLY IS
+------------------------------------------
+A command panel box is a ``button_id`` 1..30 (15 per screen, two screens).  The
+engine draws, in that box, every technology whose ``ResearchLocations`` names
+that ``(building, button)`` pair.  Normally there is exactly one, so the box
+shows one research button.
 
-WHAT THIS MODULE ADDS
----------------------
-A BOX IS NOT A BUTTON.  Every box is a ``button_id`` 1..30, and a button id may
-carry ANY NUMBER of technologies: the game draws them in one box, one at a time,
-and each of them is a real researchable item.  So a box can be a page-turner.
+What makes several technologies behave like PAGES is not the technology data at
+all -- it is ``resources/_common/dat/linkedTechs.json``.  A group of type
+``"Cycle"`` tells the engine: these N technologies are one button; show
+``StartingTech`` first, and when it is pressed show the next one in ``Techs``,
+and wrap around.  Every member shares the same ``(location_id, button_id)``,
+which is what identifies the group; measured on a real mod, the five pages
+4666..4670 of building 5066 box 15 all sit on ``(5066, 15)`` with hotkey
+19352, differ only in which units they switch on, and are listed as one Cycle
+group with ``StartingTech: 4666``.
 
-The trick needs three things from the data, all of them ordinary fields:
+So: ONE PAGE IS ONE TECHNOLOGY.  N pages = N technologies on one box + one
+Cycle record naming them.  The technologies are cheap (about 81 bytes each);
+the record is four lines of JSON.
 
-1. **A unit's train location can be turned off and on** with effect command
-   type 0 (``Attribute Modifier (Set)``) writing attribute **42** -- the unit
-   attribute this project's vocabulary calls 「训练地点」.  A value of ``-1``
-   takes the unit off the building entirely; the value being the BUILDING ID
-   puts it back on that building's card, in the box the unit's own
-   ``Creatable.TrainLocations[0].ButtonID`` already says.
+WHAT A PAGE SAYS
+----------------
+Each page is free (all three resource costs zero) and takes 0 seconds, so the
+press resolves on the tick it happens and no research progress can be lost.
+Its effect record then decides WHICH UNITS THAT PAGE SHOWS, through effect
+command type 0 (``Attribute Modifier (Set)``) writing attribute **42** -- the
+unit attribute this project's vocabulary calls 「训练地点」:
 
-2. **A technology can be researched any number of times** with
-   ``Repeatable = 1``, which is what lets one button be pressed again and again
-   instead of disappearing after the first press.
+* ``d = -1.0``  takes the unit off every card (it cannot be trained at all);
+* ``d = <building id>`` puts it back on that building, in the box the unit's
+  own ``train_locations[].button_id`` already names.
 
-3. **Technology type 0 with a zero-or-negative cost** makes the press free, so
-   the page turn costs the player nothing.
+A page therefore writes ``-1`` for the union of what every OTHER page shows,
+then ``<building>`` for its own units.  The union matters: all pages of a box
+are present at once and nothing disables them, so hiding only the previous
+page would let a player who presses page 3 while page 1 is active train both
+batches.  :func:`sync_off` computes that union for the whole group, and
+:func:`plan_rewrite_pages` applies it to every page in one splice.
 
-One page is therefore one technology whose effect turns a batch of units OFF and
-another batch ON.  N pages on one button = one box that cycles through N batches
-of units forever, and the file grows by one technology (about 81 bytes) plus one
-effect record (18 + 11 per command) per page -- which is why there is no
-practical upper limit on the number of pages even though there is a hard limit
-on boxes.
+A page shows at most 14 units: the box itself is the pager, so the other 14
+boxes of the screen are its content (:func:`content_boxes`).  Page 1 uses the
+first screen's 14 boxes, page 2 and later use the second screen's 14 -- which
+is not a limitation, because two pages are never active at the same time and
+therefore may reuse the same box numbers.
 
-THE PRICE OF THE TRICK, STATED PLAINLY
---------------------------------------
-A page turn REWRITES WHERE ITS UNITS ARE TRAINABLE.  Anything already in flight
-that depended on the old answer is affected:
+WHAT IT COSTS THE PLAYER
+------------------------
+A page turn REWRITES WHERE ITS UNITS ARE TRAINABLE, and anything already in
+flight that depended on the old answer goes with it:
 
 * a unit part-way through production at that building loses its train location
-  and the queue entry disappears with it;
+  and the queue entry disappears with it.  The data has no 「接着做」 flag, so
+  no amount of care on our side can keep the queue; the panel says so in the
+  warning under the page list.
 * a technology part-way through research at that building loses its research
   location and the research is dropped.
 
-This is not a bug in this module and there is no flag that turns it off: it is
-the same data the engine consults, changed under a running game.  Two honest
-mitigations exist and both are applied by :func:`plan_add_page`:
+THE PRICE IS UNCHANGED BY THIS MODULE'S SHAPE.  It is the same attribute the
+engine consults, changed under a running game.
 
-* the generated page costs nothing and takes **0 seconds** to research, so there
-  is no research window to cancel -- the press resolves on the tick it happens;
-* each page hides the union of what every other page shows, not just the batch
-  of the page before it, so pressing pages out of order cannot leave two batches
-  trainable at once (the community example chains page N's OFF to page N-1's ON,
-  which is correct only if the player always presses the next page).
+WHAT THIS FILE DOES AND DOES NOT DO
+-----------------------------------
+Reading: :func:`fast_effects` / :func:`effect_spans` walk the effect block in
+one pass, :func:`read_page` turns one technology into ``{on, off, building}``,
+:func:`read_group` collects the pages of one box and :func:`read_cycles` maps
+every box in the file.
 
-The remaining risk -- a production queue at that building -- cannot be fixed
-from the data.  The player has to finish the queue first, and the interface says
-so where the button is.
-
-WHAT THIS PROJECT COULD ALREADY DO, AND WHAT IT COULD NOT
---------------------------------------------------------
-``/api/effect-set`` can rewrite one attribute command (so a page's OFF/ON sets
-were editable one command at a time), ``/api/field-set`` can move a page to
-another button, and ``/api/record-add`` can clone a technology.  What was
-missing is the whole gesture: append an effect record, append a technology, and
-point the technology's ``EffectID`` at the new record.  The last step is why
-this module exists at all -- the cloned technology carries the donor's
-``EffectID``, so a clone with no patch is a second copy of page N, and the patch
-offset is only knowable by walking the record (the field is not at a fixed
-position: it sits after a version-dependent run of string ids and costs, and
-``read_tech_fields`` is the one reader that agrees with the engine byte for
-byte).
+Writing: :func:`plan_add_page` appends one page (effect + technology + pointer)
+as two splices; :func:`sync_off` + :func:`plan_rewrite_pages` rewrite the whole
+group's command lists in one splice; :func:`plan_drop_page` removes one
+technology.  The linkedTechs.json side lives in `aoe2mod/game/linkedtechs.py`
+(:func:`cycle_boxes` / :func:`sync_cycles` / :func:`emit_cycles`), because the
+same file also carries MutuallyExclusive and Toggleable groups that have
+nothing to do with pages.
 """
 
 import struct
@@ -92,8 +89,10 @@ from .unitfields import Rec
 __all__ = [
     "PAGE_ATTR", "CMD_BYTES", "PageError", "page_commands", "read_page",
     "read_group", "read_cycles", "default_hide", "plan_add_page", "add_page",
+    "plan_rewrite_pages", "plan_drop_page", "sync_off",
+    "CONTENT_SLOTS", "content_boxes",
     "_free_to_press",
-    "effect_bytes", "fast_effects",
+    "effect_bytes", "fast_effects", "effect_spans",
 ]
 
 
@@ -105,6 +104,73 @@ PAGE_ATTR = 42
 #: Effect command type 0 = ``Attribute Modifier (Set)``
 #: (``aoe2mod/schema/effect_command_types.json``).
 CMD_ATTRIBUTE_SET = 0
+
+#: Boxes the engine draws on ONE screen of the command panel, and how many
+#: screens it draws.  Same numbers as aoe2mod/dat/card.py (ENGINE_FIRST /
+#: ENGINE_LAST / PAGE_BOXES / PAGE_COUNT); repeated here so this module does
+#: not import the card writer just to count to 15.
+SCREEN_BOXES = 15
+SCREEN_COUNT = 2
+
+#: How many boxes a page can use: one screen, minus the pager's own box.
+CONTENT_SLOTS = SCREEN_BOXES - 1
+
+
+def page_of(box):
+    """The 1-based screen number that box (1..30) is drawn on."""
+    b = int(box)
+    if b < 1 or b > SCREEN_BOXES * SCREEN_COUNT:
+        raise PageError(
+            "格子号 %d 不在 1..%d 之间，命令面板一共 %d 屏、每屏 %d 格"
+            % (b, SCREEN_BOXES * SCREEN_COUNT, SCREEN_COUNT, SCREEN_BOXES))
+    return (b - 1) // SCREEN_BOXES + 1
+
+
+def screen_boxes(box):
+    """Every box on the screen box is drawn on, in panel order."""
+    page = page_of(box)
+    first = (page - 1) * SCREEN_BOXES + 1
+    return list(range(first, first + SCREEN_BOXES))
+
+
+def content_boxes(box):
+    """The boxes a page on the pager in box may fill: its screen minus itself.
+
+    A page turn swaps what the OTHER boxes of the same screen show, so this is
+    the set a page's units have to sit in.  Two pages are never on screen at
+    the same time, which is why page 2 may reuse the very same box numbers
+    page 1 uses -- measured on a five-page cycle, the pager sat at box 15 and
+    every page put its units on 1..14 of its own screen.
+    """
+    return [b for b in screen_boxes(box) if b != int(box)]
+
+
+def slot_index(box, slot):
+    """Where slot sits in content_boxes (0-based), or None."""
+    try:
+        return content_boxes(box).index(int(slot))
+    except (TypeError, ValueError):
+        return None
+
+
+def _span_text(boxes):
+    if not boxes:
+        return "没有"
+    return "%d..%d 这 %d 格" % (boxes[0], boxes[-1], len(boxes))
+
+
+def check_slot(box, slot):
+    """Return slot as an int, or raise a sentence naming the usable boxes."""
+    s = int(slot)
+    if s in content_boxes(box):
+        return s
+    if s == int(box):
+        raise PageError(
+            "第 %d 格是翻页按钮自己站的那一格，放不了单位；这一页能用的是 %s"
+            % (s, _span_text(content_boxes(box))))
+    raise PageError(
+        "第 %d 格不在这一屏。翻页按钮在第 %d 格，这一页能放单位的是 %s"
+        % (s, int(box), _span_text(content_boxes(box))))
 
 
 class PageError(Exception):
@@ -183,7 +249,24 @@ def read_page(effects, tech):
         return None
     cmds = effects[eid].get("commands") or ()
     if not cmds:
-        return None
+        # A BRAND NEW PAGE, before the player has put anything in it: the
+        # interface creates the button first and fills it by clicking the grid,
+        # so the record it writes at that moment has nothing to turn on and
+        # nothing to turn off.  A reader that refused it would report zero pages
+        # for the page the player had just made -- the button would be missing
+        # from the strip that is supposed to be filling it.
+        #
+        # Accepted only when the press is free AND takes no time, because those
+        # two fields are what the writer sets and they are what keeps an ordinary
+        # empty effect record (this file has 344 of them) from being read as a
+        # page: measured on the retail data, no technology that has a research
+        # location in box 1..30 points at an empty effect record.
+        if not _free_to_press(tech):
+            return None
+        if int(tech.get("research_time") or 0) != 0:
+            return None
+        return {"on": [], "off": [], "building": 0, "commands": 0,
+                "other": 0, "first": True, "empty": True, "effect": eid}
     on, off, other = [], [], 0
     for c in cmds:
         if c.get("type") != CMD_ATTRIBUTE_SET or c.get("c") != PAGE_ATTR:
@@ -200,12 +283,27 @@ def read_page(effects, tech):
         else:
             on.append(int(a))
     if not on:
-        return None
+        # An EMPTY page: nothing turned on yet, but the record already turns
+        # something off and is free to press.  The interface creates a page
+        # before the player has picked its units (create a page, then click
+        # the grid), so a reader that only reported pages with an ON list
+        # would report zero pages for the page it had just made -- the same
+        # failure the docstring above records for OFF-less pages, one step
+        # further in.  It stays safe because a record with no attribute-42
+        # writes puts nothing in `on` and `off` and is refused below.
+        if not off:
+            return None
+        if not _free_to_press(tech):
+            return None
+        return {"on": [], "off": sorted(set(off)),
+                "building": _building_of(cmds), "commands": len(cmds),
+                "other": other, "first": not off, "empty": True,
+                "effect": eid}
     if not off and not _free_to_press(tech):
         return None
     return {"on": sorted(set(on)), "off": sorted(set(off)),
             "building": _building_of(cmds), "commands": len(cmds),
-            "other": other, "first": not off}
+            "other": other, "first": not off, "effect": eid}
 
 
 def _free_to_press(tech):
@@ -369,6 +467,56 @@ def fast_effects(raw, start, end=None):
     return out, pos
 
 
+def effect_spans(raw, start, end=None):
+    """Where each effect record begins and ends, and where its count sits.
+
+    ``fast_effects`` answers "what does each record say"; this answers "which
+    bytes are that record", which is what a REWRITE needs: replacing one
+    record's command list changes its length, and a length change means every
+    later record moves.  Rewriting in place with a fixed width is impossible
+    (11 bytes per command), so the whole span from the first changed record to
+    the last one is rebuilt and spliced as one piece.
+
+    Returns ``([{index, name, start, name_len, count_off, cmd_start, count,
+    end}], pos)``.  ``count_off`` is the two-byte command count,
+    ``cmd_start`` the first command (equal to ``end`` when the record has
+    none) and ``end`` the first byte AFTER the record -- so records are
+    back to back and ``spans[i]["end"] == spans[i + 1]["start"]``.
+    """
+    n = struct.unpack_from("<i", raw, start)[0]
+    if n < 0:
+        raise PageError("效果段说它有 %d 条记录，这个数是负的" % n)
+    pos = start + 4
+    head_fmt = struct.Struct("<HH")
+    out = []
+    for ei in range(n):
+        rec_start = pos
+        if pos + HEAD_BYTES > len(raw):
+            raise PageError("第 %d 条效果读到这里就没有字节了" % ei)
+        marker, ln = head_fmt.unpack_from(raw, pos)
+        if marker != P.DEBUG_STRING_MARKER:
+            raise PageError("第 %d 条效果的字符串标记是 %#06x，不是 %#06x"
+                            % (ei, marker, P.DEBUG_STRING_MARKER))
+        pos += HEAD_BYTES
+        name = bytes(raw[pos:pos + ln]).split(b"\x00", 1)[0].decode("latin-1")
+        pos += ln
+        count_off = pos
+        if pos + 2 > len(raw):
+            raise PageError("第 %d 条效果的条数读到了文件结尾" % ei)
+        cn = struct.unpack_from("<h", raw, pos)[0]
+        pos += 2
+        cmd_start = pos
+        count = max(0, cn)
+        pos += count * CMD_BYTES
+        out.append({"index": ei, "name": name, "start": rec_start,
+                    "name_len": ln, "count_off": count_off,
+                    "cmd_start": cmd_start, "count": count, "end": pos})
+    if end is not None and pos != end:
+        raise PageError("效果段走到第 %d 字节，段尾却在第 %d 字节，"
+                        "这个快扫法不能用来改这份文件" % (pos, end))
+    return out, pos
+
+
 # ---------------------------------------------------------------------------
 # writing
 # ---------------------------------------------------------------------------
@@ -397,6 +545,61 @@ def _patch_image(image, where, values):
     return bytes(out)
 
 
+def plan_rewrite_pages(buf, effects_start, effects_end, changes):
+    """Rewrite the COMMANDS of pages that already exist, as one splice.
+
+    ``changes`` is `{effect index: {"on": [...], "off": [...], "building":
+    id}}`.  Every other byte in the touched range is copied through unchanged,
+    so the effect block keeps every record it had and only the command lists of
+    the named ones change -- which is what "add this unit to page 2" needs, and
+    is not expressible as a fixed-width patch because a command is 11 bytes and
+    the list length moves.
+
+    Returns ``(steps, info)`` in the shape `records.apply_steps` takes, with
+    ``info["delta"]`` as the net byte change (what `App._card_splice` expects
+    for ``expect``).
+
+    THE NAME IS CARRIED AS RAW BYTES, not re-encoded: a page name written by
+    another tool may not survive a latin-1 round trip, and a rewrite that
+    silently re-spells it would be an edit nobody asked for.
+    """
+    if not changes:
+        raise PageError("没有要改的页")
+    spans, _pos = effect_spans(buf, effects_start, effects_end)
+    by_index = {s["index"]: s for s in spans}
+    for ei in changes:
+        if int(ei) not in by_index:
+            raise PageError("效果段里没有第 %s 条记录，改不了这一页" % (ei,))
+    lo = min(by_index[int(ei)]["start"] for ei in changes)
+    hi = max(by_index[int(ei)]["end"] for ei in changes)
+    grown = bytearray()
+    touched = []
+    for span in spans:
+        if span["start"] < lo or span["start"] >= hi:
+            continue
+        want = changes.get(span["index"])
+        if want is None:
+            grown += buf[span["start"]:span["end"]]
+            continue
+        on = sorted(set(int(u) for u in (want.get("on") or ())))
+        off = sorted(set(int(u) for u in (want.get("off") or ())))
+        bld = int(want.get("building") or 0)
+        cmds = page_commands(on=on, off=off, building=bld)
+        raw_name = bytes(buf[span["start"] + HEAD_BYTES:
+                             span["start"] + HEAD_BYTES + span["name_len"]])
+        head = struct.pack("<HH", P.DEBUG_STRING_MARKER, len(raw_name)) + raw_name
+        body = b"".join(struct.pack("<Bhhhf", int(ty), int(a), int(b), int(c),
+                                    float(d)) for ty, a, b, c, d in cmds)
+        grown += head + struct.pack("<h", len(cmds)) + body
+        touched.append(span["index"])
+    before = hi - lo
+    after = len(grown)
+    steps = [(lo, before, bytes(grown))]
+    info = {"from": lo, "to": hi, "before": before, "after": after,
+            "delta": after - before, "effects": sorted(touched)}
+    return steps, info
+
+
 def plan_add_page(buf, gv, tail, effects_start, effects_end, effect_count,
                   donor_tech, name, on_units, hide_units=None, building=None,
                   seconds=0, button=None):
@@ -421,11 +624,14 @@ def plan_add_page(buf, gv, tail, effects_start, effects_end, effect_count,
     is its position), ``effect_bytes`` / ``tech_bytes`` so a test can assert the
     size of the gesture, and ``hide`` / ``on`` as planned.
     """
-    if not on_units:
-        raise PageError("这一页要显示哪些单位？一个都没选就不会有新东西出现")
+    # AN EMPTY PAGE IS A REAL PAGE.  The screen builds the button first and the
+    # player then drops unit icons into it one at a time, so the record that
+    # gets written at that moment turns nothing on yet.  Refusing it here would
+    # leave the interface with no way to start a cycle except by typing IDs
+    # into a text box, which is exactly what was asked to go away.
     hide = sorted(set(int(u) for u in (hide_units or ())))
-    on = sorted(set(int(u) for u in on_units))
-    if set(on) == set(hide):
+    on = sorted(set(int(u) for u in on_units or ()))
+    if on and set(on) == set(hide):
         raise PageError("这一页显示的正好是它自己藏起来的那些单位，"
                         "翻过去什么也不剩")
     bld = int(building if building is not None else 0)
@@ -515,6 +721,67 @@ def plan_add_page(buf, gv, tail, effects_start, effects_end, effect_count,
             # and `walk_tech` raises IndexError, which is why this number is
             # returned rather than left for the caller to guess.
             "tail": tail + len(img)}
+    return steps, info
+
+
+def sync_off(pages, building):
+    """Recompute every page's "hide" list from the units the others show.
+
+    WHY THIS EXISTS: a box's pages all sit on ONE button, so pressing page N has
+    to also turn OFF what page M turned on -- otherwise the units of both pages
+    stay trainable and the box shows a mixture nobody asked for.  The rule that
+    keeps the box consistent is therefore
+
+        page N's off  ==  (union of every page's on)  -  page N's on
+
+    which is exactly the default `plan_add_page` computes for a page being
+    appended.  Once the player starts editing pages AFTER they exist (dropping
+    an icon into page 2, taking one out of page 1), that invariant has to be
+    restored for the whole box in one go, and this is that one go:
+    ``pages`` is `[{"effect": index, "on": [ids]}, ...]`, the result is the
+    ``changes`` argument `plan_rewrite_pages` takes.
+
+    ``building`` is written into every page, including the ones whose on/off did
+    not change: a page whose commands were written by another tool may point its
+    "on" at a different building, and rewriting it to the box's building is what
+    makes the whole box pressable from the same button.
+    """
+    all_on = set()
+    for page in pages or ():
+        all_on.update(int(u) for u in (page.get("on") or ()))
+    bld = int(building or 0)
+    out = {}
+    for page in pages or ():
+        on = sorted(set(int(u) for u in (page.get("on") or ())))
+        # A unit that no page turns on but this page turns OFF is kept: that is
+        # a deliberate "hide this one everywhere in this box", and dropping it
+        # on the next edit would silently make it trainable again.
+        kept = set(int(u) for u in (page.get("off") or ())) - all_on
+        off = sorted((all_on - set(on)) | kept)
+        out[int(page["effect"])] = {"on": on, "off": off, "building": bld}
+    return out
+
+
+def plan_drop_page(buf, gv, tail, tech_id):
+    """Plan the removal of ONE page: its technology record, nothing else.
+
+    A page IS a technology record (`read_group` finds pages by walking the
+    technology section), so dropping a page is `records.plan_remove_tech` and
+    the records after it simply move down.  Two things are deliberately NOT
+    cleaned up:
+
+    * the page's EFFECT record stays behind as an orphan.  Nothing points at it
+      any more, so the engine never reads it, and the alternative -- shrinking
+      the effect block and renumbering every `EffectID` in the file -- is a
+      rewrite of the whole technology section for a record that costs 30 bytes;
+    * every other page keeps its own `EffectID`, because those pointers are
+      indexes into a block that did not move.
+
+    ``info["delta"]`` is negative: the file gets shorter by the record's width,
+    which is what `App._card_splice` expects for ``expect``.
+    """
+    steps, info = REC.plan_remove_tech(buf, gv, tail, tech_id)
+    info["delta"] = -int(info.get("bytes") or 0)
     return steps, info
 
 

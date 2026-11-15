@@ -273,6 +273,21 @@ _golden/sprite_pairs.json
 _cache/
 _probe/_tmp/
 
+# Signing keys for the sealed build (_probe/protect/seal.py).  priv.hex is the
+# only thing standing between "a repacked folder is refused" and "a repacked
+# folder is indistinguishable from ours", so it lives on one machine and is
+# never a commit.  pub.hex and master.hex ride along because a half-published
+# key set is worse than none: the master alone undoes the pack encryption.
+_probe/protect/keys/
+
+# The official .dat shelf (aoe2mod/mod/archives.py).  One blob per distinct
+# record-format generation, 313 MB for the 53 generations the upgrade engine
+# needs -- the game's own data, not this project's source.  It is what makes
+# 「一键适配」 possible at all, so it must NOT be deleted; it must also not be
+# committed: a clone would carry the shipped game data.  It refills itself
+# the first time the tool opens with the game installed.
+dat_archive/
+
 # The operation record.  `aoe2mod/oplog.py` appends one line per edit to `log/`
 # beside the tool, which for a source checkout is this repository.  It describes
 # what one person did on one machine -- the same reason `_probe/out_*.log` is

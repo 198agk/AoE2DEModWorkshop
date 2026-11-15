@@ -119,18 +119,37 @@ def main():
 
     # ---- 4. the block is closed, and asks nothing until opened -----------
     check("the block is a <details>", 'const box = el("details", "fxbox");' in page)
+    # 2026-11-12: six permanent bands between the title and the first editable
+    # row (271px of chrome, first input box at y=1029 in a 784px-tall pane)
+    # became ONE 28px strip of `edTool` boxes.  The label moved from a literal
+    # baked into a hand-built <summary> to the `title` argument of `edTool`, so
+    # the pin has to name both ends: the generic summary builder, and the call
+    # that asks for 哪些科技用它.
     check("the summary carries the label",
-          'sum.appendChild(el("span", "t", "哪些东西改了这个单位"));' in page)
+          'sum.appendChild(el("span", "t", title));' in page
+          and 'edTool(tools, "edufx", "哪些科技用它"' in page)
+    # The "asks nothing until opened" promise moved INTO edTool: one `built`
+    # flag per box, flipped on the first toggle, and the body is filled by a
+    # callback so no builder can reach for the pane at draw time.  `asked` was
+    # the old per-block flag and no longer exists anywhere in the page.
     check("no request before the first open",
           'box.addEventListener("toggle", () => {' in page
-          and "if (!box.open || asked) return;" in page)
+          and "if (!box.open || built) return;" in page
+          and "let built = false;" in page
+          and re.search(r'edTool\(tools, "edufx",[\s\S]{0,240}?'
+                        r"drawUnitEffects\(t\.body, d\)", page) is not None)
     m = re.search(r"function loadUnitEffects\(d, cnt, body\) \{\n[\s\S]{0,200}?"
                   r'api\("/api/unit-effects\?unit=" \+ edIdOf\(d\)\)', page)
     check("the fetch lives in loadUnitEffects", m is not None)
     check("the fetch is a GET with the unit in the query",
           'api("/api/unit-effects?unit=" + edIdOf(d))' in page)
+    # A technology has no unit effect list -- its rows ARE the effect list.  The
+    # gate used to be `edKindOf(d) !== "tech" && !d.table` guarding a bare call;
+    # now it guards the two edTool calls (看动画 / 哪些科技用它), so the check
+    # follows the box, not the old bare call.
     check("a unit draws it, a technology does not",
-          'if (edKindOf(d) !== "tech" && !d.table) drawUnitEffects(pane, d);' in page)
+          re.search(r'if \(edKindOf\(d\) !== "tech"\) \{\n'
+                    r'[\s\S]{0,400}?edTool\(tools, "edufx"', page) is not None)
     # A table row drawn by a builder that returns one <tr> cannot own its own
     # preview line: the preview is inserted by the loop, and the row finds it by
     # id.  Pinning both halves keeps that contract from drifting apart.

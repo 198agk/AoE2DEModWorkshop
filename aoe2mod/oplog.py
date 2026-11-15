@@ -203,6 +203,7 @@ _DETAIL_KEYS = {
     "/api/install": ("mod_dir", "name", "enabled", "position", "installed"),
     "/api/uninstall": ("name", "kind", "removed"),
     "/api/mod": ("name", "enabled", "position"),
+    "/api/mod-info": ("name", "title", "author", "description"),
     "/api/mod-move": ("name", "delta"),
     "/api/mod-move-to": ("name", "position"),
     "/api/dat-set": ("path", "dat", "scope"),
@@ -211,11 +212,18 @@ _DETAIL_KEYS = {
     "/api/recipe": ("name", "note"),
     "/api/recipe-forget": ("name",),
     "/api/script-write": ("name", "bytes"),
+    "/api/script-local-save": ("name", "bytes", "mod", "rel", "info_created",
+                               "replaced", "priority", "enabled",
+                               "running_warning"),
     "/api/ai-script-build": ("title", "built"),
     "/api/open-url": ("url",),
     "/api/log-open": ("dir",),
     "/api/repair-apply": ("picked", "reason"),
     "/api/pseudo-pages": ("building", "box", "name", "on", "hide", "civ"),
+    "/api/pseudo-page-put": ("building", "box", "unit", "page", "slot", "mode",
+                             "civ", "grew"),
+    "/api/pseudo-page-del": ("building", "box", "unit", "page", "civ", "grew"),
+    "/api/pseudo-page-drop": ("building", "box", "page", "civ", "grew"),
 }
 
 #: Short verbs, for the line the player reads first.
@@ -233,6 +241,9 @@ _VERBS = {
     "/api/card-take": "命令面板取出",
     "/api/card-time": "命令面板改时长",
     "/api/pseudo-pages": "命令面板加伪页",
+    "/api/pseudo-page-put": "命令面板页内放单位",
+    "/api/pseudo-page-del": "命令面板页内拿掉单位",
+    "/api/pseudo-page-drop": "命令面板删伪页",
     "/api/session-save": "保存",
     "/api/session-reset": "放弃全部改动",
     "/api/session-intents": "读待办",
@@ -242,6 +253,7 @@ _VERBS = {
     "/api/install": "安装 mod",
     "/api/uninstall": "删除已装 mod",
     "/api/mod": "开关模组",
+    "/api/mod-info": "改模组介绍",
     "/api/mod-move": "移动模组",
     "/api/mod-move-to": "模组排序",
     "/api/dat-set": "切换数据文件",
@@ -250,6 +262,7 @@ _VERBS = {
     "/api/recipe": "存口诀",
     "/api/recipe-forget": "删口诀",
     "/api/script-write": "写脚本",
+    "/api/script-local-save": "写进本地模组",
     "/api/ai-script-edit": "编辑 AI 脚本",
     "/api/ai-script-build": "生成 AI 脚本",
     "/api/ai-script-check": "检查 AI 脚本",
@@ -347,6 +360,11 @@ def summary_of(route, payload, result):
 
     if route == "/api/dat-set":
         return "%s → %s" % (verb, _pick(r.get("dat"), p.get("path"), "?"))
+
+    if route == "/api/mod-info":
+        got = r.get("info") or {}
+        was = _pick(p.get("name"), "?")
+        return "%s：%s → %s" % (verb, was, _pick(got.get("title"), p.get("title"), "?"))
 
     if route == "/api/card-move":
         moved = r.get("moved") or []

@@ -12,11 +12,14 @@ any overlay bug, and the decisive experiment becomes the Smoke2 panel edit
 
 How to tell build-time from runtime without running the game
 -----------------------------------------------------------
-A build-time artifact is written in the same window as the other shipped
-content of its dataset, and it is NOT newer than the executable that reads it.
-A runtime cache would be rewritten at the user's first launch, so it would be
-newer than the shipped content AND would differ between two installs of the
-same build.
+A runtime cache would be rewritten at the user's first launch, so it would
+differ between two installs of the same build -- that is the test that survives.
+
+mtime ordering does NOT: 2026-11-12 23:22:44, Steam's validation re-delivered
+futuravailableunits.json with byte-identical content (sha 1abbcd6c4c5a1fd5) and
+a fresh mtime, so the panel became "newer than the executable" (itself restamped
+at 23:19:46) without a byte of data moving.  Assertions below compare CONTENT
+against the archived vanilla copy; mtimes are printed as observations only.
 
 Documented facts to check against:
   * `CivTechTrees/*.json`     mtime 2026-09-24  (shipped content)
@@ -224,13 +227,52 @@ print("(`dsh test v7` grant / `dsh test v17` revoke).  mtimes still bound WHEN t
 print("file was written -- it ships with the package, not as a runtime cache.")
 
 # ---- assertions: turn measurements into a pin -------------------------------
-exe_m = os.stat(os.path.join(GAME, "AoE2DE_s.exe")).st_mtime
-assert pm is not None, "the panel file must exist"
-assert pm < exe_m, ("the shipped panel must predate the executable; if it is "
-                    "newer the whole build-time reading collapses")
-assert len(same_day) == len(tfiles), (
-    "every tree file must be written within a day of the panel -- they unpack "
-    "together; a straggler would suggest one of them is regenerated")
+#
+# mtime ORDER is not an invariant and this pin must not assert it.  Steam's
+# validation rewrites the mtime of any file whose bytes it re-delivers: on
+# 2026-11-12 23:22:44 it re-downloaded futuravailableunits.json (byte-identical
+# to what was already there, sha 1abbcd6c4c5a1fd5) and the panel instantly became
+# NEWER than AoE2DE_s.exe, which had itself been rewritten at 23:19:46.  Both
+# failed assertions below fired on that reshuffle while the data had not moved a
+# byte -- "panel older than the exe" and "tree files within a day of the panel"
+# are observations of one particular download, not properties of the build.
+#
+# The claim the pin is actually making is "this is shipped content, not a runtime
+# cache".  The test for that is CONTENT: a runtime cache would differ from the
+# vanilla archive, and from a second install of the same build.  mtimes stay in
+# the printout above as measured facts.
+import hashlib as _hashlib
+
+
+def _sha_of(path):
+    h = _hashlib.sha256()
+    with open(path, "rb") as fh:
+        for chunk in iter(lambda: fh.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+ARCHIVE = _HERE_PATH("..", "_cache", "vanilla_dat", "futuravailableunits.json")
+PANEL = next((p for p in BP.panel_paths(GAME) if p), None)
+assert pm is not None and PANEL, "the panel file must exist"
+if os.path.isfile(ARCHIVE):
+    live_sha, arch_sha = _sha_of(PANEL), _sha_of(ARCHIVE)
+    assert live_sha == arch_sha, (
+        "the panel in the game folder is not the shipped one (live %s vs "
+        "archived vanilla %s) -- a probe or a mod rewrote it, and every number "
+        "in this file then describes a fixture" % (live_sha[:16], arch_sha[:16]))
+    print("    panel content == archived vanilla : True (%s)" % live_sha[:16])
+else:
+    print("    panel content == archived vanilla : unchecked "
+          "(no archive at _cache/vanilla_dat)")
+# A runtime cache would be rewritten at first launch, i.e. strictly later than
+# the patch that shipped it.  Allow the Steam-re-validation case: the bytes are
+# unchanged (proven above when the archive exists), only the stamp moved.
+assert len(same_day) == len(tfiles) or (
+    os.path.isfile(ARCHIVE) and _sha_of(PANEL) == _sha_of(ARCHIVE)), (
+    "the tree files and the panel must either unpack together or be provably "
+    "the same bytes as the shipped copy -- otherwise one of them is regenerated "
+    "at runtime (%d of %d within a day)" % (len(same_day), len(tfiles)))
 assert disagree > 0, (
     "the panel must NOT be a live projection of the tree; if it agreed "
     "everywhere this probe would be measuring a derivation, not a second file")

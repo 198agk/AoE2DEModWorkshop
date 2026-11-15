@@ -65,6 +65,24 @@ s = J.snapshot("unit")
 check(s["known"] and s["running"], "begin() makes it running", s)
 check(s["percent"] == 0 and s["total"] == 1000, "it starts at 0 of its total", s)
 
+# Every run gets its own id, and the id only ever goes up.  The page draws its
+# bar BEFORE the request that starts the job, so its first poll can land on the
+# PREVIOUS run's answer (finished, 100 %, running:false).  Without an id that
+# answer is indistinguishable from "my job is done", which is how the bar sat at
+# 100 % for eleven minutes (m19874).
+first_seq = s["seq"]
+check(first_seq > 0, "begin() stamps the run with an id", first_seq)
+J.begin("unit", "建立单位字段索引", 1000)
+check(J.snapshot("unit")["seq"] > first_seq,
+      "a second begin() gets a higher id, so the page can tell the runs apart",
+      (first_seq, J.snapshot("unit")["seq"]))
+seq_now = J.snapshot("unit")["seq"]
+J.finish("unit")
+check(J.snapshot("unit")["seq"] == seq_now,
+      "the id survives finish(), so a late poll still says WHICH run it is",
+      J.snapshot("unit")["seq"])
+J.begin("unit", "建立单位字段索引", 1000)
+
 J.update("unit", 250)
 check(J.snapshot("unit")["percent"] == 25, "update() reports the fraction",
       J.snapshot("unit")["percent"])
@@ -95,6 +113,9 @@ check(s["error"] == "扫描崩了", "and it keeps the sentence that explains why
 
 J.reset("tech")
 check(J.snapshot("tech")["known"] is False, "reset(key) forgets one job")
+check(J.snapshot("tech")["seq"] == 0,
+      "a job nobody started reports id 0, so no id collides with a real run",
+      J.snapshot("tech")["seq"])
 check(J.snapshot("unit")["known"] is True, "reset(key) leaves the others alone")
 J.reset()
 
@@ -120,16 +141,30 @@ with contextlib.redirect_stdout(buf):
 from aoe2mod.dat import unitfields as UF              # noqa: E402
 from aoe2mod.dat import techfields as TF              # noqa: E402
 
-t0 = time.time()
-with contextlib.redirect_stdout(buf):
-    _u, _s, left = UF.scan(raw, gv, light=True)
-plain = time.time() - t0
-
+# Measured 2026-11-13: one plain scan and one reporting scan back to back read
+# +17.6 % while the same pair read +1.1 % and -3.0 % on other runs -- a single
+# 11-second wall-clock pair on a machine with other suites running is mostly
+# noise.  Both sides are therefore measured twice, alternating, and the MINIMUM
+# of each is compared: the floor is what the code costs, the spread is what the
+# machine happened to be doing.  The assertion itself is unchanged -- progress
+# must still cost less than 15 % of the walk.
+plain_runs = []
+withbar_runs = []
 seen = []
-t0 = time.time()
-with contextlib.redirect_stdout(buf):
-    units, _s, left2 = UF.scan(raw, gv, light=True, on_progress=seen.append)
-withbar = time.time() - t0
+left = left2 = 0
+units = None
+for _i in range(2):
+    t0 = time.time()
+    with contextlib.redirect_stdout(buf):
+        _u, _s, left = UF.scan(raw, gv, light=True)
+    plain_runs.append(time.time() - t0)
+    seen = []
+    t0 = time.time()
+    with contextlib.redirect_stdout(buf):
+        units, _s, left2 = UF.scan(raw, gv, light=True, on_progress=seen.append)
+    withbar_runs.append(time.time() - t0)
+plain = min(plain_runs)
+withbar = min(withbar_runs)
 
 check(left == 0 and left2 == 0, "both scans still walk the whole file",
       "%d / %d" % (left, left2))
@@ -144,7 +179,9 @@ check(len(seen) <= 260,
       len(seen))
 cost = (withbar - plain) / plain if plain else 0
 check(cost < 0.15, "reporting costs under 15 % of the scan",
-      "%.2fs vs %.2fs (+%.1f%%)" % (withbar, plain, cost * 100))
+      "%.2fs vs %.2fs (+%.1f%%) -- best of %s"
+      % (withbar, plain, cost * 100,
+         "/".join("%.2f" % t for t in plain_runs)))
 
 seen_t = []
 with contextlib.redirect_stdout(buf):
@@ -216,6 +253,15 @@ check(len(width_sets) >= 1 and not bad,
       bad)
 check("bar.fill.style.width = pct" in page,
       "that width is the server's percentage, not a timer")
+# The bar must also know WHICH run it is drawing.  Its first poll can land on the
+# answer of the run before (finished, 100 %, running:false); drawing that and
+# seeing "not running" stops the poller, and the bar then hangs at 100 % for the
+# whole real run -- measured 2026-11-13, eleven minutes on the mod check (m19874).
+watch = page.split("function watchJob(", 1)[1].split("\n}", 1)[0]
+check("j.seq" in watch, "the poller reads the run id out of the answer")
+check("seq >= want" in watch,
+      "an answer older than the run it waits for is dropped, not drawn",
+      watch.count("seq"))
 check('fill.style.width = n + "%"' in page,
       "the file-switch veil draws the server's number too")
 check("setInterval" not in open_ed,

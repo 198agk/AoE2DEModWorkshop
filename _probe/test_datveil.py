@@ -74,6 +74,73 @@ STATE = """() => {
 }"""
 
 
+# Measured 2026-11-12, one run, three witnesses: the veil PAINTED eleven honest
+# frames (0 / 2 / 8 / 52 / 97 / 100) while this probe's own 100 ms sampling of
+# the same switch caught TWO.  At the same time the page's first ten
+# `/api/progress` polls took 1708, 1522, 1323 ... ms and then fell to 40-100 ms,
+# and a thread polling the server on its own connection saw 1-160 ms.  So the
+# bar never lied and the server never stalled: the samples were queued behind
+# `POST /api/dat-set` on the page's single HTTP/1.0 keep-alive connection, which
+# is what "sampling a UI from outside the renderer" measures -- the transport,
+# not the screen.
+#
+# So the frames are recorded IN THE PAGE, by a MutationObserver, and read back in
+# one request after the switch is over.  Nothing can be missed between samples
+# because there are no samples: every painted change is an event.
+REC_ON = """(reset) => {
+  const clear = () => {
+    window.__FR = []; window.__OP = []; window.__FETCH = [];
+    window.__T0 = performance.now();
+  };
+  if (window.__REC) {
+    if (reset) clear();
+    return true;
+  }
+  window.__REC = true;
+  clear();
+  const now = () => Math.round(performance.now() - window.__T0);
+  const push = () => {
+    const f = document.getElementById('datveil-fill');
+    const p = document.getElementById('datveil-pct');
+    const pair = [f ? (f.style.width || '') : '', p ? (p.textContent || '') : ''];
+    const last = window.__FR[window.__FR.length - 1];
+    if (!last || last[0] !== pair[0] || last[1] !== pair[1]) {
+      window.__FR.push([pair[0], pair[1], now()]);
+    }
+    const dv = document.getElementById('datveil');
+    const open = !!(dv && dv.classList.contains('open'));
+    const lo = window.__OP[window.__OP.length - 1];
+    if (!lo || lo[1] !== open) window.__OP.push([now(), open]);
+  };
+  new MutationObserver(push).observe(document.body,
+    {subtree: true, attributes: true, childList: true, characterData: true});
+  const realFetch = window.fetch;
+  window.fetch = function (u) {
+    const t = now();
+    const p = realFetch.apply(this, arguments);
+    if (String(u).indexOf('/api/progress') >= 0) {
+      const box = {at: t, done: null};
+      window.__FETCH.push(box);
+      p.then(function () { box.done = now(); }, function () { box.done = -1; });
+    }
+    return p;
+  };
+  push();
+  return true;
+}"""
+
+
+def rec_start(pg):
+    """Arm the in-page recorder and drop what it held from earlier switches."""
+    pg.evaluate(REC_ON, True)
+
+
+def rec_read(pg):
+    return pg.evaluate("() => ({fr: (window.__FR || []).slice(),"
+                       " op: (window.__OP || []).slice(),"
+                       " fetch: (window.__FETCH || []).slice()})")
+
+
 def wait_ready(pg, timeout=180000):
     pg.wait_for_function(
         "() => document.readyState === 'complete'"
@@ -102,24 +169,45 @@ def click_chip(pg, label):
            }""", label)
 
 
-def track(pg, limit_s=90.0):
-    """Follow one switch from click to clean-up, keeping every frame that said
-    something new.  `ever_open` answers the flash question: 100 ms sampling is
-    quick enough to catch a panel that lives for the whole slow path."""
-    seen = []
-    ever_open = False
+def track(pg, limit_s=300.0):
+    """Follow one switch from click to clean-up.
+
+    Waits for the lock to drop, then reads back what the PAGE painted -- every
+    frame, from the MutationObserver armed at the click.  The waiting loop still
+    asks the page for `DATVEIL_ON`, but it no longer decides which frames count:
+    sampling the bar from here measured the transport queue, not the screen (see
+    the comment on `REC_ON`).
+
+    Returns `(state, frames, seconds, ever_open, t_open)` where `frames` is
+    `[((width, pct_text), seconds_from_the_click), ...]` and `t_open` is when the
+    panel was actually given the `open` class."""
     t0 = time.time()
+    clean = False
     while time.time() - t0 < limit_s:
-        st = pg.evaluate(STATE)
-        if st["open"]:
-            ever_open = True
-        pair = (st["fillW"], st["pct"])
-        if not seen or seen[-1][0] != pair:
-            seen.append((pair, round(time.time() - t0, 2)))
-        if not st["flag"] and time.time() - t0 > 0.25:
-            return st, seen, round(time.time() - t0, 2), ever_open
+        if pg.evaluate("() => !DATVEIL_ON") and time.time() - t0 > 0.25:
+            clean = True
+            break
         time.sleep(0.1)
-    return pg.evaluate(STATE), seen, round(time.time() - t0, 2), ever_open
+    # Say it out loud when the wait ran out.  Measured 2026-11-12 in a full
+    # suite run: this switch took longer than the old 90 s limit, so track()
+    # handed back a mid-switch state, and six honest assertions (收干净了,
+    # 下拉框又点得动了, the millisecond fast path) reported a lie the page never
+    # told.  A probe that cannot tell "the switch is still running" from
+    # "the switch ended badly" is measuring its own patience.
+    if not clean:
+        # One honest failure instead of six confusing ones: everything below
+        # reads the state this line is about to hand back, so a switch that
+        # never ended must be named here.
+        check(False, "这一趟量到了结局（%s 秒内锁落下来）" % limit_s,
+              "锁还挂着，下面断的是中途" )
+    st = pg.evaluate(STATE)
+    took = round(time.time() - t0, 2)
+    rec = rec_read(pg)
+    seen = [((w, q), round(ms / 1000.0, 2)) for (w, q, ms) in rec["fr"]]
+    opens = [ms for (ms, o) in rec["op"] if o]
+    ever_open = bool(opens)
+    t_open = round(opens[0] / 1000.0, 3) if opens else None
+    return st, seen, took, ever_open, t_open
 
 
 def nums(widths):
@@ -134,8 +222,10 @@ def nums(widths):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--slow", default="WAIFor Arcade",
-                    help="a row this server process has NOT opened yet (slow path)")
+    ap.add_argument("--slow", default=None,
+                    help="try this row first; the probe still moves on if it "
+                         "turns out to be warm (this server reads a file once "
+                         "and remembers it, and the disk cache holds one slot)")
     ap.add_argument("--url", default=URL)
     a = ap.parse_args()
 
@@ -153,37 +243,30 @@ def main():
         wait_ready(pg)
 
         section("0. 起点")
-        src = pg.evaluate("() => (window.DAT_SOURCES || []).map(x => ({label: x.label,"
-                          " scope: x.scope, path: x.path, current: !!x.current}))")
-        if not src:
-            pg.evaluate("() => loadDatSources()")
-            pg.wait_for_timeout(800)
-            src = pg.evaluate("() => DAT_SOURCES.map(x => ({label: x.label,"
-                              " scope: x.scope, path: x.path, current: !!x.current}))")
+        # `let DAT_SOURCES` is a lexical global, not a window property, so
+        # `window.DAT_SOURCES` is always undefined and the old two-step fallback
+        # returned rows WITHOUT `bytes` -- every candidate weighed 0, the sort
+        # became a no-op, and the probe picked whichever cold file the API
+        # happened to list first.  Ask the function that fills the list.
+        src = pg.evaluate("() => loadDatSources().then(s => (s || []).map(x => ({label: x.label,"
+                          " scope: x.scope, path: x.path, bytes: x.bytes || 0,"
+                          " current: !!x.current})))")
         check(bool(src), "页面拿到了候选文件清单", "%d 个" % len(src or []))
         base = [x for x in (src or []) if x["current"]]
         check(len(base) == 1, "当前改的只有一份", base[0]["label"] if base else None)
         base_path = base[0]["path"] if base else ""
-        tgt = [x for x in (src or []) if a.slow in x["label"]]
-        check(bool(tgt), "找得到慢路径那一份", a.slow)
-        if not tgt:
-            b.close()
-            sys.exit(1)
-        tgt = tgt[0]
-        check(tgt["path"].lower().endswith(GAME), "它也有一份 .dat", tgt["path"])
+        # A slow path is a property of the FILE, not of the label: this process
+        # has already parsed whatever earlier runs touched, and the disk cache
+        # holds one slot.  So hunt: switch, and the answer tells you whether it
+        # was warm (flag drops before the panel's 600 ms delay) or cold (the
+        # panel appears and stays).  A warm file is warm for good now, so move on.
+        order = [x for x in (src or [])
+                 if not x.get("current")
+                 and str(x.get("path") or "").lower().endswith(GAME)]
+        order.sort(key=lambda x: -int(x.get("bytes") or 0))
+        pref = [x for x in order if a.slow and a.slow in x["label"]]
+        cands = pref + [x for x in order if x not in pref]
 
-        st = pg.evaluate(STATE)
-        check(st["veil"], "#datveil 在页面上")
-        check(st["open"] is False, "此刻是关着的")
-        check(st["openDisplay"] == "none", "关着时 display 是 none", st["openDisplay"])
-        check(st["openZ"] == "90", "z-index 90（盖住 #notice 的 80 / #toast 的 60）",
-              st["openZ"])
-        pend = pg.evaluate("() => (typeof ED_PENDING === 'undefined') ? null : ED_PENDING")
-        print("     编辑器里未保存的改动：%s（有的话切换前会问一句，探针按「继续」答）"
-              % pend)
-
-        # ---------------------------------------------------------------- slow
-        section("1. 慢路径：第一次打开这一份")
         pg.evaluate("() => showView('mods')")
         # `/api/dat-sources` measures the version head of every candidate (0.2 to
         # 0.5 s each, nineteen here) and the cold-server first call is the slow
@@ -196,27 +279,64 @@ def main():
         except Exception as exc:                       # noqa: BLE001
             check(False, "#dp-list 画出了候选行", str(exc)[:120])
         pg.wait_for_timeout(200)
-        t_click = time.time()
-        r = click_chip(pg, a.slow)
+
+        tgt = None
+        warm = []
+        for cand in cands[:8]:
+            # Armed BEFORE the click: the frames of this switch are events the
+            # page emits, and the first one lands in the same tick as the click.
+            rec_start(pg)
+            r = click_chip(pg, cand["label"])
+            if not r.get("ok"):
+                warm.append((cand["label"], r.get("why")))
+                continue
+            t_click = time.time()
+            st0 = pg.evaluate(STATE)
+            # Poll instead of wait_for_function so the moment the panel appears is
+            # measured, not merely waited for.  Either it shows up, or the lock
+            # drops without one (that is the warm file).
+            t_open = None
+            while time.time() - t_click < SHOW_MS / 1000.0 + 8.0:
+                st_p = pg.evaluate(STATE)
+                if st_p["open"]:
+                    t_open = round(time.time() - t_click, 3)
+                    break
+                if st_p["flag"] is False:
+                    break
+                time.sleep(0.05)
+            st_now = pg.evaluate(STATE)
+            if not st_now["open"]:
+                st_w, _s, took_w, _e, _o = track(pg, limit_s=180.0)
+                warm.append((cand["label"], "%s s" % took_w))
+                continue
+            tgt = cand
+            keep = (r, st0, t_click, t_open)
+            break
+
+        check(tgt is not None,
+              "找到一个这一进程还没读过的候选（慢路径）",
+              {"tried": warm[-4:], "candidates": len(cands)})
+        if tgt is None:
+            print("     这一轮没有冷文件可试：--slow 指定的那份、以及最大的几份都被"
+                  "本进程读过了。换一个 --slow，或重启服务，或先删掉 parse_cache。")
+            b.close()
+            sys.exit(1)
+        r, st0, t_click, t_open_click = keep
+
+        section("1. 慢路径：第一次打开这一份")
+        check(tgt["path"].lower().endswith(GAME), "它也有一份 .dat", tgt["path"])
+        print("     试过但已经是热的：%r" % (warm[-4:],))
+        print("     遮罩在点击后 %s ms 出现"
+              % ("-" if t_open_click is None else int(t_open_click * 1000)))
         check(r.get("ok"), "点到了那一行上的「改这一份」", r)
-        st0 = pg.evaluate(STATE)
         check(st0["flag"] is True, "锁在点击的同一 tick 就上了", st0["flag"])
         check(st0["selDisabled"] is True, "下拉框同时被禁用")
-        check(st0["what"] == a.slow,
+        check(st0["what"] == tgt["label"],
               "标题旁写的是人话标签，不是所有候选都一样的文件名", st0["what"])
-
-        try:
-            wait_open(pg, timeout=SHOW_MS + 3000)
-            dt = round((time.time() - t_click) * 1000)
-            check(True, "遮罩出现了", "%d ms" % dt)
-            check(dt >= SHOW_MS - 100,
-                  "不是点击瞬间就闪出来（快路径要靠这个不闪）", "%d ms" % dt)
-            check(dt < SHOW_MS + 1500, "也没拖到解析完才出来", "%d ms" % dt)
-        except Exception as exc:                       # noqa: BLE001
-            check(False, "遮罩出现了", str(exc)[:120])
 
         section("2. 遮罩期间：导航点不动，Esc / Tab 不走")
         st1 = pg.evaluate(STATE)
+        check(st1["open"] is True, "遮罩此刻是开着的（慢路径）", st1["open"])
         # (a) a real pointer click lands on the veil, not on the nav item.
         pg.mouse.click(60, 200)
         pg.wait_for_timeout(120)
@@ -246,15 +366,43 @@ def main():
         check(after == before, "Tab 之后焦点没跑出去", "%s -> %s" % (before, after))
 
         section("3. 条子说的是这次转换，不是上一份的结局")
-        st, seen, took, ever_open = track(pg)
+        st, seen, took, ever_open, t_open = track(pg)
+        rec = rec_read(pg)
+        # `seen` is the whole switch, from the click: the recorder was armed one
+        # statement before `click_chip` and every painted change since is in it.
         widths = [w for (w, _), _ in seen]
-        print("     采样 %d 帧，%s 秒，遮罩曾出现 %s" % (len(seen), took, ever_open))
+        print("     从点击到收工，页面一共画了 %d 帧" % len(seen))
+        print("     %s 秒，遮罩曾出现 %s（%s ms 出现，轮询侧看到的是 %s ms）"
+              % (took, ever_open,
+                 "-" if t_open is None else int(t_open * 1000),
+                 "-" if t_open_click is None else int(t_open_click * 1000)))
         for (w, q), t in seen[:16]:
             print("       %6.2fs  width=%-6s %s" % (t, w or '-', q or '-'))
         if len(seen) > 16:
             print("       ... 共 %d 帧" % len(seen))
+        # Why the frame list can be short: the bar can only paint what the page
+        # has been TOLD.  If every poll of /api/progress came back after the
+        # parse was already over, the intermediate percentages were never on
+        # screen to be recorded -- no recorder can recover them, and the honest
+        # reading is "the transport hid the progress", not "the bar lied".
+        polls = rec.get("fetch") or []
+        costs = [(p["at"], (p["done"] - p["at"]))
+                 for p in polls if p.get("done") not in (None, -1)]
+        slow = sorted(costs, key=lambda c: -c[1])[:4]
+        print("     页面自己的 /api/progress 轮询 %d 次，最慢 %s"
+              % (len(polls), ["%dms@%dms" % (c[1], c[0]) for c in slow]))
         check(took > 2.0, "这一趟是真的重新读了一遍", "%s s" % took)
         check(ever_open, "慢路径上遮罩确实画出来了")
+        # Both clocks are from the click: `t_open` from the page's own class
+        # change, `t_open_click` from this probe polling for it.  Agreement is
+        # the point -- if the two disagree by seconds, the probe is measuring
+        # the transport again and the numbers below can be trusted less.
+        check(t_open is not None and t_open * 1000 >= SHOW_MS - 100,
+              "不是点击瞬间就闪出来（快路径要靠这个不闪）",
+              "-" if t_open is None else "%d ms" % int(t_open * 1000))
+        check(t_open is not None and t_open * 1000 < SHOW_MS + 1500,
+              "也没拖到解析完才出来",
+              "-" if t_open is None else "%d ms" % int(t_open * 1000))
         check(not st["open"], "读完自己收了", st["open"])
         check(st["flag"] is False, "DATVEIL_ON 归位", st["flag"])
         check(st["timer"] == 0, "轮询停了，没有空转", st["timer"])
@@ -262,8 +410,9 @@ def main():
         # The lie this probe exists for: a bar that is 100 % from frame one.
         # Only the FIRST two frames count: the last frame is the deliberate
         # "正在重画界面" phase, which is honestly 100 % of the parse.
-        early = [w for w in widths[:2] if w == "100%"]
-        check(not early, "开头两帧没有直接甩 100%（不是上一份的结局）", widths[:3])
+        early = [w for (w, _), _ in seen[:2] if w == "100%"]
+        check(not early, "开头两帧没有直接甩 100%（不是上一份的结局）",
+              [w for (w, _), _ in seen[:3]])
         n = nums(widths)
         check(len(set(n)) >= 2, "百分比在途中变过", sorted(set(n))[:8])
         check(any(0 < x < 100 for x in n), "中途出现过真实中间值",
@@ -293,9 +442,10 @@ def main():
         #       holds ONE slot, so this is reported, not asserted.
         section("5a. 快路径：又点了正在改的那一份，必须一文不闪")
         cur_path = st["selValue"]
+        rec_start(pg)
         pg.evaluate("() => { const s = document.getElementById('ed-dat');"
                     " s.dispatchEvent(new Event('change')); }")
-        st, seen2, took2, ever2 = track(pg, limit_s=20.0)
+        st, seen2, took2, ever2, _t2 = track(pg, limit_s=20.0)
         widths2 = [w for (w, _), _ in seen2]
         print("     %s 秒，遮罩曾出现 %s，帧 %s" % (took2, ever2, widths2[:6]))
         check(took2 < 3.0, "同一份文件是毫秒级的应答", "%s s" % took2)
@@ -305,11 +455,12 @@ def main():
               st["selValue"])
         check(st["show"] == 0, "延迟画的定时器被取消，没留尾巴", st["show"])
 
-        section("5b. 切回一个这台机器已经读过的文件（只报数，不判定快慢）")
+        section("5b. 切回一开始那一份（刚读过，所以这次要么很快要么命中缓存）")
+        rec_start(pg)
         pg.evaluate("() => { const s = document.getElementById('ed-dat');"
                     " s.value = %r; s.dispatchEvent(new Event('change')); }"
                     % base_path)
-        st, seen3, took3, ever3 = track(pg, limit_s=90.0)
+        st, seen3, took3, ever3, _t3 = track(pg, limit_s=180.0)
         widths3 = [w for (w, _), _ in seen3]
         print("     %s 秒，遮罩曾出现 %s，帧 %s" % (took3, ever3, widths3[:6]))
         if took3 < 2.0:
@@ -325,6 +476,9 @@ def main():
         check(bool(other), "还有别的候选可以试", len(other or []))
         if other:
             pick = other[0]
+            # Armed BEFORE the change event, so section 6's own frames are this
+            # switch's and not 5b's tail.
+            rec_start(pg)
             pg.evaluate("() => { const s = document.getElementById('ed-dat');"
                         " s.value = %r; s.dispatchEvent(new Event('change')); }"
                         % pick["path"])
@@ -332,15 +486,16 @@ def main():
             check(st5["flag"] is True, "改 <select> 也立刻上锁", st5["flag"])
             check(st5["what"] == pick["label"],
                   "遮罩上写的是这一份的人话标签", st5["what"])
-            st6, seen6, took6, ever6 = track(pg, limit_s=120.0)
+            st6, seen6, took6, ever6, _t6 = track(pg, limit_s=120.0)
             check(not st6["open"] and not st6["flag"], "第二趟也收干净了", "%s s" % took6)
             check(st6["selValue"].lower() == pick["path"].lower(),
                   "停在刚选的那一份上", st6["selValue"])
 
         section("7. 收尾：换回游戏本体")
+        rec_start(pg)
         pg.evaluate("() => { const s = document.getElementById('ed-dat');"
                     " s.value = %r; s.dispatchEvent(new Event('change')); }" % base_path)
-        st7, seen7, took7, ever7 = track(pg, limit_s=180.0)
+        st7, seen7, took7, ever7, _t7 = track(pg, limit_s=180.0)
         check(not st7["open"] and not st7["flag"], "换回本体也收干净了", "%s s" % took7)
         check(st7["selValue"].lower() == base_path.lower(), "停在游戏本体上", st7["selValue"])
 

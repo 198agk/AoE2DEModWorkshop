@@ -127,13 +127,28 @@ def main():
           bytes(app.session_raw()) == base,
           "%d vs %d" % (len(app.session_raw()), len(base)))
 
-    # --- 3. put: nine bytes spliced, and the model learns ----------------
+    # --- 3. put: the button AND the command that makes it drawable --------
+    # THREE SPLICES, NOT ONE.  A train entry makes the button exist; whether
+    # the game DRAWS it is decided by a `type 2` Enable/Disable Unit command,
+    # and the last one to fire wins.  Measured 2026-11-11: a card written this
+    # way (entry only) produced no button in game, which is the report
+    # 「一堆单位选择添加后，根本不起作用」.  So a put now also appends one
+    # effect and one carrier technology -- the recipe `datgrant` documents and
+    # `dsh test v7` confirmed in game.
+    import aoe2mod.dat.pseudopage as PP
+    import aoe2mod.intent.datgrant as DG
     before_len = len(app.session_raw())
     put = app.card_put(83, 12, box=7, seconds=25, civ="British", dry=False)
     check("card_put reports success", put.get("ok"), put.get("error"))
-    check("the file grew by exactly one entry",
-          len(app.session_raw()) - before_len == 9,
-          len(app.session_raw()) - before_len)
+    want_grew = (9
+                 + len(PP.effect_bytes("DshEnable83", [DG.enable_command(83)]))
+                 + put["enables"]["tech_bytes"])
+    check("the file grew by the entry, the effect and the carrier technology",
+          len(app.session_raw()) - before_len == want_grew,
+          (len(app.session_raw()) - before_len, want_grew))
+    check("the payload names the effect and the technology it hung it on",
+          put["enables"]["effect"] > 0 and put["enables"]["tech"] > 0,
+          put.get("enables"))
     entries = [(t["unit_id"], t["button_id"], t["train_time"])
                for u in tk._civs[1]["units"] if u["id"] == 83
                for t in (u.get("train_locations") or [])]
@@ -188,18 +203,23 @@ def main():
     check("the splice checks the length it was promised",
           "if grew != expect:" in server and "_card_splice" in server)
     check("the splice is handed the LIVE buffer, never a copy",
-          "buf = self.session_raw(tk)\n        try:\n            steps, info = CARD.plan_put_on_card(" in server)
+          "buf = self.session_raw(tk)\n        orig = []" in server
+          and "self._card_splice(buf, steps, expect=expect)" in server)
     check("no card verb builds a mod folder",
           "emit_data_mod" not in server[server.index("def card_put"):server.index("def card_time")])
 
     # --- 8. the routes are POSTs -----------------------------------------
     get_at = server.index("    def do_GET(self):")
     post_at = server.index("    def do_POST(self):")
+    # Count the QUOTED route: `/api/card-put` is a prefix of `/api/card-put-tech`,
+    # so a bare substring count says the POST handler serves it twice -- and a
+    # route that cannot be counted is a route the pin cannot defend.
     for route in ("/api/card-put", "/api/card-take", "/api/card-time"):
+        lit = '"%s"' % route
         check("%s is served by do_POST only" % route,
-              server[get_at:post_at].count(route) == 0 and
-              server[post_at:].count(route) == 1,
-              server[get_at:post_at].count(route))
+              server[get_at:post_at].count(lit) == 0 and
+              server[post_at:].count(lit) == 1,
+              server[get_at:post_at].count(lit))
     for name in ("card_put", "card_take", "card_time"):
         check("%s writes unless asked not to" % name,
               'dry=bool(payload.get("dry", False))' in server)
@@ -219,8 +239,21 @@ def main():
     # number is true.
     check("the picker's label does not promise a box",
           'el("button", "chip", "加进第 ' not in page)
-    check("the toast names the box that actually took it",
-          'toast("加进第 " + box + " 格了", "ok");' in page)
+    # The window that replaced the inline list must keep the same promise.  Its
+    # toast prefers the server's own sentence (`r.label` names the building, the
+    # box and the unit) and falls back to one that names the box it was opened
+    # for -- never `cardFreeBox()`.
+    # 2026-11-10: the toast grew a third list (建筑), so it no longer reads
+    # `units` for every pick -- a building picked out of the 建筑 tab says
+    # 「把「房屋」放进第 5 格了」 instead of 「把第 70 号单位加进第 5 格了」.  The
+    # promise this nail defends is unchanged: the sentence names the box that
+    # TOOK the unit, never `cardFreeBox()`.
+    check("the window's toast names the box that took the unit",
+          'toast((kind === "building")' in page
+          and '" 号" + what + "加进第 " + box + " 格了"' in page
+          and "const box = CARD_PICKBOX;" in page)
+    check("and the box it posts is the one that was clicked",
+          "const box = CARD_PICKBOX;" in page)
     check("the picker posts a put", 'api("/api/card-put", {' in page)
     check("the strip posts a time", 'api("/api/card-time", {' in page)
     check("拿掉 posts a take", 'api("/api/card-take", {' in page)
@@ -369,7 +402,12 @@ def main():
           loads.get("competing") == len(live),
           (loads.get("competing"), len(live)))
     if live:
-        winner = sorted(live, key=lambda r: -(r.get("priority") or 0))[0]
+        # The winner is the mod the engine reaches FIRST, and the engine walks the
+        # list from the top: the smallest Priority number.  The game's own string
+        # table says so (IDS_MODMGR_PRIORITY_EXPLANATION: 「列表中排在上面的模组
+        # 文件」).  This expectation used to sort the other way round.
+        winner = sorted(live, key=lambda r: (r.get("priority") is None,
+                                             r.get("priority") or 0))[0]
         check("the meta names the mod that wins instead",
               (loads.get("winner") or {}).get("name") == winner.get("name"),
               loads.get("winner"))

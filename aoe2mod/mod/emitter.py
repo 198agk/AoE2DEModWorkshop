@@ -85,6 +85,22 @@ def _fit_title(title, limit=TITLE_MAX_BYTES):
             out = out[:i].rstrip()
             break
     return out
+def _fit_title_stem(title, suffix, limit=TITLE_MAX_BYTES):
+    """Fit ``title + suffix`` to `limit` by shortening the STEM, never the suffix.
+
+    `_fit_title` shortens from the right, which is right for a player-written
+    title and wrong for a suffix: `…（全部 63 个文明）（界面）` fitted that way
+    loses the （界面） and leaves two mod folders with the SAME name -- the one
+    thing the suffix exists to prevent.
+    """
+    if title_bytes(title + suffix) <= limit:
+        return title + suffix
+    room = limit - title_bytes(suffix)
+    if room <= 0:
+        return _fit_title(suffix, limit)
+    return _fit_title(title, room) + suffix
+
+
 INFO_OPTIONAL = ("Unpublished", "thumbnail", "previewIcon", "mainmenu_bg.dds")
 
 
@@ -207,6 +223,27 @@ def read_info_json(path):
         return json.loads(text, strict=False)
 
 
+def read_info_soft(path):
+    """`read_info_json`, but a file that will not parse reads as an empty dict.
+
+    Two real cases need this and they are not the same case:
+
+    * `subscribed/209785_Civilization Alliance/info.json` is BROKEN JSON on this
+      machine -- `Expecting ',' delimiter: line 1 column 174` -- and `strict=False`
+      does not save it either, because the damage is not a bare control byte.
+    * A mod folder can ship no `info.json` at all; the game still loads it.
+
+    Every caller of this function is about to WRITE a fresh info.json, so an
+    unreadable old one is a reason to start from the four required keys, not a
+    reason to fail the update that the player asked for.
+    """
+    try:
+        got = read_info_json(path)
+    except (OSError, ValueError, UnicodeDecodeError):
+        return {}
+    return got if isinstance(got, dict) else {}
+
+
 def validate_info(info):
     """Return a list of human-readable problems; empty means publishable."""
     problems = []
@@ -268,6 +305,26 @@ def make_info(title, author="", description="", cache_status=0, **extra):
         if v is not None:
             info[k] = v
     return info
+
+
+def write_info_json(mod_dir, info):
+    """Write ONE `info.json` into an already-existing mod folder.
+
+    Split out of `emit_data_mod` because renaming an installed mod and editing
+    its 简介 must not rebuild the folder: the folder name is what the engine
+    looks up from `mod-status.json`'s `Path`, so rewriting `info.json` in place
+    is the whole operation.  Any second writer of this file would drift from the
+    byte shape below, which is the only shape the mod manager accepts.
+    """
+    problems = validate_info(info)
+    if problems:
+        raise ModError("这个 mod 的信息填得不对，游戏不会认："
+                       + " ".join(problems))
+    os.makedirs(mod_dir, exist_ok=True)
+    info_abs = os.path.join(mod_dir, "info.json")
+    with open(info_abs, "w", encoding="utf-8", newline="\n") as fh:
+        json.dump(info, fh, ensure_ascii=False, separators=(",", ":"))
+    return info_abs
 
 
 def sha256_file(path):
@@ -395,7 +452,6 @@ def emit_data_mod(mod_dir, dat_bytes, info, thumbnail=None, base_dir=None,
 
     written = []
 
-    info_abs = os.path.join(mod_dir, "info.json")
     # COMPACT, exactly like every mod the game ships and accepts.  Measured: all 8
     # third-party mods on this machine write `{"Author":"x","CacheStatus":0,...}` with
     # NO space after the colon, while an `indent=2` file is the only one the mod
@@ -404,9 +460,7 @@ def emit_data_mod(mod_dir, dat_bytes, info, thumbnail=None, base_dir=None,
     # engine's own fallbacks, found adjacent to `info.json` and `Validating '%s'` in
     # the exe's string pool).  Note it is NOT about newlines: an accepted mod
     # (`423821_…`, 748 B) contains seven CRs, all inside the Description VALUE.
-    with open(info_abs, "w", encoding="utf-8", newline="\n") as fh:
-        json.dump(info, fh, ensure_ascii=False, separators=(",", ":"))
-    written.append(("info.json", info_abs))
+    written.append(("info.json", write_info_json(mod_dir, info)))
 
     thumb_abs = None
     if thumbnail:
@@ -601,6 +655,13 @@ def emit_data_mod(mod_dir, dat_bytes, info, thumbnail=None, base_dir=None,
     # folders drew the picture.  Everything else measured so far may share the
     # folder (strings: the published `1233 For Stephen Chow` and this project's own
     # `out_v27`; sprites: WAIFor and Red Alert 2), so only widgetui moves.
+    #
+    # This branch is now the RARE one: a picture no longer forces a `.dat` (see
+    # `App.set_icon` -- in-place repaints keep the record's IconID), so an icon-
+    # only build arrives here with `dat_bytes=None`, never enters this `if`, and
+    # ships as one folder.  What still lands here is a build that really did edit
+    # the data (a stat change, or an icon moved to a new slot because its old one
+    # was shared with other units).
     if manifest.get("dat"):
         split = split_ui_layer(mod_dir, info)
         if split:
@@ -645,9 +706,18 @@ def emit_data_mod(mod_dir, dat_bytes, info, thumbnail=None, base_dir=None,
 # Measured eleven times in game on 2026-10-24: a folder that carries a real `.dat`
 # AND `widgetui/` is loaded as a data mod, and the widgetui half is ignored -- five
 # separate builds drew an empty icon box that way, and the same bytes split into two
-# folders drew the picture.  The engine's own storage table agrees about the
-# asymmetry: of the 28 storage points in `modes/Pompeii/Pompeii.json`, exactly one
-# carries `use_modes_path_for_mods: true`, and it is `resources\_common\dat`.
+# folders drew the picture.
+#
+# WHAT THE STORAGE TABLE DOES AND DOES NOT SAY (corrected 2026-11-12).  Of the 28
+# storage points in `modes/Pompeii/Pompeii.json`, exactly one carries
+# `use_modes_path_for_mods: true` -- `resources\_common\dat` -- and DAT and WIDGETUI
+# are listed as independent points in the same tree.  That is a table of WHERE
+# loose files resolve, not a rule about what happens when one folder holds both:
+# the exe contains no branch that classifies a mod folder as data-or-UI (`info.json`
+# has four keys and no kind; `enabledModDirectories` takes whole directories).  So
+# the split below is this tool's policy, kept because the same-folder shape has
+# drawn an empty box five times and nobody has explained why.  It is not evidence
+# that the shape is illegal.
 #
 # What is NOT split, and why: `.sld` sprites.  WAIFor Arcade ships 662 of them and
 # Red Alert 2 ships 304, both in the SAME folder as their `.dat`, and both render in
@@ -749,7 +819,13 @@ def split_ui_layer(mod_dir, info=None, suffix="（界面）"):
             break
     title = base_info.get("Title") or os.path.basename(mod_dir)
     ui_info = dict(base_info)
-    ui_info["Title"] = _fit_title(title + suffix)
+    # The suffix has to SURVIVE the byte cap, or the two halves end up with the
+    # same Title and the mod list shows one name twice -- the player cannot tell
+    # which one carries the .dat (measured 2026-11-12: an auto title of
+    # "单位 882 把第 882 号单位…（全部 63 个文明）" is already at the cap, so
+    # appending 「（界面）」 and then fitting dropped the suffix back off and both
+    # info.json files read the same).  Fit the stem to what is left instead.
+    ui_info["Title"] = _fit_title_stem(title, suffix)
     if base_info.get("Description"):
         ui_info["Description"] = base_info["Description"] + "（界面部分）"
     with open(os.path.join(ui_dir, "info.json"), "w", encoding="utf-8",

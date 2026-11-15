@@ -494,6 +494,16 @@ SUITES = [
     # checks the 601-slot ordering against the file's own numbers (65 live /
     # 24 varying / 536 always zero) rather than trusting the label table.
     r"_probe\test_civ_table.py",
+    # The three stretches of the file that are not record families at all, and
+    # therefore the three the editor could never reach: the 25 scalars after the
+    # 200 terrain records (map width in pixels, tile size, the fog flags), the
+    # seven counters between the last technology and the tech tree, and the 550
+    # tech-tree connections.  Nothing pointed at them, so nothing refused a
+    # wrong offset; this pin gives each one an address, a Chinese name, the
+    # read-only fields that would desync the walk, and a write path that lands
+    # and reads back.  It walks the four connection layouts separately because
+    # an age record read as a unit record runs off the end of the block.
+    r"_probe\test_file_tables.py",
     # The 「找字段」 placeholder is the only copy on the editor screen that
     # makes a promise, and it was a ternary chain that grew by copy: every
     # table that forgot a branch inherited 图形's 「图形文件编号 / 帧数 /
@@ -604,6 +614,15 @@ SUITES = [
     # 换第二张图是同槽替换而不是报失败、一次保存会产出两个模组文件夹并且
     # 两个名字都要报出来、以及写盘时缺的正是「界面」那半个。
     r"_probe\test_icon_set.py",
+    # The left-hand grid listed 363 rows the right-hand pane refused to open:
+    # 529 of the 2,693 unit ids have no copy in civilization index 1 (British,
+    # the reference every number in the pane is quoted from) and 「野猪」 48 is
+    # one of them -- clicking it produced one red line saying the record does
+    # not exist, in a civilization the player never picked.  The nail walks all
+    # of them: every row the grid offers must open, the pane must quote British
+    # where British has the record and say WHICH civilization it quoted where it
+    # does not, and a specific civ named by the player is never overridden.
+    r"_probe\test_reference_civ.py",
     # 命令面板不只是能看：拖动进会话、把单位加进卡、从卡上拿掉、改训练时间。
     # 钉子同时钉住「plan_move 只读」与「splice 拿的是活缓冲」——第一版把
     # apply_steps 交给了一份拷贝，模型照样搬迁，下一次解析死在 read_bird。
@@ -627,7 +646,17 @@ SUITES = [
     # 钉子钉住三者互不相等、page_of/page_span 的分界、写入上下限、以及
     # 页面把一屏画成一屏而不是把 30 格摊平。
     r"_probe\test_card_pages.py",
+    r"_probe\test_card_pickwin.py",
     r"_probe\test_pseudo_pages.py",
+    # 「这个页面依旧是不能实时更新的」(2026-11-11): 面板过去每放一个图标就
+    # `loadCard` 一次 -- 两条请求、其中一条要走完 89 MB 的 civ 块。现在写动词
+    # 把新的页列表自己带回来，页面按答案重画；`/api/live` 是一个长轮询，任何
+    # 写（撤回/重做也算）都会把停在那里的屏幕叫醒，所以别处改了这边也跟着变。
+    # 钉子钉住四件容易假的事：落后的版本号立刻作答而不是被挂住、停着的请求
+    # 被唤醒时拿到的是这一整步之后的计数、三个页动词与窗口里的点击都不再
+    # `loadCard`、以及轮询之间留了一段安静窗口（否则 networkidle 永不达成，
+    # 渲染门禁会 30 s 超时）。
+    r"_probe\test_live_panel.py",
     # 一个格子挂一串可重复研究的科技 = 伪翻页：读、写、撤销、快扫、页面入口。
     # The start-up 防伪声明 window is measured in a live page: whether boot
     # really opens it, whether its six sentences are a copy of the 关于
@@ -1035,6 +1064,71 @@ SUITES = [
     # through two paths that disagree about the count is the bug class this tree
     # keeps finding, and this was never in a runner.
     r"_probe\test_plan_roundtrip.py",
+    # The operation log: every write route leaves one line, and a log folder the
+    # player cannot write to cannot fail the write itself.  Found by
+    # probe_suite_registry.py on 2026-11-09 as the last suite on disk that no
+    # runner named -- which meant "the log has one line per operation" was a
+    # claim with nothing behind it, on the one file a support question is
+    # answered from.  Three seconds, so it belongs in the fast list.
+    r"_probe\test_oplog.py",
+    # 「这个生成的东西应该放local去」, 2026-11-10: the script screen's save button
+    # had three paths (write a rule, save a file, save an OLD file) and none of
+    # them put the result under mods/local, so a generated rule could only land
+    # on the game's own 53 `.per` files.  Three suites, one per question: the
+    # library (aifiles), the route (over the socket), and the BUTTON (the page's
+    # own handler, with the chooser refreshing beside it).
+    r"_probe\test_local_overwrite.py",
+    r"_probe\test_local_save_shipped.py",
+    r"_probe\test_local_save_click.py",
+    # Every row `upgrade_check` returns carries the same twelve counters.  The
+    # refused path used to hand-build ten of them, so a mod the engine could not
+    # move printed "undefined 条" for the two counters that only exist on a
+    # whole-record copy -- and refused rows are the ones a player re-reads.  Five
+    # seconds, and it reads the source to make sure the copies do not come back.
+    r"_probe\test_upgrade_counts.py",
+    # The effect table is the one place where a record count says nothing about
+    # whether the port worked: an effect has no id, so a technology points at one
+    # by POSITION, and a copied technology onto a newer file points at whatever
+    # now sits in that slot.  Measured on 408773 (VER 8.8 -> 8.9): 1,731 live
+    # pointers, 247 naming a different effect, 5 naming nothing -- which is the
+    # player's report, "the mod updated and there is only a shell left".  The
+    # join decision is a pure function over record bytes, so its properties get
+    # checked here without a single .dat; the report contract is pinned beside it
+    # because a fix the panel does not print is a fix the player cannot verify.
+    # Under a second.
+    r"_probe\test_effect_link.py",
+    # A technology has no id: it is addressed by POSITION.  So when 8.9 fills the
+    # placeholder slots at 18/78/79/121 with [SCEN] Move Huskarl and three [FTT]
+    # techs, "carry the author edit to position 78" stops meaning "carry the
+    # author edit" and starts meaning "delete an official technology" -- measured
+    # on 314918, whose installed file was missing three official techs and had a
+    # name field reading `Fabric ArmorHuskarl`.  The fix moves the author record
+    # to the tail and repoints every RequiredTechs that named the old slot.  Three
+    # name lists and one integer map, so the properties are checked here against
+    # the installed game data, no mod build.  ~2 s.
+    r"_probe\test_tech_slot_reuse.py",
+    # Rebuilding a mod always lands in `mods/local/<name>`, and the copy it was
+    # rebuilt FROM usually sits in `mods/subscribed/` -- Steam owns that folder,
+    # so writing into it gets checked and reverted.  Both entries carry the same
+    # `.dat`, so "which mods need adapting" listed a mod twice and "adapt all"
+    # rebuilt it again on every press.  This pins the three answers: one row per
+    # mod, the new copy takes the old one's slot (`priority` is 1-based,
+    # `position` is 0-based), and the old entry is disabled rather than deleted.
+    # 0.2 s, all in a temp profile -- it belongs in the fast list.
+    r"_probe\test_upgrade_handover.py",
+    # Carrying a record between DAT generations reads the source BY FIELD NAME,
+    # so a fact that two generations store under different names is not carried,
+    # it is defaulted -- silently, because a missing name is a legitimate answer
+    # and only a pack failure is an error.  Measured on the 209785 mod (VER 8.4
+    # rebuilt onto 8.9): every unit's Creatable.TrainLocationsCount went out as 0
+    # and every tech's ResearchLocationCount did too, so AGE showed an empty
+    # training list and the author's own technologies had no research building.
+    # This suite pins both directions of the two fold pairs, plus the two things
+    # a fold must not do (invent a count, silently drop extra slots), plus a
+    # same-generation byte-for-byte round trip on every archived generation that
+    # parses.  The module has claimed this file existed since it was written.
+    # ~35 s, four parses of a 93 MB build.
+    r"_probe\test_portgen.py",
 ]
 
 # Suites that are not Python.  The screen's script is JavaScript and no Python
@@ -1062,6 +1156,219 @@ def _tick():
     sys.stdout.flush()
 
 
+DEV_PORT = 7811
+DEV_URL = "http://127.0.0.1:%d/" % DEV_PORT
+
+
+def _ask(path, want=None, timeout=10):
+    """GET one route off the dev server; None when it does not answer.
+
+    Kept as a plain function rather than a session object because the only
+    question this file asks is "is the page up yet".
+
+    Ten seconds, not three: this runner does not own 7811 -- a developer's own
+    engine, or another suite driving a .dat switch, can hold the one thread that
+    is parsing for tens of seconds.  Measured 2026-11-12: /api/meta answered
+    after **48 s** while a datveil run was mid-switch, and a 3 s window read
+    that as "nothing is there" (see _dev_server, which then started a second
+    server on the same port).
+    """
+    import urllib.request
+    try:
+        with urllib.request.urlopen(DEV_URL + path, timeout=timeout) as r:
+            body = r.read()
+    except Exception:                                    # noqa: BLE001
+        return None
+    if want is not None and want not in body:
+        return None
+    return body
+
+
+def _port_open(host="127.0.0.1", port=None, timeout=2.0):
+    """True when a TCP connect to the port succeeds.
+
+    Separate from _ask on purpose: "a socket accepted me" and "an HTTP answer
+    came back inside N seconds" are different questions, and confusing them is
+    how a busy server gets reported as an absent one.  The connect is refused
+    in milliseconds when nothing listens, so this costs nothing on a quiet box.
+    """
+    import socket
+    try:
+        with socket.create_connection((host, port or DEV_PORT), timeout=timeout):
+            return True
+    except OSError:
+        return False
+
+
+def _stop(proc):
+    """Put the dev server down without letting it outlive the run."""
+    if proc is None or proc.poll() is not None:
+        return
+    try:
+        proc.terminate()
+        proc.wait(timeout=20)
+    except Exception:                                    # noqa: BLE001
+        try:
+            proc.kill()
+        except Exception:                                # noqa: BLE001
+            pass
+
+
+def _dev_server():
+    """Make sure something answers on 7811 before the suites read it.
+
+    Seventeen suites in the fast list -- test_datveil, test_live_panel,
+    test_card_pages, test_notice_modal, test_ui_fixes, test_version_display,
+    test_list_paging, test_enter_commit, test_task_table, test_civ_table,
+    test_file_tables, test_unit_effects, test_notice_figure, test_card_pickwin,
+    test_pseudo_pages, test_editor_fit, test_filmstrip -- default their BASE to
+    http://127.0.0.1:7811 and never spawn a server themselves.  Run by hand
+    after starting the dev server they are green; run by this runner on a quiet
+    machine all seventeen went red on 2026-11-12 with ERR_CONNECTION_REFUSED.
+    A missing server reported as a broken page is the same lie as a stale
+    server reporting a fixed bug: both blame the code for the harness.
+
+    So: reuse a server that is already there (a developer's own 7811), else
+    start one, and wait for /api/progress to say ready -- the page answers
+    /api/meta seconds after binding, but the tables are only filled once the
+    warm thread has read the game data (measured 36.9 s on 2026-11-12, and a
+    suite that measures a half-warm page is measuring the wrong thing).
+    Returns the process, or None when the port was already served.
+    """
+    import atexit
+    import time
+
+    # "Is anything there" is a TCP question, not an HTTP one.  The HTTP answer
+    # can take 48 s when the server is busy parsing a .dat (measured
+    # 2026-11-12), and treating that silence as absence started a SECOND server
+    # on the same port -- which Windows allows to bind, so two engines then
+    # answered at random and every suite that read the wrong one went red.
+    if _port_open():
+        print("dev server: 7811 is already listening, using it as it is")
+        return None
+
+    proc = subprocess.Popen(
+        [PY, "-X", "utf8", "-u", os.path.join(ROOT, "tools", "run_ui.py"),
+         "--serve-only", "--port", str(DEV_PORT)],
+        cwd=ROOT, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    atexit.register(_stop, proc)
+
+    deadline = time.time() + 240
+    while time.time() < deadline:
+        if proc.poll() is not None:
+            print("dev server: run_ui.py exited with %s before it listened; "
+                  "the seventeen suites will report their own failure"
+                  % proc.returncode)
+            return proc
+        if _port_open(timeout=0.5):
+            break
+        time.sleep(0.5)
+    else:
+        print("dev server: nothing listens on %s after 240 s" % DEV_URL)
+        return proc
+
+    # Measured from a plain start stamp, not from "deadline minus 300": the
+    # first version printed the difference between two clock reads taken on
+    # the same line, so it always said 0.0 s and told us nothing about how
+    # long the warm thread really took (2026-11-12).
+    warm_t0 = time.time()
+    while time.time() - warm_t0 < 300:
+        body = _ask("api/progress")
+        if body is not None and re.search(rb'"ready"\s*:\s*true', body):
+            break
+        if proc.poll() is not None:
+            break
+        time.sleep(1.0)
+    print("dev server: %s is up (pid %d, warm after %.1f s)"
+          % (DEV_URL, proc.pid, time.time() - warm_t0))
+    return proc
+
+
+#: The three files a probe or a mod installer writes into the game folder, and
+#: the archived originals they must equal.  Measured 2026-11-13: a helper script
+#: (`_probe/_tmp/inst5.py`) installed a crc-forged `.dat` into the live game at
+#: 04:18 during a full run; 36 suites then failed with `StampError` -- correctly,
+#: because the stamp really was measuring a different file -- and the run looked
+#: like a code regression for ten minutes.  A guard that names the file, the two
+#: sha256 prefixes and the minute it changed turns that into one line.
+#: The install the probes read.  A string with forward slashes: `os.path.join`
+#: with a bare "D:" jumps through the drive's current directory.
+LIVE_DAT_DIR = "D:/Games/Steam/steamapps/common/AoE2DE/resources/_common/dat"
+VANILLA_DIR = os.path.join(ROOT, "_cache", "vanilla_dat")
+DATA_FILES = ("empires2_x2_p1.dat", "futuravailableunits.json",
+              "paphosfutureavailableunits.json")
+
+
+def _sha256_head(path):
+    """First 16 hex chars of a file's sha256, or None when it is not there."""
+    import hashlib
+    try:
+        with open(path, "rb") as fh:
+            h = hashlib.sha256()
+            for chunk in iter(lambda: fh.read(1 << 20), b""):
+                h.update(chunk)
+        return h.hexdigest()[:16]
+    except OSError:
+        return None
+
+
+def _data_state():
+    """`{name: (size, sha16_or_None)}` for the live game data files."""
+    out = {}
+    for name in DATA_FILES:
+        path = os.path.join(LIVE_DAT_DIR, name)
+        try:
+            size = os.path.getsize(path)
+        except OSError:
+            size = None
+        out[name] = (size, _sha256_head(path))
+    return out
+
+
+def _report_data(before=None):
+    """Print how the live game data compares to `_cache/vanilla_dat`.
+
+    Returns the current state so the caller can compare it again later.  This
+    never refuses to run: a `.dat` from another generation is a legal thing to
+    have (the tool exists to merge mods), it is just not a state in which a red
+    suite means anything.
+    """
+    state = _data_state()
+    odd = []
+    for name in DATA_FILES:
+        size, sha = state[name]
+        want = _sha256_head(os.path.join(VANILLA_DIR, name))
+        if size is None:
+            odd.append("%s is MISSING from the game folder" % name)
+        elif want is not None and sha != want:
+            odd.append("%s is %s bytes / %s, the archived vanilla is %s"
+                       % (name, size, sha, want))
+    if before is not None:
+        for name in DATA_FILES:
+            was = before.get(name) or (None, None)
+            now = state.get(name) or (None, None)
+            # Already reported above when it is simply not there; report only a
+            # real transition, so a missing file does not print twice.
+            if was != now and now != (None, None):
+                odd.append("%s CHANGED DURING THE RUN: %s -> %s"
+                           % (name, was, now))
+            elif was != now:
+                odd.append("%s DISAPPEARED DURING THE RUN: was %s"
+                           % (name, was))
+    if odd:
+        print("=" * 78)
+        print("GAME DATA IS NOT THE ARCHIVED VANILLA -- read every red below in")
+        print("that light.  A stamp error is the guard doing its job, not a")
+        print("regression.  Restore with `python -X utf8 "
+              "_probe/restore_vanilla_dat.py`.")
+        for line in odd:
+            print("  * " + line)
+        print("=" * 78)
+    else:
+        print("game data: the three live files match _cache/vanilla_dat")
+    return state
+
+
 def main():
     """Run every suite and return the exit status.
 
@@ -1080,9 +1387,23 @@ def main():
     if _bo and not os.path.isabs(_bo):
         os.environ["AOE2MOD_BUILD_OUT"] = os.path.join(ROOT, _bo)
 
+    # Seventeen suites read an ambient 7811 and none of them starts one; see
+    # _dev_server.  Started once for the whole run, not per suite: the warm
+    # thread takes ~37 s and paying that seventeen times would double the run.
+    dev = _dev_server()
+
+    # The three live game-data files, before the first suite reads them.  Printed
+    # again at the end so a file that changed mid-run is named.
+    data0 = _report_data()
+
     for rel in SUITES:
         path = os.path.join(ROOT, rel)
         env = dict(os.environ, PYTHONIOENCODING="utf-8")
+        # Say which suite is running BEFORE waiting for it.  A run of 230 items
+        # prints nothing until an item finishes, and the first one alone takes
+        # six to eight minutes (aoe2mod/tests/test_compiler.py); two long runs
+        # were killed on 2026-11-12 for looking stuck while they were working.
+        print("%-46s running" % os.path.basename(rel))
         p = subprocess.run([PY, path], cwd=ROOT, env=env,
                            stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
         out = p.stdout.decode("utf-8", "replace")
@@ -1113,6 +1434,7 @@ def main():
             fails.append(rel)
             print("%-46s SKIPPED  node was not found on PATH" % os.path.basename(rel))
             continue
+        print("%-46s running" % os.path.basename(rel))
         p = subprocess.run([NODE, path], cwd=ROOT,
                            stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
         out = p.stdout.decode("utf-8", "replace")
@@ -1128,6 +1450,12 @@ def main():
             for ln in tail[-25:]:
                 print("        %s" % ln)
 
+    _stop(dev)
+
+    print()
+    # Say it again at the end: a file swapped mid-run explains reds that the
+    # header could not have predicted.
+    _report_data(data0)
     print()
     print("SUITES: %s" % ("ALL PASSED" if not fails else "FAILED -> %s" % fails))
     return 1 if fails else 0

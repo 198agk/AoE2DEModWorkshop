@@ -170,8 +170,16 @@ def main():
                     // the number came from `max(button_id)` in the .dat instead
                     // of from `widgetui/commandpanel.json`; counting children
                     // alone would have passed for both 15 and 25, so this reads
-                    // the box labels back and checks the set is exactly 0..N-1
-                    // with N taken from the page, not from this file.
+                    // the box labels back and checks they are one unbroken run.
+                    //
+                    // The run starts at 1, not 0: `ENGINE_FIRST` is 1 because
+                    // the game's command panel numbers its boxes 1..30 and
+                    // box 0 is a real .dat slot the panel never draws
+                    // (`cardview.py`: ENGINE_FIRST = CARD.ENGINE_FIRST).  This
+                    // gate demanded 0..N-1 until 2026-11-10 and reported FAIL
+                    // on a correct 1..15 grid -- the gate was wrong, not the
+                    // product.  So the check is `v === boxes[0] + i` and the
+                    // starting number is asserted separately.
                     const grid = document.getElementById('cardgrid');
                     const boxes = grid
                         ? Array.from(grid.children).map(c => c.dataset.box)
@@ -181,7 +189,7 @@ def main():
                     out.card = {
                         boxes,
                         contiguous: boxes.length > 0 &&
-                            boxes.every((v, i) => v === i),
+                            boxes.every((v, i) => v === boxes[0] + i),
                         offgrid_note: (document.getElementById('card-offgrid') || {}).textContent,
                     };
                     return out;
@@ -216,14 +224,24 @@ def main():
         if result.get("intent_cards", 0) < 5:
             print("  FAIL: intents box is empty")
             ok = False
-        # The grid must be 0..N-1 with no gap and no box past the layout. The
-        # specific N is asserted too: 15 is what the game's own commandpanel.json
-        # holds, and the panel must not invent a 16th.
+        # The grid must be ONE RUN of box numbers with no gap and nothing past
+        # the layout, starting at the panel's own first box (1, not 0 -- the
+        # game numbers its command panel 1..30 and box 0 is a slot it never
+        # draws).  The specific length is asserted too: 15 is what the game's
+        # own commandpanel.json holds, and the panel must not invent a 16th.
         card = result.get("card") or {}
         boxes = card.get("boxes") or []
-        print("  card boxes: n=%d contiguous=%s" % (len(boxes), card.get("contiguous")))
+        print("  card boxes: n=%d first=%s last=%s contiguous=%s"
+              % (len(boxes), boxes[0] if boxes else None,
+                 boxes[-1] if boxes else None, card.get("contiguous")))
+        if boxes and boxes[0] != 1:
+            print("  FAIL: card boxes start at %s; the command panel's first"
+                  " box is 1" % boxes[0])
+            ok = False
         if not card.get("contiguous"):
-            print("  FAIL: card boxes are not 0..%d-1" % len(boxes))
+            print("  FAIL: card boxes are not one unbroken run"
+                  " (%s..%s with a gap)" % (boxes[0] if boxes else None,
+                                             boxes[-1] if boxes else None))
             ok = False
         if len(boxes) != 15:
             print("  FAIL: card grid drew %d boxes; widgetui/commandpanel.json has 15"

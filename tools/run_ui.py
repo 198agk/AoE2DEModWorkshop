@@ -39,14 +39,29 @@ checked here, before the window opens, in a sentence that says what to do.  The
 expensive fact -- whether the `.dat` parses -- is left to the request that needs
 it; parsing 93 MB to print a banner would make every start take ten seconds.
 """
-import argparse
 import os
 import sys
-import threading
-import webbrowser
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
+
+# The shipped bundle must stay identical to what `make_bundle.py` checked: it
+# prints "pyc 0" before handing the folder over, and a run of the packaged exe
+# used to write 159 caches (28 MB) into `app\aoe2mod` -- the next `--force`
+# rebuild then hit a `__pycache__` folder it could not delete.  Only the bundled
+# layout turns the cache off; a checkout keeps it, which is what makes the test
+# loop fast.  Detection is the one `archives.tool_root()` uses: a folder named
+# `app` with a `runtime` folder beside it is a bundle.  This sits above every
+# other import on purpose -- a cache written before the flag is set stays.
+BUNDLE = (os.path.basename(ROOT) == "app"
+          and os.path.isdir(os.path.join(ROOT, os.pardir, "runtime")))
+if BUNDLE:
+    sys.dont_write_bytecode = True
+
+import argparse  # noqa: E402
+import threading  # noqa: E402
+import webbrowser  # noqa: E402
+
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
@@ -54,6 +69,7 @@ if ROOT not in sys.path:
 # path is what makes the import decide correctly: without it the answer is
 # "not installed" on a machine that has it, which is the same sentence the notes
 # spent two days saying about the icon layer -- true once, then false.
+
 VENDOR = os.path.join(ROOT, "_vendor")
 if os.path.isdir(VENDOR) and VENDOR not in sys.path:
     sys.path.insert(0, VENDOR)
@@ -62,30 +78,50 @@ from aoe2mod.game import locations as L                      # noqa: E402
 from aoe2mod.ui import server as S                           # noqa: E402
 
 
-def _preflight(game_root):
+def _preflight(game_root, splash=False):
     """Return (game_root, notes) or raise with a sentence a player can act on.
 
     `notes` are facts worth saying out loud that are NOT failures: an install
     found by search rather than by flag, a profile that does not exist yet.
+
+    `splash=True` is the shell's `--serve-only` mode, and it turns every
+    refusal from an exit into a note plus a `None` root.  Why: the Tauri shell
+    waits on `http://127.0.0.1:<port>/loading` for 150 s and, if this process
+    dies first, shows its own error page -- which was written for a missing
+    interpreter and therefore tells the player 「这台机器上的解释器可能不对」 when
+    the real reason is a game folder that is not installed.  A server that stays
+    up can say the true reason through `progress.error`, and the splash draws
+    that sentence verbatim (see `aoe2mod/ui/loading.py`).  Measured 2026-11-12:
+    `AOE2MOD_GAME_ROOT=<empty dir>` exited 1 without ever binding the port, so
+    `/loading` was never served and `_probe/probe_startup_failure.py` read an
+    empty body.
     """
     notes = []
+
+    def _refuse(sentence):
+        if splash:
+            notes.append(sentence)
+            return None
+        raise SystemExit(sentence)
+
     if game_root:
         root = os.path.abspath(game_root)
         if not L.looks_like_game_root(root):
-            raise SystemExit(
+            return _refuse(
                 "这个目录不像《帝国时代 2 决定版》的安装目录：%s\n"
-                "它下面应该有 resources\\_common\\dat\\empires2_x2_p1.dat。" % root)
+                "它下面应该有 resources\\_common\\dat\\empires2_x2_p1.dat。" % root), notes
     else:
         try:
             root = L.find_game_root()
         except FileNotFoundError as exc:
             # The message already lists every place that was tried.
-            raise SystemExit(str(exc))
+            refused = _refuse(str(exc))
+            return refused, notes
         notes.append("自动找到游戏目录：%s" % root)
     if not os.path.isfile(os.path.join(root, L.DAT_REL)):
-        raise SystemExit(
+        return _refuse(
             "游戏目录里没有 resources\\_common\\dat\\empires2_x2_p1.dat：%s\n"
-            "先用 Steam 校验一次游戏文件。" % root)
+            "先用 Steam 校验一次游戏文件。" % root), notes
     try:
         L.find_profile_root()
     except FileNotFoundError as exc:
@@ -241,9 +277,17 @@ def main(argv=None):
     # opened twice" -- measured 2026-10-26, the first Tauri run did exactly that
     # because the shell passed `--browser`.
 
-    root, notes = _preflight(args.game_root)
+    # `--serve-only` means a shell owns the screen: it is waiting on our
+    # `/loading`, so a refusal must not take the socket down with it.  See
+    # `_preflight` for the measurement behind `splash=True`.
+    root, notes = _preflight(args.game_root, splash=args.serve_only)
     for n in notes:
         print(n)
+    if root is None:
+        # The reason is already in `notes` and on stdout; the splash gets its own
+        # copy from `progress.error` once the warm thread runs, and that is the one
+        # the player can actually read.
+        print("（没有可用的游戏目录，服务照起：原因会显示在页面上）")
 
     # warm=True: start reading the 93 MB of game data now, in the background, so
     # the loading page has something to draw.  Measured 2026-10-26: without it the

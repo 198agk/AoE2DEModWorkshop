@@ -1,5 +1,58 @@
 # Aoe2 · 工作区约定
 
+## 交付以发布包为准（硬约束，2026-11-09 用户指令）
+
+> **「所有改动均要以发布包交付为准，我只验收发布包的。」**
+> 这条对**本工作区的全部会话生效，包括今后新建的会话** —— AGENTS.md 被 DSH 自动注入每个会话，
+> 写在这里就等于写进了每个会话的第一条约束。读到这行的会话，不问「要不要同步到包里」，直接同步；
+> 不许只改仓库源码就宣布「修好了」。
+
+**验收对象只有一个**：`_out\AoE2ModWorkshop\aoe2-mod-workshop.exe` 双击起来的那一份。
+它读同目录的 `app\`（`engine_root()` 在 `desktop/src-tauri/src/main.rs:124-149`，候选顺序
+`AOE2MOD_ROOT` → `<exe目录>\app` → `<exe目录>` → cwd 上溯 → ui_root 上溯三层）。
+
+以下**都不是**交付物，只是中间物：仓库里的 `aoe2mod/**` `tools/**` 源码；
+`python -X utf8 -u tools/run_ui.py --port 7811` 起的 dev 服务；包里没跟着源码一起更新的旧副本。
+
+改完的唯一判定：仓库源码 == 包内 `app\`，且包里那个 exe 能把路由答对。
+
+### 收尾必跑的四步（顺序不能换）
+
+```bat
+python -X utf8 _probe\sync_app_package.py         :: 1. 源码 -> 包 app\（Python + tools）
+python -X utf8 _probe\sync_ui_to_bundle.py         :: 2. 前端 -> 包 app\（ui/static + schema）
+python -X utf8 _probe\test_bundle_package_sync.py  :: 3. 双向比对，必须 0 DIFFERENCE
+python -X utf8 _probe\ship_and_verify.py           :: 4. 起包里那个 exe，逐条打路由
+```
+
+第 4 步的收尾行只有两种：`SHIPPED BUNDLE: ALL ROUTES OK` 或 `FAILURES ABOVE`。
+**汇报里必须贴这一行原文**；贴不出来就不算修完，也不算验完。
+`sync_app_package.py` 拷完会自己再比一遍，不一致就 return 1；`sync_ui_to_bundle.py` 用
+`MARKER = 'id="nav-card"'` 断言新页面真的进去了。
+
+只有动了 `desktop/src-tauri/**`（`.rs`、`tauri.conf.json`、图标）才需要重编 exe：
+在 `_cache\AGE2\desktop\` 里 cargo build，产出 `P.EXE` 再拷进 `_out\AoE2ModWorkshop\`；
+`ship_and_verify.py` 的 `check_exe_is_the_built_one()` 会逐字节比 `P.EXE` 与包里的 exe ——
+**大小相同但字节不同也算红**。只改 Python / HTML / JS / JSON 的轮次不重编 exe。
+路径只从 `_probe/_paths.py` 取（`P.BUNDLE` / `P.BUILD` / `P.EXE` / `P.BUNDLED_EXE`），不手写绝对路径。
+
+### 证据也必须来自包里
+
+- 截图与实测的对象是 `ship_and_verify.py` 起的 7799 实例、或 `test_pages_shipped.py` 的 7807，
+  **不是 7811 的 dev 服务**。7811 全绿而包里还是旧的，就是「说了半天修了，用户打开还是旧的」。
+- 用户报「没变化 / 没有啊」时，第一动作是比对包内文件与源码（`test_bundle_package_sync.py`，或逐文件 md5），
+  先证明包里是不是旧的，再谈逻辑；不要拿源码结论去反驳用户看到的界面。
+- 端到端另有两条：`_probe/test_e2e_shipped.py`（玩家 profile 副本，端口 7807）、
+  `_probe/test_pages_shipped.py`（逐视图断言有内容、无未捕获异常）。
+
+### 禁止
+
+1. 只改源码、只跑 7811、只跑 design/render 两道门禁，就宣布完成。
+2. 把构建产物（`__pycache__`、`*.pyc`、测试输出）留在包的 `app\` 里 ——
+   `make_bundle.stray_output(app)` 会拒；2026-11-02 包里曾涨到 1.7GB / 77 次测试跑在里面。
+3. 用 `make_bundle_native.py --force` 重建整包来「顺手刷新」—— 它会 `rmtree` 输出目录，
+   历史上这样删掉过 19.8MB 的表。要刷新就走上面前两步同步。
+
 ## 图标与 logo
 
 > **硬约束。本工作区后续制作的所有软件，应用图标与 logo 都用 `brand/app-icon.png`。**

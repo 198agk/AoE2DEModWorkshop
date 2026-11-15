@@ -481,11 +481,24 @@ def find_techs(techs, tech_id):
     return []
 
 
-def diff_regions(a, b, chunk=1 << 16):
-    """Contiguous byte ranges that differ, found chunk-wise for speed."""
+def diff_regions(a, b, chunk=1 << 16, on_progress=None):
+    """Contiguous byte ranges that differ, found chunk-wise for speed.
+
+    ``on_progress(fraction)`` is called once per 64 KB chunk: this is a
+    straight walk of two 96 MB streams (measured 5.4 s on a real mod), so it
+    is the one stage here that has an honest, evenly spaced way to report
+    itself.  Exceptions from the callback are ignored -- the diff is the
+    product, the number is a courtesy.
+    """
     n = min(len(a), len(b))
     out = []
-    for base in range(0, n, chunk):
+    _steps = max(1, (n + chunk - 1) // chunk)
+    for _c, base in enumerate(range(0, n, chunk)):
+        if on_progress is not None:
+            try:
+                on_progress(min(1.0, (_c + 1.0) / _steps))
+            except Exception:                # noqa: BLE001
+                pass
         end = min(base + chunk, n)
         if a[base:end] == b[base:end]:
             continue

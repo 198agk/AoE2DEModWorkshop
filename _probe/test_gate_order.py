@@ -41,7 +41,14 @@ def main():
             continue
         path = os.path.join(HERE, name)
         text = io.open(path, encoding="utf-8", errors="replace").read()
-        gates = [m.end() for m in re.finditer(r"if FAILS:", text)]
+        # A nail that hands its verdict to a shared `report()` still READS
+        # FAILS -- just not in the line the scanner used to look for.  On
+        # 2026-11-12 that shape was called a dead assertion in
+        # `_probe/test_live_panel.py`, where `report()` is defined at line 83
+        # and every section ends in the file's one gate at line 310.  Counting
+        # the `return report()` call as a gate is what makes the scan line up
+        # with where the exit code actually comes from.
+        gates = [m.end() for m in re.finditer(r"if FAILS:|return report\(", text)]
         scanned += 1
         if not gates:
             continue
