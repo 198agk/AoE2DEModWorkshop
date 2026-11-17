@@ -4727,12 +4727,7 @@ body.dragging-row, body.dragging-row * { cursor: grabbing !important; user-selec
              and `applyLocale()` writes `textContent`, which would delete them.
              A tag the pass cannot honour is a promise the markup is not keeping;
              moving this sentence into the table means also moving the samples. -->
-        <div class="hint">
-          一句话一条，用「。」或换行分开。<code>改成/设为</code> 是赋值，
-          <code>加/减</code> 是增量。识别不了的句子会告诉你为什么，不会瞎猜。
-          想知道现在是多少，直接问：<code>村民血量是多少</code>。
-          想知道谁能造，也可以问：<code>谁能造手推炮</code>。
-        </div>
+        <div class="hint">一句话一条，用「。」或换行分开。</div>
         <div class="row end">
           <button id="btn-form" class="chip" data-i18n="btn.form">✎ 填表</button>
           <button id="btn-pick" class="chip" data-i18n="btn.pick">▦ 看着选</button>
@@ -4741,10 +4736,7 @@ body.dragging-row, body.dragging-row * { cursor: grabbing !important; user-selec
           <button id="btn-parse" data-i18n="btn.parse">读一下</button>
         </div>
         <div id="ai" class="hide">
-          <div class="hint" data-i18n="ai.note" id="ainote">
-            AI 只负责把你的话说成这个工具认得的句子，认不认、能不能做，
-            仍然由下面那些同一条规则判断，它不会直接改任何数据。
-          </div>
+          <div class="hint" data-i18n="ai.note" id="ainote">AI 只把你说的话写成句子，改不改仍然由下面判断。</div>
           <div id="aigot"></div>
         </div>
 
@@ -4753,8 +4745,7 @@ body.dragging-row, body.dragging-row * { cursor: grabbing !important; user-selec
             <select id="fintent" aria-label="要做什么"></select>
             <select id="fshape" aria-label="用哪种说法"></select>
           </div>
-          <div class="hint" data-i18n="form.note">填好下面几格，这句话会写进上面的框里，它和你自己打的那句
-            走的是同一条判断，工具不认识的说法它照样会拒。</div>
+          <div class="hint" data-i18n="form.note">填好下面几格。</div>
           <div class="fslots" id="fslots"></div>
           <div id="fpreview"></div>
           <div class="row end">
@@ -4769,8 +4760,7 @@ body.dragging-row, body.dragging-row * { cursor: grabbing !important; user-selec
             <input type="text" id="pickq" aria-label="在这个列表里找" data-i18n-ph="pick.search" placeholder="在这个列表里找…">
             <span class="hint" id="pickcount"></span>
           </div>
-          <div class="hint" data-i18n="pick.note">点一个图标，就把它填进上面的框里；也可以直接把它拖进上面的框。
-            有些东西游戏本身没有图，那些格子画成虚线框，仍然可以点。</div>
+          <div class="hint" data-i18n="pick.note">点一个图标填进上面的框，也可以拖进去。</div>
           <div class="pickscroll"><div class="grid" id="pickgrid"></div></div>
           <div class="row end">
             <button id="pickmore" class="chip" data-i18n="btn.more">再多看一些</button>
@@ -4790,10 +4780,7 @@ body.dragging-row, body.dragging-row * { cursor: grabbing !important; user-selec
                    placeholder="给这几句起个名字（例如「我的伐木场」）">
             <button id="rsave" class="chip" data-i18n="btn.save">记住这几句</button>
           </div>
-          <div class="hint" data-i18n="recipe.note">
-            记住的是句子，不是已经生成的模组。所以哪天游戏更新了，叫出这个名字、
-            再点一次「生成并安装」，它就是按当天的数据重建的。
-          </div>
+          <div class="hint" data-i18n="recipe.note">记住的是句子，不是模组。</div>
           <div id="rlist"></div>
         </div>
       </div>
@@ -4830,12 +4817,7 @@ body.dragging-row, body.dragging-row * { cursor: grabbing !important; user-selec
 <section class="view" id="view-card">
       <div class="box">
         <h2>命令面板</h2>
-        <div class="hint">
-          这就是游戏左下角那块。一个格子可能是一整条升级链（兵营第 1 格是
-          民兵→武士→长剑士…），所以格子上写的是链里的第一个，右边数字是这一格有几个。
-          拖动格子会把两个单位换位置，不会覆盖掉别人。点一个格子，下面就能改它的训练时间、
-          把它从这张卡上拿掉；再下面那个框可以把本文明的单位加进这张卡。
-        </div>
+        <div class="hint">拖动格子换位置；点一个格子改它的训练时间，或者把它拿掉。</div>
         <div class="row">
           <button class="btn" id="card-prev" type="button" title="上一个有卡片的建筑">←</button>
           <select id="card-build" aria-label="选一个建筑"></select>
@@ -4902,12 +4884,7 @@ body.dragging-row, body.dragging-row * { cursor: grabbing !important; user-selec
             <li>这一步只是记在内存里，游戏数据还没动。改完要改的全部，点右上角 <b>保存全部改动</b>，才真的写进 .dat 并做成模组。</li>
             <li>嫌不够再按 <b>Ctrl+Z</b> 撤回，<b>放弃</b>丢掉这一轮全部改动。左边「已改 N 项」就是还没写盘的条数。</li>
           </ol>
-          <div class="hint">
-            十三个页签：<b>单位</b>（每个文明各一份）、<b>科技</b>、<b>效果</b>、<b>图形</b>、<b>音效</b>、
-            <b>地形</b>、<b>通行</b>、<b>颜色</b>、<b>单位任务</b>、<b>文明</b>、
-            <b>地图块</b>、<b>全局数值</b>、<b>科技树</b>。
-            每个字段都在这里，不只是生命值攻击力那十五个。
-          </div>
+          <div class="hint">十三个页签，每个字段都在这里。</div>
         </details>
         <div id="editor">
           <div class="edtabs">
@@ -5079,13 +5056,7 @@ body.dragging-row, body.dragging-row * { cursor: grabbing !important; user-selec
       </div>
       <div class="body" id="mods"><div class="empty" data-i18n="mods.loading">读取中…</div></div>
       <div class="body mods-foot">
-        <div class="hint" data-i18n="mods.note">
-          社区模组如果自带一整份数据文件，游戏更新后它会把新内容盖回去。
-          这里能把作者改过的东西在今天的数据上重做一遍：不是照着旧文件打补丁，
-          而是先问清「作者动了哪些字节、那些字节原来住在哪」，再把这些改动搬到
-          新版官方数据上。作者新增的单位、换过的图标、改过的效果都一起搬，
-          图片和文本原地保留。官方也改过同一处时会问你按谁的。
-        </div>
+        <div class="hint" data-i18n="mods.note">这些社区模组的旧数据文件，能在今天的数据上重做一遍。</div>
         <div class="row" id="repair-bar">
           <button id="btn-repair" class="chip" data-i18n="btn.repair">检查自带数据文件的模组</button>
           <button id="btn-repair-all" class="chip hide" data-i18n="btn.repair_all">全部一键适配</button>
@@ -5098,10 +5069,7 @@ body.dragging-row, body.dragging-row * { cursor: grabbing !important; user-selec
 <section class="view" id="view-tree">
   <div class="box">
     <h2>科技树</h2>
-    <div class="hint">
-      格子位置由游戏本体的 <b>resources/_common/dat/CivTechTrees/&lt;文明&gt;.json</b>
-      算出，算法与 <b>aoe2techtree.net</b> 的官方脚本逐行一致；官方出新文明这里自动多一个。
-    </div>
+    <div class="hint">格子位置按游戏本体的 <b>CivTechTrees/&lt;文明&gt;.json</b> 算，出新文明自动多一个。</div>
     <div class="tabs">
       <select id="tt-mode" aria-label="本体还是罗马归来">
         <option value="base">本体与编年史</option>
@@ -5150,14 +5118,7 @@ body.dragging-row, body.dragging-row * { cursor: grabbing !important; user-selec
 <section class="view" id="view-lang">
   <div class="box">
     <h2>AI 脚本 (.per)</h2>
-    <div class="hint">
-      用一句中文说一条规则。写出来的是引擎内建 AI 语言的命令，判定依据是这份 exe 自己的
-      名字表；某个名字只有在官方脚本里真的被调用过才算见证，只有名字表里有、官方从没用过
-      的，会单独标出来，因为那种调用能加载、但什么都不做。
-      写完按「放进本地模组」，脚本会落到 mods/local 的模组文件夹里并自动启用；再按一次是覆盖
-      同一份文件，不会越存越多。「让模型写整份」要先把大模型接上：接口地址、模型名和密钥在
-      「设置 → 模型」那一栏填；不填也照样能本地生成，只是能写的命令少。
-    </div>
+    <div class="hint">一句中文一条规则。写完按「放进本地模组」，脚本会装进 mods/local 并自动启用。</div>
     <div class="tabs">
       <input type="text" id="lang-ai-text" aria-label="用一句中文说一条 AI 规则"
              placeholder="例如：造20个骑士">
@@ -5186,13 +5147,7 @@ body.dragging-row, body.dragging-row * { cursor: grabbing !important; user-selec
 
   <div class="box">
     <h2>XS 脚本 (.xs)</h2>
-    <div class="hint">
-      XS 是 C 风格的解释语言，能改的是数据和 goal，不是 AI 的命令。所以同一个意思在两边
-      落到的代码不一样：AI 侧发命令，XS 侧改状态。有几个 syscall 只在这份 exe 的原型表里
-      存在、官方 XS 语料一次都没调用过，这里只发有语料见证的那几个。
-      写完按「放进本地模组」，脚本会落到 mods/local 的模组文件夹里并自动启用；再按一次是覆盖
-      同一份文件，不会越存越多。
-    </div>
+    <div class="hint">XS 改的是数据和 goal。写完按「放进本地模组」，脚本会装进 mods/local 并自动启用。</div>
     <div class="tabs">
       <input type="text" id="lang-xs-text" aria-label="用一句中文说一条 XS 要做的事"
              placeholder="例如：村民血量改成 1000">
@@ -5221,12 +5176,7 @@ body.dragging-row, body.dragging-row * { cursor: grabbing !important; user-selec
 
   <div class="box">
     <h2>整份 AI 脚本</h2>
-    <div class="hint">
-      这个框生成一整份 .per；按右边的「放进本地模组」，它会写进
-      mods/local 里的模组文件夹并自动启用，游戏直接加载，不用碰游戏本体的 ai/ 目录。
-      「脚本名字」既是文件名也是这份脚本以后覆盖的目标：改了它才是另一份，不改就一直是它。
-      写不出来的东西不会悄悄丢掉，会列在下面。
-    </div>
+    <div class="hint">写进 mods/local 并自动启用；写不出来的东西会列在下面。</div>
     <div class="row">
       <div class="field">
         <input type="text" id="lang-plan-name" aria-label="脚本名字" placeholder="脚本名字，例如 MyAI">
@@ -5290,10 +5240,7 @@ body.dragging-row, body.dragging-row * { cursor: grabbing !important; user-selec
       </span>
       <span class="abver" id="about-hero-ver">正在读取版本…</span>
     </div>
-    <div class="hint">
-      模组工坊是一个本地工具。它读你机器上的 <b>.dat</b> 与 JSON，写出来的也是你机器上的文件，
-      不上传任何东西。改动只落在你自己建的模组文件夹里，游戏装不装、启不启用，都由你决定。
-    </div>
+    <div class="hint">读写都在本机，不上传任何东西。</div>
   </div>
 
   <div class="box">
@@ -5430,11 +5377,7 @@ body.dragging-row, body.dragging-row * { cursor: grabbing !important; user-selec
 
   <div class="box">
     <h2>操作记录</h2>
-    <div class="hint">
-      每一次改动都往工具目录的 <b>log</b> 文件夹里追加一行，只记你做了什么，
-      不记文件内容。它存在的理由是：你说「保存之后游戏里没变」的时候，这一页能直接告诉
-      我你在第几步、改的是谁、当时成没成。
-    </div>
+    <div class="hint">每次改动往 <b>log</b> 文件夹里追加一行，只记做了什么，不记文件内容。</div>
     <div class="abrow">
       <span class="abi">文件夹</span>
       <span class="abv" id="log-dir">正在读取…</span>
@@ -9089,7 +9032,7 @@ function renderRecipes(rows) {
   const box = $("#rlist");
   box.innerHTML = "";
   if (!RECIPES.length) {
-    box.appendChild(el("div", "hint", "还没有记住的句子。写好几句、点「记住这几句」，它就会留在这儿。"));
+    box.appendChild(el("div", "hint", "还没有记住的句子。"));
   } else {
     for (const r of RECIPES) box.appendChild(recipeRow(r, loadRecipes));
   }
@@ -9111,7 +9054,7 @@ function railSync() {
   list.innerHTML = "";
   if (!RECIPES.length) {
     list.appendChild(el("div", "railempty",
-      "还没有记住的句子。在主页写一句话，点「记住这几句」，它就挂在这。"));
+      "还没有记住的句子。"));
     return;
   }
   for (const r of RECIPES) {
