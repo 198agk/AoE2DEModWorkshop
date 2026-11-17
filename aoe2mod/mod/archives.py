@@ -282,20 +282,54 @@ def load_index():
         if ent.get("path") == want:
             continue
         ent["path"] = want
-        if os.path.isfile(want):
-            try:
-                ent["file_bytes"] = os.path.getsize(want)
-            except OSError:
-                pass
+        # `file_bytes` is the size this entry was WRITTEN with, and `_store()`
+        # uses it to decide whether the blob on disk still needs rewriting
+        # (`if ent.get("file_bytes") and size == ent.get("file_bytes"): return`).
+        # Re-stamping it from disk here made that check compare a truncated file
+        # with itself, so a 100-byte blob reported "already stored" forever and
+        # never healed (measured: test_archives.py section 4,
+        # "and the blob is whole again :: 100").  `describe()` stats the file on
+        # its own, so leaving the record alone loses nothing.
     return doc
+
+
+def _portable(ent):
+    """One index entry with no machine-specific path baked into it.
+
+    `path` is absolute while the index is open -- `describe()` stats it -- but the
+    file that ships inside the bundle was written on the machine that assembled the
+    shelf, so it carried `D:\\...\\dat_archive\\<sha>.dat`.  Two things went wrong
+    with that: the package published a stranger's directory layout, and every copy
+    unpacked elsewhere resolved those paths against the WRONG folder -- the panel
+    then summed sizes for files that are not there and reported an empty shelf that
+    was in fact full.  `load_index()` already repoints each entry at its own archive
+    dir on read, so the blob's own name is all this file has to say.
+
+    `src` (where the build was harvested from) is a fact about the donor machine, not
+    about the shelf; the file name is the useful half.
+    """
+    out = dict(ent)
+    sha = out.get("sha256")
+    if isinstance(sha, str) and len(sha) >= BLOB_NAME_CHARS:
+        out["path"] = sha[:BLOB_NAME_CHARS] + BLOB_SUFFIX
+    elif isinstance(out.get("path"), str):
+        out["path"] = os.path.basename(out["path"])
+    if isinstance(out.get("src"), str) and out["src"]:
+        out["src"] = os.path.basename(out["src"])
+    return out
 
 
 def save_index(ix):
     """Write atomically -- a half-written index would lose every entry at once."""
     path = index_path()
     tmp = path + ".tmp"
+    rows = ix.get("entries") if isinstance(ix, dict) else None
+    doc = dict(ix or {})
+    if isinstance(rows, dict):
+        doc["entries"] = {k: (_portable(v) if isinstance(v, dict) else v)
+                          for k, v in rows.items()}
     with open(tmp, "w", encoding="utf-8", newline="\n") as fh:
-        json.dump(ix, fh, ensure_ascii=False, indent=2, sort_keys=True)
+        json.dump(doc, fh, ensure_ascii=False, indent=2, sort_keys=True)
         fh.write("\n")
     os.replace(tmp, path)
     return path
