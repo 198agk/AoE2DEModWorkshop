@@ -11,7 +11,7 @@
     "verify_quick": "python _probe/run_suites.py",
     "verify_long": "python _probe/run_long.py",
     "suites": {
-      "python": 233,
+      "python": 234,
       "node": 1
     },
     "python": "C:\\Users\\26913\\.dsh\\dsh-runtimes\\dsh-primary-runtime\\dependencies\\python\\python.exe"
@@ -315,6 +315,7 @@
       "/api/age-icon",
       "/api/ai-lang-meta",
       "/api/ai-meta",
+      "/api/ai-settings",
       "/api/animations",
       "/api/archive-info",
       "/api/art",
@@ -337,9 +338,11 @@
       "/api/meta",
       "/api/mod-thumb",
       "/api/mods",
+      "/api/pet-status",
       "/api/progress",
       "/api/pseudo-pages",
       "/api/recipes",
+      "/api/relations",
       "/api/repair-check",
       "/api/script-files",
       "/api/script-read",
@@ -355,13 +358,17 @@
       "/api/unit-effects",
       "/api/update-check",
       "/api/upgrade-candidates",
-      "/api/upgrade-check"
+      "/api/upgrade-check",
+      "/api/version-check"
     ],
     "post": [
       "/api/ai-script-build",
       "/api/ai-script-check",
+      "/api/ai-script-draft",
       "/api/ai-script-edit",
+      "/api/ai-script-explain",
       "/api/ai-sentences",
+      "/api/ai-settings",
       "/api/archive-open",
       "/api/build",
       "/api/card-move",
@@ -376,10 +383,13 @@
       "/api/install",
       "/api/log-open",
       "/api/mod",
+      "/api/mod-info",
       "/api/mod-move",
       "/api/mod-move-to",
       "/api/open-url",
       "/api/parse",
+      "/api/pet-chat",
+      "/api/pet-greet",
       "/api/plan",
       "/api/pseudo-page-del",
       "/api/pseudo-page-drop",
@@ -411,7 +421,7 @@
   "wording": {
     "file": "aoe2mod/schema/locales/zh.json",
     "locale": "zh",
-    "keys": 58
+    "keys": 63
   },
   "delivery": {
     "single_mod": "一份模组：只有 .dat，或只有 widgetui —— 单一策略的意图",

@@ -82,7 +82,7 @@
   生成前先跑一遍验证，救不回来的句子当场拒绝，而不是装进游戏里让你自己发现没效果。
 - **改完随时能回到干净状态。** 卸载 = 关掉模组 + 删那个文件夹，原版数据一个字节没动。
 
-## 能做什么
+## 能做什么（15 个意图）
 
 ### 一句话 → 一个模组
 
@@ -155,13 +155,16 @@
 
 ### 安装包（推荐）
 
-从 [Releases](https://github.com/198agk/AoE2ModWorkshop/releases/latest) 下 `AoE2ModWorkshop-x.y.z-setup.exe`，
+从 [Releases](https://github.com/198agk/AoE2ModWorkshop/releases/latest) 下 `AoE2ModWorkshop-1.0.0-setup.exe`（273 MB），
 双击、下一步、装到 `%LOCALAPPDATA%\Programs\AoE2ModWorkshop`。不需要另装 Python（包里自带 3.12），
 不需要管理员权限。卸载在「设置 → 应用」里，删得干净。
 
 ### 免安装
 
-下 `AoE2ModWorkshop-x.y.z.zip`，解压到任意文件夹，双击 `aoe2-mod-workshop.exe`。
+下 `AoE2ModWorkshop.zip`（351 MB），解压到任意文件夹，双击 `aoe2-mod-workshop.exe`。
+
+> 两个包都带着 54 份官方历史数据（325 MB），体积大半在这里，删不得 —— 游戏打补丁后要靠它把旧模组一键适配到新版本。
+> 下完可以对一下哈希：`certutil -hashfile <文件> SHA256`，与同名的 `.sha256` 文件比。
 
 ### 从源码跑
 
@@ -225,8 +228,8 @@ _probe/             验证层：quick 套件 234 条 + 长套件 17 条，以及
 每条钉子对应一次被证实的结论，或一次被推翻的假设。
 
 ```powershell
-python -X utf8 -u _probe\run_suites.py    # 234 条快套件，约 100 分钟
-python -X utf8 -u _probe\run_long.py      # 17 条长套件，约 2.8 小时
+python -X utf8 -u '_probe\run_suites.py'    # 234 条快套件，约 100 分钟
+python -X utf8 -u '_probe\run_long.py'      # 17 条长套件，约 2.8 小时
 ```
 
 改动要落到发布包再验：源码 → 包内 app 目录 → 起包里那个 exe 逐条打路由。只跑 dev 服务不算验过。
