@@ -119,6 +119,34 @@ def clean(text):
     return out
 
 
+#: Machine-specific paths the research text quotes verbatim.  The corpus was
+#: written on one machine and its "how to reproduce" paragraphs spell that
+#: machine out: the author's home folder, his Steam account number, where his
+#: tools happened to live.  The index ships inside the release, so those spellings
+#: went out with it -- a stranger's directory layout in a stranger's download.
+#: Each prefix below becomes the role it played, which is the part a reader needs.
+SCRUB = (
+    (re.compile(r"[A-Za-z]:[\\/]Users[\\/]26913"), "<user>"),
+    (re.compile(r"[A-Za-z]:[\\/]Users[\\/][A-Za-z0-9_.-]+"), "<user>"),
+    (re.compile(r"76561198[0-9]{9}"), "<steamid>"),
+    (re.compile(r"[A-Za-z]:[\\/]Software[\\/]AI[\\/]Aoe2"), "<repo>"),
+    (re.compile(r"[A-Za-z]:[\\/]Software[\\/]DeepSeek Harness"), "<workspace>"),
+    (re.compile(r"[A-Za-z]:[\\/]Games[\\/]Steam[\\/]steamapps[\\/]common[\\/]AoE2DE"), "<game root>"),
+    (re.compile(r"[A-Za-z]:[\\/]Games[\\/]Steam[\\/]steamapps"), "<steam library>"),
+    (re.compile(r'[A-Za-z]:[\\/]Games[^\s"`)]*'), "<game root>"),
+    (re.compile(r"[A-Za-z]:[\\/]Software"), "<tools>"),
+    (re.compile(r"[A-Za-z]:[\\/]Agents[\\/]PhoenixBuilder[^\\/\s`)]*"), "<engine source>"),
+    (re.compile(r"[A-Za-z]:[\\/]ww2ogg"), "<tool>"),
+)
+
+
+def scrub(text):
+    """Replace this machine's absolute paths with the role they played."""
+    for pat, repl in SCRUB:
+        text = pat.sub(repl, text)
+    return text
+
+
 def chunks_of(lines):
     """Yield (section_path, line_no, body) split on headings, then on size."""
     stack = []                  # [(level, title)]
@@ -190,11 +218,11 @@ def build(out_path):
                 if rows and rows[-1][0] == rel:
                     last = rows[-1]
                     rows[-1] = (last[0], last[1], last[2], last[3],
-                                last[4] + "\n" + item[3])
+                                last[4] + "\n" + scrub(item[3]))
                     continue
                 continue
             section, line, body = item
-            prev = (rel, why, section, line, body)
+            prev = (rel, why, section, line, scrub(body))
             rows.append(prev)
             n += 1
         docs.append((rel, why, n))
