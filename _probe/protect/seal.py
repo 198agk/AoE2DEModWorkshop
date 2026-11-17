@@ -65,25 +65,41 @@ def strip_source(text):
     except Exception:
         return text
 
-    anchors = (tokenize.NEWLINE, tokenize.INDENT, tokenize.DEDENT, tokenize.NL)
-    prev = None
+    # A docstring is a string that IS a statement: it opens a logical line and
+    # the statement ends right after it.  Two cheaper tests both lied and both
+    # shipped a broken engine pack:
+    #   - "the token before it is `:`" also matches every dict VALUE
+    #     ({"why": "text" % (a, b)} -> {"why": "" % (a, b)}), which then raises
+    #     TypeError: not all arguments converted during string formatting at
+    #     run time -- inside a str.format argument, on a line the traceback
+    #     cannot point at because the source is gone;
+    #   - "the token before it is NL" also matches a value written on its own
+    #     line inside braces, which is how a dict literal is normally laid out.
+    # NL is a NON-logical newline (inside brackets), so it must not count as a
+    # statement start; only NEWLINE / INDENT / DEDENT do.
+    stmt_starts = (tokenize.NEWLINE, tokenize.INDENT, tokenize.DEDENT)
+    skippable = (tokenize.NL, tokenize.COMMENT)
     docstrings = []
-    for t in toks:
+    for i, t in enumerate(toks):
         if t.type == tokenize.COMMENT:
             row = t.start[0]
             if row - 1 < len(lines):
                 lines[row - 1] = lines[row - 1][:t.start[1]].rstrip() + "\n"
             continue
-        if t.type == tokenize.STRING:
-            at_stmt = (prev is None or prev.type in anchors
-                       or (prev.type == tokenize.OP and prev.string == ":"))
-            if at_stmt:
-                docstrings.append(t)
-            prev = t
+        if t.type != tokenize.STRING:
             continue
-        if t.type in (tokenize.NL, tokenize.COMMENT):
+        j = i - 1
+        while j >= 0 and toks[j].type in skippable:
+            j -= 1
+        prev = toks[j] if j >= 0 else None
+        if not (prev is None or prev.type in stmt_starts):
             continue
-        prev = t
+        k = i + 1
+        while k < len(toks) and toks[k].type in skippable:
+            k += 1
+        nxt = toks[k] if k < len(toks) else None
+        if nxt is None or nxt.type == tokenize.NEWLINE:
+            docstrings.append(t)
 
     for t in reversed(docstrings):
         r0, c0 = t.start
@@ -104,6 +120,52 @@ def strip_source(text):
                 if row - 1 < len(lines):
                     lines[row - 1] = "\n"
     return "".join(lines)
+
+
+def assert_strip_neutral(path, before, after):
+    """Refuse to ship a module whose stripped form means something else.
+
+    The stripper works on tokens, so it can only see syntax, not intent: it
+    once emptied every dict value that followed a colon ({"why": "%s" % (a,)}
+    became {"why": "" % (a,)}) in 64 of 109 modules, and the only symptom at
+    run time was "TypeError: not all arguments converted during string
+    formatting" raised from a line that no longer exists on disk.
+
+    Comparing the two ASTs is the direct test of "nothing but docstrings went
+    away": drop every bare string expression (a docstring IS one) from both
+    sides and the trees must be identical.  Raises SystemExit so a bad build
+    stops here instead of publishing.
+    """
+    import ast
+
+    def prune(tree):
+        for node in ast.walk(tree):
+            for field in ("body", "orelse", "finalbody"):
+                seq = getattr(node, field, None)
+                if isinstance(seq, list) and seq:
+                    keep = [s for s in seq
+                            if not (isinstance(s, ast.Expr)
+                                    and isinstance(s.value, ast.Constant)
+                                    and isinstance(s.value.value, str))]
+                    setattr(node, field, keep or [ast.Pass()])
+            for handler in getattr(node, "handlers", None) or ():
+                keep = [s for s in handler.body
+                        if not (isinstance(s, ast.Expr)
+                                and isinstance(s.value, ast.Constant)
+                                and isinstance(s.value.value, str))]
+                handler.body = keep or [ast.Pass()]
+        return tree
+
+    try:
+        want = ast.dump(prune(ast.parse(before)))
+        got = ast.dump(prune(ast.parse(after)))
+    except SyntaxError as exc:
+        raise SystemExit("seal: %s does not parse after stripping: %s"
+                         % (path, exc))
+    if got != want:
+        raise SystemExit(
+            "seal: stripping changed the meaning of %s -- the shipped engine "
+            "would differ from the source it claims to be" % (path,))
 
 
 # --------------------------------------------------------------- compile ---
@@ -279,8 +341,10 @@ def main(argv=None):
     src_work = os.path.join(work, "src")
     os.makedirs(src_work, exist_ok=True)
     for rel in target:
-        text = open(os.path.join(app, rel.replace("/", os.sep)), "r", encoding="utf-8").read()
-        text = text if a.keep_docstrings else strip_source(text)
+        raw_text = open(os.path.join(app, rel.replace("/", os.sep)), "r", encoding="utf-8").read()
+        text = raw_text if a.keep_docstrings else strip_source(raw_text)
+        if not a.keep_docstrings:
+            assert_strip_neutral(rel, raw_text, text)
         text = watermark.prepend_banner(text, a.buyer)
         dst = os.path.join(src_work, rel.replace("/", os.sep))
         os.makedirs(os.path.dirname(dst), exist_ok=True)

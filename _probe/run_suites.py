@@ -346,6 +346,11 @@ SUITES = [
     # folder per save.  Player 2026-11-09: 「总不能我每改动一次，就另存为一份吧」.
     r"_probe\test_save_reuse.py",
     r"_probe\test_archives.py",
+    # The seal step strips comments and docstrings before compiling; this nail
+    # says nothing else may change.  It exists because 64 of 109 modules once
+    # shipped with their dict values emptied, and the only symptom was a
+    # TypeError on a route no other gate exercised.
+    r"_probe\test_strip_neutrality.py",
     # 官方 .dat 存档架：幂等、不再对得上名字的 blob、损坏的索引、只能留最新的 prune。
     # Six complaints from one screenshot session (2026-11-02), each a real
     # defect a player hit in a real window:

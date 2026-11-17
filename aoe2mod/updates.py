@@ -13,17 +13,27 @@ no new build exists, and a new build can ship the day after a patch -- so they
 are two routes and two answers.  Merging them would make one screen lie about
 the other.
 
-Why the raw file and not the Releases API
-----------------------------------------
-Measured 2026-11-17 on this machine: ``https://api.github.com/...`` fails at the
-TLS layer (``SSL: UNEXPECTED_EOF_WHILE_READING``, curl reports 000), while
-``raw.githubusercontent.com`` and ``cdn.jsdelivr.net`` both answer 200.  So the
-check reads ``aoe2mod/appversion.py`` as plain text and pulls ``VERSION`` out of
-it.
+Why a gist and not the repository
+---------------------------------
+The check used to read ``aoe2mod/appversion.py`` out of the repository.  On
+2026-11-17 that repository was emptied on request, so both spellings of the raw
+URL started answering 404 and the only reachable answer became 「连不上」 --
+technically true, useless to a player.
 
-That file is not a duplicate of the number: it IS the number the screen prints.
-A release that forgets to bump it makes the update check say "already newest"
-rather than shipping two answers, which is the failure this project prefers.
+A gist is its own object with its own URL.  It is not a file in a source tree,
+so it does not disappear when the tree does, and it does not require the
+repository to be public or to exist at all for the check to work.  The file it
+serves is ``version.json``:
+
+    {"version": "1.0", "url": "https://github.com/..."}
+
+The number is the one the screen prints (``aoe2mod.appversion.VERSION`` on this
+side, ``version`` in the gist on the other).  Publishing a build means bumping
+both; a release that forgets makes the check say "已经是最新的" rather than
+inventing a second answer, which is the failure this project prefers.
+
+``parse_version`` still understands the old ``VERSION = "1.0"`` source form, so
+a tree that reinstates ``appversion.py`` keeps working without another edit.
 
 Never raises
 ------------
@@ -38,19 +48,34 @@ import re
 import time
 
 #: Where the number lives upstream.  Tried in order; the first one that answers
-#: wins.  Three spellings of the same file because this machine's network has
-#: been the flaky part of every earlier attempt at this feature.
+#: wins.  The first two are the gist itself and a proxy for it; the last two are
+#: the old repository spellings, kept so a reinstated tree still works.  Two
+#: hosts because this machine's network has been the flaky part of every
+#: earlier attempt at this feature.
 REPO = "198agk/aoe2-mod-workshop"
 BRANCH = "master"
+
+#: The number now lives in a gist, not in the repository.
+#:
+#: Why: on 2026-11-17 the repository was emptied on request, so every
+#: ``raw.githubusercontent.com`` URL below started answering 404 and the check
+#: could only ever say 连不上.  A gist is a separate object with its own URL
+#: that survives the repository it used to sit in, so the answer no longer
+#: depends on what a source tree happens to contain today.
+GIST = "8826376f54bf41d00d62a6bec6650b27"
+GIST_FILE = "version.json"
+
 SOURCES = (
+    ("gist.githubusercontent.com",
+     "https://gist.githubusercontent.com/198agk/%s/raw/%s" % (GIST, GIST_FILE)),
+    ("gh-proxy.com (gist)",
+     "https://gh-proxy.com/https://gist.githubusercontent.com/198agk/%s/raw/%s"
+     % (GIST, GIST_FILE)),
     ("raw.githubusercontent.com",
      "https://raw.githubusercontent.com/%s/%s/aoe2mod/appversion.py"
      % (REPO, BRANCH)),
     ("cdn.jsdelivr.net",
      "https://cdn.jsdelivr.net/gh/%s@%s/aoe2mod/appversion.py" % (REPO, BRANCH)),
-    ("gh-proxy.com",
-     "https://gh-proxy.com/https://raw.githubusercontent.com/%s/%s/aoe2mod/appversion.py"
-     % (REPO, BRANCH)),
 )
 
 #: The page a player goes to when there IS something newer.  Printed, not
@@ -113,8 +138,25 @@ def ver_tuple(text):
 
 
 def parse_version(text):
-    """Pull ``VERSION`` out of the shipped ``appversion.py`` source."""
-    m = _VERSION_RE.search(text or "")
+    """The version in the fetched body, whichever shape it arrived in.
+
+    Two shapes because two upstreams exist.  The gist serves JSON
+    (``{"version": "1.0", ...}``); a repository tree would serve Python
+    (``VERSION = "1.0"``).  Reading both here means the source list can gain
+    either one without a second parser, and a test can feed it either.
+    """
+    body = (text or "").strip()
+    if body.startswith("{"):
+        try:
+            doc = json.loads(body)
+        except ValueError:
+            doc = None
+        if isinstance(doc, dict):
+            value = doc.get("version")
+            if value is None:
+                return ""
+            return str(value).strip().strip("\"'").strip()
+    m = _VERSION_RE.search(body)
     if not m:
         return ""
     value = m.group(0).split("=", 1)[-1].strip()
@@ -208,7 +250,7 @@ def check(current=None, force=False, timeout=TIMEOUT, opener=None,
             continue
         remote = parse_version(text)
         if not remote:
-            notes.append("%s 读到了内容，里面没有 VERSION" % name)
+            notes.append("%s 读到了内容，里面没有版本号" % name)
             continue
         _write_cache({"at": time.time(), "current": str(current),
                       "remote": remote, "source": name, "url": url,
@@ -218,4 +260,4 @@ def check(current=None, force=False, timeout=TIMEOUT, opener=None,
 
     _write_cache({"at": time.time(), "current": str(current),
                   "reachable": False})
-    return _answer(current, False, notes=notes or ["三个地址都没连上"])
+    return _answer(current, False, notes=notes or ["没有一个地址连得上"])

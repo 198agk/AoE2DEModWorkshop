@@ -21,10 +21,10 @@ def digest(path, chunk=1 << 20):
     return h.hexdigest()
 
 
-def build(folder, out_zip, skip=()):
+def build(folder, out_zip, skip=(), arcname=None):
     root = os.path.abspath(folder)
     parent = os.path.dirname(root)
-    top = os.path.basename(root)
+    top = arcname or os.path.basename(root)
     names = []
     for dirpath, dirnames, filenames in os.walk(root):
         dirnames[:] = sorted(d for d in dirnames if os.path.join(dirpath, d) not in skip)
@@ -39,7 +39,8 @@ def build(folder, out_zip, skip=()):
         os.remove(out_zip)
     with zipfile.ZipFile(out_zip, 'w', zipfile.ZIP_DEFLATED, compresslevel=6, allowZip64=True) as z:
         for full in names:
-            z.write(full, os.path.relpath(full, parent))
+            rel = os.path.relpath(full, root)
+            z.write(full, top + '/' + rel.replace(os.sep, '/'))
     with zipfile.ZipFile(out_zip) as z:
         bad = z.testzip()
         count = len(z.namelist())
@@ -62,6 +63,7 @@ def main(argv):
     args = argv[1:]
     skip = []
     out_name = None
+    arcname = None
     folders = []
     i = 0
     while i < len(args):
@@ -72,16 +74,19 @@ def main(argv):
         elif a == '--out':
             i += 1
             out_name = args[i]
+        elif a == '--arcname':
+            i += 1
+            arcname = args[i]
         else:
             folders.append(a.rstrip('\\/'))
         i += 1
     if not folders:
-        print('usage: pack_release_zip.py [--without DIR] [--out NAME.zip] FOLDER [FOLDER ...]')
+        print('usage: pack_release_zip.py [--arcname TOPDIR] [--without DIR] [--out NAME.zip] FOLDER ...')
         return 2
     rc = 0
     for folder in folders:
         out = (os.path.join(os.path.dirname(folder), out_name) if out_name else folder + '.zip')
-        rc |= build(folder, out, skip)
+        rc |= build(folder, out, skip, arcname)
     return rc
 
 
