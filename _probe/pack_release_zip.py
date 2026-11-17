@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Pack a release folder into a zip next to it, plus a .sha256 sidecar.
+"""Pack a release folder into a zip next to it.
 
 Why zipfile and not the shell: this MSYS git-bash has no zip binary at all.
 """
@@ -47,9 +47,6 @@ def build(folder, out_zip, skip=(), arcname=None):
         pyc = [n for n in z.namelist() if n.endswith('.pyc') or '__pycache__' in n]
     size = os.path.getsize(out_zip)
     sha = digest(out_zip)
-    sidecar = out_zip + '.sha256'
-    with open(sidecar, 'w', encoding='utf-8', newline='\n') as f:
-        f.write(sha + '  ' + os.path.basename(out_zip) + '\n')
     print('%s' % top)
     print('  files   %d' % count)
     print('  bytes   %d' % size)
