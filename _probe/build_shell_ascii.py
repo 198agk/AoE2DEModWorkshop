@@ -19,6 +19,7 @@ import filecmp
 import hashlib
 import os
 import shutil
+import tempfile
 import subprocess
 import sys
 import _paths as P
@@ -32,12 +33,26 @@ BUILD = P.BUILD
 MINGW = os.environ.get("MINGW_BIN") or ""
 CARGO = os.environ.get("CARGO_BIN") or ""
 if not MINGW:
-    for _cand in (r"C:\mingw64\bin", r"C:\msys64\mingw64\bin"):
+    _found = shutil.which("windres")
+    if _found:
+        MINGW = os.path.dirname(_found)
+if not MINGW:
+    for _cand in (r"C:\mingw64\bin", r"C:\msys64\mingw64\bin",
+                  os.path.join(tempfile.gettempdir(), "mingw", "mingw64", "bin"),
+                  os.path.join(os.path.dirname(CARGO or "x"), "..", "tmp", "mingw",
+                               "mingw64", "bin")):
         if os.path.isfile(os.path.join(_cand, "windres.exe")):
-            MINGW = _cand
+            MINGW = os.path.normpath(_cand)
             break
 if not CARGO:
-    CARGO = os.path.dirname(shutil.which("cargo") or "")
+    _found = shutil.which("cargo")
+    if not _found:
+        _home = os.path.join(os.path.expanduser("~"), ".cargo", "bin", "cargo.exe")
+        _found = _home if os.path.isfile(_home) else ""
+    CARGO = os.path.dirname(_found)
+if not CARGO or not os.path.isfile(os.path.join(CARGO, "cargo.exe")):
+    raise SystemExit("build_shell_ascii: no cargo.exe.  Set CARGO_BIN to the folder "
+                     "that holds it (usually %USERPROFILE%\\.cargo\\bin).")
 
 # Source dirs that must be identical between repo and build tree.
 #
@@ -133,6 +148,20 @@ def diff_files(a, b):
     return out
 
 
+def free_drive():
+    """A drive letter nothing is using, or "" if every letter is taken."""
+    taken = set()
+    try:
+        out = subprocess.run(["subst"], capture_output=True, text=True).stdout
+        taken = {ln.split(":")[0].strip().upper() for ln in out.splitlines() if ":" in ln}
+    except OSError:
+        pass
+    for letter in "QRSTUVWXYZ":
+        if letter not in taken and not os.path.exists(letter + ":\\"):
+            return letter + ":"
+    return ""
+
+
 def main():
     print("repo:", REPO)
     print("build:", BUILD)
@@ -155,10 +184,39 @@ def main():
     env = dict(os.environ)
     env["PATH"] = MINGW + os.pathsep + CARGO + os.pathsep + env.get("PATH", "")
     env.pop("CARGO_TARGET_DIR", None)
-    print("building…")
+    # Release binaries keep the paths of the machine that compiled them: every
+    # crate's `file!()` panic location is a literal string in the .rlib, so the
+    # shipped exe carried `C:\\Users\\<name>\\.cargo\\registry\\src\\...` for 104
+    # crates -- a stranger's home folder in a stranger's download.  Remapping
+    # the prefixes at compile time is the only way to take them out: the text is
+    # baked into the panic tables, not into a strip-able section.
+    cargo_home = os.path.dirname(CARGO)
+    remap = [
+        "--remap-path-prefix=%s=/cargo" % cargo_home,
+        "--remap-path-prefix=%s=/build" % os.path.join(BUILD, "src-tauri"),
+        "--remap-path-prefix=%s=/build" % BUILD,
+        "--remap-path-prefix=%s=/repo" % DESKTOP,
+    ]
+    env["RUSTFLAGS"] = (env.get("RUSTFLAGS", "") + " " + " ".join(remap)).strip()
+    # `RUSTFLAGS` is not enough.  tauri-build writes the crate directory into the
+    # generated manifest (`__app__-permission-files`), so the release exe still
+    # carried the build tree's absolute path -- one string, but the one that names
+    # where this project lives on somebody's disk.  Compiling through a `subst`
+    # drive makes that string `Q:\src-tauri`, which says nothing about anybody.
     cargo_exe = os.path.join(CARGO, "cargo.exe")
-    r = subprocess.run([cargo_exe, "build", "--release"],
-                       cwd=os.path.join(BUILD, "src-tauri"), env=env)
+    drive = free_drive()
+    if drive:
+        subprocess.run(["subst", drive, BUILD], check=False)
+        cwd = drive + os.sep + "src-tauri"
+    else:
+        print("  warning: no free drive letter; the crate path will be published")
+        cwd = os.path.join(BUILD, "src-tauri")
+    print("building…")
+    try:
+        r = subprocess.run([cargo_exe, "build", "--release"], cwd=cwd, env=env)
+    finally:
+        if drive:
+            subprocess.run(["subst", drive, "/D"], check=False)
     if r.returncode != 0:
         print("BUILD FAILED")
         return 1

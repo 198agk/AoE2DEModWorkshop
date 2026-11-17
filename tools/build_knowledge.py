@@ -126,17 +126,23 @@ def clean(text):
 #: went out with it -- a stranger's directory layout in a stranger's download.
 #: Each prefix below becomes the role it played, which is the part a reader needs.
 SCRUB = (
-    (re.compile(r"[A-Za-z]:[\\/]Users[\\/]26913"), "<user>"),
+    # Nothing below spells this machine out.  The first draft did: it carried
+    # the account name inside its own pattern, and this file ships in the
+    # bundle, so the cure put the disease on the shelf.  The rules name roles
+    # only, and the last one is generic -- any drive-letter path that survived
+    # the specific rules becomes `<path>`, so a folder nobody anticipated is
+    # still just a folder.
+    #
+    # Order matters: the specific rules keep the meaning a reader needs (which
+    # game, which library), and the catch-all runs last.
     (re.compile(r"[A-Za-z]:[\\/]Users[\\/][A-Za-z0-9_.-]+"), "<user>"),
-    (re.compile(r"76561198[0-9]{9}"), "<steamid>"),
-    (re.compile(r"[A-Za-z]:[\\/]Software[\\/]AI[\\/]Aoe2"), "<repo>"),
-    (re.compile(r"[A-Za-z]:[\\/]Software[\\/]DeepSeek Harness"), "<workspace>"),
-    (re.compile(r"[A-Za-z]:[\\/]Games[\\/]Steam[\\/]steamapps[\\/]common[\\/]AoE2DE"), "<game root>"),
-    (re.compile(r"[A-Za-z]:[\\/]Games[\\/]Steam[\\/]steamapps"), "<steam library>"),
-    (re.compile(r'[A-Za-z]:[\\/]Games[^\s"`)]*'), "<game root>"),
-    (re.compile(r"[A-Za-z]:[\\/]Software"), "<tools>"),
-    (re.compile(r"[A-Za-z]:[\\/]Agents[\\/]PhoenixBuilder[^\\/\s`)]*"), "<engine source>"),
-    (re.compile(r"[A-Za-z]:[\\/]ww2ogg"), "<tool>"),
+    (re.compile(r"/[a-zA-Z]/Users/[A-Za-z0-9_.-]+"), "<user>"),
+    (re.compile(r"(?<![0-9])7656119[0-9]{10}(?![0-9])"), "<steamid>"),
+    (re.compile(r"[A-Za-z]:[\\/][^\s\"`]*[\\/]steamapps[\\/]common[\\/]AoE2DE"), "<game root>"),
+    (re.compile(r"[A-Za-z]:[\\/][^\s\"`]*[\\/]steamapps"), "<steam library>"),
+    # A URL is not a path: `https://` has a slash-slash after the colon, and the
+    # letter before it is part of a word.  Both guards are needed.
+    (re.compile(r'(?<![A-Za-z0-9])[A-Za-z]:[\\/](?!/)[^\s"`|)\]]*'), "<path>"),
 )
 
 

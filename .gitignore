@@ -675,3 +675,8 @@ _probe/_tmp_*
 
 # 会话约定，给自己看的
 /AGENTS.md
+
+# Test runs write into a scratch folder next to the tests; only the
+# hand-written info.json pairs are fixtures, the built .dat files are output.
+/aoe2mod/tests/out/*/resources/
+/aoe2mod/tests/out/*.dat
