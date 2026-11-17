@@ -270,6 +270,23 @@ def load_index():
     else:
         doc["entries"] = {k: v for k, v in doc["entries"].items()
                           if isinstance(k, str) and isinstance(v, dict)}
+    # A shipped shelf carries the absolute paths of the machine it was built on
+    # ("D:\\...\\dat_archive\\<sha>.dat").  Unpacked anywhere else those paths
+    # are fiction: `describe()` would sum sizes for files that are not there and
+    # report an empty shelf that is in fact full.  Repoint each entry at the blob
+    # name it should have in THIS folder -- the name is content-addressed, so the
+    # same sha is the same file, and `raw_of()` re-hashes before trusting it.
+    here = archive_dir()
+    for sha, ent in doc["entries"].items():
+        want = os.path.join(here, sha[:BLOB_NAME_CHARS] + BLOB_SUFFIX)
+        if ent.get("path") == want:
+            continue
+        ent["path"] = want
+        if os.path.isfile(want):
+            try:
+                ent["file_bytes"] = os.path.getsize(want)
+            except OSError:
+                pass
     return doc
 
 
