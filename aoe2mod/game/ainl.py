@@ -855,7 +855,7 @@ def _tech_for(text, vocab):
 #: nothing here emits them.
 #: How many goals the engine has.  The old check said 0-511 and refused
 #: `goal 3004`, which the engine's own ailib uses for an array pointer
-#: (`AGE-AI与XS-全面解析.md:153` gives "0-~4000, 256 of them named"; §7 lists
+#: (the engine's own ailib gives "0-~4000, 256 of them named"; it also lists
 #: 3001-3060 and 4001-4061 as hard-coded arrays).  A refusal that is itself
 #: wrong is worse than no check: it tells the player a working goal is out of
 #: range.

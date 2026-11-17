@@ -30,7 +30,8 @@ _NOT_A_SUITE = {
         "prints the RandomMap record widths against genieutils and a synthetic "
         "round-trip; exits 0 either way.  Its conclusion (all five shipped "
         "datasets have count 0, so the reader/writer have no real data to fight) "
-        "is recorded in 数据模组能力目录v1.md.",
+        "is recorded in the local research notes, which the repository does "
+        "not ship.",
     r"_probe\schema\test_branch_extract.py":
         "regenerates regen_preview.json so a human can read what the AGE branch "
         "extractor saw; the checked-in tables beside it are built from that "

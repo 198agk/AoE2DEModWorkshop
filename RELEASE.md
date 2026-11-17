@@ -624,5 +624,4 @@ $py = 'C:\Users\26913\.dsh\dsh-runtimes\dsh-primary-runtime\dependencies\python\
 & $py -X utf8 -u 'tools\describe.py' --check   # 自述文件与树是否一致
 ```
 
-每条钉子断言什么、什么改动会让它红：`_测试钉子清单.md`。
-未决问题与实验记录：`项目状态.md`、`_交接说明.md`。
+每条钉子断言什么、什么改动会让它红：直接读 `_probe/test_*.py` 的模块说明——每个文件开头那段写的就是它钉的那件事，以及是哪次实测把它钉下来的。

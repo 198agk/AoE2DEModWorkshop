@@ -173,11 +173,13 @@ def chunks_of(lines):
 def build(out_path):
     rows = []
     docs = []
+    found = 0
     for rel, why in SOURCES:
         p = os.path.join(REPO, rel)
         if not os.path.isfile(p):
             print("  skip   %s (missing)" % rel)
             continue
+        found += 1
         lines = clean(read(p))
         n = 0
         prev = None
@@ -197,6 +199,19 @@ def build(out_path):
             n += 1
         docs.append((rel, why, n))
         print("  chunk  %-46s %4d" % (rel, n))
+
+    # Refuse to write an empty index over a good one.  The corpus is research
+    # material and is deliberately not in this repository; a clone that runs
+    # this script without it would otherwise replace the shipped
+    # `aoe2mod/data/knowledge.db` with zero chunks and only say "skip" 34 times.
+    shipped = os.path.join(REPO, "aoe2mod", "data", "knowledge.db")
+    if not found and os.path.abspath(out_path) == shipped:
+        raise SystemExit(
+            "build_knowledge: none of the %d corpus files are here.  They live "
+            "in the research tree, not in this repository; the built index "
+            "(`aoe2mod/data/knowledge.db`) is what ships, and it is already "
+            "built.  Pass --out to write somewhere else if you mean to test."
+            % len(SOURCES))
 
     if os.path.exists(out_path):
         os.remove(out_path)

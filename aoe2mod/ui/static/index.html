@@ -7699,7 +7699,7 @@ function upgradeRow(r) {
   // three-line paragraph that repeated itself, and on a refusal the engine puts
   // the SAME sentence in `summary` and in `notes[0]`, so 19 rows read as a
   // smear with the same paragraph overprinted twice (measured 2026-11-10 in the
-  // shipped build, see the screenshot in 变更日志.md).  Nothing is re-worded
+  // shipped build, measured 2026-11-10).  Nothing is re-worded
   // here: a line that adds information is printed exactly as the engine wrote
   // it, and duplicates are dropped by exact match.
   const said = String(r.summary || "").split("\n").map(s => s.trim()).filter(Boolean);
@@ -8470,7 +8470,7 @@ function archiveRows(box, got) {
     row.appendChild(el("span", "dpscope", (g.count || 0) + " 份"));
     // The ledger date is when the build went live on Steam; first_seen is when
     // this tool copied the file.  Printing the second one as a release date is
-    // what made every row say 2026-11-10 -- see UI-协作分工.md, 2026-11-11.
+    // what made every row say 2026-11-10 -- measured 2026-11-11.
     row.appendChild(el("span", g.dated ? "dpver" : "dpold", g.dated
       ? (g.first_date + " ~ " + g.last_date)
       : ("存下于 " + day)));
@@ -8483,8 +8483,8 @@ function archiveRows(box, got) {
     if (!open) continue;
     // Folded open: one line per official build of this generation.  The indent
     // is two ideographic spaces inside the label rather than a margin: adding a
-    // padding class means editing the <style> block, which belongs to the other
-    // session (see UI-协作分工.md), and an inline style is banned.
+    // padding class means editing the <style> block, which is off-limits to a
+    // logic change, and an inline style is banned.
     for (const b of (g.builds || [])) {
       const sub = el("div", "dprow");
       const at = el("span", "dplabel",

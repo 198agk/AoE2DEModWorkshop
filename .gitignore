@@ -654,3 +654,23 @@ _probe/_tmp_*
 # 只在本机有用的研究记录目录
 /.dsh/
 /_evidence/
+
+# 研究资料：能力目录、逆向交付索引、会话状态记录、awesome-aoe2 语料库。
+# 软件运行时读的是已经建好的 aoe2mod/data/knowledge.db（被跟踪），不是这些
+# markdown；tools/build_knowledge.py 在语料缺失时会拒绝覆盖那份索引。
+/AGE-AI与XS-全面解析.md
+/AGE3-逆向-交付索引.md
+/AoE2DE引擎AI与XS全量能力解析.md
+/UI-协作分工.md
+/UI贴图模组能力目录v1.md
+/change.md
+/变更日志.md
+/图形音效模组能力目录v1.md
+/插件可用清单v1.md
+/数据模组能力目录v1.md
+/能力目录v0.md
+/项目状态.md
+/awesome-aoe2-知识库/
+
+# 会话约定，给自己看的
+/AGENTS.md

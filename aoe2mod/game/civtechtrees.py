@@ -150,7 +150,7 @@ The ``.dat`` is where the one *proven* lever lives: ``dsh test v5`` (2026-10-16)
 changed a single byte -- ``train_location.ButtonID`` 1 -> 4 on British unit 2550
 -- and the button appeared, because slot 1 was already full with the five-unit
 militia line.  That is the only layer in this project ever observed moving the
-facility menu.  See ``数据模组能力目录v1.md`` section 15.4aq.
+facility menu.  Measured 2026-10-16.
 
 **★★★ 2026-10-19 `dsh test v16`: THE BUTTON BYTE ALONE IS NOT ENOUGH EITHER.**
 v16 sent one `.dat` and no JSON at all, with exactly two byte edits: British

@@ -105,7 +105,7 @@ def main():
        r["code"])
 
     # --- 4. a named goal must not be refused as out of range --------------
-    # `AGE-AI与XS-全面解析.md:153` gives 0-~4000 and lists 3001-3060 / 4001-4061
+    # the engine's own ailib gives 0-~4000 and lists 3001-3060 / 4001-4061
     # as hard-coded arrays; the old 0-511 bound refused the engine's own idioms.
     print("-- the range check must not refuse goals the engine itself uses")
     r = ainl.translate("goal 3004 设为 7", "xs", voc).as_dict()

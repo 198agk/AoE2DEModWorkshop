@@ -169,7 +169,7 @@ def main():
     # mod LIST uses, and that one is a 30px single line with the controls inline.
     # Reused verbatim, three blocks of text (title / badge+counts / sentence) were
     # squeezed into that 30px and printed on top of each other in the shipped
-    # build (screenshot in 变更日志.md, 2026-11-10).  What is pinned here is the
+    # build (measured 2026-11-10).  What is pinned here is the
     # CONTRACT -- the override exists, it is scoped to `#repair`, and the list's
     # own `.mod` rule is untouched -- not the pixels.
     import re as _re
