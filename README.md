@@ -3,14 +3,14 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/198agk/aoe2mod/releases/latest">
-    <img src="https://img.shields.io/github/v/release/198agk/aoe2mod?style=flat-square&label=%E6%9C%80%E6%96%B0%E7%89%88&color=2dd4bf" alt="Release">
+  <a href="https://github.com/198agk/AoE2ModWorkshop/releases/latest">
+    <img src="https://img.shields.io/github/v/release/198agk/AoE2ModWorkshop?style=flat-square&label=%E6%9C%80%E6%96%B0%E7%89%88&color=2dd4bf" alt="Release">
   </a>
-  <a href="https://github.com/198agk/aoe2mod">
-    <img src="https://img.shields.io/github/stars/198agk/aoe2mod?style=flat-square&label=Stars&color=2dd4bf" alt="Stars">
+  <a href="https://github.com/198agk/AoE2ModWorkshop">
+    <img src="https://img.shields.io/github/stars/198agk/AoE2ModWorkshop?style=flat-square&label=Stars&color=2dd4bf" alt="Stars">
   </a>
-  <a href="https://github.com/198agk/aoe2mod/releases">
-    <img src="https://img.shields.io/github/downloads/198agk/aoe2mod/total?style=flat-square&label=%E4%B8%8B%E8%BD%BD%E9%87%8F&color=2dd4bf" alt="下载量">
+  <a href="https://github.com/198agk/AoE2ModWorkshop/releases">
+    <img src="https://img.shields.io/github/downloads/198agk/AoE2ModWorkshop/total?style=flat-square&label=%E4%B8%8B%E8%BD%BD%E9%87%8F&color=2dd4bf" alt="下载量">
   </a>
   <img src="https://img.shields.io/badge/%E5%B9%B3%E5%8F%B0-Windows%2010%20%2F%2011-0078d4?style=flat-square&logo=windows" alt="平台">
   <img src="https://img.shields.io/badge/Python-3.12%20%E5%86%85%E7%BD%AE-3776ab?style=flat-square&logo=python" alt="Python">
@@ -25,6 +25,19 @@
 <p align="center">
   <a href="#核心亮点"><img src="docs/screenshots/home.png" alt="模组工坊首页" width="88%"></a>
 </p>
+
+## 使用须知
+
+- **这是一个还在快速迭代的工具**，不是成熟产品。改数值、造单位、造科技、生成模组这几条已经实机走通；
+  边缘形态（新科技不进科技树、禁科技的按钮是消失而不是变灰）写在[下面](#能做什么以及做不到什么)，
+  都是**故意**留着的诚实边界，不是待修的 bug。
+- **遇到问题欢迎开 issue**：<https://github.com/198agk/AoE2ModWorkshop/issues> 。
+  报问题请带上截图或录屏，再说一句你在哪个页签 —— 说清在哪一页，才能照着走一遍。
+- **它不会自己更新**。工具不联网后台拉包，也没有自动升级通道。要新版本就自己下新的安装包覆盖，
+  或者打开「关于」页按「检查更新」看一眼 GitHub 上那份的版本号，再决定要不要换。
+- **它不改你的游戏本体**。所有改动写在你本机 `.dat` 的副本上，装成一个普通本地模组；
+  卸载 = 关掉模组 + 删一个文件夹，原版数据一个字节没动。
+- **它完全免费、完全开源**。源代码全在这个仓库里，没有任何功能需要付费解锁。
 
 ## 核心亮点
 
@@ -43,7 +56,9 @@
 
 ## 界面预览
 
-| 说一句话 | 能做的事 |
+下面八张都是**发布包跑起来的界面**，不是开发服务器：窗口 1280×860，两倍像素密度。
+
+| 首页 | 能做的事 |
 | --- | --- |
 | [![首页](docs/screenshots/home.png)](docs/screenshots/home.png) | [![能做的事](docs/screenshots/intents.png)](docs/screenshots/intents.png) |
 | **模组一览** | **逐字段编辑器** |
@@ -140,7 +155,7 @@
 
 ### 安装包（推荐）
 
-从 [Releases](https://github.com/198agk/aoe2mod/releases/latest) 下 `AoE2ModWorkshop-x.y.z-setup.exe`，
+从 [Releases](https://github.com/198agk/AoE2ModWorkshop/releases/latest) 下 `AoE2ModWorkshop-x.y.z-setup.exe`，
 双击、下一步、装到 `%LOCALAPPDATA%\Programs\AoE2ModWorkshop`。不需要另装 Python（包里自带 3.12），
 不需要管理员权限。卸载在「设置 → 应用」里，删得干净。
 
@@ -153,8 +168,8 @@
 仓库里放的是源码，`.py` 和 `.html` 双击打不开。要跑源码：
 
 ```powershell
-git clone https://github.com/198agk/aoe2mod
-cd aoe2mod
+git clone https://github.com/198agk/AoE2ModWorkshop
+cd AoE2ModWorkshop
 python -X utf8 -u tools\run_ui.py     # 需要 Python 3.10+；默认随机端口，控制台会打印地址
 ```
 
@@ -193,7 +208,8 @@ aoe2mod/            产品代码
   ui/               server.py（本地 HTTP）、nl.py（中文句子 → intent）、static/
 plugins/            <名字>/schema/intents.json 就多一个意图，不用写 Python
 tools/              run_ui.py（唯一入口）、sync_engine.py
-_probe/             研究层：110+ 条钉子、一次性探针、报告
+docs/               编辑器笔记、截图
+_probe/             验证层：quick 套件 234 条 + 长套件 17 条，以及它们要用到的几个 vendored 源
 ```
 
 两条环境铁律：
@@ -205,15 +221,28 @@ _probe/             研究层：110+ 条钉子、一次性探针、报告
 ## 开发与验证
 
 逆向一个闭源引擎没有文档可查。「建造菜单的按钮格由哪个字段决定」「新字符串 id 能不能渲染」
-这类问题只能改一个字节、请人开一局、看屏幕上有没有变。所以 `_probe/` 是实验记录本：
+这类问题只能改一个字节、请人开一局、看屏幕上有没有变。所以 `_probe/` 里全是钉子：
 每条钉子对应一次被证实的结论，或一次被推翻的假设。
 
 ```powershell
-python -X utf8 -u _probe\run_suites.py    # 233 条快套件，约 100 分钟
+python -X utf8 -u _probe\run_suites.py    # 234 条快套件，约 100 分钟
 python -X utf8 -u _probe\run_long.py      # 17 条长套件，约 2.8 小时
 ```
 
 改动要落到发布包再验：源码 → 包内 app 目录 → 起包里那个 exe 逐条打路由。只跑 dev 服务不算验过。
+
+### 这份代码是怎么写出来的
+
+**全部由 AI 写，模型是 Deepseek-V4.1-Flash**（DeepSeek 的对话模型），人类负责定方向、
+在真游戏里开一局验证结论、以及拒绝那些「看起来能跑但没实测」的改动。
+
+这不是要标榜什么，而是为了说清两件事：
+
+- **为什么 `_probe/` 这么大。** 一个不查文档的模型最容易犯的错是「编一个看起来合理的字段含义」，
+  而且错了不会崩、只会「装了模组没反应」。所以每条结论都被写成一条能重跑的钉子，
+  随时可以回头把「我之前以为」证伪。
+- **为什么代码风格这么「笨」。** 少用魔法、少抽象、字段名写得长、注释里写清「为什么不是另一种写法」，
+  是因为下一个读它的人（或模型）没有本次会话的上下文。
 
 ## 想用 AI 帮你说那句话
 
@@ -227,6 +256,22 @@ $env:AOE2MOD_AI_MODEL = 'gpt-4o-mini'
 
 **它只会把你说的话换成这个工具认得的句子**，不产生任何改动。句子仍然要过「读一下」那一关、
 仍然要看预览能不能构建。配置只从环境变量读，项目不存任何 key。
+
+## 请我们喝咖啡
+
+<p align="center">
+  如果这个工具帮你省下了几个小时翻 AGE3 的时间，<br>
+  或者让你第一次把「把不列颠村民血量改成 1000」这种想法真的做进了游戏里 ——
+</p>
+
+<p align="center">
+  <a href="https://afdian.com/a/RemonBo">
+    <img src="https://img.shields.io/badge/%E5%9C%A8%E7%88%B1%E5%8F%91%E7%94%B5%E6%94%AF%E6%8C%81%E6%88%91-946ce6?style=for-the-badge&logo=affinity&logoColor=white" alt="在爱发电支持我">
+  </a>
+</p>
+
+完全免费、完全开源，功能不会因为不赞助而少一个。爱发电上来的钱只做一件事：
+让作者有理由继续在周末开一局游戏、改一个字节、把它记成一条钉子。
 
 ## 许可
 

@@ -16,6 +16,7 @@ import ast
 import io
 import os
 import re
+import subprocess
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -30,20 +31,10 @@ _NOT_A_SUITE = {
         "round-trip; exits 0 either way.  Its conclusion (all five shipped "
         "datasets have count 0, so the reader/writer have no real data to fight) "
         "is recorded in 数据模组能力目录v1.md.",
-    r"_probe\scenario_header\test_header_parse.py":
-        "walks four shipped .aoe2scenario headers and tries four zlib window "
-        "bits.  It prints a failure line for the three window bits that are "
-        "SUPPOSED to fail, so a runner's failure scan would flag a healthy run.  "
-        "Conclusion (the scenario body is raw deflate, -15) is in "
-        "数据模组能力目录v1.md.",
     r"_probe\schema\test_branch_extract.py":
         "regenerates regen_preview.json so a human can read what the AGE branch "
         "extractor saw; the checked-in tables beside it are built from that "
         "preview.  It has no pass/fail question to ask.",
-    r"_probe\survey_scenario\test_asp_roundtrip.py":
-        "needs the third-party AoE2ScenarioParser package, which is not "
-        "installed in this project's runtime -- it raises ModuleNotFoundError.  "
-        "A test that cannot import its subject must not be registered as green.",
 }
 
 
@@ -75,6 +66,30 @@ def named_in(path):
     return set(re.findall(r"([\w./\\-]+\.py)", text))
 
 
+def _drop_ignored(paths):
+    """Remove paths git ignores; they are scratch, not part of the repo."""
+    if not paths:
+        return set()
+    # git wants forward slashes on the command line even on Windows; a
+    # backslashed path is read as an escape and silently matches nothing.
+    slash = {p: p.replace("\\", "/") for p in paths}
+    try:
+        # `-z`: without it git C-quotes every path it echoes back
+        # ("_probe/_tmp/..." with literal quotes), and a naive comparison then
+        # matches nothing -- the filter would look like it ran and remove zero.
+        proc = subprocess.run(
+            ["git", "check-ignore", "--stdin", "-z"],
+            cwd=ROOT, input="\0".join(sorted(slash.values())),
+            capture_output=True, text=True, timeout=120,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return set(paths)
+    if proc.returncode not in (0, 1):
+        return set(paths)
+    ignored = {ln.strip().replace("\\", "/") for ln in proc.stdout.split("\0") if ln.strip()}
+    return {p for p in paths if slash[p] not in ignored}
+
+
 def main():
     fast = os.path.join(HERE, "run_suites.py")
     slow = os.path.join(HERE, "run_long.py")
@@ -96,14 +111,21 @@ def main():
     print("duplicates: %s" % (dupes or "none"))
 
     registered = named_in(fast) | named_in(slow)
-    present = set()
+    found = set()
     for dirpath, _dirs, files in os.walk(HERE):
         if os.path.basename(dirpath) == "team":
             continue
         for fn in files:
             if fn.startswith("test_") and fn.endswith(".py"):
                 rel = os.path.relpath(os.path.join(dirpath, fn), ROOT)
-                present.add(rel.replace(os.sep, "\\"))
+                found.add(rel.replace(os.sep, "\\"))
+    # Only what the repository ships counts as coverage.  Since 2026-11-18
+    # `_probe/*` is git-ignored except for an allow-list, so a working tree
+    # still holds scratch copies (`_probe/_tmp/_pylib/numpy/**` alone carries
+    # 191 `test_*.py` files nobody wrote) that no clone would ever see.
+    # Asking git which paths are ignored keeps this gate about the repo, not
+    # about whatever a probe happened to download last week.
+    present = _drop_ignored(found)
 
     missing_file = [e for e in entries + node_entries
                     if not os.path.exists(os.path.join(ROOT, e))]

@@ -38,7 +38,17 @@ import sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 RUNNER = os.path.join(ROOT, "_probe", "run_suites.py")
+#: The ledgers to scan for `N 条 py` claims.  Two of the original four are
+#: session-handover notes that stopped being committed on 2026-11-18 (the
+#: repository now carries the software only); they are still listed so a local
+#: checkout that has them keeps getting scanned, and skipped when absent --
+#: the check below asserts the file that everyone always has.
 CLAIM_FILES = ("项目状态.md", "_交接说明.md", "_测试钉子清单.md", "README.md")
+
+#: README is the one ledger a clone cannot be without: it is the page a
+#: stranger reads first, so its claims are checked even when nothing else is
+#: present.
+ALWAYS_CLAIMED = ("README.md",)
 DATE_RE = re.compile(r"20\d\d-\d\d-\d\d")
 CLAIM_RE = re.compile(r"(\d+)\s*条\s*(py|node)")
 HISTORY_PHRASES = ("当时", "曾", "原来", "历史", "长到", "写成了", "那轮跑的",
@@ -112,8 +122,15 @@ def main():
           % (len(_under_probe), len(_under_pkg), len(pys)))
 
     print("\n=== B. the claim files are there to be read")
-    missing = [n for n in CLAIM_FILES if not os.path.isfile(os.path.join(ROOT, n))]
-    check("all four ledgers exist", not missing, missing)
+    # Only README is guaranteed: the handover notes are a local working file,
+    # not part of what this repository ships.  Asserting all four would fail a
+    # fresh clone for the absence of a file that was deliberately not published.
+    missing = [n for n in ALWAYS_CLAIMED if not os.path.isfile(os.path.join(ROOT, n))]
+    check("the ledger every clone has is here", not missing, missing)
+    present_ledgers = [n for n in CLAIM_FILES
+                       if os.path.isfile(os.path.join(ROOT, n))]
+    check("at least one ledger was actually read", len(present_ledgers) >= 1,
+          present_ledgers)
 
     print("\n=== C. current counts match the tree")
     rows = claims()

@@ -1,1 +1,0 @@
-STAGE1 AGREE pos=145742 restr=54 colours=16
