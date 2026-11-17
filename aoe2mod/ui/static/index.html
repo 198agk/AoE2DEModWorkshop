@@ -5494,7 +5494,7 @@ body.dragging-row, body.dragging-row * { cursor: grabbing !important; user-selec
           <div class="setrow">
             <span class="si"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.6 3.4h10.8v7.2H2.6zM5.4 13.2h5.2"/></svg></span>
             <div><div class="st">每次启动检查更新</div><div class="sd">启动时读一次远端版本号，只提示，不自动升级</div></div>
-            <div class="sc"><button class="switch on" id="pref-checkupdate" role="switch" aria-checked="true" aria-label="每次启动检查更新"><i></i></button></div>
+            <div class="sc"><button class="chip" id="pref-checknow">立即检查</button><button class="switch on" id="pref-checkupdate" role="switch" aria-checked="true" aria-label="每次启动检查更新"><i></i></button></div>
           </div>
           <div class="setrow">
             <span class="si"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3.4 2.6h9.2v10.8l-4.6-2.4-4.6 2.4z"/></svg></span>
@@ -7598,10 +7598,13 @@ async function versionCheck(force) {
     got = null;
   }
   if (btn) btn.disabled = false;
-  if (!line) return;
+  // The answer travels back to the caller as well as onto the line: the settings
+  // row asks the same question from a screen where this line is not visible, so it
+  // has to phrase the answer itself instead of reading a string it cannot see.
+  if (!line) return got;
   if (!got || got.ok !== true || !got.reachable) {
     line.textContent = T("update.version_offline");
-    return;
+    return got;
   }
   const remote = got.remote || "";
   if (got.behind) {
@@ -7610,6 +7613,30 @@ async function versionCheck(force) {
     line.textContent = T("update.version_same", {version: remote});
   } else {
     line.textContent = T("update.version_ahead", {version: remote || "?"});
+  }
+  return got;
+}
+
+// ---- 设置 → 通用 里的那颗按钮 --------------------------------------------
+// Same route, same cache, same sentences -- only the delivery differs: there is no
+// version line on the settings screen, so the answer arrives as a toast.  A button
+// that appears to do nothing is worse than no button, and a second copy of the
+// wording here would drift from the one on the about page.
+async function versionCheckNow() {
+  const b = $("#pref-checknow");
+  if (b) b.disabled = true;
+  const got = await versionCheck(true);
+  if (b) b.disabled = false;
+  if (!got || got.ok !== true || !got.reachable) {
+    toast(T("update.version_offline"), "bad");
+    return;
+  }
+  if (got.behind) {
+    toast(T("update.version_behind", {version: got.remote || "?"}), "bad");
+  } else if (got.same) {
+    toast(T("update.version_same", {version: got.remote || "?"}), "ok");
+  } else {
+    toast(T("update.version_ahead", {version: got.remote || "?"}), "ok");
   }
 }
 
@@ -13760,6 +13787,10 @@ for (const id of ["#pref-checkupdate", "#pref-warnunsaved", "#pref-art",
   const key = id.slice(6).replace(/-/g, "");
   n.onclick = () => prefSet(key, !PREFS[key]);
 }
+// The manual half of the row above: the switch says whether start-up asks, this
+// asks right now and ignores the six-hour cache (a button pressed by hand is a
+// request for the truth, not for whatever was written down this morning).
+if ($("#pref-checknow")) $("#pref-checknow").onclick = versionCheckNow;
 if ($("#pref-reset")) $("#pref-reset").onclick = () => {
   PREFS = Object.assign({}, PREFS_DEFAULT);
   prefsSave();
