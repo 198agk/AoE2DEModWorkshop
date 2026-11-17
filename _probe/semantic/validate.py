@@ -10,6 +10,9 @@ Ground truth used:
 import json
 import os
 import sys
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+import _gamepaths as GP  # noqa: E402
 import collections
 
 try:
@@ -68,7 +71,7 @@ print()
 print("=" * 72)
 print("VALIDATION 2: our names vs CivTechTrees independently authored names")
 print("=" * 72)
-CT = r"D:\Games\Steam\steamapps\common\AoE2DE\resources\_common\dat\CivTechTrees"
+CT = os.path.join(GP.DAT_DIR, "CivTechTrees")
 agree = disagree = unmatched = 0
 examples = []
 for fn in sorted(os.listdir(CT)):

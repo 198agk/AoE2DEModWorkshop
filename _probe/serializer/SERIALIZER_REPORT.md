@@ -8,18 +8,18 @@
 
 | File | Role |
 | --- | --- |
-| `D:\Software\DeepSeek Harness\工作区2\_probe\serializer\write_dat.py` | The re-serializer. Exact inverse of `parse_dat.py`. |
-| `D:\Software\DeepSeek Harness\工作区2\_probe\serializer\verify_roundtrip.py` | Two-loop proof (round-trip + idempotence) with counters. |
-| `D:\Software\DeepSeek Harness\工作区2\_probe\serializer\append_tech.py` | Append demo: adds a new Effect and a new Tech, then re-parses with the **unmodified** parser. |
-| `D:\Software\DeepSeek Harness\工作区2\_probe\serializer\_append_diff.py` | Proves the appended file's edit script against BASE is minimal (2 patches + 2 inserts, nothing else). |
-| `D:\Software\DeepSeek Harness\工作区2\_probe\serializer\_span_probe.py` | Parser-span vs writer-span differ; used to localize the one defect. |
-| `D:\Software\DeepSeek Harness\工作区2\_probe\serializer\_field_probe.py` | Positions a `Reader`/`Writer` at an absolute offset and diffs one struct's fields. |
-| `D:\Software\DeepSeek Harness\工作区2\_probe\serializer\_effect_probe.py` | EffectCommand type histogram + resource-command shapes from the real file. |
-| `D:\Software\DeepSeek Harness\工作区2\_probe\serializer\out\added_tech.dat` | The appended container (raw-deflate). |
-| `D:\Software\DeepSeek Harness\工作区2\_probe\serializer\out\added_tech.log` | Full append-demo transcript. |
-| `D:\Software\DeepSeek Harness\工作区2\_probe\serializer\out\verify_roundtrip.log` | Full verifier transcript. |
+| `_probe\serializer\write_dat.py` | The re-serializer. Exact inverse of `parse_dat.py`. |
+| `_probe\serializer\verify_roundtrip.py` | Two-loop proof (round-trip + idempotence) with counters. |
+| `_probe\serializer\append_tech.py` | Append demo: adds a new Effect and a new Tech, then re-parses with the **unmodified** parser. |
+| `_probe\serializer\_append_diff.py` | Proves the appended file's edit script against BASE is minimal (2 patches + 2 inserts, nothing else). |
+| `_probe\serializer\_span_probe.py` | Parser-span vs writer-span differ; used to localize the one defect. |
+| `_probe\serializer\_field_probe.py` | Positions a `Reader`/`Writer` at an absolute offset and diffs one struct's fields. |
+| `_probe\serializer\_effect_probe.py` | EffectCommand type histogram + resource-command shapes from the real file. |
+| `_probe\serializer\out\added_tech.dat` | The appended container (raw-deflate). |
+| `_probe\serializer\out\added_tech.log` | Full append-demo transcript. |
+| `_probe\serializer\out\verify_roundtrip.log` | Full verifier transcript. |
 
-Target: `D:\Games\Steam\steamapps\common\AoE2DE\resources\_common\dat\empires2_x2_p1.dat`
+Target: `<game root>/resources/_common/dat/empires2_x2_p1.dat`
 (12,023,754 B on disk, **93,268,152 B decompressed**, header `VER 8.9\0` → `GV_C32` = 54 = `GV_LatestDE2`).
 Container: **raw deflate, `window_bits = -15`**.
 

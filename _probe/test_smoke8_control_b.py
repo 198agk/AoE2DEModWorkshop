@@ -18,6 +18,7 @@ effect section:
     * effect 251 is byte-identical to the shipped one
 """
 import contextlib
+import _gamepaths as GP
 import io
 import os
 import sys
@@ -38,7 +39,7 @@ import aoe2mod.api as A                                    # noqa: E402
 import aoe2mod.dat.locate as L                             # noqa: E402
 import aoe2mod.dat.parser as P                             # noqa: E402
 
-GAME = r"D:\Games\Steam\steamapps\common\AoE2DE"
+GAME = GP.GAME
 ART = os.path.join(_ensure("out_smoke8", "build_smoke8.py"), "resources", "_common", "dat",
                    "empires2_x2_p1.dat")
 TECH = 263

@@ -44,6 +44,7 @@ HOW TO READ IT
   5. read the BUTTON GRID of the selected building, NOT the tech-tree preview
 """
 import contextlib
+import _gamepaths as GP
 import hashlib
 import io
 import json
@@ -66,7 +67,7 @@ from aoe2mod.game import locations as G                     # noqa: E402
 from aoe2mod.mod import emitter as E                        # noqa: E402
 import testmod_name as TN                                   # noqa: E402
 
-GAME = r"D:\Games\Steam\steamapps\common\AoE2DE"
+GAME = GP.GAME
 OUT = os.path.join(HERE, "out_dshtest_v15")
 VERSION = 15
 UNIT = 2550             # Champi Scout

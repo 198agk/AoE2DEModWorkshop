@@ -18,6 +18,7 @@ Prefer a tech whose effect currently has exactly one command, and whose own
 `research_locations` already look like the 'make avail' pattern.
 """
 import os
+import _gamepaths as GP
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -28,7 +29,7 @@ if ROOT not in sys.path:
 import aoe2mod.api as A                                    # noqa: E402
 from aoe2mod.game import civtechtrees as CT                # noqa: E402
 
-GAME = r"D:\Games\Steam\steamapps\common\AoE2DE"
+GAME = GP.GAME
 CIV = 1                       # British
 UNIT = 2550
 

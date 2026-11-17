@@ -16,6 +16,9 @@ import re
 import sys
 import collections
 
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+import _gamepaths as GP  # noqa: E402
+
 try:
     sys.stdout.reconfigure(encoding="utf-8")
 except Exception:
@@ -68,7 +71,7 @@ for t in unres:
 print("(Help==N+100000, Desc==N+100000, Tree==N+100000) -> count:", dict(both))
 
 # -- H2: search the RAW key-value files for the literal numeric id -------
-GAME = r"D:\Games\Steam\steamapps\common\AoE2DE\resources"
+GAME = os.path.join(GP.GAME, "resources")
 targets = {str(i) for i in collections.Counter(ids).most_common(5)[0:1]}
 for i in ids[:1]:
     targets.add(str(i))

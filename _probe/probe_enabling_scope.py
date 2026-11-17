@@ -35,9 +35,10 @@ the corpus must then answer is whether writing it can HURT somebody else: does a
 shipped unit point its EnablingResearch at a technology owned by a civilization
 that is not a builder of that unit?
 
-Run:  $env:PYTHONPATH=D:\Software\AI\帝国项目; python _probe\probe_enabling_scope.py
+Run:  python _probe\probe_enabling_scope.py   (from the repo root)
 """
 import contextlib
+import _gamepaths as GP
 import io
 import os
 import sys
@@ -52,7 +53,7 @@ import aoe2mod.dat.parser as P                             # noqa: E402
 from aoe2mod.game import civtechtrees as CT                # noqa: E402
 from aoe2mod.intent import datgrant as DG                  # noqa: E402
 
-GAME = r"D:\Games\Steam\steamapps\common\AoE2DE"
+GAME = GP.GAME
 V7 = os.path.join(HERE, "out_dshtest_v7", "resources", "_common", "dat",
                   "empires2_x2_p1.dat")
 fails = []

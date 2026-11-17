@@ -18,13 +18,13 @@ it.  "No session found" is exit 2 -- distinct from "invalid", because a missing 
 is not evidence about the mod.
 """
 import argparse
+import _gamepaths as GP
 import os
 import re
 import sys
 
-LOGS = r"C:\Users\26913\Games\Age of Empires 2 DE\logs"
-STATUS = (r"C:\Users\26913\Games\Age of Empires 2 DE"
-          r"\76561198406248391\mods\mod-status.json")
+LOGS = GP.LOGS
+STATUS = os.path.join(GP.MODS, "mod-status.json")
 
 # Phase markers, in bootstrap order.  A mod enabled before "Setup post mod manager"
 # is in the startup block; one enabled after "Opening resource packages" came too

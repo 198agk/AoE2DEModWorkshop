@@ -42,9 +42,10 @@ added folder is noticed at all.  Nor was the failure it "explained" ever one
 clean experiment -- the single tree-only attempt (2026-10-14) could not have
 moved the menu anyway, because the menu reads the shipped panel file.
 
-Run:  $env:PYTHONPATH='D:\\Software\\AI\\帝国项目'; python _probe\test_mod_name_resolution.py
+Run:  python _probe\test_mod_name_resolution.py
 """
 import json
+import _gamepaths as GP
 import os
 import shutil
 import sys
@@ -59,7 +60,7 @@ import aoe2mod.api as A                                    # noqa: E402
 from aoe2mod.game import locations as G                    # noqa: E402
 from aoe2mod.mod import emitter as E                       # noqa: E402
 
-GAME = r"D:\Games\Steam\steamapps\common\AoE2DE"
+GAME = GP.GAME
 fails = []
 
 

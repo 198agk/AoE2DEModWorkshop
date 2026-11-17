@@ -35,6 +35,7 @@ location, and the Britons can build a Barracks, so nothing else has to be true.
 File: one `.dat`.  No JSON at all.
 """
 import contextlib
+import _gamepaths as GP
 import hashlib
 import io
 import os
@@ -51,7 +52,7 @@ import aoe2mod.dat.parser as P                             # noqa: E402
 import aoe2mod.dat.writer as W                             # noqa: E402
 from aoe2mod.mod import emitter as E                       # noqa: E402
 
-GAME = r"D:\Games\Steam\steamapps\common\AoE2DE"
+GAME = GP.GAME
 OUT = os.path.join(HERE, "out_smoke7")
 TITLE = "aoe2mod Smoke7 Dat Grant"
 UNIT = 2550

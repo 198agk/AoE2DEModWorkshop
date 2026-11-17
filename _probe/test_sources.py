@@ -15,6 +15,7 @@ outside the four script folders -- a save route that writes wherever it is told
 is a file-write primitive.
 """
 import io
+import _gamepaths as GP
 import json
 import os
 import sys
@@ -127,7 +128,7 @@ def main():
         # of this test built the folders one level too high and got a correct
         # refusal for a path it had just created).
         root = os.path.join(tmp, "prof")
-        acct = os.path.join(root, "76561198406248391")
+        acct = os.path.join(root, GP.STEAMID)
         os.makedirs(os.path.join(acct, "mods"))
         for sub in ("ai", "xs"):
             os.makedirs(os.path.join(acct, "resources", "_common", sub))
@@ -187,7 +188,7 @@ def main():
     tmp = tempfile.mkdtemp(prefix="aoe2_local_")
     try:
         root = os.path.join(tmp, "prof")
-        acct = os.path.join(root, "76561198406248391")
+        acct = os.path.join(root, GP.STEAMID)
         os.makedirs(os.path.join(acct, "mods", "local"))
         os.makedirs(os.path.join(acct, "mods", "subscribed"))
         for sub in ("ai", "xs"):

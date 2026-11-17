@@ -1,3 +1,4 @@
+import _gamepaths as GP
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """Dump raw hex around the terrain records to find the correct record phase."""
@@ -6,7 +7,7 @@ import sys, os
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import parse_dat as P
 
-data, how = P.load_dat(r"D:\Games\Steam\steamapps\common\AoE2DE\resources\_common\dat\empires2_x2_p1.dat")
+data, how = P.load_dat(GP.DAT)
 print("size %d (%s)" % (len(data), how))
 
 def hexdump(off, n):

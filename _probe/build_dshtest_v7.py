@@ -38,6 +38,7 @@ tech 263 is left ALONE (it keeps effect 251), so CONTROL B is the shipped
 behaviour: Castle Age -> British Castle -> Longbowman still there.
 """
 import contextlib
+import _gamepaths as GP
 import io
 import json
 import os
@@ -61,7 +62,7 @@ from aoe2mod.dat import locate as L                        # noqa: E402
 from aoe2mod.game import civtechtrees as CT                # noqa: E402
 from aoe2mod.mod import emitter as E                       # noqa: E402
 
-GAME = r"D:\Games\Steam\steamapps\common\AoE2DE"
+GAME = GP.GAME
 OUT = os.path.join(HERE, "out_dshtest_v7")
 VERSION = 7
 UNIT = 2550

@@ -1,3 +1,4 @@
+import _gamepaths as GP
 """Emit a COMPLETE, installable data-mod directory from an intent.
 
 This is the last link in the chain and the one the user actually cares about:
@@ -28,7 +29,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import parse_dat as P
 
-BASE = r"D:\Games\Steam\steamapps\common\AoE2DE\resources\_common\dat\empires2_x2_p1.dat"
+BASE = GP.DAT
 OUT = os.path.join(HERE, "out_modtest")
 
 INTENT = {

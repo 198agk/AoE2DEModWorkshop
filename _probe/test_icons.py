@@ -18,6 +18,7 @@ It is a suite, not a probe: these are promises the UI makes to a player, and a
 broken icon is a picture of the wrong thing, not a missing feature.
 """
 from __future__ import print_function
+import _gamepaths as GP
 
 import codecs
 import contextlib
@@ -29,7 +30,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 sys.path.insert(0, ROOT)
 
-GAME = r"D:\Games\Steam\steamapps\common\AoE2DE"
+GAME = GP.GAME
 DAT = os.path.join(GAME, "resources", "_common", "dat", "empires2_x2_p1.dat")
 
 FAILED = []

@@ -1,4 +1,4 @@
-﻿# -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 r"""Where could a per-civilization DISABLE for the Incas hang without losing to
 the global enable?
 
@@ -25,6 +25,7 @@ Read-only.  `parser.read_tech` is monkey-patched here to keep `RequiredTechs`;
 `aoe2mod/dat/parser.py` is untouched.
 """
 import contextlib
+import _gamepaths as GP
 import io
 import os
 import sys
@@ -38,7 +39,7 @@ from aoe2mod.dat import parser as P                        # noqa: E402
 from aoe2mod.dat import locate as L                        # noqa: E402
 from aoe2mod.game import locations as G                    # noqa: E402
 
-GAME = r"D:\Games\Steam\steamapps\common\AoE2DE"
+GAME = GP.GAME
 CIV = "Incas"
 UNIT = 2550
 ENABLE_TECH = 1350

@@ -14,6 +14,7 @@ same folder).  A rule that quietly widened would still pass every positive check
 above and start breaking mods that used to be fine.
 """
 import os
+import _gamepaths as GP
 import shutil
 import sys
 import tempfile
@@ -27,7 +28,7 @@ import aoe2mod.api as A                                    # noqa: E402
 from aoe2mod.game import locations as G                    # noqa: E402
 from aoe2mod.mod import emitter as E                       # noqa: E402
 
-GAME = r"D:\Games\Steam\steamapps\common\AoE2DE"
+GAME = GP.GAME
 FAILS = []
 
 

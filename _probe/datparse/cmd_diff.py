@@ -1,10 +1,11 @@
+import _gamepaths as GP
 """Commands-only diff of the first 1500 effects: which commands did the mod actually change?"""
 import os, sys, collections, io, contextlib
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import parse_dat as P
 
-GAME = r"D:\Games\Steam\steamapps\common\AoE2DE\resources\_common\dat\empires2_x2_p1.dat"
-MODS = r"C:\Users\26913\Games\Age of Empires 2 DE\76561198406248391\mods\subscribed"
+GAME = GP.DAT
+MODS = GP.SUBSCRIBED
 M10 = [os.path.join(MODS, n) for n in os.listdir(MODS) if n.startswith("550749")][0]
 M10 = os.path.join(M10, "resources", "_common", "dat", "empires2_x2_p1.dat")
 

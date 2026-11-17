@@ -1,3 +1,4 @@
+import _gamepaths as GP
 # -*- coding: utf-8 -*-
 """How do real data mods implement their headline feature?
 
@@ -10,9 +11,9 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import parse_dat as P
 
-GAME = r"D:\Games\Steam\steamapps\common\AoE2DE\resources\_common\dat\empires2_x2_p1.dat"
-MOD10 = r"C:\Users\26913\Games\Age of Empires 2 DE\76561198406248391\mods\subscribed\550749_{2026}10倍资源文明联盟2倍科技 北欧dlc可用 v34test\resources\_common\dat\empires2_x2_p1.dat"
-MODJT = r"C:\Users\26913\Games\Age of Empires 2 DE\76561198406248391\mods\subscribed\423821_四月-juntuanzhangtianfumozu军团长天赋模组\resources\_common\dat\empires2_x2_p1.dat"
+GAME = GP.DAT
+MOD10 = os.path.join(GP.SUBSCRIBED, "550749_{2026}10倍资源文明联盟2倍科技 北欧dlc可用 v34test", "resources", "_common", "dat", "empires2_x2_p1.dat")
+MODJT = os.path.join(GP.SUBSCRIBED, "423821_四月-juntuanzhangtianfumozu军团长天赋模组", "resources", "_common", "dat", "empires2_x2_p1.dat")
 
 
 def parse(path):

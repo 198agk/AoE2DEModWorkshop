@@ -3,10 +3,9 @@
 
 Why this is a file and not a habit
 ----------------------------------
-The shipping bundle and the cargo build tree used to be written to
-`D:\\Software\\AI\\AoE2ModWorkshop` and `D:\\Software\\AI\\AGE2` -- outside the
-repository -- and twenty-odd probes each spelled those absolute paths out by
-hand.  Two things went wrong, both of them real:
+The shipping bundle and the cargo build tree used to be written to two sibling
+folders outside the repository, and twenty-odd probes each spelled those absolute
+paths out by hand.  Two things went wrong, both of them real:
 
   * the workspace was not self-contained: `git clean`, a fresh clone, or moving
     the folder left the products behind, and probes then failed for a reason

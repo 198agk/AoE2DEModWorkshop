@@ -33,13 +33,14 @@ replaced, and that the panel is not in the checked set.  It does NOT prove the
 game never validates the panel by some other means.
 """
 import os
+import _gamepaths as GP
 import struct
 import sys
 import zlib
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-GAME = os.environ.get("AOE2DE_GAME_ROOT") or r"D:\Games\Steam\steamapps\common\AoE2DE"
+GAME = os.environ.get("AOE2DE_GAME_ROOT") or GP.GAME
 EXE = os.path.join(GAME, "AoE2DE_s.exe")
 DATDIR = os.path.join(GAME, "resources", "_common", "dat")
 STR_ZH = os.path.join(GAME, "resources", "zh", "strings", "key-value",

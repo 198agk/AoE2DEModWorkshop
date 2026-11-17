@@ -29,9 +29,10 @@ The title still appeared because the LIST shows the folder name, not the Title f
 
 So the fix is in the emitter, and it applies to every mod this tool ships.
 
-Run:  $env:PYTHONPATH='D:\\Software\\AI\\帝国项目'; python _probe\test_info_json_shape.py
+Run:  python _probe\test_info_json_shape.py
 """
 import json
+import _gamepaths as GP
 import os
 import sys
 
@@ -40,7 +41,7 @@ ROOT = os.path.dirname(HERE)
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
-ACC = r"C:\Users\26913\Games\Age of Empires 2 DE\76561198406248391\mods"
+ACC = GP.MODS
 fails = []
 
 
@@ -95,7 +96,7 @@ print("        pass expects; pretty-printing loses Author and Description.")
 
 print()
 print("B  and the game's own fallbacks, from the exe")
-EXE = r"D:\Games\Steam\steamapps\common\AoE2DE\AoE2DE_s.exe"
+EXE = os.path.join(GP.GAME, "AoE2DE_s.exe")
 d = open(EXE, "rb").read()
 for lit in (b"Unpublished", b"No Description", b"Validating '%s'", b"info.json"):
     hit = d.find(lit)

@@ -17,6 +17,7 @@ keep this file passing.
 Run: python _probe/test_bundle_dat_half_e2e.py
 """
 import contextlib
+import _gamepaths as GP
 import io
 import json
 import os
@@ -34,7 +35,7 @@ from aoe2mod.dat import locate as L        # noqa: E402
 from aoe2mod.game import civtechtrees as CT  # noqa: E402
 from aoe2mod.game import buildpanel as BP  # noqa: E402
 
-GAME = r"D:\Games\Steam\steamapps\common\AoE2DE"
+GAME = GP.GAME
 UNIT = 2550
 fail = []
 

@@ -12,13 +12,13 @@ if root not in sys.path:
 os.environ.setdefault("PYTHONIOENCODING", "utf-8")
 
 from aoe2mod import api as A              # noqa: E402
+import _gamepaths as GP
 from aoe2mod.dat import parser as P       # noqa: E402
 from aoe2mod.dat import locate as L       # noqa: E402
 from aoe2mod.intent import compiler as C  # noqa: E402
 
-GAME = r"D:\Games\Steam\steamapps\common\AoE2DE"
-MODS = r"C:\Users\26913\Games\Age of Empires 2 Empire"  # intentionally wrong; fixed below
-MODS = r"C:\Users\26913\Games\Age of Empires 2 DE\76561198406248391\mods\subscribed"
+GAME = GP.GAME
+MODS = GP.SUBSCRIBED
 BASE_DAT = os.path.join(GAME, "resources", "_common", "dat", "empires2_x2_p1.dat")
 LEGACY = os.path.join(MODS, "297820_10 倍资源文明联盟3倍科技",
                       "resources", "_common", "dat", "empires2_x2_p1.dat")

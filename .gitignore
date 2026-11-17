@@ -316,6 +316,7 @@ _probe/_tmp_*
 # 下面把 _probe 整层忽略掉，再把仓库里真正要发布的那些逐个放回来。
 /_probe/*
 !/_probe/_paths.py
+!/_probe/_gamepaths.py
 !/_probe/build_dshtest_v15.py
 !/_probe/build_dshtest_v7.py
 !/_probe/build_shell_ascii.py

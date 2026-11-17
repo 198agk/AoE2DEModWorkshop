@@ -1,3 +1,4 @@
+import _gamepaths as GP
 """Authoritative per-field byte-offset map for unit records.
 
 parse_dat.py's read_type50() *discards* the Attack/Armor lists, so today the tool
@@ -18,7 +19,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import parse_dat as P
 
-BASE = r"D:\Games\Steam\steamapps\common\AoE2DE\resources\_common\dat\empires2_x2_p1.dat"
+BASE = GP.DAT
 
 SCHEMA = os.path.join(os.path.dirname(HERE), "schema")
 ARMOR = json.load(open(os.path.join(SCHEMA, "armor_classes.json"), encoding="utf-8"))

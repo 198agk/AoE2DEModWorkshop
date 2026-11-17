@@ -22,6 +22,7 @@ This pin asserts the boundary itself, the truncation arithmetic, and that the
 shipped mods respect it.
 """
 import json
+import _gamepaths as GP
 import os
 import sys
 
@@ -32,8 +33,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(HERE), "_probe"))
 from aoe2mod.mod import emitter as E          # noqa: E402
 import testmod_name as TN                     # noqa: E402
 
-MODS = (r"C:\Users\26913\Games\Age of Empires 2 DE"
-        r"\76561198406248391\mods")
+MODS = GP.MODS
 
 FAILS = []
 

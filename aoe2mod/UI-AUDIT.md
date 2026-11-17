@@ -1,6 +1,6 @@
 # 模组工坊 UI · 逐条问题清单
 
-审计对象：`D:\Software\AI\Aoe2\aoe2mod\ui\static\index.html`（2241 行）
+审计对象：`<repo>\aoe2mod\ui\static\index.html`（2241 行）
 审计时间：2026-10-26
 方式：只读静态审计 + 数值统计。未改任何文件，未运行程序。
 

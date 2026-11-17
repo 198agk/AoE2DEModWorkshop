@@ -189,9 +189,8 @@ def add_group(doc, techs, name_id=None, comment="", kind="MutuallyExclusive",
     All four shipped cycles (424010 / 424012 / 424013 / 424014) carry
     ``StartingTech`` and ``Instant`` and carry NO ``Local`` key; every
     MutuallyExclusive and Toggleable group in the same file carries ``Local``
-    first and neither of those two.  Measured 2026-11-11 by reading
-    ``D:/Games/Steam/steamapps/common/AoE2DE/resources/_common/dat/linkedTechs.json``
-    byte for byte.
+    first and neither of those two.  Measured 2026-11-11 by reading the
+    shipped ``resources/_common/dat/linkedTechs.json`` byte for byte.
 
     ``StartingTech`` defaults to the first member, which is what all four
     shipped cycles say.  ``Instant`` defaults to true for Cycle (a flip button

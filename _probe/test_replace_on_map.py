@@ -14,6 +14,7 @@ So section B reads the produced bytes back off disk and compares **every previou
 row key for key**, and section C asserts that `civs` is refused by name.
 """
 import io
+import _gamepaths as GP
 import json
 import os
 import shutil
@@ -29,7 +30,7 @@ if HERE not in sys.path:
 from aoe2mod import api as A
 from aoe2mod.game import objreplace as OR
 
-GAME = r"D:\Games\Steam\steamapps\common\AoE2DE"
+GAME = GP.GAME
 OUT = os.path.join(ROOT, "_probe", "_objrepl_out")
 
 CHECKS = []

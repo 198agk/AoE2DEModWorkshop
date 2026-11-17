@@ -619,7 +619,7 @@ AR.best_base()，它逐份 diff 同代同长的 build 再挑最接近的一份�
 ## 五、自己验证它还好不好
 
 ```powershell
-$py = 'C:\Users\26913\.dsh\dsh-runtimes\dsh-primary-runtime\dependencies\python\python.exe'
+$py = 'python'   # 3.10 以上都行；这里只是给个变量，方便换成你的解释器路径
 & $py -X utf8 -u '_probe\run_suites.py'   # 全部快套件
 & $py -X utf8 -u 'tools\describe.py' --check   # 自述文件与树是否一致
 ```

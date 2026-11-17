@@ -27,6 +27,7 @@ This probe measures the COMPOSITE rule and prints what is left over, so the
 residual can be reviewed as a list rather than assumed to be zero.
 """
 from __future__ import print_function
+import _gamepaths as GP
 
 import codecs
 import contextlib
@@ -41,7 +42,7 @@ ROOT = os.path.dirname(HERE)
 sys.path.insert(0, ROOT)
 sys.path.insert(0, os.path.join(HERE, "semantic"))
 
-GAME = r"D:\Games\Steam\steamapps\common\AoE2DE"
+GAME = GP.GAME
 DAT = os.path.join(GAME, "resources", "_common", "dat", "empires2_x2_p1.dat")
 WID = os.path.join(GAME, "widgetui")
 BUILDER = 118

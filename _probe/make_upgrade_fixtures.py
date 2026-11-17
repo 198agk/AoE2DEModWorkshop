@@ -70,6 +70,7 @@ USAGE
 Re-running overwrites the corpus.  Nothing outside the fixture root is written.
 """
 import contextlib
+import _gamepaths as GP
 import hashlib
 import io
 import json
@@ -88,7 +89,7 @@ import aoe2mod.dat.techfields as TF
 import aoe2mod.dat.unitfields as UF
 import aoe2mod.mod.emitter as EM
 
-GAME = r"D:\Games\Steam\steamapps\common\AoE2DE"
+GAME = GP.GAME
 SHIPPED = os.path.join(GAME, "resources", "_common", "dat", "empires2_x2_p1.dat")
 RAW_LEN = 93272287
 RAW_SHA = "82eb7d148f8c6ee53f4dfa93210c3ce7dfb63194b65692ae51bfc780d62980fe"

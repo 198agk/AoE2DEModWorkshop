@@ -1,3 +1,4 @@
+import _gamepaths as GP
 # -*- coding: utf-8 -*-
 r"""The unit -> sprite index exists inside the .dat.  Characterise it, then nail it.
 
@@ -36,7 +37,7 @@ def check(name, ok, detail=""):
     if not ok:
         fails.append(name)
 
-GAME = r"D:\Games\Steam\steamapps\common\AoE2DE"
+GAME = GP.GAME
 GP = os.path.join(GAME, "resources", "_common", "drs", "graphics")
 
 if not os.path.isdir(GP):

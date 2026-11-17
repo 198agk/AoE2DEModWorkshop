@@ -24,6 +24,7 @@ asserting the open question.  Section F prints that boundary so the nail cannot 
 for an answer.
 """
 import io
+import _gamepaths as GP
 import json
 import os
 import re
@@ -35,7 +36,7 @@ sys.path.insert(0, ROOT)
 
 from aoe2mod.dat import families as F  # noqa: E402
 
-GAME = r"D:\Games\Steam\steamapps\common\AoE2DE"
+GAME = GP.GAME
 EXE = os.path.join(GAME, "AoE2DE_s.exe")
 MODE = os.path.join(GAME, "modes", "Pompeii", "Pompeii.json")
 REL = os.path.join("resources", "_common", "dat", "objreplacement.json")

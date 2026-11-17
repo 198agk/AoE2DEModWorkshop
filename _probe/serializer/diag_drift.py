@@ -8,6 +8,7 @@ the first function that moves it is the one whose layout is wrong -- which is a
 measurement, not a guess about which edit broke things.
 """
 import collections
+import _gamepaths as GP
 import os
 import sys
 
@@ -19,7 +20,7 @@ sys.path.insert(0, os.path.join(PROBE, "datparse"))
 import parse_dat
 import write_dat
 
-BASE = (r"D:\Games\Steam\steamapps\common\AoE2DE\resources\_common\dat"
+BASE = (GP.DAT_DIR +
         r"\empires2_x2_p1.dat")
 
 

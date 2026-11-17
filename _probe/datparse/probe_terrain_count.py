@@ -5,13 +5,14 @@ and checking whether the bytes that follow look like a plausible RandomMaps
 header (uint32 count, int32 ptr) and then a plausible Effects int32 count."""
 
 import sys
+import _gamepaths as GP
 import os
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import parse_dat as P
 
 data, how = P.load_dat(sys.argv[1] if len(sys.argv) > 1 else
-                       r"D:\Games\Steam\steamapps\common\AoE2DE\resources\_common\dat\empires2_x2_p1.dat")
+                       GP.DAT)
 print("size %d  (%s)" % (len(data), how))
 
 r = P.Reader(data)

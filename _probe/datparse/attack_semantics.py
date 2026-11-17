@@ -1,3 +1,4 @@
+import _gamepaths as GP
 """Nail down attack/armor semantics against well-known AoE2 stats.
 
 parse_dat.read_type50() throws the Attack/Armor lists away, so this re-walks them
@@ -19,8 +20,8 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import parse_dat as P
 
-BASE = r"D:\Games\Steam\steamapps\common\AoE2DE\resources\_common\dat\empires2_x2_p1.dat"
-INI = r"D:\Games\Steam\steamapps\common\AoE2DE\Tools_Builds\AGE3NamesV0007.ini"
+BASE = GP.DAT
+INI = os.path.join(GP.GAME, "Tools_Builds", "AGE3NamesV0007.ini")
 
 # ---- authoritative class table straight from the game's own ini --------------
 def load_ini_section(path, section):

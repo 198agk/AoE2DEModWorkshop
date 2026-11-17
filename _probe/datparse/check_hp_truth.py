@@ -6,6 +6,7 @@ or the table is wrong -- so ask the authoritative shallow parser (parse_dat) and
 the game's own exposed value, and report which side the truth lands on.
 """
 import os
+import _gamepaths as GP
 import sys
 import contextlib
 import io
@@ -15,7 +16,7 @@ if HERE not in sys.path:
     sys.path.insert(0, HERE)
 import parse_dat as P
 
-BASE = r"D:\Games\Steam\steamapps\common\AoE2DE\resources\_common\dat\empires2_x2_p1.dat"
+BASE = GP.DAT
 
 # the exact table stat_offsets.py asserts
 EXPECT = {4: 30, 7: 30, 38: 100, 83: 25, 751: 35, 93: 40, 125: 120}

@@ -8,6 +8,7 @@ session were all joins -- stale exe, missing tables, loaders that could not see
 swapped for a copy.
 """
 import json
+import _gamepaths as GP
 import os
 import shutil
 import subprocess
@@ -18,7 +19,7 @@ import _paths as P
 
 OUT = P.BUNDLE
 EXE = os.path.join(OUT, "aoe2-mod-workshop.exe")
-SRC = r"C:\Users\26913\Games\Age of Empires 2 DE\76561198406248391"
+SRC = GP.ACCOUNT
 TMP = os.path.join(os.environ["TEMP"], "aoe2mod-e2e-shipped")
 PORT = 7807
 # An 8x8 red square as base64 PNG: a preview and a build need a decodable

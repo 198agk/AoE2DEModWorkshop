@@ -35,7 +35,24 @@ import aoe2mod.api as A                                          # noqa: E402
 from aoe2mod.game import civtechtrees as CT                      # noqa: E402
 from aoe2mod.intent import compiler as C                         # noqa: E402
 
-GAME = r"D:\Games\Steam\steamapps\common\AoE2DE"
+from aoe2mod.game import locations as LOC       # noqa: E402
+
+
+class _GamePaths(object):
+    """The two paths every end-to-end here needs.
+
+    Discovered, not written down: this file ships inside the package, so a
+    literal path would be wrong on every machine but the one it was typed on,
+    and a probe-only helper would not be here to import.
+    """
+    GAME = LOC.find_game_root()
+    DAT = LOC.dat_path(GAME)
+
+
+GP = _GamePaths()
+
+
+GAME = GP.GAME
 NODE = 41                                # Huskarl
 OWNER = "GOTHS"
 

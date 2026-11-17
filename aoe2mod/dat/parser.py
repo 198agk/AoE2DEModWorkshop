@@ -1181,6 +1181,26 @@ class Parser(object):
         return s
 
 
+def default_dat_path():
+    """Where the command-line entry points look when given no path.
+
+    Nothing here guesses.  The game folder moves between drives, machines
+    and Steam libraries, so a literal path is wrong for every reader but
+    one -- and publishing it also publishes somebody's directory layout.
+    Set ``AOE2MOD_DAT`` to the .dat itself, or ``AOE2MOD_GAME_ROOT`` to the
+    AoE2DE folder; the tool proper discovers both on its own (see
+    ``aoe2mod.game.locations``) and never comes through here.
+    """
+    exact = os.environ.get("AOE2MOD_DAT")
+    if exact:
+        return exact
+    root = os.environ.get("AOE2MOD_GAME_ROOT")
+    if root:
+        return os.path.join(root, "resources", "_common", "dat",
+                            "empires2_x2_p1.dat")
+    return ""
+
+
 def main():
     argv = sys.argv[1:]
     stop_after = None
@@ -1192,8 +1212,11 @@ def main():
             path = a
 
     if path is None:
-        path = (r"D:\Games\Steam\steamapps\common\AoE2DE\resources\_common\dat"
-                r"\empires2_x2_p1.dat")
+        path = default_dat_path()
+    if not path:
+        raise SystemExit(
+            "usage: parse_dat.py <path to empires2_x2_p1.dat> [--stop-after=N]\n"
+            "   or: set AOE2MOD_DAT, or AOE2MOD_GAME_ROOT to the AoE2DE folder")
 
     t0 = time.time()
     data, how = load_dat(path)

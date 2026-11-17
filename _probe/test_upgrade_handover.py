@@ -18,6 +18,7 @@ Runs on a throwaway profile built to mimic the real one; the live profile is
 only ever read.
 """
 import json
+import _gamepaths as GP
 import os
 import shutil
 import sys
@@ -29,8 +30,8 @@ from aoe2mod import api as A                       # noqa: E402
 from aoe2mod.game import locations as G            # noqa: E402
 from aoe2mod.mod import archives as AR             # noqa: E402
 
-REAL_PROFILE = r"C:\Users\26913\Games\Age of Empires 2 DE"
-ACC = "76561198406248391"
+REAL_PROFILE = GP.PROFILE
+ACC = GP.STEAMID
 FAILS = []
 
 

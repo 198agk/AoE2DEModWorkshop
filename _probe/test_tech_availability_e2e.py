@@ -9,6 +9,7 @@ other 61, so an implementation that drops `use_types` somewhere does not fail
 loudly -- it answers about the wrong entity.
 """
 import os
+import _gamepaths as GP
 import shutil
 import sys
 import tempfile
@@ -18,7 +19,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import aoe2mod.api as A
 from aoe2mod.game import civtechtrees as CT
 
-GAME = r"D:\Games\Steam\steamapps\common\AoE2DE"
+GAME = GP.GAME
 TU = CT.TECH_USE_TYPES
 FAILS = []
 

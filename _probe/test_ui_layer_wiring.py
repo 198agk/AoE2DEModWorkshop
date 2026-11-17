@@ -75,13 +75,14 @@ reversing makes the game run our code, because there is no code loader in it --
 which is the part of the player's question that has a hard answer.
 """
 import os
+import _gamepaths as GP
 import re
 import struct
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-GAME = os.environ.get("AOE2DE_GAME_ROOT") or r"D:\Games\Steam\steamapps\common\AoE2DE"
+GAME = os.environ.get("AOE2DE_GAME_ROOT") or GP.GAME
 EXE = os.path.join(GAME, "AoE2DE_s.exe")
 WPFG = os.path.join(GAME, "resources", "_common", "wpfg")
 

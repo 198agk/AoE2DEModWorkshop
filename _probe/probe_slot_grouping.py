@@ -17,6 +17,7 @@ Check (b) by reading `task_swap_group` for each of those units.  If the units in
 hypothesis is intact.
 """
 import json
+import _gamepaths as GP
 import os
 import sys
 
@@ -28,7 +29,7 @@ if ROOT not in sys.path:
 import aoe2mod.api as A                                    # noqa: E402
 from aoe2mod.game import civtechtrees as CT                # noqa: E402
 
-GAME = r"D:\Games\Steam\steamapps\common\AoE2DE"
+GAME = GP.GAME
 fails = []
 
 

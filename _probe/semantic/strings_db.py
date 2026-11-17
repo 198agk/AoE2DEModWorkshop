@@ -1,3 +1,4 @@
+import _gamepaths as GP
 # -*- coding: utf-8 -*-
 """Resolve AoE2DE string IDs from the key-value text files.
 
@@ -6,7 +7,7 @@ UTF-8 without BOM, '//' comments, blank lines allowed.
 """
 import os, re, sys, json
 
-G = r"D:\Games\Steam\steamapps\common\AoE2DE"
+G = GP.GAME
 
 # key-value files that together form the localisation database for a language.
 # order matters: later files OVERRIDE earlier ones (campaign/DLC packs add ids,

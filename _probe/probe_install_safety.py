@@ -36,6 +36,7 @@ NOT PROVEN
       log; the crashing session's log ends with a clean `Exiting with code 0`)
 """
 import json
+import _gamepaths as GP
 import os
 import sys
 
@@ -47,8 +48,8 @@ if ROOT not in sys.path:
 from aoe2mod.game import civtechtrees as CT  # noqa: E402
 from aoe2mod.game import locations as L  # noqa: E402
 
-GAME = r"D:\Games\Steam\steamapps\common\AoE2DE"
-MODS = r"C:\Users\26913\Games\Age of Empires 2 DE\76561198406248391\mods"
+GAME = GP.GAME
+MODS = GP.MODS
 FU_REL = os.path.join("resources", "_common", "dat", "futuravailableunits.json")
 TREE_REL = os.path.join("resources", "_common", "dat", "CivTechTrees",
                         "BRITONS.json")

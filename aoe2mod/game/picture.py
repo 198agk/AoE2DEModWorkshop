@@ -12,8 +12,8 @@ bigger for one feature).  The icon and repaint paths still called
     给不列颠新建一个单位叫图标学徒，图片用 D:\\图\\我的图.png
 
 reached the build and answered `这个版本装不了图片读取组件（Pillow），没法读你给的图片`
--- measured 2026-10-30 against `D:\\Software\\AI\\Aoe2\\_out\\AoE2ModWorkshop\\aoe2-mod-workshop.exe`,
-whose bundled `app/aoe2mod/` ships only `schema/` and `ui/`.  The repo had
+-- measured 2026-10-30 against a packaged build, whose bundled
+`app/aoe2mod/` ships only `schema/` and `ui/`.  The repo had
 Pillow, so every test was green and the shipped program could not draw an icon.
 
 What is supported here

@@ -11,6 +11,7 @@ file-specific special casing.
 Writes nothing except stdout.
 """
 import os
+import _gamepaths as GP
 import sys
 import time
 
@@ -19,8 +20,8 @@ sys.path.insert(0, HERE)
 
 import parse_dat  # noqa: E402
 
-GAME = r"D:\Games\Steam\steamapps\common\AoE2DE"
-PROF = r"C:\Users\26913\Games\Age of Empires 2 DE"
+GAME = GP.GAME
+PROF = GP.PROFILE
 
 TARGETS = []
 
@@ -35,7 +36,7 @@ add("BASE", os.path.join(GAME, r"resources\_common\dat\empires2_x2_p1.dat"))
 # --- first-party mode (Return of Rome / AoE1 data -- different version!) ---
 add("MODE_Pompeii", os.path.join(GAME, r"modes\Pompeii\resources\_common\dat\empires2_x2_p1.dat"))
 # --- third-party mod datasets in the user profile -------------------------
-SUB = os.path.join(PROF, r"76561198406248391\mods\subscribed")
+SUB = GP.SUBSCRIBED
 if os.path.isdir(SUB):
     for d in sorted(os.listdir(SUB)):
         cand = os.path.join(SUB, d, r"resources\_common\dat\empires2_x2_p1.dat")

@@ -1,3 +1,4 @@
+import _gamepaths as GP
 """How do real data mods implement themselves?
 
 Focus: the effect-command layer. This is where '10x resources' / '2x tech' live.
@@ -6,8 +7,8 @@ import os, sys, json, collections
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import parse_dat as P
 
-GAME = r"D:\Games\Steam\steamapps\common\AoE2DE\resources\_common\dat\empires2_x2_p1.dat"
-MODS = r"C:\Users\26913\Games\Age of Empires 2 DE\76561198406248391\mods\subscribed"
+GAME = GP.DAT
+MODS = GP.SUBSCRIBED
 
 def find(prefix):
     for n in os.listdir(MODS):

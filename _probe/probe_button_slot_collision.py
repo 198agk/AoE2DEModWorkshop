@@ -22,6 +22,7 @@ The distinction matters: two units in one slot are fine if they are the SAME lin
 one slot is the collision the hypothesis predicts is harmful.
 """
 import contextlib
+import _gamepaths as GP
 import io
 import os
 import sys
@@ -35,7 +36,7 @@ if ROOT not in sys.path:
 import aoe2mod.api as A                                    # noqa: E402
 from aoe2mod.game import civtechtrees as CT                # noqa: E402
 
-GAME = r"D:\Games\Steam\steamapps\common\AoE2DE"
+GAME = GP.GAME
 GRANT = ("ResearchedCompleted", "ResearchRequired")
 fails = []
 

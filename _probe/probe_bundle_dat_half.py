@@ -16,6 +16,7 @@ Two builds, same grant sentence:
                         change anything for the grant?
 """
 import json
+import _gamepaths as GP
 import os
 import shutil
 import struct
@@ -29,7 +30,7 @@ sys.path.insert(0, ROOT)
 import aoe2mod.api as A
 import aoe2mod.dat.parser as P
 
-GAME = r"D:\Games\Steam\steamapps\common\AoE2DE"
+GAME = GP.GAME
 OUT = os.path.join(HERE, "out_probe_bundle_dat_half")
 UNIT = 2550
 ANCHOR = 383

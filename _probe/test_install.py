@@ -9,6 +9,7 @@ The sandbox fixture is copied from the live status file, so the byte shape under
 test is the engine's shape, not one I invented.
 """
 import json
+import _gamepaths as GP
 import os
 import shutil
 import sys
@@ -18,8 +19,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."
 
 from aoe2mod.game import locations as G  # noqa: E402
 
-REAL_PROFILE = r"C:\Users\26913\Games\Age of Empires 2 DE"
-REAL_ACCOUNT = "76561198406248391"
+REAL_PROFILE = GP.PROFILE
+REAL_ACCOUNT = GP.STEAMID
 
 FAILS = []
 

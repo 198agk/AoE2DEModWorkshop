@@ -8,7 +8,7 @@
 
 | 项 | 值 |
 |---|---|
-| 游戏根 | `D:\Games\Steam\steamapps\common\AoE2DE` |
+| 游戏根 | `<game root>` |
 | 版本 | `101.103.54800.0`（Steam appid 813780，buildid 25464371） |
 | 主数据 | `resources\_common\dat\empires2_x2_p1.dat` |
 | 版本串 | `VER 8.9`（→ genieutils `GV_C32` = 54） |
@@ -143,7 +143,7 @@ resources\_common\dat\empires2_x2_p1.dat  11,982,182 B
   （本机 6 个已订阅 mod 全部如此；官方文档亦同。）
 - **写盘字符串必须显式 UTF-8**。本机多个中文 mod 的 `info.json` 是 GBK 写的，标题显示成 `閫忔槑涓婚鏁堟暣鍚堣嚜鐢` 这类 mojibake。
 
-目标位置：`C:\Users\26913\Games\Age of Empires 2 DE\<SteamID64>\mods\local\<文件夹名>`。
+目标位置：`<profile>\<SteamID64>\mods\local\<文件夹名>`。
 **脚本未写入任何游戏目录或用户档案目录。**
 
 ---

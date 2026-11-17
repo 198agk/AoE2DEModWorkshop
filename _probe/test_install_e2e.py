@@ -12,6 +12,7 @@ re-inflated and re-parsed with the UNMODIFIED parser, from the installed
 location, and must reach exact EOF.
 """
 import json
+import _gamepaths as GP
 import os
 import shutil
 import sys
@@ -24,8 +25,8 @@ import aoe2mod.api as A  # noqa: E402
 from aoe2mod.dat import parser as P  # noqa: E402
 from aoe2mod.game import locations as G  # noqa: E402
 
-REAL_PROFILE = r"C:\Users\26913\Games\Age of Empires 2 DE"
-REAL_ACCOUNT = "76561198406248391"
+REAL_PROFILE = GP.PROFILE
+REAL_ACCOUNT = GP.STEAMID
 FAILS = []
 
 

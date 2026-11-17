@@ -5,6 +5,7 @@ blocks while Gaia differs.  stat_offsets.py walks civ[0] == Gaia, so its
 hand-written expect-table must be compared against the right reference.
 """
 import os
+import _gamepaths as GP
 import sys
 import contextlib
 import io
@@ -14,7 +15,7 @@ if HERE not in sys.path:
     sys.path.insert(0, HERE)
 import parse_dat as P
 
-BASE = r"D:\Games\Steam\steamapps\common\AoE2DE\resources\_common\dat\empires2_x2_p1.dat"
+BASE = GP.DAT
 EXPECT = {4: 30, 7: 30, 38: 100, 83: 25, 751: 35, 93: 40, 125: 120}
 
 data, _ = P.load_dat(BASE)

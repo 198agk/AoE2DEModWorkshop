@@ -21,6 +21,7 @@ This module is the single place the scheme lives, so future experiments import i
 rather than inventing a new name each time.
 """
 import os
+import _gamepaths as GP
 import re
 import sys
 
@@ -160,6 +161,5 @@ if __name__ == "__main__":
     print("  长名截断:", name_for(6, "村民血量1000 + 不列颠可造蔷琵侦察兵",
                                   "黑暗时代·去掉EnablingResearch"))
     print("  上限:", TITLE_MAX_BYTES, "UTF-8 字节 =", TITLE_MAX_BYTES // 3, "个汉字")
-    local = (r"C:\Users\26913\Games\Age of Empires 2 DE"
-             r"\76561198406248391\mods\local")
+    local = GP.LOCAL
     print("  已装的 dsh test 模组:", existing_versions(local) or "无")

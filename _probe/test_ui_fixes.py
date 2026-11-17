@@ -17,9 +17,8 @@ import urllib.request
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 # ONE level up: this file lives in `_probe/`, so `..` is the repo root.
-# A first version had `..`, `..` and wrote its screenshot to
-# `D:\Software\AI\_shots\` -- outside the workspace, which is the rule the
-# user set twice (m24374 / m24607: 东西别放外面).
+# A first version had one `..` too few and wrote its screenshot outside the
+# workspace, which is the rule the user set twice (东西别放外面).
 REPO = os.path.abspath(os.path.join(HERE, ".."))
 sys.path.insert(0, REPO)
 

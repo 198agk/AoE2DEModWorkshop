@@ -20,6 +20,7 @@ The last section is the one that makes this a repair tool rather than a diff
 viewer: rebuild, then read the rebuilt stream back and compare the values.
 """
 import io
+import _gamepaths as GP
 import os
 import sys
 
@@ -29,7 +30,7 @@ sys.path.insert(0, ROOT)
 
 import aoe2mod.repair as R
 
-GAME = r"D:\Games\Steam\steamapps\common\AoE2DE"
+GAME = GP.GAME
 
 
 def row(uid, field, to, frm=2400, kind="unit"):

@@ -118,12 +118,10 @@ def find_game_root(explicit=None, search=()):
       3. A blind sweep of the usual Steam layouts, last resort only.
 
     Steps 1-2 are genuine discovery; step 3 CANNOT be complete, and this
-    machine proves it: the game lives at
-    ``D:\\Games\\Steam\\steamapps\\common\\AoE2DE``, which has an extra
-    ``Games`` component that no fixed list of drive-relative layouts would
-    guess.  Measured here: with steps 1-2 disabled the sweep raises
-    FileNotFoundError even though the game is installed.  That is why the
-    registry and the manifest are consulted first.
+    machine proves it: the game sits one ``Games`` folder deeper than any
+    drive-relative layout a fixed list would guess.  Measured here: with steps
+    1-2 disabled the sweep raises FileNotFoundError even though the game is
+    installed.  That is why the registry and the manifest are consulted first.
     """
     tried = []
     for cand in (explicit,) + tuple(search):
@@ -231,7 +229,7 @@ def steam_libraries():
     error -- it just means fewer candidates.
 
     Dedup is case-insensitive on purpose: the registry reports this machine's
-    root as ``d:/games/steam`` while the vdf says ``D:\\Games\\Steam``, and
+    root in lower case while the vdf keeps the on-disk capitalisation, and
     without normcase both survive and we probe the same tree twice.
     """
     roots = []

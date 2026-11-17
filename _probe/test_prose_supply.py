@@ -17,6 +17,7 @@ not there", and an honest gap is easy to lose:
 Both failures are visible here as a change in these counts, which is the point.
 """
 import codecs
+import _gamepaths as GP
 import contextlib
 import io
 import json
@@ -28,7 +29,7 @@ ROOT = os.path.dirname(HERE)
 sys.path.insert(0, ROOT)
 sys.path.insert(0, os.path.join(HERE, "semantic"))
 
-GAME = r"D:\Games\Steam\steamapps\common\AoE2DE"
+GAME = GP.GAME
 DAT = os.path.join(GAME, "resources", "_common", "dat", "empires2_x2_p1.dat")
 
 FAILED = []

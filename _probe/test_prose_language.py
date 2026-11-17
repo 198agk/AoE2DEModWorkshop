@@ -35,6 +35,7 @@ build, "印加" from the preview), which no character-range check can notice --
 it takes running both and comparing.  See `BUILD_CASES`.
 """
 import os
+import _gamepaths as GP
 import re
 import shutil
 import sys
@@ -47,7 +48,7 @@ if ROOT not in sys.path:
 
 import aoe2mod.api as A                                         # noqa: E402
 
-GAME = r"D:\Games\Steam\steamapps\common\AoE2DE"
+GAME = GP.GAME
 FAIL = []
 
 CJK = re.compile(r"[\u4e00-\u9fff]")

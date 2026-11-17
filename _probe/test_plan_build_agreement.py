@@ -21,6 +21,7 @@ the second.  The unit branch had always used `collect_targets`; the tech branch
 was the one that diverged.
 """
 import os
+import _gamepaths as GP
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -32,7 +33,7 @@ import tempfile                                                # noqa: E402
 
 import aoe2mod.api as A                                        # noqa: E402
 
-GAME = r"D:\Games\Steam\steamapps\common\AoE2DE"
+GAME = GP.GAME
 FAIL = []
 
 

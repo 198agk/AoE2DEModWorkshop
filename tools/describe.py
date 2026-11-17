@@ -99,8 +99,10 @@ def build():
             "verify_quick": "python _probe/run_suites.py",
             "verify_long": "python _probe/run_long.py",
             "suites": {"python": _suite_count(), "node": 1},
-            "python": ("C:\\Users\\26913\\.dsh\\dsh-runtimes\\dsh-primary-runtime"
-                       "\\dependencies\\python\\python.exe"),
+            # A bare command, not this machine's interpreter path: the file is
+            # published, and that path said more about the machine than about the
+            # project.  Any Python 3.12+ on PATH runs the two commands above.
+            "python": "python",
         },
         "intents": intents,
         "intents_by_sentence": sorted(i["id"] for i in intents if i["by_sentence"]),

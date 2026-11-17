@@ -3,6 +3,7 @@ import io, os, sys, json, tempfile, shutil
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from aoe2mod.game import aifiles as AF
+import _gamepaths as GP
 
 FAILS = []
 def check(ok, what, detail=""):
@@ -18,7 +19,7 @@ def main():
     tmp = tempfile.mkdtemp(prefix="aoe2_ow_")
     try:
         root = os.path.join(tmp, "prof")
-        acct = os.path.join(root, "76561198406248391")
+        acct = os.path.join(root, GP.STEAMID)
         os.makedirs(os.path.join(acct, "mods", "local"))
         game = os.path.join(tmp, "game")
         for sub in ("ai", "xs"):

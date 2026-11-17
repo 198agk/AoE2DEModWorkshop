@@ -9,6 +9,7 @@ Runs against a temp copy of the profile and a temp state dir, so nothing of the
 player's is touched.
 """
 import json
+import _gamepaths as GP
 import os
 import shutil
 import subprocess
@@ -20,7 +21,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 sys.path.insert(0, ROOT)
 
-SRC = r"C:\Users\26913\Games\Age of Empires 2 DE\76561198406248391"
+SRC = GP.ACCOUNT
 TMP = os.path.join(os.environ["TEMP"], "aoe2mod-rebuild-test")
 STATE = os.path.join(TMP, "_state")
 PORT = 7892

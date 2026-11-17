@@ -122,9 +122,10 @@ effect.  **v17 filled the revoke hole**: `type 2, b=0` does gate the menu, and t
 ordering rule is part of the result -- the same disable hung on a 0:00 carrier
 LOST to the global enable, and on a Castle-Age carrier it WON.
 
-Run:  $env:PYTHONPATH='D:\\Software\\AI\\帝国项目'; python _probe\test_time_gate_and_tooltip.py
+Run:  python _probe\test_time_gate_and_tooltip.py
 """
 import os
+import _gamepaths as GP
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -135,7 +136,7 @@ if ROOT not in sys.path:
 from aoe2mod.game import buildpanel as BP                  # noqa: E402
 from aoe2mod.game import civtechtrees as CT                # noqa: E402
 
-GAME = r"D:\Games\Steam\steamapps\common\AoE2DE"
+GAME = GP.GAME
 fails = []
 
 

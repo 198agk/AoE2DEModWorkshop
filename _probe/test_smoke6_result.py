@@ -51,9 +51,10 @@ This pin records the measurement so a later round does not re-derive it, and mar
 the honest boundary: **the availability write has now been tested in game and did
 not take effect on the menu.**
 
-Run:  $env:PYTHONPATH='D:\\Software\\AI\\帝国项目'; python _probe\test_smoke6_result.py
+Run:  python _probe\test_smoke6_result.py
 """
 import json
+import _gamepaths as GP
 import os
 import sys
 
@@ -73,7 +74,7 @@ import aoe2mod.api as A                                    # noqa: E402
 from aoe2mod.game import buildpanel as BP                  # noqa: E402
 from aoe2mod.game import civtechtrees as CT                # noqa: E402
 
-GAME = r"D:\Games\Steam\steamapps\common\AoE2DE"
+GAME = GP.GAME
 SMOKE6 = _ensure("out_smoke6", "build_smoke6.py")
 UNIT, TECH, BLDG = 2550, 1350, 12
 
@@ -86,8 +87,7 @@ def _find_installed(pattern):
     artifact under test moved on.  Deriving the path keeps the measurement about the
     JSON write, which is what the file is for.
     """
-    root = (r"C:\Users\26913\Games\Age of Empires 2 DE"
-            r"\76561198406248391\mods\local")
+    root = GP.LOCAL
     if not os.path.isdir(root):
         return None
     for d in sorted(os.listdir(root)):
@@ -136,8 +136,7 @@ else:
     # So the replacement is REPORTED, never asserted.  What this pin is for is
     # the CONTENT of the JSON-layer write, checked against the BUILT artifact
     # below, which does not care what is installed today.
-    _root = (r"C:\Users\26913\Games\Age of Empires 2 DE"
-             r"\76561198406248391\mods\local")
+    _root = GP.LOCAL
     _later = []
     if os.path.isdir(_root):
         for d in sorted(os.listdir(_root)):

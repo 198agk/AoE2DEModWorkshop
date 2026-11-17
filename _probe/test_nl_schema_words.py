@@ -29,6 +29,7 @@ directions, which is why both halves are in one file:
 Run: python -X utf8 _probe/test_nl_schema_words.py
 """
 import json
+import _gamepaths as GP
 import os
 import shutil
 import sys
@@ -43,7 +44,7 @@ from aoe2mod.intent import compiler as C          # noqa: E402
 from aoe2mod.semantic import index as SI          # noqa: E402
 from aoe2mod.ui import nl                         # noqa: E402
 
-GAME = r"D:\Games\Steam\steamapps\common\AoE2DE"
+GAME = GP.GAME
 
 #: sentence -> (intent, stat or None, key, amount) measured BEFORE the words were
 #: derived from the schema.  Any drift is a re-route, i.e. a wrong answer.

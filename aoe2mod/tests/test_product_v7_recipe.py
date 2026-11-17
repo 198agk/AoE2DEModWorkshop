@@ -34,8 +34,7 @@ What is asserted, in order of how badly a failure would matter:
      alone, and a global per-unit field that a per-civ write would corrupt
   G  the Longbowman's technology is untouched (the second in-game control)
 
-Run:  $env:PYTHONPATH=D:\Software\AI\Aoe2
-      python aoe2mod\tests\test_product_v7_recipe.py
+Run:  python aoe2mod\tests\test_product_v7_recipe.py   (from the repo root)
 """
 import contextlib
 import io
@@ -54,7 +53,24 @@ import aoe2mod.dat.parser as P                              # noqa: E402
 import aoe2mod.intent.datgrant as DG                        # noqa: E402
 from aoe2mod.game import civtechtrees as CT                 # noqa: E402
 
-GAME = r"D:\Games\Steam\steamapps\common\AoE2DE"
+from aoe2mod.game import locations as LOC       # noqa: E402
+
+
+class _GamePaths(object):
+    """The two paths every end-to-end here needs.
+
+    Discovered, not written down: this file ships inside the package, so a
+    literal path would be wrong on every machine but the one it was typed on,
+    and a probe-only helper would not be here to import.
+    """
+    GAME = LOC.find_game_root()
+    DAT = LOC.dat_path(GAME)
+
+
+GP = _GamePaths()
+
+
+GAME = GP.GAME
 UNIT = 2550
 CIV = "British"
 TREE_KEY = "BRITONS"

@@ -52,6 +52,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 # that happens to be there.
 sys.path.insert(0, HERE)
 from ensure_artifact import ensure as _ensure  # noqa: E402
+import _gamepaths as GP
 _ensure("out_dshtest_v9", "build_dshtest_v9.py", required=None)
 ROOT = os.path.dirname(HERE)
 sys.path.insert(0, ROOT); sys.path.insert(0, HERE)
@@ -61,7 +62,7 @@ from aoe2mod.dat import parser as P
 from aoe2mod.game import buildpanel as BP
 from aoe2mod.game import civtechtrees as CT
 
-GAME = r"D:\Games\Steam\steamapps\common\AoE2DE"
+GAME = GP.GAME
 OUT = _ensure("out_dshtest_v9", "build_dshtest_v9.py")
 # The SUBJECT of this pin is the artifact the build produced, not the copy that
 # happens to be installed.  Reading the installed folder made this test fail the

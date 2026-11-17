@@ -1,3 +1,4 @@
+import _gamepaths as GP
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """Focused diagnostics on the three suspicious semantic flags:
@@ -10,7 +11,7 @@ import sys, os, collections
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import parse_dat as P
 
-data, how = P.load_dat(r"D:\Games\Steam\steamapps\common\AoE2DE\resources\_common\dat\empires2_x2_p1.dat")
+data, how = P.load_dat(GP.DAT)
 p = P.Parser(data)
 s = p.parse()
 print()

@@ -8,6 +8,7 @@ exists in any single file:
   * 297820 (VER 7.8) -> legacy scalar
 """
 import contextlib
+import _gamepaths as GP
 import io
 import os
 import struct
@@ -18,8 +19,8 @@ from aoe2mod.dat import parser as P
 from aoe2mod.dat import locate as L
 from aoe2mod.intent import compiler as C
 
-GAME = r"D:\Games\Steam\steamapps\common\AoE2DE"
-SUB = r"C:\Users\26913\Games\Age of Empires 2 DE\76561198406248391\mods\subscribed"
+GAME = GP.GAME
+SUB = GP.SUBSCRIBED
 BASE = os.path.join(GAME, "resources", "_common", "dat", "empires2_x2_p1.dat")
 LEGACY = os.path.join(SUB, "297820_10 倍资源文明联盟3倍科技",
                       "resources", "_common", "dat", "empires2_x2_p1.dat")

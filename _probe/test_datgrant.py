@@ -32,6 +32,7 @@ global per unit id -- so pointing it at one civilization's private technology wo
 claim all 63 are enabled by it.  See `_probe/probe_enabling_scope.py`.
 """
 import contextlib
+import _gamepaths as GP
 import io
 import os
 import sys
@@ -47,7 +48,7 @@ import aoe2mod.dat.parser as P                             # noqa: E402
 from aoe2mod.game import civtechtrees as CT                # noqa: E402
 from aoe2mod.intent import datgrant as DG                  # noqa: E402
 
-GAME = r"D:\Games\Steam\steamapps\common\AoE2DE"
+GAME = GP.GAME
 V5 = os.path.join(HERE, "out_dshtest_v5", "resources", "_common", "dat",
                   "empires2_x2_p1.dat")
 UNIT, BLDG, CIV_INDEX = 2550, 12, 1

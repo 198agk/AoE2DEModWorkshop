@@ -1,8 +1,13 @@
 # -*- coding: utf-8 -*-
 """Restore the game's own dataset files from the vanilla backup in _cache/vanilla_dat."""
 import os, sys, shutil, hashlib, json
-GD = r'D:/Games/Steam/steamapps/common/AoE2DE/resources/_common/dat'
-BAK = r'D:/Software/AI/Aoe2/_cache/vanilla_dat'
+
+import _gamepaths as GP
+
+# Where the game is, and where this repo keeps its copy of the untouched files,
+# are both discovered: neither is the same on any two machines.
+GD = GP.DAT_DIR
+BAK = os.path.join(GP.REPO, "_cache", "vanilla_dat")
 names = ['empires2_x2_p1.dat','futuravailableunits.json','paphosfutureavailableunits.json']
 def sha(p):
     h = hashlib.sha256()

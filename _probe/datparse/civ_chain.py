@@ -1,10 +1,11 @@
+import _gamepaths as GP
 """Trace the civ -> TechTreeID / TeamBonusID -> tech -> effect chain, and survey
 'repurposable' slots (techs whose names are empty / that nothing references)."""
 import os, sys, io, contextlib, collections
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import parse_dat as P
 
-BASE = r"D:\Games\Steam\steamapps\common\AoE2DE\resources\_common\dat\empires2_x2_p1.dat"
+BASE = GP.DAT
 data, _ = P.load_dat(BASE)
 p = P.Parser(data)
 with contextlib.redirect_stdout(io.StringIO()):

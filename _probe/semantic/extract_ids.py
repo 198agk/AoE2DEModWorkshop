@@ -33,6 +33,7 @@ Offsets are derived from the verified read order in parse_dat.py:
     +51  i32  LanguageDLLTechTree      <-- captured
 """
 import os
+import _gamepaths as GP
 import struct
 import sys
 import json
@@ -44,7 +45,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
 
 import parse_dat  # noqa: E402
 
-DAT = (r"D:\Games\Steam\steamapps\common\AoE2DE\resources\_common\dat"
+DAT = (GP.DAT_DIR +
        r"\empires2_x2_p1.dat")
 
 _orig_read_unit = parse_dat.read_unit

@@ -12,6 +12,7 @@ Three things are measured rather than assumed:
   * an exhausted building is REPORTED, not guessed at.
 """
 import os
+import _gamepaths as GP
 import sys
 from collections import Counter, defaultdict
 
@@ -24,7 +25,7 @@ import aoe2mod.api as A                                    # noqa: E402
 from aoe2mod.game import buttons as B                      # noqa: E402
 from aoe2mod.game import civtechtrees as CT                # noqa: E402
 
-GAME = r"D:\Games\Steam\steamapps\common\AoE2DE"
+GAME = GP.GAME
 GRANT = ("ResearchedCompleted", "ResearchRequired")
 fails = []
 

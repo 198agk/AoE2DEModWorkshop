@@ -15,7 +15,10 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 from . import parser as P
 
-BASE = r"D:\Games\Steam\steamapps\common\AoE2DE\resources\_common\dat\empires2_x2_p1.dat"
+# Empty unless AOE2MOD_DAT says otherwise; `main()` falls back to the
+# parser's resolver.  A literal path would publish the author's layout and
+# break on any other Steam library.
+BASE = os.environ.get("AOE2MOD_DAT") or ""
 OUT = os.path.join(HERE, "out_intent")
 SEM = os.path.join(os.path.dirname(HERE), "semantic", "unit_names.json")
 
@@ -98,11 +101,6 @@ def walk_unit(r, ci):
     # here, while two genuinely different units carry different ids.  The
     # age-family rule needs it to tell "another age of this building" apart from
     # "a different building that happens to share a name".
-    # WHERE that id sits, so a rename can point it at a new string without
-    # walking the record again.  The id itself is read-only in the field editor
-    # (writing it alone renames nothing -- the text lives in a string table),
-    # but the rename command has to move it as part of a whole gesture.
-    u["_off_dll_name"] = r.at("dll_name")
     u["_dll_name"] = r.i32()                  # LanguageDLLName
     r.i32()                                   # Creation
     u["_dll_names"] = {u["_dll_name"]}         # set form, for the family rule
@@ -315,11 +313,6 @@ def walk_unit(r, ci):
 
 def walk_civ(r, ci):
     c = {"index": ci}
-    # Where this civilisation's own record starts and ends.  Same reason as the
-    # per-unit spans below: after a record is added, the ONE civ that changed
-    # has to be re-walked, and to re-walk it you must know where it begins --
-    # every other civ's start is its predecessor's end.
-    c["_start"] = r.o
     c["player_type"] = r.u8()
     c["name"] = r.debug_string()[1]
     n = r.i16()
@@ -333,20 +326,8 @@ def walk_civ(r, ci):
     units = []
     for i in range(m):
         if ptrs[i] != 0:
-            # Record the byte range each record occupies.  This is not cosmetic:
-            # the field editor needs `(start, end)` for every unit, and it used
-            # to get them from `unitfields.scan()`, a second full walk of the
-            # same bytes that measured 10.43 s against this walk's 4.26 s.
-            # Measured 2026-11-06: the two agree on all 136,861 records with
-            # zero mismatches, so the spans are taken from the walk that already
-            # happens instead of paying for another one.
-            s = r.o
-            u = walk_unit(r, ci)
-            u["_start"] = s
-            u["_end"] = r.o
-            units.append(u)
+            units.append(walk_unit(r, ci))
     c["units"] = units
-    c["_end"] = r.o
     return c
 
 
@@ -402,14 +383,10 @@ def walk_tech(r):
     # a checkable statement instead of a hope.
     if r.gv >= P.GV_MATT:
         if P.GV_C18 <= r.gv <= P.GV_LatestDE2:
-            t["_off_lang_name"] = r.at("lang_name")
             t["lang_name"] = r.i32()          # LanguageDLLName
-            t["_off_lang_description"] = r.at("lang_description")
             t["lang_description"] = r.i32()   # LanguageDLLDescription
         else:
-            t["_off_lang_name"] = r.at("lang_name")
             t["lang_name"] = r.i16()
-            t["_off_lang_description"] = r.at("lang_description")
             t["lang_description"] = r.i16()
     # Research time has TWO storage shapes and the binding must tolerate both:
     #   * gv <  GV_C31 -- one scalar in the record (the legacy shape)
@@ -481,24 +458,11 @@ def find_techs(techs, tech_id):
     return []
 
 
-def diff_regions(a, b, chunk=1 << 16, on_progress=None):
-    """Contiguous byte ranges that differ, found chunk-wise for speed.
-
-    ``on_progress(fraction)`` is called once per 64 KB chunk: this is a
-    straight walk of two 96 MB streams (measured 5.4 s on a real mod), so it
-    is the one stage here that has an honest, evenly spaced way to report
-    itself.  Exceptions from the callback are ignored -- the diff is the
-    product, the number is a courtesy.
-    """
+def diff_regions(a, b, chunk=1 << 16):
+    """Contiguous byte ranges that differ, found chunk-wise for speed."""
     n = min(len(a), len(b))
     out = []
-    _steps = max(1, (n + chunk - 1) // chunk)
-    for _c, base in enumerate(range(0, n, chunk)):
-        if on_progress is not None:
-            try:
-                on_progress(min(1.0, (_c + 1.0) / _steps))
-            except Exception:                # noqa: BLE001
-                pass
+    for base in range(0, n, chunk):
         end = min(base + chunk, n)
         if a[base:end] == b[base:end]:
             continue

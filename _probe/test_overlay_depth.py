@@ -44,6 +44,7 @@ ANSWERED SINCE (2026-10-19): recursion was never the question.  The DAT overlay
                   (v7 grant / v17 revoke).
 """
 import io
+import _gamepaths as GP
 import json
 import os
 import sys
@@ -55,9 +56,9 @@ if ROOT not in sys.path:
 
 import aoe2mod.api as A                                        # noqa: E402
 
-GAME = r"D:\Games\Steam\steamapps\common\AoE2DE"
-PROFILE = r"C:\Users\26913\Games\Age of Empires 2 DE"
-MODS = os.path.join(PROFILE, "76561198406248391", "mods")
+GAME = GP.GAME
+PROFILE = GP.PROFILE
+MODS = os.path.join(PROFILE, GP.STEAMID, "mods")
 
 FAILURES = []
 

@@ -1,3 +1,4 @@
+import _gamepaths as GP
 """End-to-end validation: do our decoded dat fields equal what the game's own UI
 rendered on screen in the user's screenshots?
 
@@ -14,8 +15,8 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import parse_dat as P
 
-BASE = r"D:\Games\Steam\steamapps\common\AoE2DE\resources\_common\dat\empires2_x2_p1.dat"
-INI = r"D:\Games\Steam\steamapps\common\AoE2DE\Tools_Builds\AGE3NamesV0007.ini"
+BASE = GP.DAT
+INI = os.path.join(GP.GAME, "Tools_Builds", "AGE3NamesV0007.ini")
 
 
 def load_ini(path, section):

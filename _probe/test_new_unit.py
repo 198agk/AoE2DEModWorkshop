@@ -33,6 +33,7 @@ scripts that call the same `newunit.clone_image`).  v35 -- the same intent throu
 has no in-game reading.  That is the narrow claim the manifest now makes.
 """
 import copy
+import _gamepaths as GP
 import io
 import json
 import os
@@ -49,7 +50,7 @@ from aoe2mod.dat import newunit as NU
 from aoe2mod.dat import parser as P
 from aoe2mod.mod import strings as S
 
-GAME = r"D:\Games\Steam\steamapps\common\AoE2DE"
+GAME = GP.GAME
 
 FAILS = []
 

@@ -21,11 +21,12 @@ This script re-asserts each link from disk so the conclusion is not
 resting on prose.  Read-only.
 """
 import os
+import _gamepaths as GP
 import json
 import hashlib
 
-GAME = r"D:\Games\Steam\steamapps\common\AoE2DE"
-MOD = (r"C:\Users\26913\Games\Age of Empires 2 DE\76561198406248391\mods"
+GAME = GP.GAME
+MOD = (GP.MODS +
        r"\subscribed\182654_Age of Anime (Chibi Edition)")
 WJ = os.path.join(GAME, "widgetui")
 

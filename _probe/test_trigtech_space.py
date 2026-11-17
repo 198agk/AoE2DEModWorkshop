@@ -40,9 +40,10 @@ whenever it lists a unit that is the target of an upgrade research, it lists tha
 research too (422+255->548, 280+257->550).  And for SICILIANS it lists neither 320
 nor 588, which is why it is silent in BOTH channels.
 
-Run:  $env:PYTHONPATH='D:\\Software\\AI\\帝国项目'; python _probe\test_trigtech_space.py
+Run:  python _probe\test_trigtech_space.py
 """
 import os
+import _gamepaths as GP
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -54,7 +55,7 @@ import aoe2mod.api as A                                    # noqa: E402
 from aoe2mod.game import buildpanel as BP                  # noqa: E402
 from aoe2mod.game import civtechtrees as CT                # noqa: E402
 
-GAME = r"D:\Games\Steam\steamapps\common\AoE2DE"
+GAME = GP.GAME
 fails = []
 
 

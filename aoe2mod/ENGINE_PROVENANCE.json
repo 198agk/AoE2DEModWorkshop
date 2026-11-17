@@ -2,18 +2,18 @@
   "sources": {
     "parser": {
       "path": "_probe/datparse/parse_dat.py",
-      "sha256": "7926e0d0dedae23d212da7447680ad739ccf5c276bef6ec0f3a9e8aca863ca6e",
-      "bytes": 50135
+      "sha256": "2e3286c0cd00810406bf4e6b0feed2cd08e413d613bec0da2d0b8fd87858b576",
+      "bytes": 51842
     },
     "writer": {
       "path": "_probe/serializer/write_dat.py",
-      "sha256": "08dae09b1d4e55c9a17a908f5a8d51559434adf4af9e601baa7fb060f3a05b4b",
-      "bytes": 47141
+      "sha256": "cffde91957954830ff1e862aacc0dae7512359bf8c9aa054fe175604564f0819",
+      "bytes": 47488
     },
     "locator": {
       "path": "_probe/datparse/intent_patch.py",
-      "sha256": "6917039819460a648795ced8a4420466d34cb40b3701926a71010e0a443591ba",
-      "bytes": 30961
+      "sha256": "93705299f42fcd26637cff4cb5d65ef5eea734ef03d6b7edc5ad39bd28e4a33b",
+      "bytes": 31252
     },
     "sldlib": {
       "path": "_probe/sldlib.py",
@@ -28,18 +28,18 @@
   },
   "vendored_parser": {
     "path": "aoe2mod/dat/parser.py",
-    "sha256": "7926e0d0dedae23d212da7447680ad739ccf5c276bef6ec0f3a9e8aca863ca6e",
-    "bytes": 50135
+    "sha256": "2e3286c0cd00810406bf4e6b0feed2cd08e413d613bec0da2d0b8fd87858b576",
+    "bytes": 51842
   },
   "vendored_writer": {
     "path": "aoe2mod/dat/writer.py",
-    "sha256": "3f4364f87f7dc7e61d3714bc79358bfc53febfa23e495e21947a6b238dc81b22",
-    "bytes": 45022
+    "sha256": "ecdd3611047909e52e1dffde16aedb0a348583a311aca9563140ebce9e553830",
+    "bytes": 45369
   },
   "vendored_locator": {
     "path": "aoe2mod/dat/locate.py",
-    "sha256": "b106c04ff31253fda5bd9d5ae7e8707960072a4e52c678b8d706affcc3692ec5",
-    "bytes": 23900
+    "sha256": "0321aa30c9e06442eb6da1179c20a5efd7482d0d8e70387da0dea6f9d49cf4cb",
+    "bytes": 24034
   },
   "vendored_sldlib": {
     "path": "aoe2mod/game/sld.py",

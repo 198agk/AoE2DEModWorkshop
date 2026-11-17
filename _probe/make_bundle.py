@@ -42,7 +42,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(HERE)
 DEFAULT_OUT = P.BUNDLE
 EXE = P.EXE
-RUNTIME_SRC = r"C:\Users\26913\.dsh\dsh-runtimes\dsh-primary-runtime\dependencies\python"
+RUNTIME_SRC = sys.prefix
 
 # WebView2Loader.dll must sit beside the exe, and the failure mode when it is
 # missing is the worst one this project has met: Windows shows a modal
@@ -77,7 +77,7 @@ README = """帝国时代 2 决定版 · 模组工坊
    找不到时可以用环境变量指定：
 
        set AOE2MOD_ROOT=<本文件夹>\\app
-       set AOE2MOD_GAME_ROOT=D:\\Games\\Steam\\steamapps\\common\\AoE2DE
+       set AOE2MOD_GAME_ROOT=<这里填 AoE2DE 的安装目录>
 
 2. 生成的模组会装进游戏自己的 profile 目录，然后在游戏的「创建游戏」界面
    的「数据模组：」下拉框里选它。

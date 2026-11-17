@@ -1,3 +1,4 @@
+import _gamepaths as GP
 """Template library: for every EffectCommand type used in the VANILLA dat, find a real
 example (tech name + commands decoded to plain language). These are verified, in-game
 precedents for each kind of gameplay change -> the backbone of 'intent -> data'.
@@ -10,7 +11,7 @@ import parse_dat as P
 SCHEMA = os.path.join(os.path.dirname(HERE), "schema")
 TYPES = json.load(open(os.path.join(SCHEMA, "effect_command_types.json"), encoding="utf-8"))["types"]
 ATTRS = json.load(open(os.path.join(SCHEMA, "effect_attributes.json"), encoding="utf-8"))["attributes"]
-BASE = r"D:\Games\Steam\steamapps\common\AoE2DE\resources\_common\dat\empires2_x2_p1.dat"
+BASE = GP.DAT
 
 data, _ = P.load_dat(BASE)
 p = P.Parser(data)

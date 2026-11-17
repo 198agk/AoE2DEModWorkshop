@@ -29,6 +29,7 @@ What is checked
 Runtime: about 10 s (353 textures, 256x256 each).
 """
 import os
+import _gamepaths as GP
 import struct
 import sys
 
@@ -39,7 +40,7 @@ sys.path.insert(0, ROOT)
 from aoe2mod.game import ddstex as D          # noqa: E402
 from aoe2mod.game import icons as I          # noqa: E402
 
-GAME = r"D:\Games\Steam\steamapps\common\AoE2DE"
+GAME = GP.GAME
 TEX = os.path.join(GAME, "widgetui", "textures", "ingame")
 
 OK = [0]

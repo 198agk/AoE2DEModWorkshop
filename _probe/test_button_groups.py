@@ -24,6 +24,7 @@ civilization in this tree has a row for at all -- other civs' unique units
 is a SUPERSET; the tree and the panel each narrow it, in different ways.
 """
 import os
+import _gamepaths as GP
 import sys
 from collections import defaultdict
 
@@ -36,7 +37,7 @@ import aoe2mod.api as A                                    # noqa: E402
 from aoe2mod.game import buildpanel as BP                  # noqa: E402
 from aoe2mod.game import civtechtrees as CT                # noqa: E402
 
-GAME = r"D:\Games\Steam\steamapps\common\AoE2DE"
+GAME = GP.GAME
 fails = []
 
 

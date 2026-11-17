@@ -12,13 +12,14 @@ Parts:
   F  a grid mismatch is REFUSED, not stretched
 """
 import os
+import _gamepaths as GP
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import sldlib as S
 import sldencode as E
 
-GP = r"D:\Games\Steam\steamapps\common\AoE2DE\resources\_common\drs\graphics"
+GP = GP.GRAPHICS
 OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "_sld_out")
 
 

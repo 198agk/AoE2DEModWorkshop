@@ -25,12 +25,13 @@ This script deletes the smoke5 mod folder and touches nothing else -- no
 mod-status.json edit, no other mod.
 """
 import os
+import _gamepaths as GP
 import shutil
 import subprocess
 import sys
 
 TITLE = "aoe2mod Smoke5 TreeVsPanel"
-ACC = r"C:\Users\26913\Games\Age of Empires 2 DE\76561198406248391"
+ACC = GP.ACCOUNT
 DEST = os.path.join(ACC, "mods", "local", TITLE)
 
 

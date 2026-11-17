@@ -1,9 +1,10 @@
+import _gamepaths as GP
 """Resolve the mod's own tech/effect wiring: which tech auto-applies the resource effects."""
 import os, sys, io, contextlib, collections
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import parse_dat as P
 
-MODS = r"C:\Users\26913\Games\Age of Empires 2 DE\76561198406248391\mods\subscribed"
+MODS = GP.SUBSCRIBED
 D10 = [os.path.join(MODS, n) for n in os.listdir(MODS) if n.startswith("550749")][0]
 M10 = os.path.join(D10, "resources", "_common", "dat", "empires2_x2_p1.dat")
 

@@ -25,6 +25,7 @@ Four things that can be wrong and none of them throw:
 Run:  python -X utf8 _probe\\test_mod_order.py
 """
 import io
+import _gamepaths as GP
 import json
 import os
 import re
@@ -41,7 +42,7 @@ from aoe2mod.game import locations as G                    # noqa: E402
 PAGE = os.path.join(ROOT, "aoe2mod", "ui", "static", "index.html")
 SERVER = os.path.join(ROOT, "aoe2mod", "ui", "server.py")
 HARNESS = os.path.join(ROOT, "_probe", "ui_page_harness.js")
-GAME = r"D:\Games\Steam\steamapps\common\AoE2DE"
+GAME = GP.GAME
 
 CHECKS = []
 

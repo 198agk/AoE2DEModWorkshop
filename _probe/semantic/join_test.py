@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """Test whether the JSON semantic sources join cleanly to dat unit/tech ids."""
 import json
+import _gamepaths as GP
 import os
 import sys
 import collections
@@ -11,7 +12,7 @@ except Exception:
     pass
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-BASE = r"D:\Games\Steam\steamapps\common\AoE2DE\resources\_common\dat"
+BASE = GP.DAT_DIR
 
 units = json.load(open(os.path.join(HERE, "unit_names.json"), encoding="utf-8"))
 techs = json.load(open(os.path.join(HERE, "tech_names.json"), encoding="utf-8"))

@@ -6,6 +6,7 @@ trace=True.  The byte before the divergence is what tells us which write_* call
 emitted the wrong width -- far more useful than re-reading the code.
 """
 import os
+import _gamepaths as GP
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -16,7 +17,7 @@ sys.path.insert(0, os.path.join(PROBE, "datparse"))
 import parse_dat
 import write_dat
 
-BASE = (r"D:\Games\Steam\steamapps\common\AoE2DE\resources\_common\dat"
+BASE = (GP.DAT_DIR +
         r"\empires2_x2_p1.dat")
 
 

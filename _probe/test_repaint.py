@@ -11,6 +11,7 @@ Parts:
   F  render a montage so the result can be looked at
 """
 import os
+import _gamepaths as GP
 import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -22,7 +23,7 @@ from aoe2mod.game import sldencode as E
 from aoe2mod.game import sprites as SP
 from aoe2mod.mod import emitter as EM
 
-GAME = r"D:\Games\Steam\steamapps\common\AoE2DE"
+GAME = GP.GAME
 GP = os.path.join(GAME, "resources", "_common", "drs", "graphics")
 OUT = os.path.join(ROOT, "_probe", "out_repaint")
 SHOTS = os.path.join(ROOT, "_shots", "artpipe")

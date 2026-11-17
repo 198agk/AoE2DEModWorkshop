@@ -8,6 +8,7 @@ function that appears most often.  This dumps them all so the fix is chosen from
 evidence rather than from re-reading the code.
 """
 import collections
+import _gamepaths as GP
 import os
 import sys
 
@@ -19,7 +20,7 @@ sys.path.insert(0, os.path.join(PROBE, "datparse"))
 import parse_dat
 import write_dat
 
-BASE = (r"D:\Games\Steam\steamapps\common\AoE2DE\resources\_common\dat"
+BASE = (GP.DAT_DIR +
         r"\empires2_x2_p1.dat")
 
 

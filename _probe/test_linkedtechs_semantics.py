@@ -62,11 +62,12 @@ _HERE_PATH = lambda *p: _os.path.join(
 _ROOT_PATH = lambda *p: _os.path.join(
     _os.path.dirname(_os.path.abspath(__file__)), *p)
 import json
+import _gamepaths as GP
 import os
 import re
 import sys
 
-GAME = r"D:\Games\Steam\steamapps\common\AoE2DE"
+GAME = GP.GAME
 DAT_REL = os.path.join("resources", "_common", "dat")
 
 FAILURES = []

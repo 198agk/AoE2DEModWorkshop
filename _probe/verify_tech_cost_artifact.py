@@ -14,10 +14,11 @@ if root not in sys.path:
 os.environ.setdefault("PYTHONIOENCODING", "utf-8")
 
 from aoe2mod import api as A
+import _gamepaths as GP
 from aoe2mod.dat import parser as P
 from aoe2mod.dat import locate as L
 
-GAME = r"D:\Games\Steam\steamapps\common\AoE2DE"
+GAME = GP.GAME
 OUT = os.path.join(HERE, "out_intent", "LoomGoldMinus20_probe")
 BASE_DAT = os.path.join(GAME, "resources", "_common", "dat", "empires2_x2_p1.dat")
 

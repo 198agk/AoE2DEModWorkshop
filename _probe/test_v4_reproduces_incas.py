@@ -27,9 +27,10 @@ The `Trigger Tech ID = 1350` on that copied row is a GLOBAL make-avail tech
 as a Tech row is the NORM -- 1,590 of 1,814 such rows corpus-wide -- so that is not a
 defect to fix first (see the Round 66 measurement).
 
-Run:  $env:PYTHONPATH='D:\\Software\\AI\\帝国项目'; python _probe\test_v4_reproduces_incas.py
+Run:  python _probe\test_v4_reproduces_incas.py
 """
 import os
+import _gamepaths as GP
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -47,7 +48,7 @@ if ROOT not in sys.path:
 from aoe2mod.game import buildpanel as BP                  # noqa: E402
 from aoe2mod.game import civtechtrees as CT                # noqa: E402
 
-GAME = r"D:\Games\Steam\steamapps\common\AoE2DE"
+GAME = GP.GAME
 V4 = _ensure("out_dshtest_v4", "build_dshtest_v4.py")
 UNIT = 2550
 BLDG = 12

@@ -20,9 +20,14 @@ if ROOT not in sys.path:
 from aoe2mod.dat import parser as P
 from aoe2mod.dat import writer as W
 
-GAME = r"D:\Games\Steam\steamapps\common\AoE2DE"
-MODS = (r"C:\Users\26913\Games\Age of Empires 2 DE"
-        r"\76561198406248391\mods\subscribed")
+from aoe2mod.game import locations as LOC  # noqa: E402
+
+# Both roots are discovered, not written down: this file ships, and the two
+# paths it used to carry named one person's disk.  AOE2MOD_GAME_ROOT and
+# AOE2MOD_PROFILE override discovery exactly like they do for the product.
+GAME = LOC.find_game_root()
+PROFILE = LOC.find_profile_root()
+MODS = os.path.join(LOC.pick_account(PROFILE), "mods", "subscribed")
 
 
 def mod_dat(workshop_id):

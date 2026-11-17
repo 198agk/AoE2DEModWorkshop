@@ -1,3 +1,4 @@
+import _gamepaths as GP
 """Human-readable decode of the 10x mod's signature effects.
 This is the prototype of 'intent -> data': turn raw EffectCommands into a sentence
 a player would understand, using the verified schema tables.
@@ -12,9 +13,9 @@ TYPES = json.load(open(os.path.join(SCHEMA, "effect_command_types.json"), encodi
 ATTRS = json.load(open(os.path.join(SCHEMA, "effect_attributes.json"), encoding="utf-8"))["attributes"]
 ARMOR = json.load(open(os.path.join(SCHEMA, "armor_classes.json"), encoding="utf-8"))
 
-MODS = r"C:\Users\26913\Games\Age of Empires 2 DE\76561198406248391\mods\subscribed"
+MODS = GP.SUBSCRIBED
 D10 = [os.path.join(MODS, n) for n in os.listdir(MODS) if n.startswith("550749")][0]
-BASE = r"D:\Games\Steam\steamapps\common\AoE2DE\resources\_common\dat\empires2_x2_p1.dat"
+BASE = GP.DAT
 M10 = os.path.join(D10, "resources", "_common", "dat", "empires2_x2_p1.dat")
 
 

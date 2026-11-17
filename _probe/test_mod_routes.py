@@ -6,6 +6,7 @@ and this project has already paid once for writing a phantom entry into it. So
 the whole profile is copied to a temp dir and `AOE2MOD_PROFILE` points there.
 """
 import json
+import _gamepaths as GP
 import os
 import shutil
 import subprocess
@@ -14,7 +15,7 @@ import tempfile
 import time
 import urllib.request
 
-SRC = r"C:\Users\26913\Games\Age of Empires 2 DE\76561198406248391"
+SRC = GP.ACCOUNT
 # A UNIQUE directory, never a fixed name.  Measured 2026-11-03 in a full suite
 # run: `shutil.rmtree(TMP)` on the fixed `%TEMP%\aoe2mod-profile-test` raised
 # `OSError [WinError 145] 目录不是空的` at

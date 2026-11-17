@@ -31,6 +31,7 @@ are about evidence rather than about the happy path:
 Run: python -X utf8 _probe/test_schema_plugins.py
 """
 import io
+import _gamepaths as GP
 import json
 import os
 import shutil
@@ -46,7 +47,7 @@ from aoe2mod import api as A                                  # noqa: E402
 from aoe2mod.intent import compiler as C                      # noqa: E402
 from aoe2mod.ui import server as S                            # noqa: E402
 
-GAME = r"D:\Games\Steam\steamapps\common\AoE2DE"
+GAME = GP.GAME
 
 FAILS = []
 OKS = [0]

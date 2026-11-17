@@ -21,7 +21,7 @@ sys.path.insert(0, os.path.join(HERE, "datparse"))
 import parse_dat as P
 import intent_patch as IP
 
-BASE = r"D:\Games\Steam\steamapps\common\AoE2DE\resources\_common\dat\empires2_x2_p1.dat"
+BASE = GP.DAT
 OUT = os.path.join(HERE, "out_effect")
 os.makedirs(OUT, exist_ok=True)
 
@@ -152,6 +152,7 @@ for i, (x, y) in enumerate(zip(effs[target]["commands"], after_cmds)):
 
 print("\n=== 6. would an effect edit change file size? ===")
 import zlib
+import _gamepaths as GP
 comp = zlib.compressobj(6, zlib.DEFLATED, -15)
 blob = comp.compress(bytes(patched)) + comp.flush()
 print("  decompressed %d (unchanged) | recompressed %d (game original 12,023,754)"

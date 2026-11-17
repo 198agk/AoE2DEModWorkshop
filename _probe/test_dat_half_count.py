@@ -30,9 +30,10 @@ reverse: the schema raised to 3 while the recipe does 2, which over-reports.
 Either way `plan()` would promise something `build()` does not deliver, which is
 the defect class this project already fixed twice.
 
-Run:  $env:PYTHONPATH=D:\Software\AI\帝国项目; python _probe\test_dat_half_count.py
+Run:  python _probe\test_dat_half_count.py   (from the repo root)
 """
 import contextlib
+import _gamepaths as GP
 import io
 import json
 import os
@@ -50,7 +51,7 @@ from aoe2mod.game import civtechtrees as CT                # noqa: E402
 from aoe2mod.intent import compiler as C                   # noqa: E402
 from aoe2mod.intent import datgrant as DG                  # noqa: E402
 
-GAME = r"D:\Games\Steam\steamapps\common\AoE2DE"
+GAME = GP.GAME
 UNIT, BLDG, CIV_INDEX = 2550, 12, 1
 CIV_KEY = "BRITONS"
 fails = []

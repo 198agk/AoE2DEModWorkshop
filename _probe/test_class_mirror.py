@@ -34,6 +34,7 @@ sentence layer and the "nothing outside the class moves" assertion.  This file o
 the arithmetic of the mirror.
 """
 import io
+import _gamepaths as GP
 import os
 import struct
 import sys
@@ -49,7 +50,7 @@ from aoe2mod.dat import locate as L
 from aoe2mod.dat import parser as P
 
 
-GAME = r"D:\Games\Steam\steamapps\common\AoE2DE"
+GAME = GP.GAME
 CIV = "British"
 CIV_INDEX = 1
 ARCHERS = 0

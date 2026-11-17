@@ -1,3 +1,4 @@
+import _gamepaths as GP
 """Can we create NEW gameplay without changing the dat's size?
 
 The re-serializer (adding objects) is the ambitious path.  There is a cheaper one
@@ -26,7 +27,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import parse_dat as P
 
-BASE = r"D:\Games\Steam\steamapps\common\AoE2DE\resources\_common\dat\empires2_x2_p1.dat"
+BASE = GP.DAT
 OUT = os.path.join(HERE, "out_reuse")
 SCHEMA = os.path.join(os.path.dirname(HERE), "schema")
 

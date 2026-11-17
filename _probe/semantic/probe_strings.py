@@ -1,8 +1,9 @@
+import _gamepaths as GP
 # -*- coding: utf-8 -*-
 """Probe the AoE2DE key-value string files: format, encoding, counts."""
 import os, re, sys, json, collections
 
-G = r"D:\Games\Steam\steamapps\common\AoE2DE"
+G = GP.GAME
 
 def show_lines(p, n=25, start=0):
     with open(p, "rb") as f:

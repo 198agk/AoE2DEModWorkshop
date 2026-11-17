@@ -47,13 +47,12 @@ import os
 import re
 import time
 
-#: Where the number lives upstream.  Tried in order; the first one that answers
-#: wins.  The first two are the gist itself and a proxy for it; the last two are
-#: the old repository spellings, kept so a reinstated tree still works.  Two
-#: hosts because this machine's network has been the flaky part of every
-#: earlier attempt at this feature.
-REPO = "198agk/aoe2-mod-workshop"
-BRANCH = "master"
+#: The repository this project is published from.  The number itself does not
+#: live here any more (see GIST below); this is only where a player is sent when
+#: there is something newer, and the last two SOURCES spellings keep working if
+#: the plain repo file ever comes back.
+REPO = "198agk/AoE2ModWorkshop"
+BRANCH = "main"
 
 #: The number now lives in a gist, not in the repository.
 #:

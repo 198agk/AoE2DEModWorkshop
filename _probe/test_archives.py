@@ -17,6 +17,7 @@ Measured on this machine, 2026-11-09, 11.9 MB / 93,272,287 bytes inflated:
     note_official, second call (idempotent)     ~0.01 s
 """
 import hashlib
+import _gamepaths as GP
 import os
 import shutil
 import sys
@@ -33,7 +34,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from aoe2mod.mod import archives as AR          # noqa: E402
 from aoe2mod.mod import provenance as PV        # noqa: E402
 
-GAME = r"D:\Games\Steam\steamapps\common\AoE2DE"
+GAME = GP.GAME
 SHIPPED = os.path.join(GAME, AR.DAT_REL)
 RAW_BYTES = 93272287
 HEAD32 = b"VER 8.9\x00"

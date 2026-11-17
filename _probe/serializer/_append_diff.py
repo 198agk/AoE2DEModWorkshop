@@ -12,6 +12,7 @@ bytes with no raw counterpart).  We expect exactly:
     insert N2 B (the new Tech record)
 """
 import contextlib
+import _gamepaths as GP
 import io
 import os
 import sys
@@ -22,7 +23,7 @@ sys.path.insert(0, HERE)
 import parse_dat
 import write_dat
 
-BASE = (r"D:\Games\Steam\steamapps\common\AoE2DE\resources\_common\dat"
+BASE = (GP.DAT_DIR +
         r"\empires2_x2_p1.dat")
 APPENDED = os.path.join(HERE, "out", "added_tech.dat")
 

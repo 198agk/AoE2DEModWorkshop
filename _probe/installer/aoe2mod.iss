@@ -4,8 +4,12 @@
 ; 自己目录旁边写 log\ 和 _mods_out\，装进 Program Files 之后那些写入会被拦。
 
 #define AppVer "1.0.0"
-#define SrcDir "D:\Software\AI\Aoe2\_out\AoE2ModWorkshop-COMPLETE"
-#define RepoDir "D:\Software\AI\Aoe2"
+; 仓库根不写死：这个脚本就住在 <repo>\_probe\installer\，往上两级就是它。
+; 换机器/换盘符不用改文件；要指到别处就 ISCC.exe /DRepoDir=D:\path\repo aoe2mod.iss
+#ifndef RepoDir
+  #define RepoDir SourcePath + "..\.."
+#endif
+#define SrcDir RepoDir + "\_out\AoE2ModWorkshop-COMPLETE"
 
 [Setup]
 AppId={{6C1E4B23-7A4D-4F18-9C55-2B7E0D9A3F61}

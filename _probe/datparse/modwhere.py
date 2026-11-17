@@ -1,3 +1,4 @@
+import _gamepaths as GP
 # -*- coding: utf-8 -*-
 """Locate exactly where the two real data mods differ from the base dat,
 mapped onto the known section boundaries."""
@@ -7,10 +8,10 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import parse_dat as P
 
-GAME = r"D:\Games\Steam\steamapps\common\AoE2DE\resources\_common\dat\empires2_x2_p1.dat"
+GAME = GP.DAT
 MODS = {
-    "MOD_423821_juntuan": r"C:\Users\26913\Games\Age of Empires 2 DE\76561198406248391\mods\subscribed\423821_四月-juntuanzhangtianfumozu军团长天赋模组\resources\_common\dat\empires2_x2_p1.dat",
-    "MOD_550749_10x": r"C:\Users\26913\Games\Age of Empires 2 DE\76561198406248391\mods\subscribed\550749_{2026}10倍资源文明联盟2倍科技 北欧dlc可用 v34test\resources\_common\dat\empires2_x2_p1.dat",
+    "MOD_423821_juntuan": os.path.join(GP.SUBSCRIBED, "423821_四月-juntuanzhangtianfumozu军团长天赋模组", "resources", "_common", "dat", "empires2_x2_p1.dat"),
+    "MOD_550749_10x": os.path.join(GP.SUBSCRIBED, "550749_{2026}10倍资源文明联盟2倍科技 北欧dlc可用 v34test", "resources", "_common", "dat", "empires2_x2_p1.dat"),
 }
 
 SECTIONS = [

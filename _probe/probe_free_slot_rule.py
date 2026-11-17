@@ -20,6 +20,7 @@ The rule must be measured, not assumed, so this file:
      rounds chose (MAPUCHE 528, MUISCA 359, POLES 691, WU 474).
 """
 import json
+import _gamepaths as GP
 import os
 import sys
 from collections import defaultdict
@@ -32,7 +33,7 @@ if ROOT not in sys.path:
 import aoe2mod.api as A                                    # noqa: E402
 from aoe2mod.game import civtechtrees as CT                # noqa: E402
 
-GAME = r"D:\Games\Steam\steamapps\common\AoE2DE"
+GAME = GP.GAME
 GRANT = ("ResearchedCompleted", "ResearchRequired")
 fails = []
 

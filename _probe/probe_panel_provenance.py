@@ -43,6 +43,7 @@ _HERE_PATH = lambda *p: _os.path.join(
 _ROOT_PATH = lambda *p: _os.path.join(
     _os.path.dirname(_os.path.abspath(__file__)), *p)
 import os
+import _gamepaths as GP
 import sys
 import datetime
 
@@ -126,7 +127,7 @@ print("--- has the game RUN since the panel was written? -----------------")
 # The decisive form of the argument is not "older than the exe" -- it is that
 # the game has been launched since, and the panel still carries its unpack
 # mtime.  A runtime cache would have been rewritten at the first launch.
-LOGS = r"C:\Users\26913\Games\Age of Empires 2 DE\logs"
+LOGS = GP.LOGS
 log_dirs = []
 if os.path.isdir(LOGS):
     log_dirs = sorted(d for d in os.listdir(LOGS)

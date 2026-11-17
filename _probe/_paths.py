@@ -3,16 +3,15 @@
 
 WHY THIS EXISTS
 ---------------
-Every build product used to be written OUTSIDE the checkout -- `D:\\Software\\AI\\
-AGE2` for the cargo tree and `D:\\Software\\AI\\AoE2ModWorkshop` for the shipping
-bundle -- and twenty-odd probes each wrote that absolute path out by hand.  Two
-things went wrong with that:
+Every build product used to be written OUTSIDE the checkout -- one folder for the
+cargo tree, one for the shipping bundle -- and twenty-odd probes each wrote that
+absolute path out by hand.  Two things went wrong with that:
 
   * The workspace was not self-contained.  `git clean`, a fresh clone, or a move
     of the folder left the products behind, and a probe that could not find them
     reported red for a reason that had nothing to do with the code.
   * The Integrity Label on those folders was not the workspace's.  On this machine
-    a folder under `D:\\Software\\AI\\` carried no label and every copied
+    a folder outside the checkout carried no label and every copied
     `python.exe` in it worked, while the ones under the checkout inherited Low
     and died with 0xC0000135 the moment they started (2026-11-01, six hours lost).
     Keeping the products inside the workspace means they inherit the same label

@@ -31,9 +31,10 @@ And the subject it edits is the strongest one available: `tech 263
 only civ that can build Longbowmen.  So it is a per-civ unit gate the engine
 demonstrably honours, which is exactly the mechanism smoke8 reuses.
 
-Run:  $env:PYTHONPATH='D:\\Software\\AI\\帝国项目'; python _probe\test_dat_edit_routes.py
+Run:  python _probe\test_dat_edit_routes.py
 """
 import contextlib
+import _gamepaths as GP
 import io
 import os
 import sys
@@ -48,7 +49,7 @@ import aoe2mod.dat.locate as L                             # noqa: E402
 import aoe2mod.dat.parser as P                             # noqa: E402
 import aoe2mod.dat.writer as W                             # noqa: E402
 
-GAME = r"D:\Games\Steam\steamapps\common\AoE2DE"
+GAME = GP.GAME
 TECH = 263          # British '(Longbow) make avail'
 UNIT = 2550         # Champi Scout
 LONGBOW = 8

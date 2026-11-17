@@ -4,7 +4,7 @@
 survive reparse byte-exactly, leave the file geometry untouched, and change only the intended
 bytes. The mechanism is sound. Caveats in §7.
 
-- Target: `D:\Games\Steam\steamapps\common\AoE2DE\resources\_common\dat\empires2_x2_p1.dat`
+- Target: `<game root>/resources/_common/dat/empires2_x2_p1.dat`
 - Version string: `VER 8.9`
 - Compressed: 12,023,754 B · Decompressed: 93,268,152 B · raw DEFLATE (`window_bits=-15`)
 - Instrumentation (new file, existing parser untouched): `_probe\datparse\patch_probe.py`

@@ -30,9 +30,10 @@ and the writer's proven ability to synthesise Effects/Techs make this worth stat
 precisely.  What is NOT known is whether the engine accepts an ADDED one -- no
 shipped data adds to an existing civ -- so it needs its own in-game test.
 
-Run:  $env:PYTHONPATH='D:\\Software\\AI\\帝国项目'; python _probe\test_dat_grant_route.py
+Run:  python _probe\test_dat_grant_route.py
 """
 import os
+import _gamepaths as GP
 import sys
 from collections import Counter
 
@@ -44,7 +45,7 @@ if ROOT not in sys.path:
 import aoe2mod.api as A                                    # noqa: E402
 import aoe2mod.intent.compiler as C                        # noqa: E402
 
-GAME = r"D:\Games\Steam\steamapps\common\AoE2DE"
+GAME = GP.GAME
 fails = []
 
 

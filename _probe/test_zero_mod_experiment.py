@@ -23,9 +23,10 @@ The counts and the JURCHENS Barracks case are asserted, so a game update that
 changes the disagreement makes this suite fail rather than quietly retire the
 only clean experiment the project has.
 
-Run:  $env:PYTHONPATH='D:\\Software\\AI\\帝国项目'; python _probe\test_zero_mod_experiment.py
+Run:  python _probe\test_zero_mod_experiment.py
 """
 import io
+import _gamepaths as GP
 import os
 import sys
 from collections import defaultdict
@@ -38,7 +39,7 @@ if ROOT not in sys.path:
 from aoe2mod.game import buildpanel as BP                  # noqa: E402
 from aoe2mod.game import civtechtrees as CT                # noqa: E402
 
-GAME = r"D:\Games\Steam\steamapps\common\AoE2DE"
+GAME = GP.GAME
 fails = []
 
 
@@ -211,7 +212,7 @@ if _stray:
 print("     parsed %d trees and %d panels, all under %s"
       % (len(trees), len(panels), GAME))
 
-ACC = r"C:\Users\26913\Games\Age of Empires 2 DE\76561198406248391"
+ACC = GP.ACCOUNT
 MODS = os.path.join(ACC, "mods")
 try:
     st = json.loads(open(os.path.join(MODS, "mod-status.json"), "rb")

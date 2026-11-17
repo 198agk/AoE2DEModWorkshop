@@ -19,6 +19,7 @@ them through.
   F. the start-up path refused in English, or not at all.
 """
 import io
+import _gamepaths as GP
 import os
 import shutil
 import sys
@@ -37,7 +38,7 @@ from aoe2mod.game import locations as L
 from aoe2mod.semantic.index import index as SI
 from aoe2mod.ui import server as S
 
-GAME = r"D:\Games\Steam\steamapps\common\AoE2DE"
+GAME = GP.GAME
 PAGE = os.path.join(ROOT, "aoe2mod", "ui", "static", "index.html")
 RUNUI = os.path.join(ROOT, "tools", "run_ui.py")
 

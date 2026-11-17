@@ -32,10 +32,11 @@ any, names the panel's OWN fields (RequiredAge / RequiredTechID / RequiredUnitID
 PrereqStringID)?
 """
 import json
+import _gamepaths as GP
 import os
 import sys
 
-GAME = r"D:\Games\Steam\steamapps\common\AoE2DE"
+GAME = GP.GAME
 WIDGETUI = os.path.join(GAME, "widgetui")
 DAT = os.path.join(GAME, "resources", "_common", "dat")
 fails = []

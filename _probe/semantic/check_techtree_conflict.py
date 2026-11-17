@@ -10,6 +10,9 @@ The JSON is internally inconsistent; the string file is authoritative.
 import json
 import os
 import sys
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+import _gamepaths as GP  # noqa: E402
 import collections
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -24,7 +27,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 units = json.load(open(os.path.join(HERE, "unit_names.json"), encoding="utf-8"))
 en, _ = load_language("en")
 
-CT = r"D:\Games\Steam\steamapps\common\AoE2DE\resources\_common\dat\CivTechTrees"
+CT = os.path.join(GP.DAT_DIR, "CivTechTrees")
 
 node_state = collections.Counter()
 agree = disagree = 0

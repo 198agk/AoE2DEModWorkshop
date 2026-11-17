@@ -1,3 +1,4 @@
+import _gamepaths as GP
 """Anatomy of one unit record: every field, its live value, and what a user-facing
 'stat' actually decomposes into. Goal: know exactly what an intent like
 'archers attack +2' must touch.
@@ -10,7 +11,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import parse_dat as P
 
-BASE = r"D:\Games\Steam\steamapps\common\AoE2DE\resources\_common\dat\empires2_x2_p1.dat"
+BASE = GP.DAT
 data, _ = P.load_dat(BASE)
 p = P.Parser(data)
 with contextlib.redirect_stdout(io.StringIO()):

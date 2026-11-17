@@ -28,7 +28,10 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import parse_dat as P
 
-BASE = r"D:\Games\Steam\steamapps\common\AoE2DE\resources\_common\dat\empires2_x2_p1.dat"
+# Empty unless AOE2MOD_DAT says otherwise; `main()` falls back to the
+# parser's resolver.  A literal path would publish the author's layout and
+# break on any other Steam library.
+BASE = os.environ.get("AOE2MOD_DAT") or ""
 OUT = os.path.join(HERE, "out_intent")
 SEM = os.path.join(os.path.dirname(HERE), "semantic", "unit_names.json")
 
@@ -578,12 +581,16 @@ def locate_effects(data, parser=None):
 
 
 def main():
+    base = BASE or P.default_dat_path()
+    if not base:
+        raise SystemExit(
+            "set AOE2MOD_DAT, or AOE2MOD_GAME_ROOT to the AoE2DE folder")
     os.makedirs(OUT, exist_ok=True)
     print("INTENT: %s" % INTENT["say"])
     print("  -> unit %s (%s), field %r, delta %+d\n"
           % (INTENT["unit_id"], INTENT["match_en"], INTENT["field"], INTENT["delta"]))
 
-    data, how = P.load_dat(BASE)
+    data, how = P.load_dat(base)
     print("loaded base dat: %s bytes (%s)" % (len(data), how))
     p = P.Parser(data)
     with contextlib.redirect_stdout(io.StringIO()):

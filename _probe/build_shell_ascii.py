@@ -3,7 +3,7 @@
 
 Two constraints collide:
 
-  * The repo lives at `D:\\Software\\AI\\Aoe2`, and mingw's `windres` cannot
+  * This repo sits on a path with non-ASCII characters, and mingw's `windres` cannot
     open `...\\Aoe2\\desktop\\src-tauri\\icons\\icon.ico` -- "Invalid argument",
     not "file not found". So the shell cannot be compiled in place.
   * Building somewhere else previously meant keeping a SECOND source tree, which
@@ -26,8 +26,18 @@ import _paths as P
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DESKTOP = os.path.join(REPO, "desktop")
 BUILD = P.BUILD
-MINGW = r"C:\Users\26913\AppData\Local\Temp\mingw\mingw64\bin"
-CARGO = r"C:\Users\26913\.cargo\bin"
+# Both toolchains are found, not remembered: a path typed here is only right on
+# the machine it was typed on. MINGW_BIN / CARGO_BIN override when the search
+# picks the wrong one (two rustups, two mingw copies).
+MINGW = os.environ.get("MINGW_BIN") or ""
+CARGO = os.environ.get("CARGO_BIN") or ""
+if not MINGW:
+    for _cand in (r"C:\mingw64\bin", r"C:\msys64\mingw64\bin"):
+        if os.path.isfile(os.path.join(_cand, "windres.exe")):
+            MINGW = _cand
+            break
+if not CARGO:
+    CARGO = os.path.dirname(shutil.which("cargo") or "")
 
 # Source dirs that must be identical between repo and build tree.
 #

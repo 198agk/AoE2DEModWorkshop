@@ -32,6 +32,7 @@ block alone cannot be the whole villager build menu.  That narrower statement is
 what this file now asserts.
 """
 import os
+import _gamepaths as GP
 import sys
 from collections import Counter
 
@@ -43,7 +44,7 @@ if ROOT not in sys.path:
 from aoe2mod.game import buildpanel as BP                  # noqa: E402
 from aoe2mod.game import civtechtrees as CT                # noqa: E402
 
-GAME = r"D:\Games\Steam\steamapps\common\AoE2DE"
+GAME = GP.GAME
 fails = []
 BUILDER = 118
 

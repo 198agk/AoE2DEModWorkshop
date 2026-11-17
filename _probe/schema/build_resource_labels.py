@@ -62,6 +62,7 @@ HONESTY RULES (the project's standing rule: never invent a name)
 Run:  python _probe/schema/build_resource_labels.py
 """
 import json
+import _gamepaths as GP
 import os
 import re
 import sys
@@ -95,7 +96,7 @@ def find_game_root():
             return root
     except Exception as exc:                      # noqa: BLE001 - report, then fall back
         print("note: product locator unavailable (%s); using the recorded path" % exc)
-    return r"D:\Games\Steam\steamapps\common\AoE2DE"
+    return GP.GAME
 
 
 def load_block(root, locale, drop_unused=True):

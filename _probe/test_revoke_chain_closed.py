@@ -34,9 +34,10 @@ action `revoke` ships exactly that state.
 deleted node, until closed.  It returns the number of rows removed, as before, and
 a new `revoked_ids` is available to callers that must report what went.
 
-Run:  $env:PYTHONPATH='D:\Software\AI\帝国项目'; python _probe\test_revoke_chain_closed.py
+Run:  python _probe\test_revoke_chain_closed.py
 """
 import copy
+import _gamepaths as GP
 import os
 import sys
 
@@ -47,7 +48,7 @@ if ROOT not in sys.path:
 
 from aoe2mod.game import civtechtrees as CT                # noqa: E402
 
-GAME = r"D:\Games\Steam\steamapps\common\AoE2DE"
+GAME = GP.GAME
 fails = []
 
 

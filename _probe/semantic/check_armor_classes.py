@@ -14,6 +14,7 @@ Then we collect every observed Class number across all 136,861 unit records and
 check it against the [AoE2DEArmorNames] table from AGE3NamesV0007.ini (0..36).
 """
 import os
+import _gamepaths as GP
 import struct
 import sys
 import json
@@ -23,9 +24,9 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                 "..", "datparse"))
 import parse_dat  # noqa: E402
 
-DAT = (r"D:\Games\Steam\steamapps\common\AoE2DE\resources\_common\dat"
+DAT = (GP.DAT_DIR +
        r"\empires2_x2_p1.dat")
-INI = (r"D:\Games\Steam\steamapps\common\AoE2DE\Tools_Builds"
+INI = (os.path.join(GP.GAME, "Tools_Builds") +
        r"\AGE3NamesV0007.ini")
 
 try:

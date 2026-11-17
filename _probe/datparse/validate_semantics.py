@@ -1,3 +1,4 @@
+import _gamepaths as GP
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """Semantic validation for parse_dat.py.
@@ -19,7 +20,7 @@ import sys, os, collections
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import parse_dat as P
 
-DAT = r"D:\Games\Steam\steamapps\common\AoE2DE\resources\_common\dat\empires2_x2_p1.dat"
+DAT = GP.DAT
 
 # Canonical AoE2/AoE2DE unit ids -> (label, hit points).  Source: the unit ids
 # and base stats that the game and every community editor use.

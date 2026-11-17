@@ -28,10 +28,9 @@ CANVAS_RATIO = 128.0 / 220.0
 # 得按「出发那张图的宽高比」把宽度也拉到一致，否则换动作时人会突然变瘦。
 REF_RATIO = None
 
-FFMPEG = (
-    "D:/Software/ComfyUI秋叶整合包- V2/ComfyUI-aki-v2/python/Lib/site-packages/"
-    "imageio_ffmpeg/binaries/ffmpeg-win-x86_64-v7.1.exe"
-)
+# ffmpeg 不随这个仓库发布：机器上装在哪一处都不一样。先看环境变量，再从 PATH
+# 里找，都没有就在第一次调用时说清楚缺什么。
+FFMPEG = os.environ.get("AOE2MOD_FFMPEG") or shutil.which("ffmpeg") or "ffmpeg"
 
 
 def key(arr):

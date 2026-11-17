@@ -23,6 +23,7 @@ edits".  The real-file measurement stays in `tmp_repair_check.py` and in the
 handoff notes.
 """
 import io
+import _gamepaths as GP
 import os
 import shutil
 import sys
@@ -35,7 +36,7 @@ import aoe2mod.api as A
 import aoe2mod.dat.parser as P
 import aoe2mod.repair as R
 
-GAME = r"D:\Games\Steam\steamapps\common\AoE2DE"
+GAME = GP.GAME
 SHIPPED = os.path.join(GAME, R.DAT_REL)
 
 FAILS = []

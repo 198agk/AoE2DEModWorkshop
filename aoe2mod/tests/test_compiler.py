@@ -15,7 +15,24 @@ from aoe2mod.dat import parser as P               # noqa: E402
 from aoe2mod.dat import locate as L               # noqa: E402
 from aoe2mod import api as A                      # noqa: E402
 
-BASE = r"D:\Games\Steam\steamapps\common\AoE2DE\resources\_common\dat\empires2_x2_p1.dat"
+from aoe2mod.game import locations as LOC       # noqa: E402
+
+
+class _GamePaths(object):
+    """The two paths every end-to-end here needs.
+
+    Discovered, not written down: this file ships inside the package, so a
+    literal path would be wrong on every machine but the one it was typed on,
+    and a probe-only helper would not be here to import.
+    """
+    GAME = LOC.find_game_root()
+    DAT = LOC.dat_path(GAME)
+
+
+GP = _GamePaths()
+
+
+BASE = GP.DAT
 OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "out")
 
 data, how = P.load_dat(BASE)

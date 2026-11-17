@@ -15,6 +15,7 @@ nothing about whether anything ELSE was changed.  The meaningful question is sem
 reporting every difference, so an accidental edit cannot hide behind the shift.
 """
 import contextlib
+import _gamepaths as GP
 import io
 import os
 import struct
@@ -36,7 +37,7 @@ import aoe2mod.api as A                                    # noqa: E402
 import aoe2mod.dat.families as F                           # noqa: E402
 import aoe2mod.dat.parser as P                             # noqa: E402
 
-GAME = r"D:\Games\Steam\steamapps\common\AoE2DE"
+GAME = GP.GAME
 V2 = os.path.join(_ensure("out_dshtest_v2", "build_dshtest_v2.py"), "resources", "_common", "dat",
                   "empires2_x2_p1.dat")
 TECH = 263

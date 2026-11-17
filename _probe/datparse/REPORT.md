@@ -1,6 +1,6 @@
 # Pure-Python parser for the AoE2:DE `.dat` — final report
 
-**Target:** `D:\Games\Steam\steamapps\common\AoE2DE\resources\_common\dat\empires2_x2_p1.dat`
+**Target:** `<game root>/resources/_common/dat/empires2_x2_p1.dat`
 **Code:** `parse_dat.py` (pure Python 3, stdlib only: `zlib`, `struct`)
 **Verdict: SUCCESS. The parser consumes the file to exactly the last byte.**
 

@@ -1,3 +1,4 @@
+import _gamepaths as GP
 """Verify the EMITTED MOD ARTIFACT as a black box.
 
 Everything so far verified in-memory byte arrays.  A user never ships those --
@@ -23,7 +24,7 @@ import intent_patch as IP
 
 MODROOT = os.path.join(HERE, "out_modtest", "ArcherAttackPlus2_probe")
 DAT = os.path.join(MODROOT, "resources", "_common", "dat", "empires2_x2_p1.dat")
-BASE = r"D:\Games\Steam\steamapps\common\AoE2DE\resources\_common\dat\empires2_x2_p1.dat"
+BASE = GP.DAT
 
 fail = []
 

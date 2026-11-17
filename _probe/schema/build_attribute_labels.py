@@ -54,6 +54,7 @@ HONESTY RULES (the project's standing rule: never invent a name)
 Run:  python _probe/schema/build_attribute_labels.py
 """
 import io
+import _gamepaths as GP
 import json
 import os
 import re
@@ -97,7 +98,7 @@ def find_root():
             return root
     except Exception:
         pass
-    return r"D:\Games\Steam\steamapps\common\AoE2DE"
+    return GP.GAME
 
 
 def load_block(root, locale, drop_unused=True):

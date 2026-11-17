@@ -24,9 +24,10 @@ a control that proves the load.  The earlier in-game tests failed for the mirror
 reason -- both halves moved the same way, and Hand Cannoneer (unit 5) carried
 `RequiredAge` 4 so a Dark-Age game could never show it.
 
-Run:  $env:PYTHONPATH='D:\\Software\\AI\\帝国项目'; python _probe\test_smoke5_design.py
+Run:  python _probe\test_smoke5_design.py
 """
 import json
+import _gamepaths as GP
 import os
 import sys
 
@@ -39,7 +40,7 @@ from aoe2mod.dat import parser as P                        # noqa: E402
 from aoe2mod.game import buildpanel as BP                  # noqa: E402
 from aoe2mod.game import civtechtrees as CT                # noqa: E402
 
-GAME = r"D:\Games\Steam\steamapps\common\AoE2DE"
+GAME = GP.GAME
 OUT = os.path.join(HERE, "out_smoke5")
 CIV = "Britons"
 STEM = "BRITONS"

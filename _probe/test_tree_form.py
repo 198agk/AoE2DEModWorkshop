@@ -99,6 +99,7 @@ NOT PROVEN here : nothing -- this question has since been measured.  Form and
                   tech-tree PREVIEW screen.
 """
 import io
+import _gamepaths as GP
 import json
 import os
 import sys
@@ -108,7 +109,7 @@ ROOT = os.path.dirname(HERE)
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
-GAME = r"D:\Games\Steam\steamapps\common\AoE2DE"
+GAME = GP.GAME
 EXE = os.path.join(GAME, "AoE2DE_s.exe")
 DAT_DIR = os.path.join(GAME, "resources", "_common", "dat")
 TREE_DIR = os.path.join(DAT_DIR, "CivTechTrees")

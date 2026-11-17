@@ -29,6 +29,7 @@ _HERE_PATH = lambda *p: _os.path.join(
 _ROOT_PATH = lambda *p: _os.path.join(
     _os.path.dirname(_os.path.abspath(__file__)), *p)
 import contextlib
+import _gamepaths as GP
 import hashlib
 import io
 import os
@@ -40,7 +41,7 @@ sys.path.insert(0, _HERE_PATH("_probe", "datparse"))
 import parse_dat
 import write_dat
 
-DEFAULT_BASE = (r"D:\Games\Steam\steamapps\common\AoE2DE\resources\_common\dat"
+DEFAULT_BASE = (GP.DAT_DIR +
                 r"\empires2_x2_p1.dat")
 
 OUT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "out")

@@ -15,6 +15,7 @@ the game's own shape (`<profile>/<account>/mods/local`) because `pick_account`
 only accepts an account that owns a `mods` folder.
 """
 import json
+import _gamepaths as GP
 import os
 import shutil
 import socket
@@ -98,7 +99,7 @@ def main():
         print("checking the SHIPPED program on port %d" % port)
 
         root = os.path.join(tmp, "prof")
-        acct = os.path.join(root, "76561198406248391")
+        acct = os.path.join(root, GP.STEAMID)
         os.makedirs(os.path.join(acct, "mods", "local"))
         os.makedirs(os.path.join(acct, "mods", "subscribed"))
         for sub in ("ai", "xs"):

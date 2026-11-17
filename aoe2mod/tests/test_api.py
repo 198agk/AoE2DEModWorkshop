@@ -29,7 +29,7 @@ OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "out")
 # under ...\Games\Steam\steamapps\, a depth no fixed layout list would guess.
 auto = G.find_game_root()
 print("auto-found:", auto)
-game = G.find_game_root(explicit=r"D:\Games\Steam\steamapps\common\AoE2DE")
+game = G.find_game_root(explicit=os.environ.get("AOE2MOD_GAME_ROOT") or auto)
 assert os.path.normcase(auto) == os.path.normcase(game), (auto, game)
 print("game root :", game)
 print("dat       :", G.dat_path(game))

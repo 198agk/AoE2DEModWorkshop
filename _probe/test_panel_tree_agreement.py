@@ -47,9 +47,10 @@ count is **10,753 entries over 70 (file, civilization) pairs**, average 160.5 pe
 civilization.  A single-node measurement is not evidence until the aggregate is
 measured the same way.
 
-Run:  $env:PYTHONPATH='D:\\Software\\AI\\帝国项目'; python _probe\test_panel_tree_agreement.py
+Run:  python _probe\test_panel_tree_agreement.py
 """
 import os
+import _gamepaths as GP
 import sys
 from collections import Counter
 
@@ -61,7 +62,7 @@ if ROOT not in sys.path:
 from aoe2mod.game import buildpanel as BP                  # noqa: E402
 from aoe2mod.game import civtechtrees as CT                # noqa: E402
 
-GAME = r"D:\Games\Steam\steamapps\common\AoE2DE"
+GAME = GP.GAME
 fails = []
 
 

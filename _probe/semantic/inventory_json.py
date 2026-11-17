@@ -5,6 +5,7 @@ For each file: top-level type, key sample, depth, and whether the numeric keys
 join to dat ids.  Prints a compact structural sketch, never the whole file.
 """
 import json
+import _gamepaths as GP
 import os
 import sys
 import collections
@@ -14,7 +15,7 @@ try:
 except Exception:
     pass
 
-BASE = (r"D:\Games\Steam\steamapps\common\AoE2DE\resources\_common\dat")
+BASE = (GP.DAT_DIR)
 
 
 def sketch(v, depth=0, max_depth=3):

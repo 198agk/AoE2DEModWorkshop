@@ -1129,8 +1129,14 @@ def write_dat_file(stats, out_path, raw=None, strict=True, level=6, gv=None):
 
 
 def _main(argv):
-    base = (r"D:\Games\Steam\steamapps\common\AoE2DE\resources\_common\dat"
-            r"\empires2_x2_p1.dat")
+    # A literal path here is wrong on every machine but the one it was
+    # written on, and shipping it hands out somebody's directory layout.
+    # The parser's own resolver reads AOE2MOD_DAT / AOE2MOD_GAME_ROOT.
+    base = argv[0] if argv else _pd.default_dat_path()
+    if not base:
+        raise SystemExit(
+            "usage: write_dat.py <path to empires2_x2_p1.dat>\n"
+            "   or: set AOE2MOD_DAT, or AOE2MOD_GAME_ROOT to the AoE2DE folder")
     import contextlib, sys, time
     sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                     "..", "datparse"))

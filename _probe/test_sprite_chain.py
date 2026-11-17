@@ -13,6 +13,7 @@ producing a smaller file list.
   F  a legacy unit reports `legacy`, not an empty list
 """
 import os
+import _gamepaths as GP
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -23,7 +24,7 @@ os.chdir(ROOT)
 import aoe2mod.api as A
 from aoe2mod.game import sprites as S
 
-GAME = r"D:\Games\Steam\steamapps\common\AoE2DE"
+GAME = GP.GAME
 FAILS = []
 
 

@@ -47,6 +47,7 @@ The 2026-10-14 failure was therefore neither form, nor name, nor scheduling.
 """
 
 import json
+import _gamepaths as GP
 import os
 import sys
 
@@ -55,7 +56,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import aoe2mod.api as A                                  # noqa: E402
 from aoe2mod.game import civtechtrees as CT              # noqa: E402
 
-ROOT = r"D:\Games\Steam\steamapps\common\AoE2DE"
+ROOT = GP.GAME
 POMPEII = os.path.join(ROOT, "modes", "Pompeii", "Pompeii.json")
 EXE = os.path.join(ROOT, "AoE2DE_s.exe")
 AGG_MAIN = os.path.join(ROOT, "resources", "_common", "dat", "civTechTrees.json")

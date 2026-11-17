@@ -4,6 +4,7 @@
 Run:  python _probe/test_tech_effect.py
 """
 import contextlib
+import _gamepaths as GP
 import io
 import os
 import struct
@@ -21,7 +22,7 @@ from aoe2mod import api as A                                # noqa: E402
 from aoe2mod.dat import locate as L                         # noqa: E402
 from aoe2mod.intent import compiler as C                    # noqa: E402
 
-BASE = r"D:\Games\Steam\steamapps\common\AoE2DE\resources\_common\dat\empires2_x2_p1.dat"
+BASE = GP.DAT
 OUT = os.path.join(HERE, "out_effect")
 
 FAILS = []

@@ -21,9 +21,10 @@ Every one of these was scored backwards or missed on the first attempt.  This pi
 runs the whole filter over the corpus and names what survives, so the criterion
 lives in one place.
 
-Run:  $env:PYTHONPATH='D:\\Software\\AI\\帝国项目'; python _probe\test_protocol_subjects.py
+Run:  python _probe\test_protocol_subjects.py
 """
 import os
+import _gamepaths as GP
 import sys
 from collections import Counter
 
@@ -37,7 +38,7 @@ from aoe2mod.game import buildpanel as BP                  # noqa: E402
 from aoe2mod.game import civtechtrees as CT                # noqa: E402
 from aoe2mod.semantic.index import index as sem_index       # noqa: E402
 
-GAME = r"D:\Games\Steam\steamapps\common\AoE2DE"
+GAME = GP.GAME
 fails = []
 
 
@@ -216,7 +217,8 @@ check("building 1806 is the Fortified Church, held only by ARMENIANS/GEORGIANS",
 print()
 print("B3 Steam depot evidence for the two recommended civilizations")
 # `appmanifest_813780.acf`'s `InstalledDepots` is the closest on-disk record.
-_acf = os.path.join(r"D:\Games\Steam\steamapps", "appmanifest_813780.acf")
+_steamapps = os.path.dirname(os.path.dirname(GP.GAME))
+_acf = os.path.join(_steamapps, "appmanifest_813780.acf")
 if os.path.exists(_acf):
     import re as _re
     _t = open(_acf, "rb").read().decode("utf-8", "replace")

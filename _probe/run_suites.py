@@ -6,6 +6,8 @@ import shutil
 import subprocess
 import sys
 
+import _gamepaths as GP
+
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 PY = sys.executable
@@ -1298,7 +1300,7 @@ def _dev_server():
 #: sha256 prefixes and the minute it changed turns that into one line.
 #: The install the probes read.  A string with forward slashes: `os.path.join`
 #: with a bare "D:" jumps through the drive's current directory.
-LIVE_DAT_DIR = "D:/Games/Steam/steamapps/common/AoE2DE/resources/_common/dat"
+LIVE_DAT_DIR = GP.DAT_DIR
 VANILLA_DIR = os.path.join(ROOT, "_cache", "vanilla_dat")
 DATA_FILES = ("empires2_x2_p1.dat", "futuravailableunits.json",
               "paphosfutureavailableunits.json")

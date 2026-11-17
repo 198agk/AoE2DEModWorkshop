@@ -27,6 +27,7 @@ Usage:
 """
 
 import collections
+import _gamepaths as GP
 import hashlib
 import json
 import os
@@ -37,7 +38,7 @@ import zlib
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import parse_dat as P
 
-DAT = r"D:\Games\Steam\steamapps\common\AoE2DE\resources\_common\dat\empires2_x2_p1.dat"
+DAT = GP.DAT
 COMMON = os.path.dirname(DAT)
 HERE = os.path.dirname(os.path.abspath(__file__))
 

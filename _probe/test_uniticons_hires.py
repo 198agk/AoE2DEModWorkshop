@@ -30,6 +30,7 @@ grid keeps the atlas path.  Rewiring it would trade a proven 1,219-picture chain
 for a 95-picture one and call it an improvement.
 """
 import json
+import _gamepaths as GP
 import os
 import re
 import struct
@@ -37,7 +38,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-GAME = r"D:\Games\Steam\steamapps\common\AoE2DE"
+GAME = GP.GAME
 WID = os.path.join(GAME, "widgetui")
 UNITS = os.path.join(GAME, "resources", "_common", "wpfg", "resources", "uniticons")
 DDSDIR = os.path.join(WID, "textures", "ingame", "units")

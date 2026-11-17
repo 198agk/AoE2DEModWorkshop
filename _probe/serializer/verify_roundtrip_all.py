@@ -8,6 +8,7 @@ all of them and prints a single table, so "round-trips everywhere" is a measured
 claim rather than an extrapolation from two samples.
 """
 import hashlib
+import _gamepaths as GP
 import io
 import os
 import sys
@@ -21,9 +22,8 @@ sys.path.insert(0, os.path.join(PROBE, "datparse"))
 import parse_dat
 import write_dat
 
-GAME = r"D:\Games\Steam\steamapps\common\AoE2DE"
-USERMODS = (r"C:\Users\26913\Games\Age of Empires 2 DE"
-            r"\76561198406248391\mods\subscribed")
+GAME = GP.GAME
+USERMODS = GP.SUBSCRIBED
 
 TARGETS = [
     ("BASE", os.path.join(GAME, r"resources\_common\dat\empires2_x2_p1.dat")),

@@ -20,6 +20,7 @@ so (1, resource, 1, -1, 2000.0) is a plain resource grant of 2000.
 Resource ids: 0 = food, 1 = wood, 2 = stone, 3 = gold.
 """
 import contextlib
+import _gamepaths as GP
 import hashlib
 import io
 import os
@@ -33,7 +34,7 @@ sys.path.insert(0, HERE)
 import parse_dat
 import write_dat
 
-BASE = (r"D:\Games\Steam\steamapps\common\AoE2DE\resources\_common\dat"
+BASE = (GP.DAT_DIR +
         r"\empires2_x2_p1.dat")
 OUT_DIR = os.path.join(HERE, "out")
 OUT_DAT = os.path.join(OUT_DIR, "added_tech.dat")

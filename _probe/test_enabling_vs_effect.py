@@ -35,9 +35,10 @@ SECOND type-2 command to an existing effect is a shape the engine already sees -
 `tech 3 'British Yeoman'` (civ 1) carries **4** type-2 commands inside a 52-command
 effect, and `tech 579 'Berber UT'` carries 5.
 
-Run:  $env:PYTHONPATH='D:\\Software\\AI\\帝国项目'; python _probe\test_enabling_vs_effect.py
+Run:  python _probe\test_enabling_vs_effect.py
 """
 import contextlib
+import _gamepaths as GP
 import io
 import os
 import sys
@@ -50,7 +51,7 @@ if ROOT not in sys.path:
 import aoe2mod.api as A                                    # noqa: E402
 import aoe2mod.dat.parser as P                             # noqa: E402
 
-GAME = r"D:\Games\Steam\steamapps\common\AoE2DE"
+GAME = GP.GAME
 fails = []
 
 

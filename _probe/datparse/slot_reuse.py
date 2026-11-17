@@ -1,3 +1,4 @@
+import _gamepaths as GP
 """Decisive question for the data-mod product:
 Can we implement 'add a new gameplay tech' by REPURPOSING existing unused
 tech/effect slots, instead of growing the dat (which would need a re-serializer)?
@@ -10,7 +11,7 @@ import os, sys, io, json, contextlib, collections
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import parse_dat as P
 
-BASE = r"D:\Games\Steam\steamapps\common\AoE2DE\resources\_common\dat\empires2_x2_p1.dat"
+BASE = GP.DAT
 
 data, _ = P.load_dat(BASE)
 p = P.Parser(data)

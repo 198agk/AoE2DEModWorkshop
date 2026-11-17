@@ -11,6 +11,7 @@ is never touched.  A fixture, not a copy: the variable is refused unless
 mods/mod-status.json exists, which is the shape the game itself writes.
 """
 import json
+import _gamepaths as GP
 import os
 import shutil
 import subprocess
@@ -37,7 +38,7 @@ def check(ok, what, detail=""):
 
 def main():
     tmp = tempfile.mkdtemp(prefix="aoe2_click_")
-    acct = os.path.join(tmp, "76561198406248391")
+    acct = os.path.join(tmp, GP.STEAMID)
     os.makedirs(os.path.join(acct, "mods", "local"))
     os.makedirs(os.path.join(acct, "mods", "subscribed"))
     for sub in ("ai", "xs"):

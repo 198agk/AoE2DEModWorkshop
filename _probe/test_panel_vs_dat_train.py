@@ -34,6 +34,7 @@ IDENTICAL whether the reference civ is Gaia or British (symmetric difference 0),
 earlier comparisons that used civ[0] = Gaia were not misled by it.
 """
 import os
+import _gamepaths as GP
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -45,7 +46,7 @@ import aoe2mod.api as A                                    # noqa: E402
 from aoe2mod.game import buildpanel as BP                  # noqa: E402
 from aoe2mod.game import civtechtrees as CT                # noqa: E402
 
-GAME = r"D:\Games\Steam\steamapps\common\AoE2DE"
+GAME = GP.GAME
 fails = []
 
 

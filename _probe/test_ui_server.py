@@ -15,6 +15,7 @@ player's mod list.  That distinction is the whole reason `_probe/test_install.py
 had to be rewritten twice.
 """
 import json
+import _gamepaths as GP
 import os
 import re
 import shutil
@@ -31,7 +32,7 @@ if ROOT not in sys.path:
 
 from aoe2mod.ui import server as S                              # noqa: E402
 
-GAME = r"D:\Games\Steam\steamapps\common\AoE2DE"
+GAME = GP.GAME
 FAILS = []
 
 

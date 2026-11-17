@@ -10,6 +10,7 @@ and would silently truncate this script's output.  Parse fully instead, and
 instrument read_random_maps to learn the section's byte span.
 """
 import os
+import _gamepaths as GP
 import sys
 import contextlib
 import io
@@ -19,8 +20,8 @@ if HERE not in sys.path:
     sys.path.insert(0, HERE)
 import parse_dat as P
 
-GAME = r"D:\Games\Steam\steamapps\common\AoE2DE"
-USERMODS = r"C:\Users\26913\Games\Age of Empires 2 DE\76561198406248391\mods\subscribed"
+GAME = GP.GAME
+USERMODS = GP.SUBSCRIBED
 
 TARGETS = [
     ("BASE", os.path.join(GAME, r"resources\_common\dat\empires2_x2_p1.dat")),

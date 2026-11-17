@@ -45,7 +45,7 @@ README = """帝国时代 2 决定版 · 模组工坊
 1. 本机的《帝国时代 2 决定版》（Steam 版）。第一次启动会自动找游戏目录；
    找不到时可以用环境变量指定：
 
-       set AOE2MOD_GAME_ROOT=D:\\Games\\Steam\\steamapps\\common\\AoE2DE
+       set AOE2MOD_GAME_ROOT=<这里填 AoE2DE 的安装目录>
 
 2. 生成的模组会装进游戏自己的 profile 目录，然后在游戏的「创建游戏」界面
    的「数据模组：」下拉框里选它。

@@ -13,6 +13,7 @@ donor still prefers a civ that already has it.
 Read-only (calls the real aoe2mod API).  Asserts, exits non-zero on failure.
 """
 import os
+import _gamepaths as GP
 import sys
 import collections
 
@@ -22,7 +23,7 @@ sys.path.insert(0, ROOT)
 
 from aoe2mod.game import civtechtrees as CT  # noqa: E402
 
-GAME = r"D:\Games\Steam\steamapps\common\AoE2DE"
+GAME = GP.GAME
 FAILS = []
 
 

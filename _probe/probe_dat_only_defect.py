@@ -22,6 +22,7 @@ Also record the mechanism candidate: the DAT storage point is the ONLY one flagg
 resolve that directory as a unit rather than per-file.
 """
 import json
+import _gamepaths as GP
 import os
 import sys
 
@@ -30,9 +31,9 @@ ROOT = os.path.dirname(HERE)
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
-ACC = r"C:\Users\26913\Games\Age of Empires 2 DE\76561198406248391"
+ACC = GP.ACCOUNT
 MODS = os.path.join(ACC, "mods")
-GAME = r"D:\Games\Steam\steamapps\common\AoE2DE"
+GAME = GP.GAME
 DAT_REL = os.path.join("resources", "_common", "dat")
 DAT_FILE = "empires2_x2_p1.dat"
 

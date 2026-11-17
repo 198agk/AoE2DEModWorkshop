@@ -20,6 +20,7 @@ Standard library only (zlib, struct, sys, time, json).
 
 import os
 import struct
+import threading
 import sys
 import time
 import zlib
@@ -169,6 +170,10 @@ DEBUG_STRING_MARKER = 0x0A60
 # ---------------------------------------------------------------------------
 # Byte reader
 # ---------------------------------------------------------------------------
+# Serialises `parse()`; see the comment inside it.
+_PARSE_LOCK = threading.RLock()
+
+
 class Reader(object):
     """Byte reader.
 
@@ -1070,6 +1075,18 @@ class Parser(object):
             raise SystemExit(0)
 
     def parse(self, stop_after=None):
+        # `unitfields.scan()` records field offsets by swapping the MODULE-level
+        # `read_unit`/`read_civ` for recording twins.  That patch is process
+        # wide, so a second thread parsing mid-scan saw a recorder fed a plain
+        # `Reader` and died with
+        # `Reader.u8() takes 1 positional argument but 2 were given` -- measured
+        # 2026-10-29 on the write path, which re-parses the built file while the
+        # page may be asking for fields at the same time.  Parsing is a 7 s,
+        # single-user job, so serialising it costs nothing.
+        with _PARSE_LOCK:
+            return self._parse_locked(stop_after)
+
+    def _parse_locked(self, stop_after=None):
         r = self.r
         s = self.stats
 
@@ -1164,6 +1181,26 @@ class Parser(object):
         return s
 
 
+def default_dat_path():
+    """Where the command-line entry points look when given no path.
+
+    Nothing here guesses.  The game folder moves between drives, machines
+    and Steam libraries, so a literal path is wrong for every reader but
+    one -- and publishing it also publishes somebody's directory layout.
+    Set ``AOE2MOD_DAT`` to the .dat itself, or ``AOE2MOD_GAME_ROOT`` to the
+    AoE2DE folder; the tool proper discovers both on its own (see
+    ``aoe2mod.game.locations``) and never comes through here.
+    """
+    exact = os.environ.get("AOE2MOD_DAT")
+    if exact:
+        return exact
+    root = os.environ.get("AOE2MOD_GAME_ROOT")
+    if root:
+        return os.path.join(root, "resources", "_common", "dat",
+                            "empires2_x2_p1.dat")
+    return ""
+
+
 def main():
     argv = sys.argv[1:]
     stop_after = None
@@ -1175,8 +1212,11 @@ def main():
             path = a
 
     if path is None:
-        path = (r"D:\Games\Steam\steamapps\common\AoE2DE\resources\_common\dat"
-                r"\empires2_x2_p1.dat")
+        path = default_dat_path()
+    if not path:
+        raise SystemExit(
+            "usage: parse_dat.py <path to empires2_x2_p1.dat> [--stop-after=N]\n"
+            "   or: set AOE2MOD_DAT, or AOE2MOD_GAME_ROOT to the AoE2DE folder")
 
     t0 = time.time()
     data, how = load_dat(path)

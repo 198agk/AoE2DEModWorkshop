@@ -22,6 +22,7 @@ _HERE_PATH = lambda *p: _os.path.join(
 _ROOT_PATH = lambda *p: _os.path.join(
     _os.path.dirname(_os.path.abspath(__file__)), *p)
 import contextlib
+import _gamepaths as GP
 import io
 import sys
 
@@ -31,7 +32,7 @@ sys.path.insert(0, _HERE_PATH("_probe", "serializer"))
 import parse_dat
 import write_dat
 
-BASE = (r"D:\Games\Steam\steamapps\common\AoE2DE\resources\_common\dat"
+BASE = (GP.DAT_DIR +
         r"\empires2_x2_p1.dat")
 
 PRIMS = ("u8", "i16", "u16", "u32", "i32", "f32", "raw", "skip",

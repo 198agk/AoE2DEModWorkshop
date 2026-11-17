@@ -9037,7 +9037,7 @@
   "object-data-type": 52634808
  },
  "ai_pool_evidence": {
-  "exe": "D:\\Games\\Steam\\steamapps\\common\\AoE2DE\\AoE2DE_s.exe",
+  "exe": "<game root>/AoE2DE_s.exe",
   "note": "池内地址是 RVA（= 文件偏移 - 0x1400）。命中即「引擎能解析这个名字」；未见即「语料用了但池里没有」，这类名字要么是语料自己的 defconst，要么是运行时拼接（X-line），要么是同一名字在别的池段被混淆。-line 名按词干核对，因为引擎不存字面量。"
  },
  "ai_pool_names": [
@@ -17271,14 +17271,14 @@
  "ai_verb_names_clean_src": {
   "clean_build": 16,
   "clean_train": 35,
-  "corpus": "D:\\Games\\Steam\\steamapps\\common\\AoE2DE\\resources\\_common\\ai",
+  "corpus": "<game root>/resources/_common/ai",
   "dropped": 124,
   "raw_build": 36,
   "raw_train": 139,
   "rule": "train/build 名合法当且仅当语料从未 (defconst <名> ...)；被 defconst 过的是文件内别名（hero、dm-unit、my-unique-unit-line、genitour-placeholder 等），发到别人脚本里是未定义符号。纯数字名（1079、759）是单位 id，不给玩家用。"
  },
  "ai_verb_names_src": {
-  "corpus": "D:\\Games\\Steam\\steamapps\\common\\AoE2DE\\resources\\_common\\ai",
+  "corpus": "<game root>/resources/_common/ai",
   "legal_build": 36,
   "legal_train": 113,
   "observed_build": 36,
