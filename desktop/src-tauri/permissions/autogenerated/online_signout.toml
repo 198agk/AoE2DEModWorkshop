@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-online-signout"
+description = "Enables the online_signout command without any pre-configured scope."
+commands.allow = ["online_signout"]
+
+[[permission]]
+identifier = "deny-online-signout"
+description = "Denies the online_signout command without any pre-configured scope."
+commands.deny = ["online_signout"]

@@ -1,0 +1,36 @@
+# 公开发布时唯一需要关心的是「哪些东西是二进制」。Windows 上的 git 默认
+# 可能对文本做换行转换，而这些文件一旦被转换就不再是同一个字节序列：.dat 的
+# 校验和、.webm 的容器头、图标母版的 RGBA 都会因此变掉，而它们各自都有
+# 「必须逐字节相同」的断言（见 aoe2mod/tests/test_roundtrip.py 与
+# _probe/tmp_icon_dump.py 的 PASS）。
+#
+# 这里显式标注，避免将来任何人打开 core.autocrlf 之后出现「本地全绿、克隆后全红」。
+
+* text=auto eol=lf
+
+# 游戏数据与资源容器
+*.dat binary
+*.sld binary
+*.drs binary
+*.webm binary
+*.dds binary
+*.wav binary
+*.mp3 binary
+*.ogg binary
+
+# 图片与图标
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.ico binary
+*.gif binary
+
+# 可执行与库
+*.exe binary
+*.dll binary
+*.pyd binary
+*.pak binary
+*.zip binary
+
+# 已签名封装
+*.bundle binary

@@ -1,0 +1,110 @@
+unit,wood,food,gold,train_time
+Arambai,75,0,60,21
+Arbalester,25,0,45,27
+Archer,25,0,45,35
+Ballista Elephant,0,100,80,25
+Battering Ram,160,0,75,36
+Battle Elephant,0,120,70,24
+Berserk,0,65,25,14
+Bombard Cannon,225,0,225,56
+Boyar,0,50,80,15
+Camel Archer,50,0,60,25
+Camel Rider,0,55,60,22
+Cannon Galleon,200,0,150,46
+Capped Ram,160,0,75,36
+Caravel,90,0,34,36
+Cataphract,0,70,75,20
+Cavalier,0,60,75,30
+Cavalry Archer,40,0,60,34
+Champion,0,60,20,21
+Chu Ko Nu,40,0,35,16
+Condottiero,0,50,35,18
+Conquistador,0,60,70,24
+Coustillier,0,55,55,15
+Crossbowman,25,0,45,27
+Demolition Raft,70,0,50,45
+Demolition Ship,70,0,50,31
+Eagle Scout,0,20,50,35
+Eagle Warrior,0,20,50,35
+Elephant Archer,0,100,70,25
+Elite Battle Elephant,0,120,70,24
+Elite Cannon Galleon,200,0,150,46
+Elite Eagle Warrior,0,20,50,20
+Elite Skirmisher,35,25,0,22
+Elite Steppe Lancer,0,70,40,20
+Fast Fire Ship,75,0,45,36
+Fire Galley,75,0,45,65
+Fire Ship,75,0,45,36
+Fishing Ship,75,0,0,40
+Flaming Camel,0,75,30,20
+Flemish Militia,0,60,25,14
+Galleon,90,0,30,36
+Galley,90,0,30,60
+Gbeto,0,50,40,17
+Genitour,35,50,0,25
+Genoese Crossbowman,45,0,40,18
+Halberdier,25,35,0,22
+Hand Cannoneer,0,45,50,34
+Heavy Camel Rider,0,55,60,22
+Heavy Cavalry Archer,40,0,60,27
+Heavy Demolition Ship,70,0,50,31
+Heavy Scorpion,75,0,75,30
+Huskarl,0,56,28,16
+Hussar,0,80,0,30
+Imperial Camel Rider,0,55,60,20
+Imperial Skirmisher,35,25,0,22
+Jaguar Warrior,0,60,30,11
+Janissary,0,60,55,17
+Kamayuk,0,60,30,10
+Karambit Warrior,0,30,15,6
+Keshik,0,60,40,16
+Kipchak,60,0,35,20
+Knight,0,60,75,30
+Konnik,0,60,70,19
+Leitis,0,70,50,20
+Light Cavalry,0,80,0,30
+Long Swordsman,0,60,20,21
+Longboat,85,0,43,25
+Longbowman,35,0,40,18
+Magyar Huszar,0,80,10,16
+Mameluke,0,55,85,23
+Man-at-Arms,0,60,20,21
+Mangonel,160,0,135,46
+Mangudai,55,0,65,26
+Militia,0,60,20,21
+Missionary,0,0,100,51
+Monk,0,0,100,51
+Onager,160,0,135,46
+Organ Gun,80,0,56,21
+Paladin,0,60,75,30
+Petard,0,65,20,25
+Pikeman,25,35,0,22
+Plumed Archer,44,0,44,16
+Rattan Archer,50,0,45,16
+Samurai,0,60,30,9
+Scorpion,75,0,75,30
+Scout Cavalry,0,80,0,30
+Serjeant,0,60,35,12
+Shotel Warrior,0,50,30,8
+Siege Onager,160,0,135,46
+Siege Ram,160,0,75,36
+Siege Tower,200,0,160,36
+Skirmisher,35,25,0,22
+Slinger,0,30,40,25
+Spearman,25,35,0,22
+Steppe Lancer,0,70,40,24
+Tarkan,0,60,60,21
+Teutonic Knight,0,85,40,12
+Throwing Axeman,0,55,25,17
+Trade Cart,100,0,50,51
+Trade Cog,100,0,50,36
+Transport Ship,125,0,0,46
+Trebuchet,200,0,200,50
+Turtle Ship,152,0,180,50
+Two-Handed Swordsman,0,60,20,21
+Villager,0,50,0,25
+War Elephant,0,200,75,31
+War Galley,90,0,30,36
+War Wagon,92,0,60,21
+Woad Raider,0,65,25,10
+Xolotl Warrior,0,60,75,30

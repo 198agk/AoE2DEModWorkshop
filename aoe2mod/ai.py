@@ -87,15 +87,16 @@ def _env(name, default=""):
 
 
 def config():
-    """The endpoint settings, or None when this build has no AI wired up."""
-    key = _env(KEY_ENV)
-    if not key:
-        return None
-    return {
-        "base": _env(BASE_ENV, DEFAULT_BASE).rstrip("/"),
-        "key": key,
-        "model": _env(MODEL_ENV, DEFAULT_MODEL),
-    }
+    """The endpoint settings, or None when this build has no AI wired up.
+
+    Delegated to `aoe2mod/aisettings.py`, which owns the two-source precedence
+    (environment first, then the file the settings panel writes).  That file
+    exists because the exe is double-clicked: a player will not export a variable
+    before launching a GUI, so an environment-only contract meant the AI entry
+    was permanently invisible in the one build that ships.
+    """
+    from . import aisettings
+    return aisettings.effective()
 
 
 def available():
@@ -218,7 +219,8 @@ def ask(text, intents, system=None, timeout=TIMEOUT):
     """
     cfg = config()
     if cfg is None:
-        raise AIError("这个版本没有配 AI 接入口：设三个环境变量 %s / %s / %s 就能启用"
+        raise AIError("这个版本没有配 AI 接入口：点左边的「设置」，在「模型」那一栏"
+                      "填上接口地址、模型名和密钥就能启用；也可以设三个环境变量 %s / %s / %s"
                       % (BASE_ENV, KEY_ENV, MODEL_ENV))
     wish = (text or "").strip()
     if not wish:

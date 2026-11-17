@@ -1,0 +1,431 @@
+group_no,group,type,symbol,description
+1,Game Type,Game Type,DEATH-MATCH,Death Match game.
+1,Game Type,Game Type,RANDOM-MAP,Random Map game.
+1,Game Type,Game Type,REGICIDE,Regicide game.
+1,Game Type,Game Type,KING-OF-THE-HILL,"King of the Hill game. CPSB incorrectly states ""KING""."
+1,Game Type,Game Type,WONDER-RACE,"Wonder Race game. CPSB incorrectly states ""WONDER RACE""."
+1,Game Type,Game Type,DEFEND-WONDER,"Defend the Wonder game. CPSB incorrectly states ""DEFEND THE WONDER""."
+1,Game Type,Game Type,TURBO-RANDOM-MAP,Turbo random map game.
+1,Game Type,Game Type,SUDDEN-DEATH,Sudden death game. HD/DE only.
+1,Game Type,Game Type,CAPTURE-THE-RELIC,Capture the Relic game. HD/DE only.
+1,Game Type,Game Type,BATTLE-ROYALE,Battle Royale game. DE only.
+1,Game Type,Game Type,EMPIRE-WARS,Empire Wars game. DE only.
+1,Game Type,Game Type,TURBO-MODE,A game where the Turbo Mode checkbox is checked.
+1,Game Type,Game Type,SUB-GAME-MODE-EMPIRE-WARS,A game where the Empire Wars Mode checkbox is checked.
+1,Game Type,Game Type,SUB-GAME-MODE-SUDDEN-DEATH,A game where the Sudden Death Mode checkbox is checked.
+1,Game Type,Game Type,SUB-GAME-MODE-REGICIDE,A game where the Regicide Mode checkbox is checked.
+1,Game Type,Game Type,SUB-GAME-MODE-KING-OF-THE-HILL,A game where the King of the Hill Mode checkbox is checked.
+1,Game Type,Game Type,GAME-SPEED-LOCKED,Game speed is locked.
+1,Game Type,Game Type,ALL-TECHS-ENABLED,All techs enabled.
+1,Game Type,Game Type,LAST-MAN-STANDING,Last Man Standing checked.
+1,Game Type,Game Type,BATTLE-ROYALE-TIME-X-MINUTES,"Battle Royale Time Limit, where X is the number of minutes."
+2,Starting/Ending Age,Start/End Age,DARK-AGE-START,Dark Age start.
+2,Starting/Ending Age,Start/End Age,FEUDAL-AGE-START,Feudal Age start.
+2,Starting/Ending Age,Start/End Age,CASTLE-AGE-START,Castle Age start.
+2,Starting/Ending Age,Start/End Age,IMPERIAL-AGE-START,Imperial Age start.
+2,Starting/Ending Age,Start/End Age,POST-IMPERIAL-AGE-START,Post-Imperial Age start.
+2,Starting/Ending Age,Start/End Age,DARK-AGE-END,Highest available age is Dark Age.
+2,Starting/Ending Age,Start/End Age,FEUDAL-AGE-END,Highest available age is Feudal Age.
+2,Starting/Ending Age,Start/End Age,CASTLE-AGE-END,Highest available age is Castle Age.
+2,Starting/Ending Age,Start/End Age,IMPERIAL-AGE-END,Highest available age is Imperial Age.
+3,Starting Resources,Starting Resources,LOW-RESOURCES-START,Low resources start (Standard).
+3,Starting Resources,Starting Resources,MEDIUM-RESOURCES-START,Medium resources start.
+3,Starting Resources,Starting Resources,HIGH-RESOURCES-START,High resources start.
+3,Starting Resources,Starting Resources,ULTRA-RESOURCES-START,Ultra resources start. DE only.
+3,Starting Resources,Starting Resources,INFINITE-RESOURCES-START,Infinite resources start. DE only.
+3,Starting Resources,Starting Resources,RANDOM-RESOURCES-START,Random resources start. DE only.
+4,Map Size,Map Size,MINIATURE-MAP-SIZE,Miniature size map. 80x80 tiles. Requires MORE_MAP_SIZES Steam launch parameter.
+4,Map Size,Map Size,TINY-MAP,Tiny size (2 player) map. 120x120 tiles.
+4,Map Size,Map Size,TINY-MAP-SIZE,Tiny size (2 player) map. 120x120 tiles.
+4,Map Size,Map Size,SMALL-MAP,Small size (3 player) map. 144x144 tiles.
+4,Map Size,Map Size,SMALL-MAP-SIZE,Small size (3 player) map. 144x144 tiles.
+4,Map Size,Map Size,MEDIUM-MAP,Medium size (4 player) map. 168x168 tiles.
+4,Map Size,Map Size,MEDIUM-MAP-SIZE,Medium size map. 168x168 tiles.
+4,Map Size,Map Size,NORMAL-MAP,Normal size (6 player) map. 200x200 tiles.
+4,Map Size,Map Size,NORMAL-MAP-SIZE,Normal size map. 200x200 tiles.
+4,Map Size,Map Size,LARGE-MAP,Large size (8 player) map. 220x220 tiles.
+4,Map Size,Map Size,LARGE-MAP-SIZE,Large size map. 220x220 tiles.
+4,Map Size,Map Size,GIANT-MAP,Huge size map. 240x240 tiles. DE changed the name of 240x240 tile map to Huge. GIANT-MAP refers to the Huge map for backwards compatibility with old AIs.
+4,Map Size,Map Size,HUGE-MAP-SIZE,Huge size map. 240x240 tiles.
+4,Map Size,Map Size,GIANT-MAP-SIZE,Giant size map. 252x252 tiles. Requires MORE_MAP_SIZES Steam launch parameter.
+4,Map Size,Map Size,MASSIVE-MAP-SIZE,Massive size map. 276x276 tiles. Requires MORE_MAP_SIZES Steam launch parameter.
+4,Map Size,Map Size,ENORMOUS-MAP-SIZE,Enormous size map. 300x300 tiles. Requires MORE_MAP_SIZES Steam launch parameter.
+4,Map Size,Map Size,COLOSSAL-MAP-SIZE,Colossal size map. 320x320 tiles. Requires MORE_MAP_SIZES Steam launch parameter.
+4,Map Size,Map Size,INCREDIBLE-MAP-SIZE,Incredible size map. 360x360 tiles. Requires MORE_MAP_SIZES Steam launch parameter.
+4,Map Size,Map Size,MONSTROUS-MAP-SIZE,Monstrous size map. 400x400 tiles. Requires MORE_MAP_SIZES Steam launch parameter.
+4,Map Size,Map Size,LUDIKRIS-MAP,Ludicrous size map (notice the spelling!). 480x480 tiles.
+4,Map Size,Map Size,LUDICROUS-MAP,Ludicrous size map. 480x480 tiles.
+4,Map Size,Map Size,LUDICROUS-MAP-SIZE,Ludicrous size map. 480x480 tiles.
+5,Victory,Victory,VICTORY-STANDARD,"Standard victory by Conquest, wonders, or relics."
+5,Victory,Victory,VICTORY-CONQUEST,Victory by Conquest only.
+5,Victory,Victory,VICTORY-TIME-LIMIT,Victory by having the best score by the time limit.
+5,Victory,Victory,VICTORY-SCORE,Victory by reaching a certain score.
+5,Victory,,VICTORY-CUSTOM,"Custom victories, such as scenarios. Probably"
+5,Victory,Victory,VICTORY-RELICS,Victory by Relics only.
+6,Difficulty,Difficulty,DIFFICULTY-EASIEST,Easiest difficulty.
+6,Difficulty,Difficulty,DIFFICULTY-EASY,Standard difficulty.
+6,Difficulty,Difficulty,DIFFICULTY-MODERATE,Moderate difficulty.
+6,Difficulty,Difficulty,DIFFICULTY-HARD,Hard difficulty.
+6,Difficulty,Difficulty,DIFFICULTY-HARDEST,Hardest difficulty.
+6,Difficulty,Difficulty,DIFFICULTY-EXTREME,Extreme difficulty. DE only.
+7,Population Cap,Pop Cap,POPULATION-CAP-25,25 population cap.
+7,Population Cap,Pop Cap,POPULATION-CAP-50,50 population cap.
+7,Population Cap,Pop Cap,POPULATION-CAP-75,75 population cap.
+7,Population Cap,Pop Cap,POPULATION-CAP-100,100 population cap.
+7,Population Cap,Pop Cap,POPULATION-CAP-125,125 population cap.
+7,Population Cap,Pop Cap,POPULATION-CAP-150,150 population cap.
+7,Population Cap,Pop Cap,POPULATION-CAP-175,175 population cap.
+7,Population Cap,Pop Cap,POPULATION-CAP-200,200 population cap <strong>or higher</strong>.
+7,Population Cap,Pop Cap,POPULATION-CAP-X,"Population cap = X, substitute X for the desired pop cap."
+7,Population Cap,Pop Cap,POPULATION-CAP-EXTENDED,Population cap > 200.
+8,Game Version,Game Version,UP-GAME-[NAME],Substitute [NAME] with the expansion name.
+8,Game Version,Game Version,UP-GAME-AGE2-X1,The Conquerors expansion.
+8,Game Version,Game Version,UP-GAME-AGE2-X2,The Age of Forgotten Empires mod (not the official AoF expansion).
+8,Game Version,Game Version,UP-GAME-WK,Wololo Kingdoms expansion. Also defined for DE.
+8,Game Version,Game Version,UP-AVAILABLE,Userpatch version 1.1 and later. Also defined for DE.
+8,Game Version,Game Version,UP-VERSION-1.5,Userpatch version 1.5. Also defined for DE.
+8,Game Version,Game Version,UP-VERSION-1.4,Userpatch version 1.4 and later. Also defined for DE.
+8,Game Version,Game Version,UP-VERSION-1.3,Userpatch version 1.3 and later. Also defined for DE.
+8,Game Version,Game Version,UP-VERSION-1.2,Userpatch version 1.2 and later. Also defined for DE.
+8,Game Version,Game Version,UP-VERSION-1.1,Userpatch version 1.1 and later. Also defined for DE.
+8,Game Version,Game Version,DE-AVAILABLE,Definitive Edition game version.
+8,Game Version,Game Version,DE-GAME-AGE2,The AoE2 mode (always loaded in DE unless playing the AoE1 mode of Return of Rome).
+8,Game Version,Game Version,DE-GAME-ROME,The AoE1 mode of the Return of Rome DLC.
+9,Players & Teams,Players & Teams,TEAMS-LOCKED,Locked teams.
+9,Players & Teams,Players & Teams,TEAM-TOGETHER,Team Together option is selected.
+9,Players & Teams,Players & Teams,UP-PLAYER-[1-8],Likely defined only if the AI's player slot number matches the [1-8].
+9,Players & Teams,Players & Teams,UP-[NAME]-CIV-ALLY,"Defined if the player has an ally of the given civ at the start of the game. Replace [NAME] with a civ name, like UP-TEUTONIC-CIV-ALLY."
+9,Players & Teams,Players & Teams,UP-[NAME]-CIV-ENEMY,Defined if the player has an enemy (or neutral) of the given civ at the start of the game. Replace [NAME] with a civ name. Also defined for neutral players.
+9,Players & Teams,Players & Teams,UP-[1-8]-PLAYER-GAME,Total number of players in the game. Replace [1-8] with the number of players you want to specify.
+9,Players & Teams,Players & Teams,UP-[1-8]-PLAYER-TEAM,Number of players on the AI's team. Replace [1-8] with the number of players you want to specify.
+9,Players & Teams,Players & Teams,UP-ALLY-IN-GAME,Defined if the player has an ally at the start of the game.
+9,Players & Teams,Players & Teams,UP-MULTIPLE-ENEMIES,Defined if the player has more than one enemy.
+9,Players & Teams,Players & Teams,UP-TEAM-DISADVANTAGE,Defined if an enemy team is larger.
+9,Players & Teams,Players & Teams,UP-POCKET-POSITION,The player is a pocket (positioned between two allied players).
+9,Players & Teams,Players & Teams,UP-HUMAN-IN-GAME,Defined if there is a human player in the game.
+9,Players & Teams,Players & Teams,UP-HUMAN-ALLY,Defined if the player has a human ally.
+9,Players & Teams,Players & Teams,UP-HUMAN-ENEMY,Defined if the player has a human enemy.
+9,Players & Teams,Players & Teams,UP-COMPUTER-ALLY,Defined if the player has a computer ally.
+9,Players & Teams,Players & Teams,UP-COMPUTER-ENEMY,Defined if the player has a computer enemy.
+10,Custom RMS,Custom RMS,CUSTOM-MAP,Any custom random map that doesn't use ai_info_map_type.
+10,Custom RMS,Custom RMS,UP-NOMAD-STYLE,Custom maps that define the map style as Nomad with ai_info_map_type.
+10,Custom RMS,Custom RMS,UP-MICHI-STYLE,Custom maps that define the map style as Michi with ai_info_map_type.
+10,Custom RMS,Custom RMS,UP-NOMAD-RESOURCES,Custom maps that set nomad_resources to give players extra wood and stone (extra resources in built-in Nomad is hard-coded and does not set this).
+10,Custom RMS,Custom RMS,UP-GROUPED-BY-TEAM,Custom maps that set grouped_by_team to start team players in close proximity to each other.
+11,Reveal Map,Reveal Map,REVEAL-NORMAL,Normal reveal start.
+11,Reveal Map,Reveal Map,REVEAL-EXPLORED,Explored reveal start.
+11,Reveal Map,Reveal Map,REVEAL-ALL-VISIBLE,All Visible reveal start.
+11,Reveal Map,Reveal Map,REVEAL-NO-FOG,"There is no fog of war, but the AI still has to explore the map."
+12,Other,Other,UP-MULTIPLAYER-GAME,Multiplayer game.
+12,Other,Other,UP-PROCESS-60FPS,60 frames per second enabled (instead of the 20 fps in AoC).
+12,Other,Other,SCENARIO-MAP,"Use UP-SCENARIO-GAME instead since scenarios have the option of setting a map type (Arabia, etc.)."
+12,Other,Other,UP-SCENARIO-GAME,"Defined for custom scenario games, even if the scenario sets the AI Info Map Type."
+12,Other,Other,FE-CAMPAIGN-GAME,Defined for scenarios that are part of official game campaigns that are released with the game.
+12,Other,Other,FE-CUSTOM-CAMPAIGN,Defined for scenarios that are part of a custom campaign mod.
+12,Other,Other,DE-SOLID-FARMS,Defined if a game version is loaded that has unwalkable farms (i.e. Return of Rome).
+13,Civs (AoE2),AoE2 Civs,GAIA,Gaia civ.
+13,Civs (AoE2),AoE2 Civs,ARMENIANS-CIV,Armenians civ.
+13,Civs (AoE2),AoE2 Civs,AZTEC-CIV,Aztecs civ.
+13,Civs (AoE2),AoE2 Civs,BENGALIS-CIV,Bengalis civ.
+13,Civs (AoE2),AoE2 Civs,BERBERS-CIV,Berbers civ.
+13,Civs (AoE2),AoE2 Civs,BRITON-CIV,Britons civ.
+13,Civs (AoE2),AoE2 Civs,BOHEMIANS-CIV,Bohemians civ.
+13,Civs (AoE2),AoE2 Civs,BULGARIANS-CIV,Bulgarians civ.
+13,Civs (AoE2),AoE2 Civs,BURGUNDIANS-CIV,Burgundians civ.
+13,Civs (AoE2),AoE2 Civs,BURMESE-CIV,Burmese civ.
+13,Civs (AoE2),AoE2 Civs,BYZANTINE-CIV,Byzantines civ.
+13,Civs (AoE2),AoE2 Civs,CELTIC-CIV,Celts civ.
+13,Civs (AoE2),AoE2 Civs,CHINESE-CIV,Chinese civ.
+13,Civs (AoE2),AoE2 Civs,CUMANS-CIV,Cumans civ.
+13,Civs (AoE2),AoE2 Civs,DANES-CIV,Danes civ.
+13,Civs (AoE2),AoE2 Civs,DRAVIDIANS-CIV,Dravidians civ.
+13,Civs (AoE2),AoE2 Civs,ETHIOPIAN-CIV,Ethiopians civ.
+13,Civs (AoE2),AoE2 Civs,FRANKISH-CIV,Franks civ.
+13,Civs (AoE2),AoE2 Civs,GEORGIANS-CIV,Georgians civ.
+13,Civs (AoE2),AoE2 Civs,GOTHIC-CIV,Goths civ.
+13,Civs (AoE2),AoE2 Civs,GURJARAS-CIV,Gurjaras civ.
+13,Civs (AoE2),AoE2 Civs,HUN-CIV,Huns civ.
+13,Civs (AoE2),AoE2 Civs,INCAN-CIV,Incas civ.
+13,Civs (AoE2),AoE2 Civs,INDIAN-CIV,Indians civ. Also defined for Hindustanis civ.
+13,Civs (AoE2),AoE2 Civs,ITALIAN-CIV,Italians civ.
+13,Civs (AoE2),AoE2 Civs,JAPANESE-CIV,Japanese civ.
+13,Civs (AoE2),AoE2 Civs,JURCHENS-CIV,Jurchens civ.
+13,Civs (AoE2),AoE2 Civs,KHITANS-CIV,Khitans civ.
+13,Civs (AoE2),AoE2 Civs,KHMER-CIV,Khmer civ.
+13,Civs (AoE2),AoE2 Civs,KOREAN-CIV,Koreans civ.
+13,Civs (AoE2),AoE2 Civs,LITHUANIANS-CIV,Lithuanians civ.
+13,Civs (AoE2),AoE2 Civs,MAGYAR-CIV,Magyars civ.
+13,Civs (AoE2),AoE2 Civs,MALAY-CIV,Malay civ.
+13,Civs (AoE2),AoE2 Civs,MALIAN-CIV,Malians civ.
+13,Civs (AoE2),AoE2 Civs,MAPUCHE-CIV,Mapuche civ.
+13,Civs (AoE2),AoE2 Civs,MAYAN-CIV,Mayans civ.
+13,Civs (AoE2),AoE2 Civs,MONGOL-CIV,Mongols civ.
+13,Civs (AoE2),AoE2 Civs,MUISCA-CIV,Muisca civ.
+13,Civs (AoE2),AoE2 Civs,PERSIAN-CIV,Persians civ.
+13,Civs (AoE2),AoE2 Civs,POLES-CIV,Poles civ.
+13,Civs (AoE2),AoE2 Civs,PORTUGUESE-CIV,Portuguese civ.
+13,Civs (AoE2),AoE2 Civs,ROMANS-CIV,Romans civ.
+13,Civs (AoE2),AoE2 Civs,SARACEN-CIV,Saracens civ.
+13,Civs (AoE2),AoE2 Civs,SAXONS-CIV,Saxons civ.
+13,Civs (AoE2),AoE2 Civs,SHU-CIV,Shu civ.
+13,Civs (AoE2),AoE2 Civs,SICILIANS-CIV,Sicilians civ.
+13,Civs (AoE2),AoE2 Civs,SLAVIC-CIV,Slavs civ.
+13,Civs (AoE2),AoE2 Civs,SPANISH-CIV,Spanish civ.
+13,Civs (AoE2),AoE2 Civs,TATARS-CIV,Tatars civ.
+13,Civs (AoE2),AoE2 Civs,TEUTONIC-CIV,Teutons civ.
+13,Civs (AoE2),AoE2 Civs,TUPI-CIV,Tupi civ.
+13,Civs (AoE2),AoE2 Civs,TURKISH-CIV,Turks civ.
+13,Civs (AoE2),AoE2 Civs,VARANGIANS-CIV,Varangians civ.
+13,Civs (AoE2),AoE2 Civs,VIETNAMESE-CIV,Vietnamese civ.
+13,Civs (AoE2),AoE2 Civs,VIKING-CIV,Vikings civ.
+13,Civs (AoE2),AoE2 Civs,WEI-CIV,Wei civ.
+13,Civs (AoE2),AoE2 Civs,WU-CIV,Wu civ.
+14,Civs (Chronicles),Chronicles Civs,ACHAEMENIDS-CIV,Achaemenids civ.
+14,Civs (Chronicles),Chronicles Civs,ATHENIANS-CIV,Athenians civ.
+14,Civs (Chronicles),Chronicles Civs,MACEDONIANS-CIV,Macedonians civ.
+14,Civs (Chronicles),Chronicles Civs,PURU-CIV,Puru civ.
+14,Civs (Chronicles),Chronicles Civs,SPARTANS-CIV,Spartans civ.
+14,Civs (Chronicles),Chronicles Civs,THRACIANS-CIV,Macedonians civ.
+15,Civs (Return of Rome),RoR Civs,GAIA,Gaia civ.
+15,Civs (Return of Rome),RoR Civs,ASSYRIAN-CIV,Assyrians civ.
+15,Civs (Return of Rome),RoR Civs,BABYLONIAN-CIV,Babylonians civ.
+15,Civs (Return of Rome),RoR Civs,CARTHAGIAN-CIV,Carthaginians civ. Notice the spelling.
+15,Civs (Return of Rome),RoR Civs,CHOSON-CIV,Choson civ.
+15,Civs (Return of Rome),RoR Civs,EGYPTIAN-CIV,Egyptians civ.
+15,Civs (Return of Rome),RoR Civs,GREEK-CIV,Greeks civ.
+15,Civs (Return of Rome),RoR Civs,HITTITE-CIV,Hittites civ.
+15,Civs (Return of Rome),RoR Civs,LAC-VIET-CIV,Lac Viet civ.
+15,Civs (Return of Rome),RoR Civs,MACEDONIAN-CIV,Macedonians civ.
+15,Civs (Return of Rome),RoR Civs,MINOAN-CIV,Minoans civ.
+15,Civs (Return of Rome),RoR Civs,PALMYRAN-CIV,Palmyrans civ.
+15,Civs (Return of Rome),RoR Civs,PERSIAN-CIV,Persians civ.
+15,Civs (Return of Rome),RoR Civs,PHOENICIAN-CIV,Phoenicians civ.
+15,Civs (Return of Rome),RoR Civs,ROMAN-CIV,Romans civ.
+15,Civs (Return of Rome),RoR Civs,SHANG-CIV,Shang civ.
+15,Civs (Return of Rome),RoR Civs,SUMERIAN-CIV,Sumerians civ.
+15,Civs (Return of Rome),RoR Civs,YAMATO-CIV,Yamato civ.
+16,Map Type (AoE2),AoE2 Maps,ACCLIVITY-MAP,Acclivity map. Defined only in DE.
+16,Map Type (AoE2),AoE2 Maps,ACROPOLIS-MAP,Acropolis map. Defined only in DE.
+16,Map Type (AoE2),AoE2 Maps,AFRICAN-CLEARING-MAP,African Clearing map. Defined only in DE.
+16,Map Type (AoE2),AoE2 Maps,AFTERMATH-MAP,Aftermath map. Defined only in DE.
+16,Map Type (AoE2),AoE2 Maps,ALPINE-LAKES-MAP,Alpine Lakes map. Defined only in DE.
+16,Map Type (AoE2),AoE2 Maps,AMAZON-TUNNEL-MAP,Amazon Tunnel map. Defined only in DE.
+16,Map Type (AoE2),AoE2 Maps,AQUARENA-MAP,Aquarena map. Defined only in DE.
+16,Map Type (AoE2),AoE2 Maps,ARABIA-MAP,Arabia map.
+16,Map Type (AoE2),AoE2 Maps,ARABIAN-DESERT-MAP,Arabian Desert map.
+16,Map Type (AoE2),AoE2 Maps,ARCHIPELAGO-MAP,Archipelago map.
+16,Map Type (AoE2),AoE2 Maps,ARENA-MAP,Arena map.
+16,Map Type (AoE2),AoE2 Maps,ATACAMA-MAP,Acatama map. Defined only in DE.
+16,Map Type (AoE2),AoE2 Maps,BALTIC-MAP,Baltic map.
+16,Map Type (AoE2),AoE2 Maps,BLACK-FOREST-MAP,Black Forest map.
+16,Map Type (AoE2),AoE2 Maps,BOG-ISLANDS-MAP,Bog Islands map. Defined only in DE.
+16,Map Type (AoE2),AoE2 Maps,BOGLAND-MAP,Bogland map. Defined only in DE.
+16,Map Type (AoE2),AoE2 Maps,BORDER-DISPUTE-MAP,Border Dispute map. Defined only in DE.
+16,Map Type (AoE2),AoE2 Maps,BUDAPEST-MAP,Budapest map. Defined only in DE.
+16,Map Type (AoE2),AoE2 Maps,CENOTES-MAP,Cenotes map. Defined only in DE.
+16,Map Type (AoE2),AoE2 Maps,CHAOS-PIT-MAP,Chaos Pit map. Defined only in DE.
+16,Map Type (AoE2),AoE2 Maps,CITYOFLAKES-MAP,City of Lakes map. Defined only in DE.
+16,Map Type (AoE2),AoE2 Maps,CLIFFBOUND-MAP,Cliffbound map. Defined only in DE.
+16,Map Type (AoE2),AoE2 Maps,COASTAL-MAP,Coastal map.
+16,Map Type (AoE2),AoE2 Maps,COASTAL-FOREST-MAP,Coastal Forest map. Defined only in DE.
+16,Map Type (AoE2),AoE2 Maps,CONTINENTAL-MAP,Continental map.
+16,Map Type (AoE2),AoE2 Maps,CRATER-MAP,Crater map. Defined only in DE.
+16,Map Type (AoE2),AoE2 Maps,CRATER-LAKE-MAP,Crater Lake map.
+16,Map Type (AoE2),AoE2 Maps,CROSSROADS-MAP,Crossroads map. Defined only in DE.
+16,Map Type (AoE2),AoE2 Maps,CROWNWOOD-MAP,Crownwood map. Defined only in DE.
+16,Map Type (AoE2),AoE2 Maps,DUNESPRINGS-MAP,Dunesprings map. Defined only in DE.
+16,Map Type (AoE2),AoE2 Maps,DOROTHEA-QUARRY-MAP,Dorothea Quarry map. Defined only in DE.
+16,Map Type (AoE2),AoE2 Maps,ENCLOSED-MAP,Enclosed map. Defined only in DE.
+16,Map Type (AoE2),AoE2 Maps,ERUPTION-MAP,Eruption map. Defined only in DE.
+16,Map Type (AoE2),AoE2 Maps,FORTIFIED-CLEARING-MAP,Fortified Clearing map. Defined only in DE.
+16,Map Type (AoE2),AoE2 Maps,FORTRESS-MAP,Fortress map.
+16,Map Type (AoE2),AoE2 Maps,FOUR-LAKES-MAP,Four Lakes map. Defined only in DE.
+16,Map Type (AoE2),AoE2 Maps,FRIGID-LAKE-MAP,Frigid Lake map. Defined only in DE.
+16,Map Type (AoE2),AoE2 Maps,GHOST-LAKE-MAP,Ghost Lake map.
+16,Map Type (AoE2),AoE2 Maps,GLACIS-MAP,Glacis map. Defined only in DE.
+16,Map Type (AoE2),AoE2 Maps,GLADE-MAP,Glade map. Defined only in DE.
+16,Map Type (AoE2),AoE2 Maps,GOLD-RUSH-MAP,Gold Rush map.
+16,Map Type (AoE2),AoE2 Maps,GOLDENPIT-MAP,Golden Pit map. Defined only in DE.
+16,Map Type (AoE2),AoE2 Maps,GOLDEN-STREAM-MAP,Golden Stream map. Defined only in DE.
+16,Map Type (AoE2),AoE2 Maps,GOLDEN-SWAMP-MAP,Golden Swamp map. Defined only in DE.
+16,Map Type (AoE2),AoE2 Maps,GRAUPEL-MAP,Graupel map. Defined only in DE.
+16,Map Type (AoE2),AoE2 Maps,GREENLAND-MAP,Greenland map. Defined only in DE.
+16,Map Type (AoE2),AoE2 Maps,HABOOB-MAP,Haboob map. Defined only in DE.
+16,Map Type (AoE2),AoE2 Maps,HAMBURGER-MAP,Hamburger map. Defined only in DE.
+16,Map Type (AoE2),AoE2 Maps,HENGEHOLD-MAP,Hengehold map. Defined only in DE.
+16,Map Type (AoE2),AoE2 Maps,HIDEOUT-MAP,Hideout map. Defined only in DE.
+16,Map Type (AoE2),AoE2 Maps,HIGHLAND-MAP,Highland map.
+16,Map Type (AoE2),AoE2 Maps,HILLFORT-MAP,Hill Fort map. Defined only in DE.
+16,Map Type (AoE2),AoE2 Maps,HOLLOW-WOODLANDS-MAP,Hollow Woodlands map. Defined only in DE.
+16,Map Type (AoE2),AoE2 Maps,ISLANDS-MAP,Islands map.
+16,Map Type (AoE2),AoE2 Maps,ISTHMUS-MAP,Isthmus map. Defined only in DE.
+16,Map Type (AoE2),AoE2 Maps,KARSTS-MAP,Karsts map. Defined only in DE.
+16,Map Type (AoE2),AoE2 Maps,KAWASAN-MAP,Kawasan map. Defined only in DE.
+16,Map Type (AoE2),AoE2 Maps,KILIMANJARO-MAP,Kilimanjaro map. Defined only in DE.
+16,Map Type (AoE2),AoE2 Maps,LAND-MADNESS-MAP,Land Madness map. Defined only in DE.
+16,Map Type (AoE2),AoE2 Maps,LAND-NOMAD-MAP,Land Nomad map. Defined only in DE.
+16,Map Type (AoE2),AoE2 Maps,LOCH-NESS-MAP,Loch Ness map. Defined only in DE.
+16,Map Type (AoE2),AoE2 Maps,LOMBARDIA-MAP,Lombardia map. Defined only in DE.
+16,Map Type (AoE2),AoE2 Maps,LOWLAND-MAP,Lowland map. Defined only in DE.
+16,Map Type (AoE2),AoE2 Maps,MANGROVE-JUNGLE-MAP,Mangrove Jungle map. Defined only in DE.
+16,Map Type (AoE2),AoE2 Maps,MARKETPLACE-MAP,Marketplace map. Defined only in DE.
+16,Map Type (AoE2),AoE2 Maps,MEADOW-MAP,Meadow map. Defined only in DE.
+16,Map Type (AoE2),AoE2 Maps,MEDITERRANEAN-MAP,Mediterranean map.
+16,Map Type (AoE2),AoE2 Maps,MEGARANDOM-MAP,MegaRandom map. Defined only in DE.
+16,Map Type (AoE2),AoE2 Maps,MICHI-MAP,Michi map. Defined only in DE.
+16,Map Type (AoE2),AoE2 Maps,MIGRATION-MAP,Migration map.
+16,Map Type (AoE2),AoE2 Maps,MIRED-MAP,Mired map. Defined only in DE.
+16,Map Type (AoE2),AoE2 Maps,MONGOLIA-MAP,Mongolia map.
+16,Map Type (AoE2),AoE2 Maps,MORASS-MAP,Morass map. Defined only in DE.
+16,Map Type (AoE2),AoE2 Maps,MOUNTAIN-DUNES-MAP,Mountain Dunes map. Defined only in DE.
+16,Map Type (AoE2),AoE2 Maps,MOUNTAIN-PASS-MAP,Mountain Pass map. Defined only in DE.
+16,Map Type (AoE2),AoE2 Maps,MOUNTAIN-RANGE-MAP,Mountain Range map. Defined only in DE.
+16,Map Type (AoE2),AoE2 Maps,MOUNTAIN-RIDGE-MAP,Mountain Ridge map. Defined only in DE.
+16,Map Type (AoE2),AoE2 Maps,MURKWOOD-MAP,Murkwood map. Defined only in DE.
+16,Map Type (AoE2),AoE2 Maps,NILE-DELTA-MAP,Nile Delta map. Defined only in DE.
+16,Map Type (AoE2),AoE2 Maps,NOMAD-MAP,Nomad map.
+16,Map Type (AoE2),AoE2 Maps,NORTHERN-ISLES-MAP,Northern Isles map. Defined only in DE.
+16,Map Type (AoE2),AoE2 Maps,OASIS-MAP,Oasis map.
+16,Map Type (AoE2),AoE2 Maps,PACIFIC-ISLANDS-MAP,Pacific Islands map. Defined only in DE.
+16,Map Type (AoE2),AoE2 Maps,PASSAGE-MAP,Passage map. Defined only in DE.
+16,Map Type (AoE2),AoE2 Maps,RAMPART-MAP,Rampart map. Defined only in DE.
+16,Map Type (AoE2),AoE2 Maps,RAVINES-MAP,Ravines map. Defined only in DE.
+16,Map Type (AoE2),AoE2 Maps,RING-FORTRESS-MAP,Ring Fortress map. Defined only in DE.
+16,Map Type (AoE2),AoE2 Maps,RIVER-DIVIDE-MAP,River Divide map. Defined only in DE.
+16,Map Type (AoE2),AoE2 Maps,RIVERS-MAP,Rivers map.
+16,Map Type (AoE2),AoE2 Maps,RUNESTONES-MAP,Runestones map. Defined only in DE.
+16,Map Type (AoE2),AoE2 Maps,SACRED-SPRINGS-MAP,Sacred Springs map. Defined only in DE.
+16,Map Type (AoE2),AoE2 Maps,SALT-MARSH-MAP,Salt Marsh map.
+16,Map Type (AoE2),AoE2 Maps,SANDBANK-MAP,Sandbank map. Defined only in DE.
+16,Map Type (AoE2),AoE2 Maps,SANDRIFT-MAP,Sandrift map. Defined only in DE.
+16,Map Type (AoE2),AoE2 Maps,SARDIS-MAP,Sardis map. Defined only in DE.
+16,Map Type (AoE2),AoE2 Maps,SCANDANAVIA-MAP,Scandinavia map. Notice the spelling!
+16,Map Type (AoE2),AoE2 Maps,SEIZE-THE-MOUNTAIN-MAP,Seize The Mountain map. Defined only in DE.
+16,Map Type (AoE2),AoE2 Maps,SERENGETI-MAP,Serengeti map. Defined only in DE.
+16,Map Type (AoE2),AoE2 Maps,SHOALS-MAP,Shoals map. Defined only in DE.
+16,Map Type (AoE2),AoE2 Maps,SHRUBLAND-MAP,Shrubland map. Defined only in DE.
+16,Map Type (AoE2),AoE2 Maps,SOCOTRO-MAP,Socotra map. Defined only in DE. Notice the spelling!
+16,Map Type (AoE2),AoE2 Maps,STEPPE-MAP,Steppe map. Defined only in DE.
+16,Map Type (AoE2),AoE2 Maps,STONEFRONT-MAP,Stonefront map. Defined only in DE.
+16,Map Type (AoE2),AoE2 Maps,STRANDED-MAP,Stranded map. Defined only in DE.
+16,Map Type (AoE2),AoE2 Maps,TEAM-ISLANDS-MAP,Team Islands map.
+16,Map Type (AoE2),AoE2 Maps,TEAM-MOATS-MAP,Team Moats map. Defined only in DE.
+16,Map Type (AoE2),AoE2 Maps,THAMES-MAP,Thames map. Defined only in DE.
+16,Map Type (AoE2),AoE2 Maps,VALLEY-MAP,Valley map. Defined only in DE.
+16,Map Type (AoE2),AoE2 Maps,VOLCANIC-ISLAND-MAP,Volcanic Island map. Defined only in DE.
+16,Map Type (AoE2),AoE2 Maps,VULPINE-MAP,Vulpine map. Defined only in DE.
+16,Map Type (AoE2),AoE2 Maps,WADE-MAP,Wade map. Defined only in DE.
+16,Map Type (AoE2),AoE2 Maps,WATER-NOMAD-MAP,Water Nomad map. Defined only in DE.
+16,Map Type (AoE2),AoE2 Maps,WOLF-HILL-MAP,Wolf Hill map. Defined only in DE.
+16,Map Type (AoE2),AoE2 Maps,YUCATAN-MAP,Yucatan map.
+16,Map Type (AoE2),AoE2 Maps,CANALS-MAP,Canals ES map.
+16,Map Type (AoE2),AoE2 Maps,CAPRICIOUS-MAP,Capricious ES map.
+16,Map Type (AoE2),AoE2 Maps,DINGOS-MAP,Dingos ES map.
+16,Map Type (AoE2),AoE2 Maps,GRAVEYARDS-MAP,Graveyards ES map.
+16,Map Type (AoE2),AoE2 Maps,METROPOLIS-MAP,Metropolis ES map.
+16,Map Type (AoE2),AoE2 Maps,MOATS-MAP,Moats ES map.
+16,Map Type (AoE2),AoE2 Maps,PARADISE-ISLAND-MAP,Paradise Island ES map.
+16,Map Type (AoE2),AoE2 Maps,PILGRIMS-MAP,Pilgrims ES map.
+16,Map Type (AoE2),AoE2 Maps,PRAIRIE-MAP,Prairie ES map.
+16,Map Type (AoE2),AoE2 Maps,SEASONS-MAP,Seasons ES map.
+16,Map Type (AoE2),AoE2 Maps,SHERWOOD-FOREST-MAP,Sherwood Forest ES map.
+16,Map Type (AoE2),AoE2 Maps,SHERWOOD-HEROES-MAP,Sherwood Heroes ES map.
+16,Map Type (AoE2),AoE2 Maps,SHIPWRECK-MAP,Shipwreck ES map.
+16,Map Type (AoE2),AoE2 Maps,TEAM-GLACIERS-MAP,Team Glaciers ES map.
+16,Map Type (AoE2),AoE2 Maps,THE-UNKNOWN-MAP,The Unknown ES map.
+16,Map Type (AoE2),AoE2 Maps,QUICKPLAY_ARABIA-MAP,Quick Play Arabia map. Defined only in DE. Notice the underscore after QUICKPLAY.
+16,Map Type (AoE2),AoE2 Maps,QUICKPLAY_ARENA-MAP,Quick Play Arena map. Defined only in DE. Notice the underscore after QUICKPLAY.
+16,Map Type (AoE2),AoE2 Maps,QUICKPLAY_BLACK-FOREST-MAP,Quick Play Black Forest map. Defined only in DE. Notice the underscore after QUICKPLAY.
+16,Map Type (AoE2),AoE2 Maps,QUICKPLAY_FORTIFIED-CLEARING-MAP,Quick Play Fortified Clearing map. Defined only in DE. Notice the underscore after QUICKPLAY.
+16,Map Type (AoE2),AoE2 Maps,QUICKPLAY_GLADE-MAP,Quick Play Glade map. Defined only in DE. Notice the underscore after QUICKPLAY.
+16,Map Type (AoE2),AoE2 Maps,QUICKPLAY_NOMAD-MAP,Quick Play Nomad map. Defined only in DE. Notice the underscore after QUICKPLAY.
+16,Map Type (AoE2),AoE2 Maps,QUICKPLAY_RUNESTONES-MAP,Quick Play Runestones map. Defined only in DE. Notice the underscore after QUICKPLAY.
+16,Map Type (AoE2),AoE2 Maps,CTR_RANDOM-MAP,Capture the Relic random map. Notice the underscore after CTR.
+16,Map Type (AoE2),AoE2 Maps,CTR_MONSOON-MAP,Capture the Relic Monsoon map. Notice the underscore after CTR.
+16,Map Type (AoE2),AoE2 Maps,CTR_PYRAMID-DESCENT-MAP,Capture the Relic Pyramid Descent map. Notice the underscore after CTR.
+16,Map Type (AoE2),AoE2 Maps,CTR_SPIRAL-MAP,Capture the Relic Spiral map. Notice the underscore after CTR.
+16,Map Type (AoE2),AoE2 Maps,BATTLE-ON-THE-ICE-MAP,Battle on the Ice Battle Royale map.
+16,Map Type (AoE2),AoE2 Maps,EL-DORADO-MAP,El Dorado Battle Royale map.
+16,Map Type (AoE2),AoE2 Maps,FALL-OF-AXUM-MAP,Fall of Axum Battle Royale map.
+16,Map Type (AoE2),AoE2 Maps,FALL-OF-ROME-MAP,Fall of Rome Battle Royale map.
+16,Map Type (AoE2),,THE-MAJAPHIT-EMPIRE-MAP,The Majapahit Empire Battle Royale map. Notice the spelling!
+16,Map Type (AoE2),AoE2 Maps,REAL-WORLD-AMAZON-MAP,Real World Amazon map. Defined only in DE.
+16,Map Type (AoE2),AoE2 Maps,REAL-WORLD-ANTARCTICA-MAP,Real World Antarctica map. Defined only in DE.
+16,Map Type (AoE2),AoE2 Maps,REAL-WORLD-ARAL-SEA-MAP,Real World Aral Sea map. Defined only in DE.
+16,Map Type (AoE2),AoE2 Maps,REAL-WORLD-AUSTRALIA-MAP,Real World Australia map. Defined only in DE.
+16,Map Type (AoE2),AoE2 Maps,REAL-WORLD-BLACK-SEA-MAP,Real World Black Sea map. Defined only in DE.
+16,Map Type (AoE2),AoE2 Maps,REAL-WORLD-BOHEMIA-MAP,Real World Bohemia map. Defined only in DE.
+16,Map Type (AoE2),AoE2 Maps,REAL-WORLD-BYZANTIUM-MAP,Real World Byzantium map.
+16,Map Type (AoE2),AoE2 Maps,REAL-WORLD-CARIBBEAN-MAP,Real World Central America map.
+16,Map Type (AoE2),AoE2 Maps,REAL-WORLD-CAUCASUS-MAP,Real World Caucasus map. Defined only in DE.
+16,Map Type (AoE2),AoE2 Maps,REAL-WORLD-CHINA-MAP,Real World China map. Defined only in DE.
+16,Map Type (AoE2),AoE2 Maps,REAL-WORLD-ENGLAND-MAP,Real World Britain map.
+16,Map Type (AoE2),AoE2 Maps,REAL-WORLD-FRANCE-MAP,Real World France map.
+16,Map Type (AoE2),AoE2 Maps,REAL-WORLD-HORN-OF-AFRICA-MAP,Real World Horn of Africa map. Defined only in DE.
+16,Map Type (AoE2),AoE2 Maps,REAL-WORLD-INDIA-MAP,Real World India map. Defined only in DE.
+16,Map Type (AoE2),AoE2 Maps,REAL-WORLD-INDOCHINA-MAP,Real World Indochina map. Defined only in DE.
+16,Map Type (AoE2),AoE2 Maps,REAL-WORLD-INDONESIA-MAP,Real World Indonesia map. Defined only in DE.
+16,Map Type (AoE2),AoE2 Maps,REAL-WORLD-ITALY-MAP,Real World Italy map.
+16,Map Type (AoE2),AoE2 Maps,REAL-WORLD-JUTLAND-MAP,Real World Norse Lands map.
+16,Map Type (AoE2),AoE2 Maps,REAL-WORLD-MADAGASCAR-MAP,Real World Madagascar map. Defined only in DE.
+16,Map Type (AoE2),AoE2 Maps,REAL-WORLD-MALACCA-MAP,Real World Malacca map. Defined only in DE.
+16,Map Type (AoE2),AoE2 Maps,REAL-WORLD-MANCHURIA-MAP,Real World Manchuria map. Defined only in DE.
+16,Map Type (AoE2),AoE2 Maps,REAL-WORLD-MIDEAST-MAP,Real World Mideast map.
+16,Map Type (AoE2),AoE2 Maps,REAL-WORLD-NIPPON-MAP,Real World Sea of Japan (East Sea) map.
+16,Map Type (AoE2),AoE2 Maps,REAL-WORLD-PHILIPPINES-MAP,Real World Philippines map. Defined only in DE.
+16,Map Type (AoE2),AoE2 Maps,REAL-WORLD-SIBERIA-MAP,Real World Siberia map. Defined only in DE.
+16,Map Type (AoE2),AoE2 Maps,REAL-WORLD-SPAIN-MAP,Real World Iberia map.
+16,Map Type (AoE2),AoE2 Maps,REAL-WORLD-STRAIT-OF-MALACCA-MAP,Real World Strait of Malacca map. Defined only in DE.
+16,Map Type (AoE2),AoE2 Maps,REAL-WORLD-TEXAS-MAP,Real World Texas map.
+16,Map Type (AoE2),AoE2 Maps,REAL-WORLD-WEST-AFRICA-MAP,Real World West Africa map. Defined only in DE.
+16,Map Type (AoE2),AoE2 Maps,REAL-WORLD-WORLD-MAP,Real World Earth map. Defined only in DE.
+16,Map Type (AoE2),AoE2 Maps,BORDER-STONES-SPECIAL-MAP,Border Stones special map.
+16,Map Type (AoE2),AoE2 Maps,CANYONS-SPECIAL-MAP,Canyons special map.
+16,Map Type (AoE2),AoE2 Maps,ENEMY-ARCHIPELAGO-SPECIAL-MAP,Enemy Archipelago special map.
+16,Map Type (AoE2),AoE2 Maps,ENEMY-ISLANDS-SPECIAL-MAP,Enemy Islands special map.
+16,Map Type (AoE2),AoE2 Maps,FAR-OUT-SPECIAL-MAP,Far Out special map.
+16,Map Type (AoE2),AoE2 Maps,FOREST-BREACH-SPECIAL-MAP,Forest Breach special map.
+16,Map Type (AoE2),AoE2 Maps,FRONT-LINE-SPECIAL-MAP,Front Line special map.
+16,Map Type (AoE2),AoE2 Maps,HOLY-LINE-SPECIAL-MAP,Holy Line special map.
+16,Map Type (AoE2),AoE2 Maps,INNER-CIRCLE-SPECIAL-MAP,Inner Circle special map.
+16,Map Type (AoE2),AoE2 Maps,JOURNEY-SOUTH-SPECIAL-MAP,Journey South special map.
+16,Map Type (AoE2),AoE2 Maps,JUNGLE-ISLANDS-SPECIAL-MAP,Jungle Islands special map.
+16,Map Type (AoE2),AoE2 Maps,JUNGLE-LANES-SPECIAL-MAP,Jungle Lanes special map.
+16,Map Type (AoE2),AoE2 Maps,MOTHERLAND-SPECIAL-MAP,Motherland special map.
+16,Map Type (AoE2),AoE2 Maps,OPEN-PLAINS-SPECIAL-MAP,Open Plains special map.
+16,Map Type (AoE2),AoE2 Maps,RING-OF-WATER-SPECIAL-MAP,Ring of Water special map.
+16,Map Type (AoE2),AoE2 Maps,SNAKE-FOREST-SPECIAL-MAP,Snake Forest special map.
+16,Map Type (AoE2),AoE2 Maps,SNAKE-PIT-SPECIAL-MAP,Snake Pit special map.
+16,Map Type (AoE2),AoE2 Maps,SPRAWLING-STREAMS-SPECIAL-MAP,Sprawling Streams special map.
+16,Map Type (AoE2),AoE2 Maps,SWIRLING-RIVER-SPECIAL-MAP,Swirling River special map.
+16,Map Type (AoE2),AoE2 Maps,THE-EYE-SPECIAL-MAP,The Eye special map.
+16,Map Type (AoE2),AoE2 Maps,TWIN-FORESTS-SPECIAL-MAP,Twin Forests special map.
+16,Map Type (AoE2),AoE2 Maps,YIN-YANG-SPECIAL-MAP,Yin Yang special map.
+17,Map Type (Return of Rome),RoR Maps,ALLIANCE-MAP,Alliance map.
+17,Map Type (Return of Rome),RoR Maps,CITADEL-MAP,Citadel map.
+17,Map Type (Return of Rome),RoR Maps,CLEARING-MAP,Clearing map.
+17,Map Type (Return of Rome),RoR Maps,POMPEIICOASTAL-MAP,Coastal map (Return of Rome version).
+17,Map Type (Return of Rome),RoR Maps,POMPEIICONTINENTAL-MAP,Continental map (Return of Rome version).
+17,Map Type (Return of Rome),RoR Maps,DARKFOREST-MAP,Dark Forest map.
+17,Map Type (Return of Rome),RoR Maps,DESERTRIDGE-MAP,Desert Ridge map.
+17,Map Type (Return of Rome),RoR Maps,GOLDMOUNTAIN-MAP,Gold Mountain map.
+17,Map Type (Return of Rome),RoR Maps,POMPEIIHIGHLAND-MAP,Highland map (Return of Rome version).
+17,Map Type (Return of Rome),RoR Maps,HILLCOUNTRY-MAP,Hill Country map.
+17,Map Type (Return of Rome),RoR Maps,INLAND-MAP,Inland map.
+17,Map Type (Return of Rome),RoR Maps,INSIDEOUT-MAP,Inside Out map.
+17,Map Type (Return of Rome),RoR Maps,POMPEIILANDNOMAD-MAP,Land Nomad map (Return of Rome version).
+17,Map Type (Return of Rome),RoR Maps,LARGEISLANDS-MAP,Large Islands map.
+17,Map Type (Return of Rome),RoR Maps,POMPEIIMEDITERRANEAN-MAP,Mediterranean map (Return of Rome version).
+17,Map Type (Return of Rome),RoR Maps,POMPEIIMEGARANDOM-MAP,MegaRandom map (Return of Rome version).
+17,Map Type (Return of Rome),RoR Maps,MUDDYWATERS-MAP,Muddy Waters map.
+17,Map Type (Return of Rome),RoR Maps,NARROWS-MAP,Narrows map.
+17,Map Type (Return of Rome),RoR Maps,POMPEIINOMAD-MAP,Nomad map (Return of Rome version).
+17,Map Type (Return of Rome),RoR Maps,POMPEIIOASIS-MAP,Oasis map (Return of Rome version).
+17,Map Type (Return of Rome),RoR Maps,OCEANCHANNEL-MAP,Ocean Channel map.
+17,Map Type (Return of Rome),RoR Maps,OCEANRING-MAP,Ocean Ring map.
+17,Map Type (Return of Rome),RoR Maps,PLATEAUS-MAP,Plateaus map.
+17,Map Type (Return of Rome),RoR Maps,RIVERCROSSING-MAP,River Crossing map.
+17,Map Type (Return of Rome),RoR Maps,POMPEIIRIVERS-MAP,Rivers map (Return of Rome version).
+17,Map Type (Return of Rome),RoR Maps,SAHARA-MAP,Sahara map.
+17,Map Type (Return of Rome),RoR Maps,SMALLISLANDS-MAP,Small Islands map.
+17,Map Type (Return of Rome),RoR Maps,TWINSETTLEMENTS-MAP,Twin Settlements map.

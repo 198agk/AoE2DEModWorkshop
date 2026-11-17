@@ -63,6 +63,7 @@ from aoe2mod.ui.loading import LOADING_PAGE
 from aoe2mod.ui import nl
 from aoe2mod import oplog as OPLOG
 from aoe2mod.ui import recipes as RC
+from aoe2mod.ui import translate as TR
 
 STATIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
 
@@ -626,11 +627,31 @@ class App(object):
         player counts, and an earlier version quoted a count over all 2,693 unit
         records beside a grid that lists 1,651 of them.
         """
-        return {"ok": True,
-                "browse": self.tk.browse(kind=kind, query=query,
-                                         limit=int(limit or 60),
-                                         offset=int(offset or 0),
-                                         order=order)}
+        got = self.tk.browse(kind=kind, query=query,
+                             limit=int(limit or 60),
+                             offset=int(offset or 0),
+                             order=order)
+        # ZERO ROWS IS AN ANSWER, NOT A DEAD END.  Reported 2026-11-16,
+        # verbatim: 「你能不能增强一下检索功能」, beside a screenshot of the 科技
+        # tab answering 「0 / 0」 for 「铁匠铺」.  The search was right: 铁匠铺 is a
+        # building, and a technology list has no business inventing one.  What
+        # was wrong is that the screen said 「没有匹配的。」 and left the player to
+        # guess.  So when the list is empty, ask the OTHER table the same
+        # question and say where the answer lives -- one extra lookup, only on
+        # the empty path, where nobody is timing it.
+        if not got.get("rows") and str(query or "").strip():
+            hits = {}
+            for other in ("unit", "tech"):
+                if other == kind:
+                    continue
+                n = self.tk.browse(kind=other, query=query, limit=3)
+                if n.get("total"):
+                    hits[other] = {"total": int(n["total"]),
+                                   "names": [r.get("name") for r in n["rows"][:3]],
+                                   "ids": [r.get("id") for r in n["rows"][:3]]}
+            if hits:
+                got["elsewhere"] = hits
+        return {"ok": True, "browse": got}
 
     def describe(self, kind, entity_id):
         return {"ok": True, "entity": self.tk.describe(int(entity_id), kind=kind)}
@@ -5770,6 +5791,7 @@ class App(object):
         whole.
         """
         from aoe2mod.game import fieldlabels as FL
+        from aoe2mod.game import valuenames as VN
         tk = self.tk
         tk._ensure()
         civs = tk._civs
@@ -5865,12 +5887,32 @@ class App(object):
             # covers every enum-ish column in the file outright and the count
             # tells the player when a column is really a number.
             top = list(c.items())[:_SEEN_PER_ROW]
+            # The row's OWN value rides along even when it is rarer than the 32
+            # shown.  The page looks the name up inside `seen`; without this the
+            # one number the pane is actually displaying (a hotkey no other unit
+            # uses, say) was the one number that stayed bare.
+            # The census stops at 24,000 of the 136,861 records, so a value this
+            # record stores can be missing from it outright (unit 4's own 16083
+            # was).  Count it as 1: this record is proof.
+            if all(k != r["value"] for k, _n in top):
+                top.append((r["value"], max(1, c.get(r["value"], 0))))
             r["seen"] = dict((str(v), n) for v, n in top)
+            # Spell the number.  `_stored_name` reads the id space from the
+            # column's full name (a UnitID is a unit, a StandingGraphic is a
+            # picture, a Class is a class); `FL.value_name` still answers for the
+            # six task columns the id-space table deliberately leaves out.
             names = {}
             for v, _n in top:
-                nm = FL.value_name(tail, v)
+                nm = self._stored_name(r["name"], v)
+                if not nm:
+                    nm = FL.value_name(tail, v)
                 names[str(v)] = nm if nm else ("#%s" % v)
             r["seen_names"] = names
+            # What kind of number this column holds, said in the picker's
+            # tooltip: 「单位编号」 vs 「图形编号」.  Empty when the column is
+            # just a number, which is also the honest answer.
+            r["seen_space"] = VN.space(r["name"]) or ""
+            r["seen_space_zh"] = VN.space_zh(r["seen_space"])
             r["seen_total"] = len(c)
         groups = []
         for gid, gzh in FL.GROUPS:
@@ -6342,6 +6384,100 @@ class App(object):
         from aoe2mod.game import techlabels as TL
         return TL.value_name(name, v)
 
+    # ---- spelling a stored id ------------------------------------------
+    #
+    # WHY THESE TWO METHODS EXIST: the census ships the values a column really
+    # holds, and until 2026-11-16 the only thing that could spell one was
+    # `fieldlabels.value_name`, which knows six task columns.  Measured on units
+    # 4/74/83/82/103: 2,038 columns carried a picker and 1,786 of them offered
+    # nothing but `#12 12` -- reported as 「很多这种下拉的选项全是id，很难看懂是
+    # 什么东西，没有解释」.  AGE3 answers the same question by printing
+    # `87 - 靶场`; `valuenames.space` decides which table to ask and these read it.
+    def _id_names(self, sp):
+        """{id: name} for one id space, built once per data generation.
+
+        Cached on `tk`, so the 20,883-record graphics table is walked once per
+        loaded .dat and not once per column.  Measured cold: terrain 0.57 s,
+        graphic 0.26 s, sound 0.20 s, everything else free.
+        """
+        tk = self.tk
+        store = getattr(tk, "_id_names", None)
+        if store is None:
+            store = {}
+            tk._id_names = store
+        if sp in store:
+            return store[sp]
+        out = {}
+        if sp in ("unit", "tech"):
+            ix = self._semantic()
+            for key, e in (ix.units if sp == "unit" else ix.techs).items():
+                # zh then en then the internal label: a player reads 靶场, the
+                # internal name (`SPRMN_D`) is only what is left when the
+                # record has no translated name at all -- and a name nobody
+                # recognises still beats a number nobody can look up.
+                nm = e.zh or e.en or e.display
+                if nm:
+                    out[key] = nm
+        elif sp == "class":
+            # NOT `fieldlabels.UNIT_CLASS_ZH`: measured against the data, that
+            # table calls 39 投石手 where every unit holding it is a 城门, and
+            # 35 火枪兵 where every unit holding it is a 爆破兵.  `class_label`
+            # reads the shipped effect tables, which are the ones the game
+            # agrees with (18 僧侣, 23 征服者, 39 城门).
+            from aoe2mod.intent import compiler as C
+            tabs = C.load_effect_tables()
+            zh = (tabs.get("zh") or {}).get("classes") or {}
+            en = (tabs.get("classes") or {}).get("classes") or {}
+            for k in set(list(zh) + list(en)):
+                try:
+                    kid = int(k)
+                except (TypeError, ValueError):
+                    continue
+                out[kid] = C.class_label(kid)
+        elif sp in ("graphic", "sound", "terrain"):
+            for key, rec in self._table_index(sp).items():
+                nm = (rec.get("name") or "").strip()
+                # Index 0 is unnamed in every one of these tables; a blank name
+                # is not a name, so it falls through and the number shows.
+                if nm:
+                    out[key] = nm
+        elif sp == "hotkey":
+            # `S` rather than 16131, and no command name next to it: 「很多都是
+            # 共用同一串编码的，我只需要知道这些编码指的是什么热键」 -- one id is
+            # reachable from several commands, so a name would be a guess about
+            # which caller asked while the key is what the player presses.  The
+            # key letter comes from the install's hotkeys.json
+            # `defaults_list.definitive`, NOT from the first character of the
+            # string table -- that shortcut is the community document's rule and
+            # it is one patch out of date wherever the game rebound a key
+            # (16083 reads "A" there, Q here).  58 of the 100 shipped values
+            # resolve; the rest stay numbers, which is the honest answer for
+            # 155000 / 16044 / 16061, and 16000 spells itself as 「没设热键」
+            # because the sentinel is worth naming.
+            from aoe2mod.game import hotkeys as HK
+            out = dict(HK.labels(self.tk.game_root, self._strings(),
+                                 getattr(self.tk, "dat_path", None)))
+        store[sp] = out
+        return out
+
+    def _stored_name(self, full_name, v):
+        """The name of one stored integer, or None when it is just a number.
+
+        `full_name` is the whole dotted field name, not its tail: DeadFish.4 is
+        a graphic and DeadFish.5 is a number of seconds.
+        """
+        from aoe2mod.game import valuenames as VN
+        sp = VN.space(full_name)
+        if sp is None:
+            return None
+        try:
+            v = int(v)
+        except (TypeError, ValueError):
+            return None
+        if sp == "bool":
+            return VN.bool_name(v)
+        return self._id_names(sp).get(v)
+
     def tech_fields(self, tech, group="", q=""):
         """Every field of one technology, labelled, grouped, referenced."""
         from aoe2mod.game import techlabels as TL
@@ -6392,17 +6528,47 @@ class App(object):
                 # that entry changes with it.  Same two-level rule as units.
                 row["soft"] = True
             c = census.get(fname)
+            from aoe2mod.game import valuenames as VN
+            sp = VN.space(fname) or ""
+            pickable = not row.get("ro") and not row.get("enum")
             # Only offer the observed values when the list is short enough to
             # read.  `EffectID` has 1015 distinct values and `Name` 1226; a
             # dropdown of 1015 is worse than a text box, so those fall through
             # and keep the numeric input (with `ref` naming the current value).
-            if c and not row.get("ro") and not row.get("enum") and len(c) <= 64:
-                row["seen"] = {str(k): n for k, n in c.items()}
+            listed = bool(c) and pickable and len(c) <= 64
+            # A hotkey column is the exception to that exception.  There are 263
+            # observed hotkeys, so the LIST is still refused -- but 「近战攻击力升级
+            # Q」 is the entire reason the column exists, and refusing the list
+            # also refused the name.  Ship the one value this record stores.
+            spelling = listed or (bool(c) and pickable and sp == "hotkey"
+                                  and f["value"] in c)
+            if spelling:
+                if listed:
+                    row["seen"] = {str(k): n for k, n in c.items()}
+                    keys = list(c)
+                else:
+                    keys = [f["value"]]
+                # Same spelling pass as the unit side, then the tech-specific
+                # pointers (`LocationID` -> 铁匠铺, `Civ` -> 不列颠) which are
+                # neither a unit nor a graphic id space.  Without this the tech
+                # pane printed `#67 67` beside 「必备科技」 and left the player to
+                # guess which of the 1,510 technologies 67 was.
                 names = {}
-                for k in c:
-                    nm = self._tech_value_name(fname, k)
+                for k in keys:
+                    nm = self._stored_name(fname, k)
+                    if not nm:
+                        nm = self._tech_value_name(fname, k)
                     names[str(k)] = nm if nm else ("#%s" % k)
                 row["seen_names"] = names
+                row["seen_space"] = sp
+                row["seen_space_zh"] = VN.space_zh(sp)
+                if not listed:
+                    # No dropdown to hang the name on, so it travels alone.
+                    # `seen` stays absent on purpose: a one-entry list would make
+                    # the page say 「只有过这个值」 about a column with 263 of them.
+                    nm = names[str(f["value"])]
+                    if nm and nm[0] != "#":
+                        row["value_name"] = nm
             rows.append(row)
         rows.sort(key=lambda r: r["offset"])
         groups = []
@@ -7063,6 +7229,46 @@ class App(object):
                 "editable_count": sum(1 for r in rows if r["editable"]),
                 "rows": rows}
 
+    def relations(self, kind="unit", entity_id="0", group="", limit=24):
+        """What else this record is about, plus its namesakes.
+
+        Reported 2026-11-16, verbatim: 「我想的是能把关联的直接搜出来，比如我搜铁匠铺，
+        就能显示出这个铁匠铺有关的东西」.  The list answered the search already;
+        what was missing is that 铁匠铺 the BUILDING (18) and 铁匠铺 the one that
+        owns the fifteen smithing technologies (103) are different records with
+        the same name, and nothing on screen said so.
+
+        The four tables cost 0.5 s to build and are cached per generation, so the
+        per-request cost is the dict lookups plus one pass over 1,651 + 536
+        names for the namesakes.
+        """
+        from aoe2mod.semantic import relations as R
+        tk = self.tk
+        tk._ensure()
+        try:
+            uid = int(entity_id)
+        except (TypeError, ValueError):
+            return {"ok": False, "error": "编号要是数字，收到的是 %r" % (entity_id,)}
+        # `class` is not a tab and not a record: it is the number a technology
+        # names when it changes a whole family (52 is 塔).  Answered so the tests
+        # can ask "what is behind 塔" without a second route; the screen reaches
+        # the same records through a technology's 它改的整类里的记录 group.
+        kind = kind if kind in ("tech", "class") else "unit"
+        ix = self._semantic()
+        maps = R.maps_of(self)
+        e = (ix.techs if kind == "tech" else ix.units).get(uid)
+        # `group=<key>` narrowed to ONE group is how the screen reads the tail it
+        # hid: 城堡 says 「还有 187 条没列」 next to a 看全部 button, and that
+        # button asks for exactly that group with limit=0 (no cut).  Sending the
+        # other four groups again would be four lists the screen throws away.
+        rows = R.for_record(kind, uid, maps, ix, limit=limit)
+        if group:
+            rows = [g for g in rows if g.get("key") == group]
+        return {"ok": True, "kind": kind, "id": uid,
+                "name": (e.display if e is not None else ""),
+                "siblings": R.siblings(kind, uid, ix),
+                "groups": rows}
+
     def set_effect_value(self, tech, command, value=None, delta=None, dry=True,
                          title=None):
         """Rewrite the number of ONE command in a technology's effect list.
@@ -7334,6 +7540,7 @@ class App(object):
                              % (table, "、".join(sorted(TF.TABLES)))}
         idx = self._table_index(table)
         qs = str(q or "").strip().lower()
+        qn = int(qs) if qs.isdigit() else None
         rows = []
         for i in sorted(idx):
             rec = idx[i]
@@ -7344,9 +7551,24 @@ class App(object):
             nm = NTX.readable(rec.get("name")) or ""
             if named_only and not nm and not rec.get("commands"):
                 continue
-            if qs and qs not in nm.lower():
-                continue
-            rows.append({"index": i, "name": nm})
+            # The same promise the unit list keeps: a number finds the record
+            # with that index, and every record whose index CONTAINS it -- not
+            # only the three rows whose NAME happens to hold the digit.  Without
+            # this branch typing `6` into 图形 / 音效 / 地形 answered nothing at
+            # all, because the name is the only thing that was ever compared.
+            hit = 0
+            if qs:
+                if qn is not None and i == qn:
+                    hit = 0
+                elif qs in str(i):
+                    hit = 1
+                elif qs in nm.lower():
+                    hit = 2
+                else:
+                    continue
+            rows.append((hit, i, {"index": i, "name": nm}))
+        rows.sort(key=lambda t: (t[0], t[1]))
+        rows = [t[2] for t in rows]
         try:
             off = max(0, int(offset))
         except (TypeError, ValueError):
@@ -7774,9 +7996,17 @@ class App(object):
         telling the player a rule works when it silently does not.
         """
         from aoe2mod.game import ainl as _ainl
+        from aoe2mod.game import aiwriter as _aiwriter
         v = self.ailang_vocab()
         p = v.payload
+        cfg = _aiwriter.config()
         return {"ok": True,
+                # Whether the model buttons are drawn at all.  A box that always
+                # fails is worse than none, so this is the only flag the page
+                # reads before deciding to render them.
+                "model": {"available": cfg is not None,
+                          "name": (cfg or {}).get("model"),
+                          "rounds": _aiwriter.ROUNDS},
                 "departments": [
                     {"id": "ai", "title": "AI 脚本 (.per)",
                      "note": "引擎内建 AI 语言：defrule/defconst、事实、战略数字"},
@@ -7858,6 +8088,129 @@ class App(object):
         return {"ok": True, "dept": dept,
                 "diagnostics": [list(d) for d in fn(text, v)],
                 "balanced": _ailang.balanced(_ailang.strip_comments(text))}
+
+    def ai_script_draft(self, payload):
+        """A wish -> a script a model wrote AND our grammar table accepted.
+
+        This is the only route in the whole app where a model's bytes can reach
+        a file, and it still cannot do so unchecked: `aiwriter.draft` puts the
+        answer through `validate_ai` / `validate_xs` and sends the diagnostics
+        back for repair.  `ok` means the final code has zero diagnostics.
+
+        A failure is not an error page.  When the last round still has
+        diagnostics, `code` comes back with them attached, because a player can
+        usually see the remaining defect and losing the draft would be worse
+        than showing code that needs one edit.
+        """
+        from aoe2mod.game import aiwriter as _aiwriter
+        try:
+            got = _aiwriter.draft(
+                payload.get("text") or "",
+                (payload.get("dept") or "ai"),
+                self.ailang_vocab(),
+                rounds=int(payload.get("rounds") or _aiwriter.ROUNDS))
+        except _aiwriter.WriterError as exc:
+            # Not a 500: "no key configured" is a normal state of this build and
+            # the page shows it as a hint, not as a crash.
+            return {"ok": False, "error": str(exc),
+                    "available": _aiwriter.available()}
+        return {"ok": True, "clean": bool(got.get("ok")),
+                "dept": got.get("dept"),
+                "code": got.get("code") or "",
+                "diagnostics": got.get("diagnostics") or [],
+                "rounds": got.get("rounds"),
+                "model": got.get("model"),
+                "history": got.get("history") or [],
+                "available": _aiwriter.available()}
+
+    def ai_script_explain(self, payload):
+        """A script -> what it does, with the checker's verdict as evidence."""
+        from aoe2mod.game import aiwriter as _aiwriter
+        try:
+            got = _aiwriter.explain(payload.get("text") or "",
+                                    (payload.get("dept") or "ai"),
+                                    self.ailang_vocab())
+        except _aiwriter.WriterError as exc:
+            return {"ok": False, "error": str(exc),
+                    "available": _aiwriter.available()}
+        return dict(got, available=_aiwriter.available())
+
+    def ai_settings_get(self):
+        """Whether a model endpoint is configured, and nothing about the key.
+
+        The panel is the only place a player can set this up, because the shipped
+        artifact is an exe and nobody exports variables before double-clicking
+        one.  The key is never echoed: `key_tail` is the last four characters,
+        which is enough to recognise which key is in use.
+        """
+        from aoe2mod import aisettings as _ais
+        return {"ok": True, "settings": _ais.public(),
+                "path": _ais.path(),
+                "env_names": [_ais.BASE_ENV, _ais.KEY_ENV, _ais.MODEL_ENV]}
+
+    def ai_settings_save(self, payload):
+        """Store the endpoint settings written by the panel.
+
+        An empty key deletes the file -- "forget this key" has to be reachable
+        from a GUI, and pretending to save nothing would leave the old key live.
+        Enforcement that environment variables win lives in `aisettings`; this
+        route only reports the outcome.
+        """
+        from aoe2mod import aisettings as _ais
+        try:
+            got = _ais.save(payload.get("base") or "",
+                            payload.get("key") or "",
+                            payload.get("model") or "")
+        except ValueError as exc:
+            return {"ok": False, "error": str(exc),
+                    "settings": _ais.public()}
+        return {"ok": True, "settings": got,
+                # A key saved while an environment variable is set will NOT be
+                # the one used; saying so here stops the panel from claiming a
+                # success the next request contradicts.
+                "note": ("环境变量 %s 已设，它优先于这里保存的值" % _ais.KEY_ENV
+                         if got.get("source") == "env" else "")}
+
+    def pet_chat(self, payload):
+        """One turn of the corner assistant.
+
+        Takes the wish plus whatever page state the front end offers, and returns
+        a reply.  Two things are deliberately NOT errors: an empty question and a
+        missing key.  The pet is the place a player discovers that a key exists,
+        so refusing to answer would hide the only useful sentence it can say.
+        """
+        from aoe2mod import chatter as _c
+        ctx = {"view": str(payload.get("view") or "")[:40],
+               "title": str(payload.get("title") or "")[:80],
+               "sel": str(payload.get("sel") or "")[:200],
+               "last": str(payload.get("last") or "")[:200],
+               "error": str(payload.get("error") or "")[:300]}
+        hist = payload.get("history")
+        if not isinstance(hist, list):
+            hist = []
+        clean = []
+        for turn in hist[-_c.TURNS:]:
+            if not isinstance(turn, dict):
+                continue
+            role = turn.get("role")
+            text = turn.get("text")
+            if role in ("user", "assistant") and isinstance(text, str):
+                clean.append({"role": role, "text": text[:1200]})
+        return _c.chat(payload.get("text") or "", ctx, clean)
+
+    def pet_status(self):
+        """What the pet can do on THIS machine: key present, index size, pages."""
+        from aoe2mod import chatter as _c
+        return _c.status()
+
+    def pet_greet(self, payload):
+        """The first line when the panel opens.  Never empty, never a sales pitch."""
+        from aoe2mod import chatter as _c
+        ctx = {"view": str(payload.get("view") or "")[:40],
+               "title": str(payload.get("title") or "")[:80],
+               "sel": str(payload.get("sel") or "")[:200],
+               "last": str(payload.get("last") or "")[:200]}
+        return {"ok": True, "text": _c.greet(ctx)}
 
     def plan(self, intent):
         return {"ok": True, "plan": self._decorate(self.tk.plan(intent))}
@@ -9598,6 +9951,21 @@ def make_handler(app):
                 return self._guard(lambda: app.unit_effects(
                     q.get("unit", q.get("id", ["0"]))[0],
                     q.get("civ", [""])[0]))
+            if path == "/api/relations":
+                # 「有关的东西」 for one record: the reverse pointers plus the
+                # records that share its name.  Read-only, no field access.
+                q = _query(self.path)
+                # A garbage ?limit= must not become a 500: it means "not said",
+                # which the default 24 already covers.
+                try:
+                    _lim = int(q.get("limit", ["24"])[0] or 24)
+                except (TypeError, ValueError):
+                    _lim = 24
+                return self._guard(lambda: app.relations(
+                    q.get("kind", ["unit"])[0],
+                    q.get("id", q.get("unit", q.get("tech", ["0"])))[0],
+                    group=q.get("group", [""])[0],
+                    limit=_lim))
             if path == "/api/tech-fields":
                 # Same shape as /api/fields, one space of difference: the rows
                 # carry `ref`/`ref_text` for the four pointer columns, which is
@@ -9699,6 +10067,14 @@ def make_handler(app):
                 # Keyless AND gameless: reads the shipped payload only, never the
                 # install.  The language editor must work before a path is set.
                 return self._guard(app.ai_lang_meta)
+            if path == "/api/ai-settings":
+                # Read-only and keyless: the panel needs to know whether a key is
+                # already saved before it draws "保存" or "已保存（…a1b2）".
+                return self._guard(app.ai_settings_get)
+            if path == "/api/pet-status":
+                # Keyless: reports whether a key exists, the index size, and the
+                # page list.  The pet draws itself before any key is configured.
+                return self._guard(app.pet_status)
             if path == "/api/repair-check":
                 # Deliberately NOT part of /api/mods: this parses about 12 MB
                 # per mod, and the mod list is drawn on every page load.
@@ -9775,6 +10151,45 @@ def make_handler(app):
             except ValueError as exc:
                 return _json(self, {"ok": False, "error": "bad json: %s" % exc})
             self._op_payload = payload if isinstance(payload, dict) else {}
+            if path == "/api/online/signout":
+                # The page calls the shell's own `online_signout` FIRST (only it
+                # can reach the WebView2 cookie jar), then posts here so the file
+                # the engine reads and the catalogue cache both go too.  Split
+                # across two processes because the credential lives in two
+                # places; posting here alone still works in a plain browser,
+                # where there is no shell to ask.
+                return self._guard(lambda: ON.signout())
+            if path == "/api/online/zh":
+                # Translation is a POST because a page of mod names does not fit
+                # in a URL, and because it is the one call here that talks to a
+                # third party on the player's behalf.
+                #
+                # The budget is in BYTES, not in items, because that is what the
+                # free backend meters: it counts the query against a daily
+                # allowance and refuses anything past roughly 500 bytes.  One
+                # page of card names is a few hundred bytes and passes; a caller
+                # asking for twenty-four whole descriptions does not, and would
+                # spend the day's allowance on one click.
+                texts = payload.get("texts")
+                if not isinstance(texts, list):
+                    texts = []
+                fresh = bool(payload.get("fresh"))
+                picked = []
+                spent = 0
+                for raw in texts[:24]:
+                    one = str(raw or "").strip()[:1200]
+                    if not one:
+                        continue
+                    cost = len(one.encode("utf-8"))
+                    if spent + cost > 3200:
+                        break
+                    spent += cost
+                    picked.append(one)
+                return self._guard(lambda: {
+                    "ok": True,
+                    "budget": {"bytes": spent, "items": len(picked)},
+                    "out": [TR.to_zh(t, fresh=fresh) for t in picked],
+                })
             if path == "/api/parse":
                 return self._guard(lambda: app.parse(payload.get("text") or "",
                                                      payload.get("pins") or []))
@@ -10125,6 +10540,22 @@ def make_handler(app):
                 return self._guard(lambda: app.ai_script_build(payload))
             if path == "/api/ai-script-check":
                 return self._guard(lambda: app.ai_script_check(payload))
+            if path == "/api/ai-script-draft":
+                # The one route where a model writes script source.  It is
+                # gated by the same grammar table the editor uses, so this is
+                # not a way around the checker -- it is a way to fill the box.
+                return self._guard(lambda: app.ai_script_draft(payload))
+            if path == "/api/ai-script-explain":
+                return self._guard(lambda: app.ai_script_explain(payload))
+            if path == "/api/ai-settings":
+                return self._guard(lambda: app.ai_settings_save(payload))
+            if path == "/api/pet-chat":
+                # The one conversational route.  It reads page state from the
+                # page, so a pet that has never been told where it is still
+                # answers; it just answers more vaguely.
+                return self._guard(lambda: app.pet_chat(payload))
+            if path == "/api/pet-greet":
+                return self._guard(lambda: app.pet_greet(payload))
             if path == "/api/open-url":
                 # Scheme-checked in `App.open_url`: this is the only route that
                 # reaches outside the process on the player's behalf.

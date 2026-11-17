@@ -1,0 +1,1511 @@
+﻿id,name,localised_name,cost_wood,cost_food,cost_gold,cost_stone,help_converter,language_file_name
+0,New Research,,0,0,0,0,-79000,0
+1,Tarkan (make avail),,0,0,0,0,28000,7000
+2,Elite Tarkan,Elite Tarkan,0,1000,500,0,28418,7418
+3,British Yeoman,Yeomen,750,0,450,0,28419,7419
+4,Mayan El Dorado,Holcans,0,750,450,0,28420,7420
+5,Celtic Furor Celtica,Furor Celtica,0,750,450,0,28421,7421
+6,Mongol Siege Drill,Drill,500,0,450,0,28422,7422
+7,Citadels,Citadels,600,0,300,0,28423,7423
+8,Town Watch,Town Watch,0,75,0,0,28008,7008
+9,Saracen Zealotry,Zealotry,0,400,400,0,28424,7424
+10,Turkish Artillery,Artillery,0,600,650,0,28425,7425
+11,Teuton Crenellations,Crenellations,0,600,0,400,28426,7426
+12,Crop rotation,Crop Rotation,250,250,0,0,28012,7012
+13,Heavy plow,Heavy Plow,125,125,0,0,28013,7013
+14,Horse collar,Horse Collar,75,75,0,0,28014,7014
+15,Guilds,Guilds,0,300,200,0,28015,7015
+16,Gothic Anarchy,Anarchy,0,450,250,0,28427,7427
+17,Banking,Banking,0,300,200,0,28017,7017
+18,[SCEN] Move Huskarl,,0,0,0,0,28000,7000
+19,Cartography,Cartography,0,0,0,0,28019,7019
+20,Auto upgrade Scout Feudal Age,,0,0,0,0,-79000,0
+21,Hun Atheism,Atheism,300,500,0,0,28428,7428
+22,Loom,Loom,0,0,50,0,28022,7022
+23,Coinage,Coinage,0,200,100,0,28023,7023
+24,Aztec Garland Wars,Garland Wars,0,450,750,0,28429,7429
+25,STBL (make avail),,0,0,0,0,28000,7000
+26,Plumed Archer (make avail),,0,0,0,0,28000,7000
+27,Elite Plumed Archer,Elite Plumed Archer,1000,700,0,0,28430,7430
+28,Bimaristan,Bimaristan,300,0,200,0,28451,7451
+29,"C-Bonus, +5 monk HP",,0,0,0,0,28000,7000
+30,"C-Bonus, +5 monk HP",,0,0,0,0,28000,7000
+31,"C-Bonus, +5 monk HP",,0,0,0,0,28000,7000
+32,"C-Bonus, +5 monk HP",,0,0,0,0,28000,7000
+33,"C-Bonus, +5 monk HP",,0,0,0,0,28000,7000
+34,War Galley,Medium Warships,150,0,100,0,28034,7034
+35,Galleon,Heavy Warships,400,0,315,0,28035,7035
+36,"C-Bonus, +5 monk HP",,0,0,0,0,28000,7000
+37,Cannon Galleon,Cannon Galleon,0,0,0,0,28037,7037
+38,"C-Bonus, +5 monk HP",,0,0,0,0,28000,7000
+39,Husbandry,Husbandry,0,150,0,0,28039,7039
+40,"C-Bonus, +5 monk HP",,0,0,0,0,28000,7000
+41,"C-Bonus, +5 monk HP",,0,0,0,0,28000,7000
+42,"C-Bonus, +1 inf attk",,0,0,0,0,28000,7000
+43,"C-Bonus, +1 inf attk",,0,0,0,0,28000,7000
+44,"C-Bonus, +1 inf attk",,0,0,0,0,28000,7000
+45,Faith,Faith,0,550,750,0,28045,7045
+46,Devotion,Devotion,0,100,200,0,28462,7462
+47,Chemistry,Chemistry,0,300,200,0,28047,7047
+48,Caravan,Caravan,0,200,200,0,28410,7410
+49,Bogsveigar,Bogsveigar,0,650,500,0,28431,7431
+50,Masonry,Masonry,175,150,0,0,28050,7050
+51,Architecture,Architecture,200,300,0,0,28051,7051
+52,Chinese Rocketry,Rocketry,0,1100,900,0,28432,7432
+53,"C-Bonus, -20% archer cost",,0,0,0,0,28000,7000
+54,Stone cutting,Treadmill Crane,200,0,0,50,28054,7054
+55,Gold Mining,Gold Mining,75,100,0,0,28055,7055
+56,"C-Bonus, -30% archer cost",,0,0,0,0,28000,7000
+57,"C-Bonus, Parthian Tactics age and cost",,0,0,0,0,28000,7000
+58,Conquistador (make avail),,0,0,0,0,28000,7000
+59,Japanese Kataparuto,Kataparuto,550,0,300,0,28059,7059
+60,Elite Conquistador,Elite Conquistador,0,900,600,0,28317,7317
+61,Byzantine Logistica,Logistica,0,800,600,0,28318,7318
+62,"C-Bonus, Cavalry gold",,0,0,0,0,28000,7000
+63,Keep,Keep,350,500,0,0,28063,7063
+64,Bombard Tower,Bombard Tower,400,800,0,0,26156,7320
+65,Gillnets,Gillnets,125,100,0,0,28314,7314
+66,"C-Bonus, +5 monk HP",,0,0,0,0,28000,7000
+67,Forging,Forging,0,150,0,0,28067,7067
+68,Iron casting,Iron Casting,0,220,120,0,28068,7068
+69,"C-Bonus, +2 vs Animals",,0,0,0,0,28000,7000
+70,"C-Bonus, start with eagle",,0,0,0,0,28000,7000
+71,Walls HP castle age,,0,0,0,0,28000,7000
+72,Palisade Walls HP feudal age,,0,0,0,0,28000,7000
+73,New Research,,0,0,0,0,-79000,0
+74,Scale Mail Armor,Scale Mail Armor,0,100,0,0,28074,7074
+75,Blast Furnace,Blast Furnace,0,275,225,0,28075,7075
+76,Chain Mail Armor,Chain Mail Armor,0,200,100,0,28076,7076
+77,Plate Mail Armor,Plate Mail Armor,0,300,150,0,28077,7077
+78,[FTT] Enable Regionals,,0,0,0,0,28402,7000
+79,Disable Regionals,,0,0,0,0,28402,7000
+80,Plate Barding Armor,Plate Barding Armor,0,350,200,0,28080,7080
+81,Scale Barding Armor,Scale Barding Armor,0,150,0,0,28081,7081
+82,Chain Barding Armor,Chain Barding Armor,0,250,150,0,28082,7082
+83,Frankish Bearded Axe,Bearded Axe,0,300,300,0,28324,7324
+84,Missionary (avail),,0,0,0,0,28000,7000
+85,Hand Cannoneer,Hand Cannon,0,0,0,0,28085,7085
+86,New Research,,0,0,0,0,-79000,0
+87,Spearman (make avail),,0,0,0,0,28087,7087
+88,New Research,,0,0,0,0,-79000,0
+89,New Research,,0,0,0,0,-79000,0
+90,Tracking,Tracking,0,0,0,0,28090,7090
+91,New Research,,0,0,0,0,-79000,0
+92,New Research,,0,0,0,0,-79000,0
+93,Ballistics,Ballistics,300,0,175,0,28093,7093
+94,Scorpion,Scorpion,0,0,0,0,28094,7094
+95,C-Bonus: free Hussars,,0,0,0,0,28000,7000
+96,Capped Ram,Capped Ram,0,300,0,0,28096,7096
+97,New Research,,0,0,0,0,-79000,0
+98,Elite Skirmisher,Elite Skirmisher,230,0,130,0,28098,7098
+99,Skirmisher (make avail),,0,0,0,0,28099,7099
+100,Crossbow,Crossbowman,0,175,100,0,28100,7100
+101,Middle Age,Feudal Age,0,500,0,0,28101,7101
+102,Feudal Age,Castle Age,0,800,200,0,28102,7102
+103,Imperial Age,Imperial Age,0,1000,800,0,28103,7103
+104,Dark Age,Dark Age,0,0,0,0,28104,7104
+105,New Research,,0,0,0,0,-79000,0
+106,Shadow Blacksmith -- Age One,,0,0,0,0,28106,7106
+107,Shadow Church -- Age One,,0,0,0,0,28107,7107
+108,Shadow Dock -- Age One,,0,0,0,0,28108,7108
+109,Farm -- Age One,,0,0,0,0,28109,7109
+110,Shadow Mill -- Age One,,0,0,0,0,28110,7000
+111,New Research,,0,0,0,0,-79000,0
+112,Fishing Ship,,0,0,0,0,28000,7000
+113,Dupl. Castle Age,,0,0,0,0,28402,7000
+114,Spearman,,0,0,0,0,28000,7000
+115,Dupl. Imperial Age,,0,0,0,0,28402,7000
+116,Villager,,0,0,0,0,28000,7000
+117,Disable Spies (Regicide only),,0,0,0,0,28000,7000
+118,TC -- Age One,,0,0,0,0,28000,7000
+119,New Research,,0,0,0,0,-79000,0
+120,Shadow Node for Age Two,,0,0,0,0,28000,7000
+121,[FTT] Adjust Regionals Positions,,0,0,0,0,28402,7000
+122,Shadow Barracks -- Age Two,,0,0,0,0,28000,7000
+123,Shadow Blacksmith -- Age Two,,0,0,0,0,28000,7000
+124,Shadow Church -- Age Two,,0,0,0,0,28000,7000
+125,Shadow Dock -- Age Two,,0,0,0,0,28000,7000
+126,Shadow Farm -- Age Two,,0,0,0,0,28000,7000
+127,Watch Tower (make avail),,0,0,0,0,28000,7000
+128,Shadow Market -- Age Two,,0,0,0,0,28000,7000
+129,Shadow Mill -- Age Two,,0,0,0,0,28000,7000
+130,Stable -- Age Two,,0,0,0,0,28000,7000
+131,Shadow Trade Wksp -- Age Two,,0,0,0,0,28000,7000
+132,Shadow Archery Rg -- Age Two,,0,0,0,0,28000,7000
+133,New Research,,0,0,0,0,-79000,0
+134,Archery Rg Upgrade -- Age Two,,0,0,0,0,28000,7000
+135,Shadow Node for Age Three,,0,0,0,0,28000,7000
+136,New Research,,0,0,0,0,-79000,0
+137,Castle -- Age Three,,0,0,0,0,28000,7000
+138,ShadowSiege Wrksp -- Age Three,,0,0,0,0,28000,7000
+139,New Research,,0,0,0,0,-79000,0
+140,Guard Tower,Guard Tower,250,100,0,0,28186,7186
+141,New Research,,0,0,0,0,-79000,0
+142,Shadow Node for Age Four,,0,0,0,0,28000,7000
+143,Shadow Tower -- Age Four,,0,0,0,300,28000,7000
+144,Wonder Plans,,0,0,0,0,28000,7000
+145,New Research,,0,0,0,0,-79000,0
+146,Shadow University -- Age Three,,0,0,0,0,28000,7000
+147,ARRG (make avail),,0,0,0,0,28000,7000
+148,MRKT TDWS (make avail),,0,0,0,0,28000,7000
+149,Siege Wksp (make avail),,0,0,0,0,28000,7000
+150,Univ (make avail),,0,0,0,0,28000,7000
+151,Archer (make avail),,0,0,0,0,28000,7000
+152,"C-Bonus, Military cost -15%",,0,0,0,0,28000,7000
+153,"C-Bonus, Military cost -20%",,0,0,0,0,28000,7000
+154,"C-Bonus, Military cost -25%",,0,0,0,0,28000,7000
+155,"C-Bonus, Military cost -30%",,0,0,0,0,28000,7000
+156,"C-Bonus, TC Wood cost",,0,0,0,0,28000,7000
+157,Monk (make avail),,0,0,0,0,28000,7000
+158,"C-Bonus, TC Stone cost",,0,0,0,0,28000,7000
+159,"C-Bonus, TC constr time",,0,0,0,0,28000,7000
+160,Swordsman (make avail),,0,0,0,0,28000,7000
+161,Trade Cart (make avail),,0,0,0,0,28000,7000
+162,Bat Ram (make avail),,0,0,0,0,28000,7000
+163,New Research,,0,0,0,0,-79000,0
+164,New Research,,0,0,0,0,-79000,0
+165,New Research,,0,0,0,0,-79000,0
+166,Knight (make avail),,0,0,0,0,28000,7000
+167,New Research,,0,0,0,0,-79000,0
+168,New Research,,0,0,0,0,-79000,0
+169,New Research,,0,0,0,0,-79000,0
+170,New Research,,0,0,0,0,-79000,0
+171,New Research,,0,0,0,0,-79000,0
+172,New Research,,0,0,0,0,-79000,0
+173,New Research,,0,0,0,0,-79000,0
+174,New Research,,0,0,0,0,-79000,0
+175,Paladin (make avail),,0,0,0,0,28148,7000
+176,New Research,,0,0,0,0,-79000,0
+177,New Research,,0,0,0,0,-79000,0
+178,All Ages,,0,0,0,0,28145,7000
+179,New Research,,0,0,0,0,-79000,0
+180,Cog,,0,0,0,0,28167,7167
+181,New Research,,0,0,0,0,-79000,0
+182,Gold Shaft Mining,Gold Shaft Mining,75,175,0,0,28180,7180
+183,New Research,,0,0,0,0,-79000,0
+184,New Research,,0,0,0,0,-79000,0
+185,New Research,,0,0,0,0,-79000,0
+186,"C-Bonus, Tech reward",,0,0,0,0,28288,7000
+187,R TC (make avail),,0,0,0,0,28153,7153
+188,Bombard Cannon,Bombard Cannon,0,0,0,0,28165,7165
+189,Wall 2 (make avail),,0,0,0,0,28162,7162
+190,"C-Bonus, CA vs Archers",,0,0,0,0,28288,7000
+191,New Research,,0,0,0,0,-79000,0
+192,Cav Archer (make avail),,0,0,0,0,28138,7000
+193,New Research,,0,0,0,0,-79000,0
+194,Fortified Wall,Fortified Wall,100,200,0,0,28163,7163
+195,New Research,,0,0,0,0,-79000,0
+196,New Research,,0,0,0,0,-79000,0
+197,Pikeman,Pikeman,0,160,90,0,28176,7176
+198,New Research,,0,0,0,0,-79000,0
+199,Fletching,Fletching,0,100,50,0,28172,7172
+200,Bodkin Arrow,Bodkin Arrow,0,200,100,0,28150,7150
+201,Bracer,Bracer,0,300,200,0,28151,7151
+202,Double Bit Axe,Double-Bit Axe,50,100,0,0,28189,7189
+203,Bow Saw,Bow Saw,100,150,0,0,28190,7190
+204,Scout (make avail),,0,0,0,0,28154,7154
+205,New Research,,0,0,0,0,-79000,0
+206,New Research,,0,0,0,0,-79000,0
+207,Long Swordsman,Long Swordsman,0,150,65,0,28204,7204
+208,New Research,,0,0,0,0,-79000,0
+209,Cavalier,Cavalier,0,300,300,0,28207,7207
+210,Church (make avail),,0,0,0,0,28214,7214
+211,Padded Archer Armor,Padded Archer Armor,0,100,0,0,28208,7208
+212,Leather Archer Armor,Leather Archer Armor,0,150,150,0,28209,7209
+213,Wheel Barrow,Wheelbarrow,50,175,0,0,28211,7211
+214,New Research,,0,0,0,0,-79000,0
+215,Squires,Squires,0,100,0,0,28210,7210
+216,Farms (make avail),,0,0,0,0,28215,7215
+217,Two-Handed Swordsman,Two-Handed Swordsman,0,200,100,0,28217,7217
+218,Heavy Cavalry Archer,Heavy Cavalry Archer,0,900,500,0,28218,7218
+219,Ring Archer Armor,Ring Archer Armor,0,250,250,0,28216,7216
+220,Barracks (make avail),,0,0,0,0,28213,7213
+221,Two Man Saw,Two-Man Saw,200,300,0,0,28231,7231
+222,Man-At-Arms,Man-at-Arms,0,100,40,0,28230,7230
+223,"C-Bonus, +50f +50w",,0,0,0,0,28000,7000
+224,"C-Bonus, +50g",,0,0,0,0,28000,7000
+225,"C-Bonus, -100w",,0,0,0,0,28000,7000
+226,"C-Bonus, -200f -50w",,0,0,0,0,28000,7000
+227,"C-Bonus, -50f",,0,0,0,0,28000,7000
+228,"C-Bonus, +100s",,0,0,0,0,28000,7000
+229,New Research,,0,0,0,0,-79000,0
+230,Block Printing,Block Printing,0,0,200,0,28222,7222
+231,Sanctity,Sanctity,0,0,175,0,28221,7221
+232,Chinese team bonus,,0,1,0,0,28000,7000
+233,Illumination,Illumination,0,0,120,0,28220,7220
+234,Conversion enabler,,0,0,0,0,28232,7000
+235,Make Camels Available,,0,0,0,0,28234,7000
+236,Heavy Camel,Heavy Camel Rider,0,325,360,0,28235,7235
+237,Arbalest,Arbalester,0,450,350,0,28233,7233
+238,"C-Bonus, Start w/ Horse",,0,0,0,0,28312,7000
+239,Heavy Scorpion,Heavy Scorpion,750,800,0,0,28244,7244
+240,Make Scout Ship Avail,,0,0,0,0,28241,7000
+241,"C-Bonus, Disable Horse",,0,0,0,0,28312,7000
+242,"C-Bonus, Disable Horse2",,0,0,0,0,28312,7000
+243,Make Fire Galley Avail,,0,0,0,0,28239,7000
+244,Heavy Demolition,Heavy Demolition Ship,250,0,300,0,28242,7242
+245,New Research,,0,0,0,0,-79000,0
+246,Fast Fire Ship,Fast Fire Ship,0,0,0,0,28243,7243
+247,New Research,,0,0,0,0,-79000,0
+248,New Research,,0,0,0,0,-79000,0
+249,Hand Cart,Hand Cart,200,300,0,0,28246,7246
+250,New Research,,0,0,0,0,-79000,0
+251,New Research,,0,0,0,0,-79000,0
+252,Fervor,Fervor,0,0,140,0,28249,7249
+253,New Research,,0,0,0,0,-79000,0
+254,Light Cavalry,Light Cavalry,0,150,50,0,28261,7261
+255,Siege Ram,Siege Ram,0,1000,0,0,28263,7263
+256,Trebuchet,,0,0,0,0,28256,7000
+257,Onager,Onager,0,800,500,0,28262,7262
+258,Shadow Saw Mill 1,,0,0,0,0,28264,7000
+259,Post-TC +50f +50w,,0,0,0,0,28000,7000
+260,Post-TC +50g,,0,0,0,0,28000,7000
+261,Post-TC +100s,,0,0,0,0,28000,7000
+262,Samurai (make avail),,0,0,0,0,28255,7000
+263,Longbow (make avail),,0,0,0,0,28254,7000
+264,Champion,Champion,0,650,350,0,28260,7260
+265,Paladin,Paladin,0,1300,750,0,28259,7259
+266,Castle built,,0,0,0,0,28258,7000
+267,Cataphract (make avail),,0,0,0,0,28268,7000
+268,Chu-Ko-Nu (make avail),,0,0,0,0,28267,7000
+269,Mameluke (make avail),,0,0,0,0,28269,7000
+270,Berserker (make avail),,0,0,0,0,28266,7000
+271,Jannisary (make avail),,0,0,0,0,28265,7000
+272,Longship (make avail),,0,0,0,0,28270,7000
+273,Mobile Siege Unit (make avail),,0,0,0,0,28271,7000
+274,War Elephant (make avail),,0,0,0,0,28272,7000
+275,Throwing Axemen (make avail),,0,0,0,0,28273,7000
+276,Teutonic Knight (make avail),,0,0,0,0,28000,7000
+277,Woad Berserker (make avail),,0,0,0,0,28000,7000
+278,Stone Mining,Stone Mining,75,100,0,0,28276,7276
+279,Stone Shaft Mining,Stone Shaft Mining,75,175,0,0,28277,7277
+280,Town Patrol,Town Patrol,0,300,100,0,28282,7282
+281,Blacksmith (make avail),,0,0,0,0,28000,7000
+282,Mine has been built,,0,0,0,0,28281,7000
+283,"C-Bonus, Building HP x1.5",,0,0,0,0,28000,7000
+284,"C-Bonus, Skirms Pikes cost -25%",,0,0,0,0,28304,7000
+285,New Research,,0,0,0,0,-79000,0
+286,"C-Bonus, Light Cavalry +20% HP + BL",,0,0,0,0,28367,7367
+287,"C-Bonus, Light Cavalry +30% HP + BL",,0,0,0,0,28367,7367
+288,"C-Bonus, Light Cavalry +20% HP",,0,0,0,0,28367,7367
+289,[EW] Remove hun houses,,0,0,0,0,28000,7000
+290,"C-Bonus, Cavalry +20% HP",,0,0,0,0,28313,7000
+291,Donjon built,,0,0,0,0,28258,7000
+292,Krepost built,,0,0,0,0,28258,7000
+293,New Research,,0,0,0,0,-79000,0
+294,New Research,,0,0,0,0,-79000,0
+295,Cuman Siege Workshop built,,0,0,0,0,28258,7000
+296,New Research,,0,0,0,0,-79000,0
+297,New Research,,0,0,0,0,-79000,0
+298,Feudal Age start,,0,1,0,0,28106,7106
+299,"C-Bonus, Sheep annex HP",,0,0,0,0,28312,7000
+300,"C-Bonus, Mining +25%",,0,0,0,0,28000,7000
+301,"C-Bonus, Gunpowder +25% HP",,0,0,0,0,28308,7000
+302,"C-Bonus, Start w/ 6 villagers",,0,0,0,0,28312,7000
+303,"C-Bonus, Extra sheep from TC",,0,0,0,0,28312,7000
+304,"C-Bonus, Techs -15% cost",,0,0,0,0,28283,7000
+305,"C-Bonus, Sheep from second TC",,0,0,0,0,28312,7000
+306,"C-Bonus, Better Fishing Ships",,0,0,0,0,28298,7000
+307,Shadow TC Annex,,0,0,0,0,28106,7106
+308,Shadow TC Foundation,,0,0,0,0,28106,7106
+309,Castle Age start,,0,1,0,0,28106,7106
+310,"C-Bonus, Sheep bonus age3 start",,0,0,0,0,28106,7106
+311,Imperial Age start,,0,1,0,0,28106,7106
+312,"C-Bonus, Camels +25% HP",,0,0,0,0,28288,7000
+313,New Research,,0,0,0,0,-79000,0
+314,"C-Bonus, Cheap Farms",,0,0,0,0,28290,7000
+315,Conscription,Conscription,0,150,150,0,28319,7319
+316,Redemption,Redemption,0,0,475,0,28315,7315
+317,Convert Ships,,0,0,0,0,28318,7000
+318,New Research,,0,0,0,0,-79000,0
+319,Atonement,Atonement,0,0,325,0,28316,7316
+320,Siege Onager,Siege Onager,0,1450,1000,0,28323,7323
+321,Sappers,Sappers,200,400,0,0,28322,7322
+322,Murder Holes,Murder Holes,0,200,0,100,28321,7321
+323,Exclude Age2 from tech reward,,0,0,0,0,28288,7000
+324,Exclude Age3 from tech reward,,0,0,0,0,28288,7000
+325,"C-Bonus, Castle 15% cheaper",,0,0,0,0,28335,0
+326,Exclude Age4 from tech reward,,0,0,0,0,28288,7000
+327,"C-Bonus, Inf v Building Age2",,0,0,0,0,28330,0
+328,"C-Bonus, Inf v Building Age3",,0,0,0,0,28330,0
+329,"C-Bonus, Inf v Building Age4",,0,0,0,0,28330,0
+330,"C-Bonus, Castle 25% cheaper",,0,0,0,0,28335,0
+331,New Research,,0,0,0,0,-79000,0
+332,Outpost (make avail),,0,0,0,0,28000,7000
+333,"C-Bonus, Tower Arrows",,0,0,0,0,28326,7000
+334,"C-Bonus, Inf Cav +1 armor Age3",,0,0,0,0,28338,0
+335,"C-Bonus, Inf Cav +1 armor Age4",,0,0,0,0,28338,0
+336,"C-Bonus, TC + Atk",,0,0,0,0,28350,0
+337,"C-Bonus, Spr Xport Ship",,0,0,0,0,28356,0
+338,New Research,,0,0,0,0,-79000,0
+339,"C-Bonus, Ship LOS",,0,0,0,0,28348,0
+340,"C-Bonus, Gather Price",,0,0,0,0,28337,0
+341,"C-Bonus, Inf Attack Spd",,0,0,0,0,28345,0
+342,"C-Bonus, TC Productivity",,0,0,0,0,28351,0
+343,"C-Bonus, Instant Loom",,0,0,0,0,28000,7000
+344,"C-Bonus, Infantry Cost -15%",,0,0,0,0,28338,0
+345,"C-Bonus, Unit Cost 35%",,0,0,0,0,28340,0
+346,"C-Bonus, Unit Cost 50%",,0,0,0,0,28341,0
+347,"C-Bonus, Monk Heal Range",,0,0,0,0,28346,0
+348,New Research,,0,0,0,0,-79000,0
+349,"C-Bonus, Super Dock",,0,0,0,0,28336,0
+350,"C-Bonus, Tec Cost",,0,0,0,0,28353,0
+351,"C-Bonus, Tec Cost",,0,0,0,0,28354,0
+352,"C-Bonus, Tec Cost",,0,0,0,0,28355,0
+353,"C-Bonus, Tower Arrows",,0,0,0,0,28325,7000
+354,Turk Castle,,0,0,0,0,28357,0
+355,"C-Bonus, Market",,0,0,0,0,28347,0
+356,New Research,,0,0,0,0,-79000,0
+357,Fish Trap (make avail),,0,0,0,0,28385,7385
+358,Mangonel,,0,0,0,0,28359,0
+359,Sub-Shadow Age4,,0,0,0,0,28380,7000
+360,Elite Longbow,Elite Longbowman,0,850,850,0,28381,7381
+361,Elite Cataphract,Elite Cataphract,0,1200,800,0,28382,7382
+362,Elite Chu Ko Nu,Elite Chu Ko Nu,0,1300,1300,0,28384,7384
+363,Elite Throwing Axemen,Elite Throwing Axeman,0,850,550,0,28394,7394
+364,Elite Teutonic Knight,Elite Teutonic Knight,0,950,500,0,28391,7391
+365,Elite Huskarl,Elite Huskarl,0,1200,550,0,28386,7386
+366,Elite Samurai,Elite Samurai,0,750,650,0,28387,7387
+367,Elite War Elephant,Elite War Elephant,0,1350,800,0,28389,7389
+368,Elite Mameluke,Elite Mameluke,0,600,500,0,28390,7390
+369,Elite Jannisary,Elite Janissary,0,850,750,0,28392,7392
+370,Elite Woad Raider,Elite Woad Raider,0,1000,800,0,28383,7383
+371,Elite Mangudai,Elite Mangudai,0,1100,675,0,28388,7388
+372,Unique Heroic Viking LBT,Elite Longship,0,750,475,0,28393,7393
+373,Shipwright,Shipwright,0,1000,300,0,28377,7377
+374,Careening,Careening,0,100,200,0,28372,7372
+375,Dry Dock,Dry Dock,0,200,400,0,28373,7373
+376,Elite Cannon Galley,Elite Cannon Galleon,525,0,500,0,28375,7375
+377,Siege Engineers,Siege Engineers,600,500,0,0,28378,7378
+378,Xolotl (make avail) Ande,,0,0,0,0,-79000,0
+379,Hoardings,Hoardings,400,400,0,0,28376,7376
+380,Heated Shot,Heated Shot,0,350,100,0,28374,7374
+381,"C-Bonus, 1/2 TCs",,0,0,0,0,28360,0
+382,"C-Bonus, +1 Archer range",,0,0,0,0,28361,0
+383,"C-Bonus, +25% Shepherd",,0,0,0,0,28362,0
+384,Heavy Eagle Warrior,Eagle Warrior,0,200,200,0,28413,7413
+385,"C-Bonus, Lumberjacks 15% faster",,0,0,0,0,28364,0
+386,"C-Bonus, Siege fire rate",,0,0,0,0,28365,0
+387,Upgrade Eagle in Age3,,0,0,0,0,28000,7000
+388,"C-Bonus, Light Cavalry +30% HP",,0,0,0,0,28367,7367
+389,"C-Bonus, Hunters 40% faster",,0,0,0,0,28368,7000
+390,"C-Bonus, Units cost less wood",,0,0,0,0,28000,7000
+391,"C-Bonus, Inf +20% HP",,0,0,0,0,28000,7000
+392,"C-Bonus, Free Wheel",,0,0,0,0,28371,7000
+393,"C-Bonus, Infantry +5% speed",,0,0,0,0,28397,7000
+394,None,,0,0,0,0,28399,0
+395,"C-Bonus, Warship cost age2",,0,0,0,0,28400,7000
+396,"C-Bonus, +50% Demo HP",,0,0,0,0,28398,0
+397,"C-Bonus, Navy attack speed",,0,0,0,0,28396,7000
+398,Elite Berserk,Elite Berserk,0,1075,475,0,28401,7401
+399,Berserk,,0,0,0,0,28395,7000
+400,"C-Bonus, Free Hand Cart",,0,0,0,0,28000,7000
+401,"C-Bonus, +15% farmers",,0,0,0,0,28000,7000
+402,"C-Bonus, Hunting bonuses",,0,0,0,0,28000,7000
+403,"C-Bonus, archer range +1",,0,0,0,0,28000,7000
+404,"C-Bonus, Galley +20% fire",,0,0,0,0,28000,7000
+405,"C-Bonus, Dominant LOS",,0,0,0,0,28000,7000
+406,"C-Bonus, +10 pop",,0,0,0,0,28000,7000
+407,Monk Ranged Heal,,0,0,0,0,28000,7000
+408,Spy Technology,Spies/Treason,0,0,200,0,28408,7408
+409,"C-Bonus, TC and Dock work rate",,0,0,0,0,28000,7000
+410,New Research,,0,0,0,0,-79000,0
+411,New Research,,0,0,0,0,-79000,0
+412,New Research,,0,0,0,0,-79000,0
+413,New Research,,0,0,0,0,-79000,0
+414,New Research,,0,0,0,0,-79000,0
+415,"C-Bonus, Inf +15% HP",,0,0,0,0,28000,7000
+416,"C-Bonus, Inf +20% HP",,0,0,0,0,28000,7000
+417,"C-Bonus, Bld +20%",,0,0,0,0,28000,7000
+418,"C-Bonus, Bld +30%",,0,0,0,0,28000,7000
+419,"C-Bonus, Bld +40%",,0,0,0,0,28000,7000
+420,C-Bonus,,0,0,0,0,28000,7000
+421,C-Bonus,,0,0,0,0,28000,7000
+422,C-Bonus,,0,0,0,0,28000,7000
+423,C-Bonus,,0,0,0,0,28000,7000
+424,C-Bonus,,0,0,0,0,28000,7000
+425,C-Bonus Chinese TC POP,,0,0,0,0,28000,7000
+426,Petard (make avail),,0,0,0,0,28000,7000
+427,Genitour (make avail),,0,0,0,0,28000,7000
+428,Hussar,Hussar,0,500,600,0,28417,7417
+429,Halberdier,Halberdier,0,300,600,0,28414,7414
+430,Elite Genitour,,0,800,500,0,28000,7000
+431,Jaguar Man,,0,0,0,0,28000,7000
+432,Elite Jaguar Man,Elite Jaguar Warrior,0,1000,500,0,28434,7434
+433,Eagle Warrior (make avail),,0,0,0,0,28000,7000
+434,Elite Eagle Warrior,Elite Eagle Warrior,0,800,500,0,28433,7433
+435,Bloodlines,Bloodlines,0,150,100,0,28409,7409
+436,Parthian Tactics,Parthian Tactics,0,200,250,0,28415,7415
+437,Thumb Ring,Thumb Ring,250,300,0,0,28411,7411
+438,Theocracy,Theocracy,0,0,200,0,28416,7416
+439,Heresy,Heresy,0,0,1000,0,28412,7412
+440,Spanish Supremacy,Supremacy,0,400,250,0,28325,7325
+441,Herbal Medicine,Herbal Medicine,0,0,200,0,28435,7435
+442,New Research,,0,0,0,0,-79000,0
+443,New Research,,0,0,0,0,-79000,0
+444,New Research,,0,0,0,0,-79000,0
+445,Korean catapults,Shinkichon,0,1100,800,0,28438,7438
+446,Huskarl (make avail),,0,0,0,0,28000,7000
+447,Turtle Ship (make avail),,0,0,0,0,28000,7000
+448,Elite Turtle Ship,Elite Turtle Ship,0,650,500,0,28437,7437
+449,War Wagon,,0,0,0,0,28000,7000
+450,Elite War Wagon,Elite War Wagon,1000,0,800,0,28436,7436
+451,"C-Bonus, Archer armor free",,0,0,0,0,28000,7000
+452,"C-Bonus, Light cavalry +1P armor",,0,0,0,0,28000,7000
+453,"C-Bonus, Foragers generate wood",,0,0,0,0,28000,7000
+454,Counterweights,Counterweights,0,650,500,0,28447,7447
+455,Detinets,Detinets,400,0,200,0,28448,7448
+456,"C-Bonus, +5 monk HP",,0,0,0,0,28000,7000
+457,Gothic Perfusion,Perfusion,400,0,600,0,28439,7439
+458,"C-Bonus, 35% CA",,0,0,0,0,28000,7000
+459,"C-Bonus, 40% CA",,0,0,0,0,28000,7000
+460,Aztec Sacrifice,Atlatl,0,400,350,0,28326,7326
+461,Britons City Rights,Warwolf,800,0,400,0,28327,7327
+462,Chinese Great Wall,Great Wall,400,0,0,200,28368,7368
+463,Viking Chieftains,Chieftains,0,600,450,0,28312,7312
+464,Byzantines Greek Fire,Greek Fire,0,250,300,0,28313,7313
+465,Greek Fire + Chemistry,,0,0,0,0,28000,7000
+466,C-Bonus Free War Galley,,0,0,0,0,28000,7000
+467,Genoese Bow (make avail),,0,0,0,0,28000,7000
+468,Elite Genoese Bow,Elite Genoese Crossbowman,0,900,750,0,28396,7396
+469,[SCEN] Move Tarkan,,0,0,0,0,28000,7000
+470,Wonder Built,,0,0,0,0,-79000,0
+471,Magyar Huszar (make avail),,0,0,0,0,28000,7000
+472,Elite Magyar Huszar,Elite Magyar Huszar,0,800,600,0,28395,7395
+473,C-Bonus Lcav Cheaper,,0,0,0,0,28000,7000
+474,C-Bonus Vil Forging,,0,0,0,0,28000,7000
+475,C-Bonus Vil Iron Casting,,0,0,0,0,28000,7000
+476,C-Bonus Vil Blast Furnace,,0,0,0,0,28000,7000
+477,C-Bonus Vil Scale Armor,,0,0,0,0,28000,7000
+478,C-Bonus Vil Chain Armor,,0,0,0,0,28000,7000
+479,C-Bonus Vil Plate Armor,,0,0,0,0,28000,7000
+480,Elephant Archer (make avail),,0,0,0,0,28000,7000
+481,Elite Elephant Archer,Elite Elephant Archer,0,900,500,0,28397,7397
+482,Stronghold,Stronghold,0,250,200,0,28369,7369
+483,Huns UT,Marauders,300,0,200,0,28370,7370
+484,Japanese UT,Yasama,300,300,0,0,28371,7371
+485,Mayans UT,Hul'che Javelineers,0,300,300,0,28379,7379
+486,Koreans UT,Eupseong,300,300,0,0,28380,7380
+487,Mongols UT,Nomads,300,0,150,0,28280,7280
+488,Persians UT,Kamandaran,0,400,300,0,28281,7281
+489,Teutons UT,Ironclad,400,0,350,0,28283,7283
+490,Saracens UT,Madrasah,0,200,100,0,28284,7284
+491,Sipahi,Sipahi,0,350,150,0,28285,7285
+492,Spanish UT,Inquisition,0,100,300,0,28286,7286
+493,Franks UT,Chivalry,600,0,500,0,28287,7287
+494,Pavise,Pavise,200,0,150,0,28272,7272
+495,"C-Bonus, Houses +5 pop",,0,0,0,0,28000,7000
+496,"C-Bonus, Villager cost Age1",,0,0,0,0,28000,7000
+497,"C-Bonus, Villager cost Age2",,0,0,0,0,28000,7000
+498,"C-Bonus, Villager cost Age3",,0,0,0,0,28000,7000
+499,Silk Route,Silk Road,0,250,250,0,28273,7273
+500,"C-Bonus, Gunpowder -20% cheaper",,0,0,0,0,28000,7000
+501,"C-Bonus, Warship cost age3",,0,0,0,0,28400,7000
+502,"C-Bonus, Warship cost age4",,0,0,0,0,28400,7000
+503,Boyar (make avail),,0,0,0,0,28000,7000
+504,Elite Siege Tower,Elite Boyar,0,1000,600,0,28264,7264
+505,"C-Bonus, Camel Rider attack speed",,0,0,0,0,28000,7000
+506,Indians UT,Grand Trunk Road,200,250,0,0,28270,7270
+507,Indians UT2,Shatagni,0,500,650,0,28271,7271
+508,Kamayuk (make avail),,0,0,0,0,28000,7000
+509,Elite Kamayuk,Elite Kamayuk,0,900,500,0,28265,7265
+510,"C-Bonus, Monks 20% faster",,0,0,0,0,28000,7000
+511,"C-Bonus, Siege Units Cheaper",,0,0,0,0,28000,7000
+512,Slavs UT,Orthodoxy,0,200,300,0,28268,7268
+513,Slavs UT,Druzhina,0,900,500,0,28269,7269
+514,Magyars UT,Corvinian Army,0,200,300,0,28275,7275
+515,Indians UT,Recurve Bow,600,0,400,0,28274,7274
+516,Incas UT,Andean Sling,0,200,300,0,28266,7266
+517,Indians UT,Fabric Shields,0,600,600,0,28267,7267
+518,Caravanserai (make avail),,0,0,0,0,28000,7000
+519,"C-Bonus, Building Stone cost",,0,0,0,0,28000,7000
+520,"C-Bonus, Gunpowder armor",,0,0,0,0,28000,7000
+521,Heavy Camel,Imperial Camel Rider,0,1000,500,0,28236,7236
+522,Condottiero (make avail),,0,0,0,0,28000,7000
+523,Palisade Wall (make avail),,0,0,0,0,28213,7213
+524,"C-Bonus, 15% faster foragers",,0,0,0,0,28000,7000
+525,Fire Tower (make avail),Revetments,10,0,0,0,28000,7164
+526,Savar,Savar,0,1200,600,0,28442,7442
+527,[FTT] Disable Paladin,,0,0,0,0,28402,7000
+528,Slinger (make avail),,0,0,0,0,28000,7000
+529,Britons,Britons,1,0,0,0,28000,10271
+530,Franks,Franks,1,0,0,0,28000,10272
+531,Goths,Goths,1,0,0,0,28000,10273
+532,Teutons,Teutons,1,0,0,0,28000,10274
+533,Japanese,Japanese,1,0,0,0,28000,10275
+534,Chinese,Chinese,1,0,0,0,28000,10276
+535,Byzantines,Byzantines,1,0,0,0,28000,10277
+536,Persians,Persians,1,0,0,0,28000,10278
+537,Saracens,Saracens,1,0,0,0,28000,10279
+538,Turks,Turks,1,0,0,0,28000,10280
+539,Vikings,Vikings,1,0,0,0,28000,10281
+540,Mongols,Mongols,1,0,0,0,28000,10282
+541,Celts,Celts,1,0,0,0,28000,10283
+542,Spanish,Spanish,1,0,0,0,28000,10284
+543,Aztecs,Aztecs,1,0,0,0,28000,10285
+544,Maya,Maya,1,0,0,0,28000,10286
+545,Huns,Huns,1,0,0,0,28000,10287
+546,Koreans,Koreans,1,0,0,0,28000,10288
+547,Italians,Italians,1,0,0,0,28000,10289
+548,Hindustanis,Hindustanis,1,0,0,0,28000,10290
+549,Inca,Inca,1,0,0,0,28000,10291
+550,Magyars,Magyars,1,0,0,0,28000,10292
+551,Slavs,Slavs,1,0,0,0,28000,10293
+552,Caravanserai (make avail),,0,0,0,0,28000,7000
+553,"C-Bonus, Villager cost Age4",,0,0,0,0,28000,7000
+554,"C-Bonus, Start w/ 4 villagers",,0,0,0,0,28312,7000
+555,Enable sheep,Enable Sheep,25,40,0,0,28316,7024
+556,Enable llamas,Enable Llamas,25,40,0,0,28316,7025
+557,Enable cows,Enable Cows,25,40,0,0,28316,7026
+558,Enable turkeys,Enable Turkeys,25,40,0,0,28316,7027
+559,"C-Bonus, All units -20% gold",,0,0,0,0,28000,7000
+560,"C-Bonus, Ships +10% HP",,0,0,0,0,28000,7000
+561,"C-Bonus, University +80% faste",,0,0,0,0,28000,7000
+562,Organ Gun (make avail),,0,0,0,0,28000,7000
+563,Elite Organ Gun,Elite Organ Gun,0,1200,500,0,28237,7237
+564,Camel Archer (make avail),,0,0,0,0,28000,7000
+565,Elite Camel Archer,Elite Camel Archer,1000,0,500,0,28238,7238
+566,Gbeto (make avail),,0,0,0,0,28000,7000
+567,Elite Mali Unit,Elite Gbeto,0,900,600,0,28241,7241
+568,Shotel Warrior (make avail),,0,0,0,0,28000,7000
+569,Elite Ethiopia Unit,Elite Shotel Warrior,0,900,450,0,28245,7245
+570,Feitoria (make avail),,0,0,0,0,28000,7000
+571,Citadels + Chemistry,,0,0,0,0,28000,7000
+572,Portuguese UT,Carrack,200,0,300,0,28250,7250
+573,Portuguese UT,Arquebus,0,700,400,0,28251,7251
+574,Ethiopian UT,Royal Heirs,0,300,300,0,28252,7252
+575,Ethiopian UT,Torsion Engines,0,1000,600,0,28253,7253
+576,Malian UT,Tigui,300,200,0,0,28254,7254
+577,Malian UT,Farimba,0,650,400,0,28255,7255
+578,Berber UT,Kasbah,0,250,250,0,28256,7256
+579,Berber UT,Maghrebi Camels,0,700,300,0,28257,7257
+580,Portuguese,Portuguese,1,0,0,0,28000,10294
+581,Ethiopians,Ethiopians,1,0,0,0,28000,10295
+582,Malians,Malians,1,0,0,0,28000,10296
+583,Berbers,Berbers,1,0,0,0,28000,10297
+584,"C-Bonus, Villagers 5% faster",,0,0,0,0,28000,7000
+585,"C-Bonus, Ships +10% faster",,0,0,0,0,28000,7000
+586,"C-Bonus, Stable units -15% che",,0,0,0,0,28000,7000
+587,"C-Bonus, +100f, +100g in age2",,0,0,0,0,28000,7000
+588,"C-Bonus, +100f, +100g in age3",,0,0,0,0,28000,7000
+589,"C-Bonus, +100f, +100g in age4",,0,0,0,0,28000,7000
+590,"C-Bonus, Free Pike",,0,0,0,0,28000,7000
+591,"C-Bonus, inf +1 armor feudal",,0,0,0,0,28000,7000
+592,"C-Bonus, inf +1 armor castle",,0,0,0,0,28000,7000
+593,"C-Bonus, inf +1 armor imp",,0,0,0,0,28000,7000
+594,"C-Bonus, Gold productivity",,0,0,0,0,28000,7000
+595,"C-Bonus, buildings cost -15% w",,0,0,0,0,28000,7000
+596,Caravel (make avail),,0,0,0,0,28270,7000
+597,Elite Caravel,Elite Caravel,0,700,525,0,28240,7240
+598,Genitour (make avail),,0,0,0,0,28270,7000
+599,Elite Genitour,Elite Genitour,450,500,0,0,28239,7239
+600,"C-Bonus, Villagers 10% faster",,0,0,0,0,28000,7000
+601,Genitour (make avail),,0,0,0,0,28000,7000
+602,Arson,Arson,0,75,25,0,28258,7258
+603,Siege Tower (make avail),,0,0,0,0,28000,7000
+604,Fire Galley (make avail),,0,0,0,0,28241,7000
+605,Demo Galley (make avail),,0,0,0,0,28241,7000
+606,Elite Genitour (post-imperial),,0,1,0,0,28000,7000
+607,"C-Bonus, Archers fire +15% fas",,0,0,0,0,28000,7000
+608,Arrowslits,Arrowslits,250,250,0,0,28278,7278
+609,Chemistry + Torsion,,0,0,0,0,28000,7000
+610,Arrowslits (Guard tower),,0,0,0,0,28000,7000
+611,Arrowslits (Keep),,0,0,0,0,28000,7000
+612,New Research,,0,0,0,0,-79000,0
+613,"C-Bonus, Stable units -20% che",,0,0,0,0,28000,7000
+614,Ballista Elephant (make avail),,0,0,0,0,28000,7000
+615,Elite Ballista Elephant,Elite Ballista Elephant,0,1000,500,0,28247,7247
+616,Karambit Warrior (make avail),,0,0,0,0,28000,7000
+617,Elite Karambit Warrior,Elite Karambit Warrior,0,900,600,0,28248,7248
+618,Arambai (make avail),,0,0,0,0,28000,7000
+619,Elite Arambai,Elite Arambai,0,1000,750,0,28289,7289
+620,Rattan Archer (make avail),,0,0,0,0,28000,7000
+621,Elite Rattan Archer,Elite Rattan Archer,0,800,750,0,28290,7290
+622,Khmer UT,Tusk Swords,300,0,450,0,28291,7291
+623,Khmer UT,Double Crossbow,0,700,400,0,28292,7292
+624,Malay UT,Thalassocracy,0,300,300,0,28293,7293
+625,Malay UT,Forced Levy,0,850,500,0,28294,7294
+626,Burmese UT,Howdah,300,400,0,0,28295,7295
+627,Burmese UT,Manipur Cavalry,0,300,300,0,28296,7296
+628,Vietnamese UT,Chatras,0,250,250,0,28297,7297
+629,Vietnamese UT,Paper Money,200,550,0,0,28298,7298
+630,Battle Elephant (make avail),,0,0,0,0,28000,7000
+631,Elite Battle Elephant,Elite Battle Elephant,0,1100,700,0,28299,7299
+632,"C-Bonus, Archers +20% HP",,0,0,0,0,28000,7000
+633,"C-Bonus, inf +1 attack dark",,0,0,0,0,28000,7000
+634,"C-Bonus, Age up faster",,0,0,0,0,28000,7000
+635,"C-Bonus, Fish Trap 33% cheaper",,0,0,0,0,28000,7000
+636,Post-Imperial Age start,,0,1,0,0,28000,7000
+637,"C-Bonus, 3x food fish traps",,0,0,0,0,28000,7000
+638,Khmer requirement,,0,0,0,0,28000,7000
+639,Town Center Spawn,Town Center Spawn,0,0,0,0,28000,7328
+640,"C-Bonus, Battle Elephant armor",,0,0,0,0,28000,7000
+641,Imperial Nomads,,0,0,0,0,28000,7000
+642,"C-Bonus, +2% arc HP feudal",,0,0,0,0,28000,7000
+643,"C-Bonus, +2% arc HP castle",,0,0,0,0,28000,7000
+644,"C-Bonus, +2% arc HP imp",,0,0,0,0,28000,7000
+645,"C-Bonus, free lumberjack upgra",,0,0,0,0,28000,7000
+646,"C-Bonus, inf +1 attack feudal",,0,0,0,0,28000,7000
+647,"C-Bonus, inf +1 attack castle",,0,0,0,0,28000,7000
+648,"C-Bonus, inf +1 attack imp",,0,0,0,0,28000,7000
+649,"C-Bonus, monastery techs -50% cost",,0,0,0,0,28000,7000
+650,Khmer,Khmer,1,0,0,0,28000,10298
+651,Malay,Malay,1,0,0,0,28000,10299
+652,Burmese,Burmese,1,0,0,0,28000,10300
+653,Vietnamese,Vietnamese,1,0,0,0,28000,10301
+654,"C-Bonus, Instant Farmers",,0,0,0,0,28000,7000
+655,Imperial Skirmisher,Imperial Skirmisher,300,0,300,0,28300,7300
+656,Imperial Skirmisher (disable),,0,0,0,0,28000,7000
+657,"C-Bonus, Houses garrison",,0,0,0,0,28000,7000
+658,Set Max pop (no houses),Set maximum population (no Houses),0,0,0,0,28301,7301
+659,Shadow Node+ for Age Two,,0,0,0,0,28000,7000
+660,Shadow Node+ for Age Three,,0,0,0,0,28000,7000
+661,Shadow Node+ for Age Four,,0,0,0,0,28000,7000
+662,"C-Bonus, Battle Ele 25% cheaper",,0,0,0,0,28000,7000
+663,"C-Bonus, Battle Ele 35% cheaper",,0,0,0,0,28000,7000
+664,"C-Bonus, Cheap Ranges and Stables",,0,0,0,0,28000,7000
+665,"C-Bonus, Vietnamese Vision",Vietnamese Vision,0,0,0,0,28000,7302
+666,Shadow Node Mill + Khmer,,0,0,0,0,28000,7000
+667,Shadow Node Barracks/Donjon + Khmer,,0,0,0,0,28000,7000
+668,Shadow Node Blacksmith + Khmer,,0,0,0,0,28000,7000
+669,Thalassocracy + Fletching,,0,0,0,0,28000,7000
+670,Thalassocracy + Bodkin,,0,0,0,0,28000,7000
+671,Thalassocracy + Bracer,,0,0,0,0,28000,7000
+672,"C-Bonus, Battle Ele 10% faster",,0,0,0,0,28000,7000
+673,Bulgarians,Bulgarians,1,0,0,0,28000,10302
+674,Tatars,Tatars,1,0,0,0,28000,10303
+675,Cumans,Cumans,1,0,0,0,28000,10304
+676,Lithuanians,Lithuanians,1,0,0,0,28000,10305
+677,Konnik (make avail),,0,0,0,0,28000,7000
+678,Elite Konnik,Elite Konnik,0,1000,750,0,28303,7303
+679,Keshik (make avail),,0,0,0,0,28000,7000
+680,Elite Keshik,Elite Keshik,0,700,600,0,28304,7304
+681,Kipchak (make avail),,0,0,0,0,28000,7000
+682,Elite Kipchak,Elite Kipchak,1000,1100,0,0,28305,7305
+683,Leitis (make avail),,0,0,0,0,28000,7000
+684,Elite Leitis,Elite Leitis,0,750,750,0,28306,7306
+685,Khmer UT,Stirrups,0,400,200,0,28307,7307
+686,Khmer UT,Bagains,0,900,450,0,28308,7308
+687,Malay UT,Silk Armor,400,0,300,0,28309,7309
+688,Malay UT,Timurid Siegecraft,500,0,400,0,28310,7310
+689,Burmese UT,Steppe Husbandry,300,200,0,0,28311,7311
+690,Burmese UT,Cuman Mercenaries,0,650,400,0,28398,7398
+691,Vietnamese UT,Hill Forts,0,250,250,0,28399,7399
+692,Vietnamese UT,Tower Shields,0,500,200,0,28400,7400
+693,"C-Bonus, Free Militia upgrades",,0,0,0,0,28000,7000
+694,"C-Bonus, TC Cost 1/2 Stone",,0,0,0,0,28000,7000
+695,"C-Bonus, Enable Krepost",,0,0,0,0,28000,7000
+696,"C-Bonus, Elevation Bonus",,0,0,0,0,28000,7000
+697,"C-Bonus, +100 food per TC",,0,0,0,0,28000,7000
+698,"C-Bonus, Free Parthian Tactics",,0,0,0,0,28000,7000
+699,"C-Bonus, Relic +1 cav attack 1",,0,0,0,0,28000,7000
+700,"C-Bonus, Relic +1 cav attack 2",,0,0,0,0,28000,7000
+701,"C-Bonus, Relic +1 cav attack 3",,0,0,0,0,28000,7000
+702,"C-Bonus, Relic +1 cav attack 4",,0,0,0,0,28000,7000
+703,Flaming Camel (make avail),,0,0,0,0,28000,7000
+704,"C-Bonus, Sheep +50% food",,0,0,0,0,28000,7000
+705,"C-Bonus, Age2 Siege Wksp",,0,0,0,0,28000,7000
+706,Upgrade Rams in Castle,,0,0,0,0,28000,7000
+707,Cuman Merc Part2,,0,0,0,0,28000,7000
+708,[FTT] Move Flaming/Siege Camels,,0,0,0,0,28402,7000
+709,"C-Bonus, Feudal TC",,0,0,0,0,28000,7000
+710,"C-Bonus, Skirms Pikes 10% faster",,0,0,0,0,28000,7000
+711,"C-Bonus, Cavalry +5% speed Age2",,0,0,0,0,28000,7000
+712,Upgrade Rams,,0,0,0,0,28000,7000
+713,Rename Units,,0,0,0,0,28000,7000
+714,Steppe Lancer (make avail),,0,0,0,0,28000,7000
+715,Elite Steppe Lancer,Elite Steppe Lancer,0,600,550,0,28402,7402
+716,Supplies,Supplies,0,75,75,0,28403,7403
+717,[FTT] Disable Paphos Regionals,,0,0,0,0,28402,7000
+718,[FTT] Move Tarkans,,0,0,0,0,28402,7000
+719,[FTT] Move Huskarls,,0,0,0,0,28402,7000
+720,[FTT] Move Slingers,,0,0,0,0,28402,7000
+721,Slavic team bonus,,0,0,0,0,28000,7000
+722,Shadow TC -- Age One,,0,0,0,0,28106,7106
+723,Change TC constr time1,,0,0,0,0,28402,7000
+724,Change TC constr time2,,0,0,0,0,28402,7000
+725,"C-Bonus, Archers vs buildings Age3",,0,0,0,0,28288,7000
+726,"C-Bonus, Archers vs buildings Age4",,0,0,0,0,28288,7000
+727,"C-Bonus, Cavalry +5% speed Age3",,0,0,0,0,28000,7000
+728,"C-Bonus, Cavalry +5% speed Age4",,0,0,0,0,28000,7000
+729,Monument Resources (KotH only),,0,0,0,0,28000,7000
+730,"T-Bonus, Start w/ Llama",,0,0,0,0,28000,7000
+731,"C-Bonus, Infantry Cost -20%",,0,0,0,0,28338,0
+732,"C-Bonus, Infantry Cost -25%",,0,0,0,0,28338,0
+733,"C-Bonus, Infantry Cost -30%",,0,0,0,0,28338,0
+734,Thalassocracy + Chemistry,,0,0,0,0,28000,7000
+735,Thalassocracy + Murder Holes,,0,0,0,0,28000,7000
+736,Thalassocracy + Heated Shot,,0,0,0,0,28000,7000
+737,Resources last +15%,Resources last 15% longer,0,1,0,0,28316,7329
+738,Resources last +30%,Resources last 30% longer,0,1,0,0,28316,7330
+739,Resources last +40%,Resources last 40% longer,0,1,0,0,28316,7331
+740,Resources last +50%,Resources last 50% longer,0,1,0,0,28316,7332
+741,Resources last +75%,Resources last 75% longer,0,1,0,0,28316,7333
+742,Resources last +100%,Resources last 100% longer,0,1,0,0,28316,7334
+743,Resources last +125%,Resources last 125% longer,0,1,0,0,28316,7335
+744,Resources last +150%,Resources last 150% longer,0,1,0,0,28316,7336
+745,Resources last +175%,Resources last 175% longer,0,1,0,0,28316,7337
+746,Resources last +200%,Resources last 200% longer,0,1,0,0,28316,7338
+747,Resources last +300%,Resources last 300% longer,0,1,0,0,28316,7339
+748,Burgundians,Burgundians,1,0,0,0,28000,10306
+749,Sicilians,Sicilians,1,0,0,0,28000,10307
+750,Coustillier (make avail),,0,0,0,0,28000,7000
+751,Elite Coustillier,Elite Coustillier,0,1000,800,0,28340,7340
+752,Serjeant (make avail),,0,0,0,0,28000,7000
+753,Elite Serjeant,Elite Serjeant,0,800,675,0,28341,7341
+754,Burgundian Vineyards,Burgundian Vineyards,0,400,300,0,28342,7342
+755,Flemish Revolution,Flemish Revolution,0,200,150,0,28343,7343
+756,First Crusade,First Crusade,0,400,300,0,28344,7344
+757,Hauberk,Hauberk,0,700,600,0,28345,7345
+758,Feudal eco tech requirement,,0,0,0,0,28338,0
+759,Castle eco tech requirement,,0,0,0,0,28338,0
+760,Imperial eco tech requirement,,0,0,0,0,28338,0
+761,Heavy Plow requirement,,0,0,0,0,28338,0
+762,Bow Saw requirement,,0,0,0,0,28338,0
+763,Hand Cart requirement,,0,0,0,0,28338,0
+764,Gold Shaft Mining requirement,,0,0,0,0,28338,0
+765,Stone Shaft Mining requirement,,0,0,0,0,28338,0
+766,Crop Rotation requirement,,0,0,0,0,28338,0
+767,Two-Man Saw requirement,,0,0,0,0,28338,0
+768,Cavalier requirement,,0,0,0,0,28338,0
+769,"C-Bonus, Gunpowder units +25% attack",,0,0,0,0,28338,0
+770,"C-Bonus, Fast Castle and TC",,0,0,0,0,28338,0
+771,"C-Bonus, Bonus damage resistance",,0,0,0,0,28338,0
+772,"C-Bonus, Farms extra food",,0,0,0,0,28338,0
+773,Flemish Militia (make avail),,0,0,0,0,28000,7000
+774,Flemish Militia Age3,,0,0,0,0,28000,7000
+775,"C-Bonus, Enable Donjon",,0,0,0,0,28000,7000
+776,Poles,Poles,1,0,0,0,28000,10308
+777,Bohemians,Bohemians,1,0,0,0,28000,10309
+778,Obuch (make avail),,0,0,0,0,28000,7000
+779,Elite Obuch,Elite Obuch,0,800,600,0,28346,7346
+780,Hussite Wagon (make avail),,0,0,0,0,28000,7000
+781,Elite Hussite Wagon,Elite Hussite Wagon,800,0,600,0,28347,7347
+782,Szlachta Privileges,Szlachta Privileges,0,500,300,0,28348,7348
+783,Lechitic Legacy,Lechitic Legacy,0,750,550,0,28349,7349
+784,Wagenburg Tactics,Wagenburg Tactics,0,300,300,0,28350,7350
+785,Hussite Reforms,Hussite Reforms,0,500,450,0,28351,7351
+786,Winged Hussar,Winged Hussar,0,600,800,0,28352,7352
+787,Houfnice,Houfnice,0,1100,800,0,28353,7353
+788,Winged Hussar (Lithuanians),,0,0,0,0,28000,7000
+789,Winged Hussar (Poles),,0,0,0,0,28000,7000
+790,Winged Hussar (L. post-imperial),,0,1,0,0,28000,7000
+791,Winged Hussar (P. post-imperial),,0,1,0,0,28000,7000
+792,"C-Bonus, Villager regeneration",,0,0,0,0,28338,0
+793,"C-Bonus, Enable Folwark",Folwark,0,0,0,0,28000,5581
+794,Folwark Age2 upgrade,,0,0,0,0,28000,7000
+795,Folwark Age3 upgrade,,0,0,0,0,28000,7000
+796,Folwark Age4 upgrade,,0,0,0,0,28000,7000
+797,Flemish Militia Age4,,0,0,0,0,28000,7000
+798,New Research,,0,0,0,0,-79000,0
+799,New Research,,0,0,0,0,-79000,0
+800,"C-Bonus, Earlier Chemistry",,0,0,0,0,28000,7000
+801,"C-Bonus, Earlier Hand Cannon",,0,0,0,0,28000,7000
+802,"C-Bonus, Bonus damage increase",,0,0,0,0,28000,7000
+803,"C-Bonus, Villager Sanctity",,0,0,0,0,28000,7000
+804,"C-Bonus, Villager Fervor",,0,0,0,0,28000,7000
+805,"C-Bonus, Stone Miners generate gold",,0,0,0,0,28000,7000
+806,New Research,,0,0,0,0,-79000,0
+807,New Research,,0,0,0,0,-79000,0
+808,"C-Bonus, Cheap buildings",,0,0,0,0,28000,7000
+809,"C-Bonus, Villager regeneration age2",,0,0,0,0,28338,0
+810,"C-Bonus, Villager regeneration age3",,0,0,0,0,28338,0
+811,"C-Bonus, Villager regeneration age4",,0,0,0,0,28338,0
+812,New Research,,0,0,0,0,-79000,0
+813,New Research,,0,0,0,0,-79000,0
+814,New Research,,0,0,0,0,-79000,0
+815,New Research,,0,0,0,0,-79000,0
+816,New Research,,0,0,0,0,-79000,0
+817,New Research,,0,0,0,0,-79000,0
+818,New Research,,0,0,0,0,-79000,0
+819,New Research,,0,0,0,0,-79000,0
+820,New Research,,0,0,0,0,-79000,0
+821,New Research,,0,0,0,0,-79000,0
+822,Dravidians,Dravidians,1,0,0,0,28000,10310
+823,Bengalis,Bengalis,1,0,0,0,28000,10311
+824,Gurjaras,Gurjaras,1,0,0,0,28000,10312
+825,Urumi Swordsman (make avail),,0,0,0,0,28000,7000
+826,Elite Urumi Swordsman,Elite Urumi Swordsman,0,900,450,0,28354,7354
+827,Ratha (make avail),,0,0,0,0,28000,7000
+828,Elite Ratha,Elite Ratha,800,800,0,0,28355,7355
+829,Chakram Thrower (make avail),,0,0,0,0,28000,7000
+830,Elite Chakram Thrower,Elite Chakram Thrower,0,1000,650,0,28356,7356
+831,Medical Corps,Medical Corps,0,300,200,0,28357,7357
+832,Wootz Steel,Wootz Steel,0,650,550,0,28358,7358
+833,Paiks,Paiks,375,0,275,0,28359,7359
+834,Mahayana,Mahayana,800,0,650,0,28360,7360
+835,Kshatriyas,Kshatriyas,0,500,450,0,28361,7361
+836,Frontier Guards,Frontier Guards,0,800,700,0,28362,7362
+837,Armored Elephant (make avail),,0,0,0,0,28000,7000
+838,Elite Armored Elephant,Siege Elephant,0,850,0,0,28363,7363
+839,Ghulam (make avail),,0,0,0,0,28000,7000
+840,Elite Ghulam,Elite Ghulam,0,950,575,0,28364,7364
+841,Thirisadai (make avail),,0,0,0,0,28000,7000
+842,Shrivamsha Rider (make avail),,0,0,0,0,28000,7000
+843,Elite Shrivamsha Rider,Elite Shrivamsha Rider,0,850,500,0,28365,7365
+844,"C-Bonus, Fish carry",,0,0,0,0,28000,7000
+845,"C-Bonus, Skirm and EA faster attack",,0,0,0,0,28000,7000
+846,"C-Bonus, Elephant resistance",,0,0,0,0,28000,7000
+847,"C-Bonus, Villagers in age2",,0,0,0,0,28000,7000
+848,"C-Bonus, Villagers in age3",,0,0,0,0,28000,7000
+849,"C-Bonus, Villagers in age4",,0,0,0,0,28000,7000
+850,"C-Bonus, Ships regenerate",,0,0,0,0,28000,7000
+851,"C-Bonus, +200w in age2",,0,0,0,0,28000,7000
+852,"C-Bonus, +200w in age3",,0,0,0,0,28000,7000
+853,"C-Bonus, +200w in age4",,0,0,0,0,28000,7000
+854,"C-Bonus, +20% Cav bonus damage",,0,0,0,0,28000,7000
+855,"C-Bonus, Docks garrison",,0,0,0,0,28000,7000
+856,"C-Bonus, Herdables garrison",,0,0,0,0,28000,7000
+857,"C-Bonus, Start w/ 2 bushes",,0,0,0,0,28000,7000
+858,Camel Scout (make avail),,0,0,0,0,28000,7000
+859,"C-Bonus, +30% Cav bonus damage",,0,0,0,0,28000,7000
+860,Upgrade Camel Scouts to Riders,,0,0,0,0,28000,7000
+861,Kshatriyas + Supplies,,0,0,0,0,28000,7000
+862,[FTT] Move Tarkans 2,,0,0,0,0,28402,7000
+863,[FTT] Move Elephant Archers,,0,0,0,0,28402,7000
+864,[FTT] Move Armored Elephants,,0,0,0,0,28402,7000
+865,[FTT] Move Shrivamsha Riders,,0,0,0,0,28402,7000
+866,[FTT] Move Shrivamsha Riders 2,,0,0,0,0,28402,7000
+867,Paper Money + Double-Bit Axe,,0,0,0,0,28000,7000
+868,Paper Money + Bow Saw,,0,0,0,0,28000,7000
+869,Paper Money + Two-Man Saw,,0,0,0,0,28000,7000
+870,"C-Bonus, Monk armor",,0,0,0,0,28000,7000
+871,"C-Bonus, +100f, +100g GS",,0,0,0,0,28000,7000
+872,"C-Bonus, +200w GS",,0,0,0,0,28000,7000
+873,"C-Bonus, +2vill GS",,0,0,0,0,28000,7000
+874,"C-Bonus, +40% Cav bonus damage",,0,0,0,0,28000,7000
+875,Gambesons,Gambesons,0,50,100,0,28450,7450
+876,"C-Bonus, Siege wood discount",,0,0,0,0,28000,7000
+877,"C-Bonus, Cavalry vs Skirm",,0,0,0,0,28000,7000
+878,RESERVED,,0,0,0,0,28000,7000
+879,RESERVED,,0,0,0,0,28000,7000
+880,Romans,Romans,1,0,0,0,28000,10313
+881,Centurion (make avail),,0,0,0,0,28000,7000
+882,Elite Centurion,Elite Centurion,0,1100,900,0,28443,7443
+883,Ballistas,Ballistas,400,0,300,0,28444,7444
+884,Comitatenses,Comitatenses,0,700,800,0,28445,7445
+885,Legionary,Legionary,0,800,400,0,28446,7446
+886,Dromon (make avail),,0,0,0,0,28000,7000
+887,"C-Bonus, Villagers work faster",,0,0,0,0,28000,7000
+888,"C-Bonus, Navy armor",,0,0,0,0,28338,0
+889,"C-Bonus, Double Scale Mail",,0,0,0,0,28338,0
+890,"C-Bonus, Double Chain Mail",,0,0,0,0,28338,0
+891,"C-Bonus, Double Plate Mail",,0,0,0,0,28338,0
+892,"C-Bonus, Cheaper scorpions",,0,0,0,0,28000,7000
+893,RESERVED,,0,0,0,0,28000,7000
+894,[FTT] Move Dromon,,0,0,0,0,28402,7000
+895,[FTT] Disable militia upgrades,,0,0,0,0,28402,7000
+896,RESERVED,,0,0,0,0,28000,7000
+897,RESERVED,,0,0,0,0,28000,7000
+898,"C-Bonus, Infantry +10% speed",,0,0,0,0,28397,7000
+899,"C-Bonus, Infantry +15% speed",,0,0,0,0,28397,7000
+900,"C-Bonus, Infantry +20% speed",,0,0,0,0,28397,7000
+901,"C-Bonus, Archers +1/+1 armor",,0,0,0,0,28397,7000
+902,Pirotecnia,Pirotechnia,0,650,500,0,28084,7084
+903,Hulk (make avail),,0,0,0,0,28034,7000
+904,Carrack,,0,0,0,0,28035,7000
+905,Demolition Ship,Demolition Ship,25,0,75,0,528002,507002
+906,Fishing Lines,Fishing Lines,100,50,0,0,528005,507005
+907,Carvel Hull,Carvel Hull,200,350,0,0,528004,507004
+908,Clinker Construction,Clinker Construction,100,150,0,0,528003,507003
+909,Carvel Hull,Siphons,0,100,175,0,528006,507006
+910,Clinker Construction,Incendiaries,0,200,325,0,528007,507007
+911,Galleon,,0,0,0,0,28035,7000
+912,Gillnets requirement,,0,0,0,0,28338,0
+913,Catapult Galleon (make avail),,0,0,0,0,28000,7000
+914,RESERVED,,0,0,0,0,28000,7000
+915,Armenians,Armenians,1,0,0,0,28000,10314
+916,Georgians,Georgians,1,0,0,0,28000,10315
+917,Composite Bowman (make avail),,0,0,0,0,28000,7000
+918,Elite Composite Bowman,Elite Composite Bowman,600,0,500,0,28404,7404
+919,Monaspa (make avail),,0,0,0,0,28000,7000
+920,Elite Monaspa,Elite Monaspa,0,1000,700,0,28405,7405
+921,Fereters,Fereters,0,550,400,0,28406,7406
+922,Cilician Fleet,Cilician Fleet,350,0,300,0,28407,7407
+923,Svan Towers,Svan Towers,0,300,200,0,28440,7440
+924,Aznauri Cavalry,Aznauri Cavalry,0,550,250,0,28441,7441
+925,"C-Bonus, Start w/ mule cart",,0,0,0,0,28312,7000
+926,"C-Bonus, Elevation Bonus Defense",,0,0,0,0,28000,7000
+927,RESERVED,,0,0,0,0,28000,7000
+928,RESERVED,,0,0,0,0,28000,7000
+929,"C-Bonus, Fortified Church",Fortified Church,0,0,0,0,28000,5038
+930,Fortified Church (Georgians),,0,0,0,0,28000,6000
+931,Fortified Church + Svan Towers,,0,0,0,0,28000,7000
+932,Mule Cart (make avail),,0,0,0,0,28000,7000
+933,Shadow Mule Cart 1,,0,0,0,0,28000,7000
+934,"C-Bonus, Fortified Church area effect",,0,0,0,0,28000,7000
+935,RESERVED,,0,0,0,0,28000,7000
+936,Svan Towers + Chemistry,,0,0,0,0,28000,7000
+937,"C-Bonus, Cavalry regeneration age2",,0,0,0,0,28000,7000
+938,"C-Bonus, Cavalry regeneration age3",,0,0,0,0,28000,7000
+939,"C-Bonus, Cavalry regeneration age4",,0,0,0,0,28000,7000
+940,Mule Cart (make avail),,0,0,0,0,28000,7000
+941,Fortified Church (Armenians),,0,0,0,0,28000,6000
+942,Fortified Church Age4 upgrade,,0,0,0,0,28000,7000
+943,Fortified Church + Fletching,,0,0,0,0,28000,7000
+944,Fortified Church + Bodkin,,0,0,0,0,28000,7000
+945,Fortified Church + Bracer,,0,0,0,0,28000,7000
+946,Fortified Church + Chemistry,,0,0,0,0,28000,7000
+947,Fortified Church + Murder Holes,,0,0,0,0,28000,7000
+948,Warrior Priest (make avail),,0,0,0,0,28000,7000
+949,"C-Bonus, Free Relic",,0,0,0,0,28000,7000
+950,"C-Bonus, Early Barracks techs",,0,0,0,0,28000,7000
+951,Castle Barracks tech requirement,,0,0,0,0,28338,0
+952,Long Swordsman requirement,,0,0,0,0,28338,0
+953,Two-Handed Swordsman requirement,,0,0,0,0,28338,0
+954,Champion requirement,,0,0,0,0,28338,0
+955,Pikeman requirement,,0,0,0,0,28338,0
+956,Halberdier requirement,,0,0,0,0,28338,0
+957,"C-Bonus, Free Relic2",,0,0,0,0,28000,7000
+958,"C-Bonus, Cheaper Mule Cart",,0,0,0,0,28000,7000
+959,"C-Bonus, Navy +1 projectile",,0,0,0,0,28000,7000
+960,"C-Bonus, +% Double-Bit Axe",,0,0,0,0,28000,6000
+961,"C-Bonus, +% Bow Saw",,0,0,0,0,28000,6000
+962,"C-Bonus, +% Two-Man Saw",,0,0,0,0,28000,6000
+963,"C-Bonus, +% Gold Mining",,0,0,0,0,28000,6000
+964,"C-Bonus, +% Gold Shaft Mining",,0,0,0,0,28000,6000
+965,"C-Bonus, +% Stone Mining",,0,0,0,0,28000,6000
+966,"C-Bonus, +% Stone Shaft Mining",,0,0,0,0,28000,6000
+967,Elite Qizilbash Warrior,Elite Qizilbash Warrior,0,850,600,0,28449,7449
+968,Placeholder 1,Technology Placeholder 01,0,100,0,0,28000,7452
+969,Placeholder 2,Technology Placeholder 02,0,100,0,0,28000,7453
+970,Placeholder 3,Technology Placeholder 03,0,100,0,0,28000,7454
+971,Placeholder 4,Technology Placeholder 04,0,100,0,0,28000,7455
+972,Placeholder 5,Technology Placeholder 05,0,100,0,0,28000,7456
+973,Placeholder 6,Technology Placeholder 06,0,100,0,0,28000,7457
+974,Placeholder 7,Technology Placeholder 07,0,100,0,0,28000,7458
+975,Placeholder 8,Technology Placeholder 08,0,100,0,0,28000,7459
+976,Placeholder 9,Technology Placeholder 09,0,100,0,0,28000,7460
+977,Placeholder 10,Technology Placeholder 10,0,100,0,0,28000,7461
+978,SIege Engineers requirement,,0,0,0,0,28338,0
+979,Rocket Cart (make avail),,0,0,0,0,28359,0
+980,Heavy Rocket Cart,Heavy Rocket Cart,800,0,600,0,28470,7470
+981,Fire Lancer (make avail),,0,0,0,0,28359,0
+982,Elite Fire Lancer,Elite Fire Lancer,0,750,400,0,28463,7463
+983,"C-Bonus, Fire Lancer/Ship speed Castle",,0,0,0,0,28000,7000
+984,"C-Bonus, Fire Lancer/Ship speed Imp",,0,0,0,0,28000,7000
+985,,,0,0,0,0,28000,7000
+986,Jurchens,Jurchens,1,0,0,0,28000,10322
+987,,,0,0,0,0,28000,7000
+988,Khitans,Khitans,1,0,0,0,28000,10323
+989,,,0,0,0,0,28000,7000
+990,Iron Pagoda (make avail),,0,0,0,0,28000,7000
+991,Elite Iron Pagoda,Elite Iron Pagoda,0,950,550,0,28464,7464
+992,Grenadier (make avail),,0,0,0,0,28000,7000
+993,"C-Bonus, Animals don't decay",,0,0,0,0,28000,7000
+994,"C-Bonus, cav & Fire Lancer +25% attack",,0,0,0,0,28000,7000
+995,"C-Bonus, SIege and Defensive techs",,0,0,0,0,28000,7000
+996,Fortifed Bastions,Fortified Bastions,250,350,0,0,28466,7466
+997,Thunderclap Bombs,Thunderclap Bombs,0,900,600,0,28467,7467
+998,"C-Bonus, Double Forging",,0,0,0,0,28338,0
+999,"C-Bonus, Double Iron Casting",,0,0,0,0,28338,0
+1000,"C-Bonus, Double Blast Furnace",,0,0,0,0,28338,0
+1001,Liao Dao (make avail),,0,0,0,0,28000,7000
+1002,Elite Liao Dao,Elite Liao Dao,0,800,650,0,28465,7465
+1003,RESERVED,,0,0,0,0,28000,7000
+1004,"C-Bonus, Early + Cheaper HCA",,0,0,0,0,28338,0
+1005,Mounted Trebuchet (make avail),,0,0,0,0,28000,7000
+1006,Lamellar Armor,Lamellar Armor,0,450,300,0,28468,7468
+1007,Ordo Cavalry,Ordo Cavalry,0,600,300,0,28469,7469
+1008,"C-Bonus, Pastures",,0,0,0,0,28000,7000
+1009,"C-Bonus, No friendly damage",,0,0,0,0,28000,7000
+1010,Dragon Ship,Dragon Ship,0,0,0,0,28483,7483
+1011,"C-Bonus, Skirms Spear Scout train 25% faster",,0,0,0,0,28338,0
+1012,Grazing Grasslands,Transhumance,325,175,0,0,28486,7486
+1013,Enclosures,Pastoralism,150,100,0,0,28485,7485
+1014,Livestock Husbandry,Domestication,100,50,0,0,28484,7484
+1015,Rocketry + Chemistry,,0,0,0,0,28000,7000
+1016,RESERVED,,0,0,0,0,28000,7000
+1017,RESERVED,,0,0,0,0,28000,7000
+1018,RESERVED,,0,0,0,0,28000,7000
+1019,RESERVED,,0,0,0,0,28000,7000
+1020,RESERVED,,0,0,0,0,28000,7000
+1021,RESERVED,,0,0,0,0,28000,7000
+1022,RESERVED,,0,0,0,0,28000,7000
+1023,RESERVED,,0,0,0,0,28000,7000
+1024,Achaemenids,Achaemenids,1,0,0,0,28000,10316
+1025,Traction Trebuchet (make avail),,0,0,0,0,28359,0
+1026,Spartans,Spartans,1,0,0,0,28000,10318
+1027,Athenians,Athenians,1,0,0,0,28000,10317
+1028,Shu,Shu,1,0,0,0,28000,10319
+1029,Wei,Wei,1,0,0,0,28000,10321
+1030,Wu,Wu,1,0,0,0,28000,10320
+1031,Wu Team Bonus,,0,0,0,0,28000,7000
+1032,Hei-Kuang Cavalry (make avail),,0,0,0,0,28000,7000
+1033,Heavy Hei-Kuang Cavalry,Heavy Hei Guang Cavalry,0,350,250,0,28471,7471
+1034,Lou Chuan (make avail),,0,0,0,0,28000,7000
+1035,Tiger Cavalry (make avail),,0,0,0,0,28000,7000
+1036,Elite Tiger Cavalry,Elite Tiger Cavalry,0,1000,800,0,28472,7472
+1037,Xianbei Raider (make avail),,0,0,0,0,28000,7000
+1038,Cao Cao (make avail),,0,0,0,0,28000,7000
+1039,"C-Bonus, Fre vill + Bit Axe",,0,0,0,0,28000,7000
+1040,"C-Bonus, Fre vill + Bow Saw",,0,0,0,0,28000,7000
+1041,"C-Bonus, Fre vill + Two-Man Saw",,0,0,0,0,28000,7000
+1042,"C-Bonus, Fre vill + Horse collar",,0,0,0,0,28000,7000
+1043,"C-Bonus, Fre vill + Heavy Plow",,0,0,0,0,28000,7000
+1044,"C-Bonus, Fre vill + Crop Rotation",,0,0,0,0,28000,7000
+1045,"C-Bonus, Fre vill + Gold Mining",,0,0,0,0,28000,7000
+1046,"C-Bonus, Fre vill + Gold Shaft",,0,0,0,0,28000,7000
+1047,"C-Bonus, Fre vill + Stone Mining",,0,0,0,0,28000,7000
+1048,"C-Bonus, Fre vill + Stone Shaft",,0,0,0,0,28000,7000
+1049,"C-Bonus, Fre vill + Wheelbarrow",,0,0,0,0,28000,7000
+1050,"C-Bonus, Fre vill + Hand Cart",,0,0,0,0,28000,7000
+1051,"C-Bonus, Fre vill + Gillnets",,0,0,0,0,28000,7000
+1052,"C-Bonus, Fre vill + Caravan",,0,0,0,0,28000,7000
+1053,"C-Bonus, Fre vill + Guilds",,0,0,0,0,28000,7000
+1054,"C-Bonus, Fre vill + Gillnets",,0,0,0,0,28000,7000
+1055,RESERVED,,0,0,0,0,28000,7000
+1056,"C-Bonus, Heavy Cav +15% HP + BL",,0,0,0,0,28313,7000
+1057,"C-Bonus, Heavy Cav +30% HP + BL",,0,0,0,0,28367,7367
+1058,"C-Bonus, Heavy Cav +15% HP",,0,0,0,0,28313,7000
+1059,"C-Bonus, Heavy Cav +30% HP",,0,0,0,0,28367,7367
+1060,C-Bonus Cheaper Traction Treb,,0,0,0,0,28000,7000
+1061,Tuntian,Tuntian,300,250,0,0,28473,7473
+1062,Ming-Kuang Armor,Ming Guang Armor,0,600,450,0,28474,7474
+1063,White Feather Guard (make avail),,0,0,0,0,28000,7000
+1064,Elite White Feather Guard,Elite White Feather Guard,0,900,500,0,28475,7475
+1065,War Chariot (make avail),,0,0,0,0,28000,7000
+1066,Liu Bei (make avail),,0,0,0,0,28000,7000
+1067,"C-Bonus, cheaper archer upg",,0,0,0,0,28000,7000
+1068,"C-Bonus, Siege +10% movement",,0,0,0,0,28000,7000
+1069,Bolt Magazine,Bolt Magazine,0,650,750,0,28476,7476
+1070,Coiled Serpent Array,Coiled Serpent Array,0,350,300,0,28477,7477
+1071,"C-Bonus, Lumberjacks food",,0,0,0,0,28000,7000
+1072,"C-Bonus, Siege +15% movement",,0,0,0,0,28000,7000
+1073,Fire Archer (make avail),,0,0,0,0,28000,7000
+1074,Elite Fire Archer,Elite Fire Archer,0,800,800,0,28478,7478
+1075,Jian Swordsman (make avail),,0,0,0,0,28479,7000
+1076,"C-Bonus, Jian & Hei Kuang attack",,0,0,0,0,28000,7000
+1077,,,0,0,0,0,28000,7000
+1078,,,0,0,0,0,28000,7000
+1079,"C-Bonus, free Careening, Dry Dock",,0,0,0,0,28000,7000
+1080,Red Cliffs Tactics,Red Cliffs Tactics,0,400,250,0,28480,7480
+1081,Ming-Kuang Armor,Sitting Tiger,600,0,300,0,28481,7481
+1082,Sitting Tiger + Chemistry,,0,0,0,0,28000,7000
+1083,Sun Jian (make avail),,0,0,0,0,28000,7000
+1084,"C-Bonus, Military Buildings +65f",,0,0,0,0,28000,7000
+1085,"C-Bonus, inf regen Feudal",,0,0,0,0,28000,7000
+1086,"C-Bonus, inf regen Castle",,0,0,0,0,28000,7000
+1087,"C-Bonus, inf regen Imp",,0,0,0,0,28000,7000
+1088,Hero Shadow Tech,,0,0,0,0,28000,7000
+1089,Wu TB local,,0,0,0,0,28000,7000
+1090,RESERVED,,0,0,0,0,28000,7000
+1091,RESERVED,,0,0,0,0,28000,7000
+1092,RESERVED,,0,0,0,0,28000,7000
+1093,RESERVED,,0,0,0,0,28000,7000
+1094,RESERVED,,0,0,0,0,28000,7000
+1095,RESERVED,,0,0,0,0,28000,7000
+1096,RESERVED,,0,0,0,0,28000,7000
+1097,RESERVED,,0,0,0,0,28000,7000
+1098,RESERVED,,0,0,0,0,28000,7000
+1099,RESERVED,,0,0,0,0,28000,7000
+1100,RESERVED,,0,0,0,0,28000,7000
+1101,,,0,0,0,0,28000,7000
+1102,,,0,0,0,0,28000,7000
+1103,Achaemenids Static Bonuses,,0,0,0,0,28000,7000
+1104,,,0,0,0,0,28000,7000
+1105,,,0,0,0,0,28000,7000
+1106,,,0,0,0,0,28000,7000
+1107,,,0,0,0,0,28000,7000
+1108,,,0,0,0,0,28000,7000
+1109,,,0,0,0,0,28000,7000
+1110,"Sparabaras, Achaemenid Unique Tech",,0,350,300,0,428005,407005
+1111,"Reed Arrows, Achaemenid Unique Tech",,0,400,300,0,428006,407006
+1112,"Scythed Chariots, Achaemenid Unique Tech",,500,0,500,0,428007,407007
+1113,"Sagaris, Achaemenid Unique Tech",,0,600,550,0,428008,407008
+1114,"Enable Immortal, Achaemenid Unique Unit",,0,0,0,0,28000,7000
+1115,Elite Immortal,,0,850,350,0,428001,407001
+1116,Athenians Static Bonuses,,0,0,0,0,28000,7000
+1117,,,0,0,0,0,28000,7000
+1118,,,0,0,0,0,28000,7000
+1119,,,0,0,0,0,28000,7000
+1120,"Dekate, Athenian Unique Tech",,0,300,400,0,428009,407009
+1121,"Taxiarchs, Athenian Unique Tech",,500,0,450,0,428010,407010
+1122,"Eisphora, Athenian Unique Tech",,0,500,350,0,428011,407011
+1123,"Delian League, Athenian Unique Tech",,500,0,300,0,428012,407012
+1124,"Enable Strategos, Athenian Unique Unit",,0,0,0,0,28000,7000
+1125,Elite Strategos,,0,700,800,0,428002,407002
+1126,Spartans Static Bonuses,,0,0,0,0,28000,7000
+1127,"Spawn first Polemarch, Spartan Civ bonus",,0,0,0,0,28000,7000
+1128,"Spawn second Polemarch, Spartan Civ Bonus",,0,0,0,0,28000,7000
+1129,"Polemarchs become stronger in Imperial Age, Spartan Civ Bonus",,0,0,0,0,28000,7000
+1130,"Helot Levies, Spartan Unique Tech",,500,0,300,0,428013,407013
+1131,"Agoge, Spartan Unique Tech",,0,500,400,0,428014,407014
+1132,"Xyphos, Spartan Unique Tech",,0,300,250,0,428015,407015
+1133,"Peloponnesian League, Spartan Unique Tech",,0,700,450,0,428016,407016
+1134,"Enable Hippeus, Spartan Unique Unit",,0,0,0,0,28000,7000
+1135,Elite Hippeus,,0,800,600,0,428003,407003
+1136,"Enable Hoplite, Greek Regional Unit",,0,1,0,0,28000,7000
+1137,Elite Hoplite,,0,600,550,0,428004,407004
+1138,Paphos Shadow Tech,,0,1,0,0,28000,7000
+1139,,,0,0,0,0,28000,7000
+1140,Enable Shipyard,,0,0,0,0,28000,7000
+1141,Shipyard built,,0,1,0,0,28000,7000
+1142,Paphos Naval,,0,0,0,0,28000,7000
+1143,Enable Lembos,,0,0,0,0,28000,7000
+1144,War Lembos,,0,80,30,0,428017,407017
+1145,Heavy Lembos,,0,150,80,0,428018,407018
+1146,Elite Lembos,,0,350,170,0,428019,407019
+1147,Enable Monoreme,,0,0,0,0,28000,7000
+1148,Bireme,,160,0,95,0,428020,407020
+1149,Trireme,,280,0,250,0,428021,407021
+1150,Enable Galley - Antiquity,,0,0,0,0,28000,7000
+1151,War Galley - Antiquity,,0,135,75,0,428022,407118
+1152,Elite Galley,,0,250,225,0,428023,407023
+1153,Enable Incendiary Raft,,0,0,0,0,28000,7000
+1154,Incendiary Ship,,155,0,80,0,428024,407024
+1155,Heavy Incendiary Ship,,250,0,200,0,428025,407025
+1156,,,0,0,0,0,28000,7000
+1157,,,0,0,0,0,28000,7000
+1158,Enable Catapult Ship,,0,0,0,0,28000,7000
+1159,Onager Ship,,0,600,500,0,428027,407027
+1160,Enable Leviathan,,0,0,0,0,28000,7000
+1161,Scoop Nets,,200,150,0,0,428028,407028
+1162,Drums,,0,300,200,0,428029,407029
+1163,Shadow Transport Ship -- Age Three,,0,0,0,0,28000,7000
+1164,Shadow Transport Ship -- Age Four,,0,0,0,0,28000,7000
+1165,Hypozomata,,0,225,125,0,428030,407030
+1166,Enable Merchant Ship,,0,0,0,0,28167,7167
+1167,Shipwright,,0,1000,300,0,428031,407031
+1168,,,0,0,0,0,28000,7000
+1169,Enable War Chariot,,0,1,0,0,28268,7000
+1170,Enable War Chariot Full Techs,,0,1,0,0,28268,7000
+1171,Elite War Chariot,,500,600,0,0,428032,407032
+1172,,,0,0,0,0,28000,7000
+1173,Two-Handed Swordsman,,0,300,100,0,428033,407033
+1174,Champion,,0,750,350,0,428070,407070
+1175,Paphos Port Age 2,,0,0,0,0,28000,7000
+1176,Paphos Port Age 3,,0,0,0,0,28000,7000
+1177,Paphos Port Age 4,,0,0,0,0,28000,7000
+1178,,,0,0,0,0,28000,7000
+1179,,,0,0,0,0,28000,7000
+1180,Blank Technology 0,,0,0,0,0,428034,407034
+1181,Blank Technology 1,,0,0,0,0,428035,407035
+1182,Blank Technology 2,,0,0,0,0,428036,407036
+1183,Blank Technology 3,,0,0,0,0,428037,407037
+1184,Blank Technology 4,,0,0,0,0,428038,407038
+1185,Blank Technology 5,,0,0,0,0,428039,407039
+1186,Blank Technology 6,,0,0,0,0,428040,407040
+1187,Blank Technology 7,,0,0,0,0,428041,407041
+1188,Blank Technology 8,,0,0,0,0,428042,407042
+1189,Blank Technology 9,,0,0,0,0,428043,407043
+1190,,,0,0,0,0,28000,7000
+1191,,,0,0,0,0,28000,7000
+1192,,,0,0,0,0,28000,7000
+1193,,,0,0,0,0,28000,7000
+1194,,,0,0,0,0,28000,7000
+1195,Economic Satrapy Upgrade,,125,75,0,0,428045,407045
+1196,Military Satrapy Upgrade,,125,0,75,0,428046,407046
+1197,Defensive Satrapy Upgrade,,100,0,0,50,428047,407047
+1198,Spawn Lembos from Port,,0,0,0,0,28000,421071
+1199,,,0,0,0,0,28000,7000
+1200,,,0,0,0,0,28000,7000
+1201,,,0,0,0,0,28000,7000
+1202,Oligarchy,,0,0,0,0,428051,407051
+1203,Democracy,,0,0,0,0,428052,407052
+1204,Tyranny,,0,0,0,0,428053,407053
+1205,Reset Oligarchy,,0,1,0,0,28000,7000
+1206,Reset Democracy,,1,1,0,0,28000,7000
+1207,Reset Tyranny,,1,1,0,0,28000,7000
+1208,Dupl. Dark Age,,0,0,0,0,28402,7000
+1209,Dupl. Feudal Age,,0,0,0,0,28402,7000
+1210,First change of Government,,0,0,0,0,28000,7000
+1211,Second change of Government,,0,0,0,0,28000,7000
+1212,Third change of Government,,0,0,0,0,28000,7000
+1213,Fourth change of Government,,0,0,0,0,28000,7000
+1214,Initial Oligarchy researched,,0,1,0,0,28000,7000
+1215,Trade 25% wood,,0,0,0,0,428048,407048
+1216,Trade 50% wood,,0,0,0,0,428049,407049
+1217,Trade 75% wood,,0,0,0,0,428050,407050
+1218,Civ specific Castle Age prereq,,0,0,0,0,28000,7000
+1219,,,0,0,0,0,28000,7000
+1220,Shadow Port -- Age One,,0,0,0,0,28108,7108
+1221,Dark Age Naval building,,0,0,0,0,28000,7000
+1222,Port built,,0,1,0,0,28000,7000
+1223,Ephorate,,0,200,125,0,428054,407054
+1224,Morai,,0,100,75,0,428055,407055
+1225,Skeuophoroi,,0,250,100,0,428056,407056
+1226,Hippagretai,,0,350,200,0,428057,407057
+1227,Macedonians full tech tree,,0,0,0,0,28000,7000
+1228,Thracians full tech tree,,0,0,0,0,28000,7000
+1229,Puru full tech tree,,0,0,0,0,28000,7000
+1230,TC built for Polemarch,,0,0,0,0,28000,7000
+1231,,,0,0,0,0,28000,7000
+1232,,,0,0,0,0,28000,7000
+1233,,,0,0,0,0,28000,7000
+1234,,,0,0,0,0,28000,7000
+1235,,,0,0,0,0,28000,7000
+1236,,,0,0,0,0,28000,7000
+1237,,,0,0,0,0,28000,7000
+1238,,,0,0,0,0,28000,7000
+1239,,,0,0,0,0,28000,7000
+1240,Blank Technology 0,,0,0,0,0,428058,407058
+1241,Blank Technology 1,,0,0,0,0,428059,407059
+1242,Blank Technology 2,,0,0,0,0,428060,407060
+1243,Blank Technology 3,,0,0,0,0,428061,407061
+1244,Blank Technology 4,,0,0,0,0,428062,407062
+1245,Blank Technology 5,,0,0,0,0,428063,407063
+1246,Blank Technology 6,,0,0,0,0,428064,407064
+1247,Blank Technology 7,,0,0,0,0,428065,407065
+1248,Blank Technology 8,,0,0,0,0,428066,407066
+1249,Blank Technology 9,,0,0,0,0,428067,407067
+1250,,,0,0,0,0,28000,7000
+1251,,,0,0,0,0,28000,7000
+1252,,,0,0,0,0,28000,7000
+1253,,,0,0,0,0,28000,7000
+1254,,,0,0,0,0,28000,7000
+1255,,,0,0,0,0,28000,7000
+1256,,,0,0,0,0,28000,7000
+1257,,,0,0,0,0,28000,7000
+1258,Achaemenids full tech tree,,0,0,0,0,28000,7000
+1259,Athenians full tech tree,,0,0,0,0,28000,7000
+1260,Spartans full tech tree,,0,0,0,0,28000,7000
+1261,Paphos full tech tree prereq,,0,0,0,0,28000,7000
+1262,Antiquity Mode Enabled,,0,0,0,0,28000,7000
+1263,Trade 25% wood,"25% wood, 75% gold",0,0,0,0,528031,507031
+1264,Trade 50% wood,"50% wood, 50% gold",0,0,0,0,528032,507032
+1265,Trade 75% wood,"75% wood, 25% gold",0,0,0,0,528033,507033
+1266,Free Elite Hoplite,,0,1,0,0,28338,0
+1267,Elite Hoplite requirement,,0,0,0,0,28338,0
+1268,Macedonians Static Bonuses,,0,0,0,0,28000,7000
+1269,Macedonian Team Bonus,,0,1,0,0,28000,7000
+1270,Fortified Outpost,,50,0,0,0,428140,407140
+1271,"Scale Mail for Cavalry, Macedonian Civ Bonus",,0,0,0,0,28338,0
+1272,"Chain Mail for Cavalry, Macedonian Civ Bonus",,0,0,0,0,28338,0
+1273,"Plate Mail for Cavalry, Macedonian Civ Bonus",,0,0,0,0,28338,0
+1274,,,0,0,0,0,28000,7000
+1275,Barracks Balanced Doctrine,,0,0,0,0,428156,407156
+1276,Barracks Regulars Doctrine,,0,0,0,0,428157,407157
+1277,Barracks Mercenaries Doctrine,,0,0,0,0,428155,407155
+1278,Archery Range Balanced Doctrine,,0,0,0,0,428159,407159
+1279,Archery Range Regulars Doctrine,,0,0,0,0,428160,407160
+1280,Archery Range Mercenaries Doctrine,,0,0,0,0,428158,407158
+1281,Stable Balanced Doctrine,,0,0,0,0,428162,407162
+1282,Stable Regulars Doctrine,,0,0,0,0,428163,407163
+1283,Stable Mercenaries Doctrine,,0,0,0,0,428161,407161
+1284,"Veteran Chiliarchs, Macedonian Unique Tech",,0,200,150,0,428141,407141
+1285,"Ends of the World, Macedonian Unique Tech",,300,0,0,100,428142,407142
+1286,"Pezhetairoi, Macedonian Unique Tech",,0,500,450,0,428143,407143
+1287,"Sarissophoroi, Macedonian Unique Tech",,0,300,500,0,428144,407144
+1288,"Enable Companion, Macedonian Unique Unit",,0,0,0,0,28000,7000
+1289,Elite Companion,,0,1100,800,0,428170,407170
+1290,"Enable Phalangite, Macedonian Unique Unit",,0,0,0,0,28000,7000
+1291, Elite Phalangite,,0,600,500,0,428171,407171
+1292,Thracians Static Bonuses,,0,0,0,0,28000,7000
+1293,"Skirmishers regen 5 hp in Civic Age, Thracian Civ Bonus",,0,0,0,0,28338,0
+1294,"Skirmishers regen 10 hp in Classical Age, Thracian Civ Bonus",,0,0,0,0,28338,0
+1295,"Early Battle Drills requirement, Thracian Civ Bonus",,0,0,0,0,28338,0
+1296,"Odomantian Raiders, Thracian Unique Tech",,0,300,150,0,428145,407145
+1297,"Dii Plunderers, Thracian Unique Tech",,300,0,200,0,428146,407146
+1298,"Bessian Metalworking, Thracian Unique Tech",,0,1100,700,0,428147,407147
+1299,"Peltasts, Thracian Unique Tech",,800,0,900,0,428148,407148
+1300,"Enable Rhomphaia Warrior, Thracian Unique Unit",,0,0,0,0,28000,7000
+1301,Elite Rhomphaia Warrior,,0,700,400,0,428172,407172
+1302,Puru Static Bonuses,,0,0,0,0,28000,7000
+1303,"Stable units heal when no nearby enemies, Puru Civ Bonus",,0,0,0,0,28000,7000
+1304,"Lemboi cost -10% and +1 attack in Civic Age, Puru Civ Bonus",,0,0,0,0,28000,7000
+1305,"Lemboi cost -10% and +1 attack in Classical Age, Puru Civ Bonus",,0,0,0,0,28000,7000
+1306,"Lemboi cost -10% and +1 attack in Imperial Age, Puru Civ Bonus",,0,0,0,0,28000,7000
+1307,"Vadhavadha, Puru Unique Tech",,0,300,150,0,428149,407149
+1308,"Leaf-Headed Shafts, Puru Unique Tech",,300,0,200,0,428150,407150
+1309,"Vedic Teachings, Puru Unique Tech",,0,1100,700,0,428151,407151
+1310,"Skandhavaras, Puru Unique Tech",,800,0,900,0,428152,407152
+1311,Masonry Researched for Vedic Teachings,,0,0,0,0,28000,7000
+1312,Architecture Researched for Vedic Teachings,,0,0,0,0,28000,7000
+1313,Fortified Wall Researched for Vedic Teachings,,0,0,0,0,28000,7000
+1314,Chemistry Researched for Vedic Teachings,,0,0,0,0,28000,7000
+1315,Ballistics Researched for Vedic Teachings,,0,0,0,0,28000,7000
+1316,Siege Engineers Researched for Vedic Teachings,,0,0,0,0,28000,7000
+1317,Guard Tower Researched for Vedic Teachings,,0,0,0,0,28000,7000
+1318,Keep Researched for Vedic Teachings,,0,0,0,0,28000,7000
+1319,Heated Shot Researched for Vedic Teachings,,0,0,0,0,28000,7000
+1320,Arrowslits Researched for Vedic Teachings,,0,0,0,0,28000,7000
+1321,Murder Holes Researched for Vedic Teachings,,0,0,0,0,28000,7000
+1322,Treadmill Crane Researched for Vedic Teachings,,0,0,0,0,28000,7000
+1323,Defensive Emplacement,,100,0,0,50,428153,407153
+1324,Offensive Emplacement,,150,0,0,50,428154,407154
+1325,"Enable Pattiyodha Longbowman, Puru Unique Unit",,0,0,0,0,28000,7000
+1326,Elite Pattiyodha Longbowman,,900,0,700,0,428173,407173
+1327,"Enable Sannahya, Puru Unique Unit",,0,0,0,0,28000,7000
+1328,Elite Sannahya,,0,1000,900,0,428174,407174
+1329,"Stone Mining food generation increase, Puru Civ Bonus",,0,0,0,0,28000,7000
+1330,"Stone Shaft Mining food generation increase, Puru Civ Bonus",,0,0,0,0,28000,7000
+1331,Scale Alexander's Soldiers in Imperial Age,,0,0,0,0,28000,7000
+1332,Kotthybos/Telamon choice,,0,0,0,0,405160,407195
+1333,Kopis/Sarissa choice,,0,0,0,0,405160,407196
+1334,Elite Scythian Horse Archer,,0,800,700,0,428097,407197
+1335,Enable Scythian Horse Archer,,0,0,0,0,28000,421127
+1336,Functional Enable Scythian Horse Archer,,0,0,0,0,28000,7000
+1337,,,0,0,0,0,28000,7000
+1338,,,0,0,0,0,28000,7000
+1339,,,0,0,0,0,28000,7000
+1340,Blank Technology 20,,0,0,0,0,428175,407175
+1341,Blank Technology 21,,0,0,0,0,428176,407176
+1342,Blank Technology 22,,0,0,0,0,428177,407177
+1343,Blank Technology 23,,0,0,0,0,428178,407178
+1344,Blank Technology 24,,0,0,0,0,428179,407179
+1345,Blank Technology 25,,0,0,0,0,428180,407180
+1346,Blank Technology 26,,0,0,0,0,428181,407181
+1347,Blank Technology 27,,0,0,0,0,428182,407182
+1348,Blank Technology 28,,0,0,0,0,428183,407183
+1349,Blank Technology 29,,0,0,0,0,428184,407184
+1350,Champi Scout (Make avail),,0,0,0,0,28487,0
+1351,Champi Warrior,Champi Warrior,0,150,175,0,28488,7488
+1352,Elite Champi Warrior,Elite Champi Warrior,0,650,450,0,28489,7489
+1353,Settlement (make avail),,0,0,0,0,28000,7000
+1354,Settlement Age2 upgrade,,0,0,0,0,28000,7000
+1355,Settlement Age3 upgrade,,0,0,0,0,28000,7000
+1356,Settlement Age4 upgrade,,0,0,0,0,28000,7000
+1357,Shadow Settlement -- Age One,,0,0,0,0,28110,7000
+1358,Shadow Node Mule Cart/Settlement,,0,0,0,0,28000,7000
+1359,Trade 0% wood,"0% wood, 100% gold",0,0,0,0,528030,507030
+1360,Muisca,Muisca,1,0,0,0,41203,10327
+1361,Mapuche,Mapuche,1,0,0,0,28000,10328
+1362,Tupi,Tupi,1,0,0,0,28000,10329
+1363,Guecha Warrior (make avail),,0,0,0,0,28000,7000
+1364,Guecha Warrior Pagoda,Elite Guecha Warrior,750,0,600,0,28490,7490
+1365,Herbalism,Herbalism,0,300,350,0,28491,7491
+1366,Huaracas,Huaracas,450,0,350,0,28492,7492
+1367,"C-Bonus, Age up -50% gold",,0,0,0,0,28000,7000
+1368,"C-Bonus, Cheaper + Healing Settlement",,0,0,0,0,28290,7000
+1369,"C-Bonus, Arch + Champi +1 armor Age2",,0,0,0,0,28338,0
+1370,"C-Bonus, Arch + Champi +1 armor Age3",,0,0,0,0,28338,0
+1371,"C-Bonus, Arch + Champi +1 armor Age4",,0,0,0,0,28338,0
+1372,"C-Bonus, Monks Faster Faith",,0,0,0,0,28338,0
+1373,Trade 100% wood,"100% wood, 0% gold",0,0,0,0,528034,507034
+1374,"C-Bonus, Free Caravan and Guilds",,0,0,0,0,28000,7000
+1375,Kona (make avail),,0,0,0,0,28000,7000
+1376,Elite Kona,Elite Kona,0,800,800,0,28493,7493
+1377,Bolas Rider (make avail),,0,0,0,0,28000,7000
+1378,Elite Bolas Rider,Elite Bolas Rider,0,800,500,0,28494,7494
+1379,Malon,Malon,0,300,350,0,28495,7495
+1380,Butalmapu,Butalmapu,0,500,450,0,28496,7496
+1381,"C-Bonus, Forager productivity",,0,0,0,0,28000,7000
+1382,"C-Bonus, Skirms Spear Settlements",,0,0,0,0,28338,0
+1383,"C-Bonus, Skirm Spear +5 HP Feudal",,0,0,0,0,28338,0
+1384,"C-Bonus, Skirm Spear +5 HP Castle",,0,0,0,0,28338,0
+1385,"C-Bonus, Skirm Spear +5 HP Imperial",,0,0,0,0,28338,0
+1386,"C-Bonus, Reveal Castle",,0,0,0,0,28000,7000
+1387,Elite War Dog,Elite War Dog,0,450,300,0,528022,507022
+1388,Blackwood Archer (make avail),,0,0,0,0,28000,7000
+1389,Elite Blackwood Archer,Elite Blackwood Archer,0,600,500,0,28497,7497
+1390,Ibirapema Warrior (make avail),,0,0,0,0,28000,7000
+1391,Elite Ibirapema Warrior,Elite Ibirapema Warrior,0,1000,600,0,28498,7498
+1392,Caciques,Caciques,0,400,200,0,28499,7499
+1393,Curare,Curare,0,650,600,0,528000,507000
+1394,"C-Bonus, +25 each res",,0,0,0,0,28000,7000
+1395,"C-Bonus, Settlement garrison",,0,0,0,0,28000,7000
+1396,"C-Bonus, Unit Refund",,0,0,0,0,28000,7000
+1397,"C-Bonus, Barracks + Range tech discount",,0,0,0,0,28000,7000
+1398,"C-Bonus, Ships +15% HP",,0,0,0,0,28000,7000
+1399,"C-Bonus, Ships +20% HP",,0,0,0,0,28000,7000
+1400,Temple Guard (make avail),,0,0,0,0,28000,7000
+1401,Elite Temple Guard,Elite Temple Guard,0,500,650,0,528001,507001
+1402,Champi Runner,Champi Runner,0,90,60,0,28487,7487
+1403,Tupi team bonus,,0,0,0,0,28000,7000
+1404,Circumnavigation,Circumnavigation,150,250,0,0,528023,507023
+1405,"C-Bonus, Skirms Spear Settlements Feudal",,0,0,0,0,28338,0
+1406,"C-Bonus, Skirms Spear Settlements Castle",,0,0,0,0,28338,0
+1407,"C-Bonus, Skirms Spear Settlements Imperia;",,0,0,0,0,28338,0
+1408,Post-TC +25 each res,,0,0,0,0,28000,7000
+1409,,,0,0,0,0,28000,7000
+1410,,,0,0,0,0,28000,7000
+1411,,,0,0,0,0,28000,7000
+1412,,,0,0,0,0,28000,7000
+1413,,,0,0,0,0,28000,7000
+1414,,,0,0,0,0,28000,7000
+1415,,,0,0,0,0,28000,7000
+1416,,,0,0,0,0,28000,7000
+1417,,,0,0,0,0,28000,7000
+1418,,,0,0,0,0,28000,7000
+1419,,,0,0,0,0,28000,7000
+1420,,,0,0,0,0,28000,7000
+1421,,,0,0,0,0,28000,7000
+1422,,,0,0,0,0,28000,7000
+1423,,,0,0,0,0,28000,7000
+1424,,,0,0,0,0,28000,7000
+1425,,,0,0,0,0,28000,7000
+1426,,,0,0,0,0,28000,7000
+1427,,,0,0,0,0,28000,7000
+1428,,,0,0,0,0,28000,7000
+1429,,,0,0,0,0,28000,7000
+1430,,,0,0,0,0,28000,7000
+1431,,,0,0,0,0,28000,7000
+1432,,,0,0,0,0,28000,7000
+1433,,,0,0,0,0,28000,7000
+1434,,,0,0,0,0,28000,7000
+1435,,,0,0,0,0,28000,7000
+1436,,,0,0,0,0,28000,7000
+1437,,,0,0,0,0,28000,7000
+1438,,,0,0,0,0,28000,7000
+1439,,,0,0,0,0,28000,7000
+1440,,,0,0,0,0,28000,7000
+1441,,,0,0,0,0,28000,7000
+1442,,,0,0,0,0,28000,7000
+1443,,,0,0,0,0,28000,7000
+1444,,,0,0,0,0,28000,7000
+1445,,,0,0,0,0,28000,7000
+1446,,,0,0,0,0,28000,7000
+1447,,,0,0,0,0,28000,7000
+1448,,,0,0,0,0,28000,7000
+1449,,,0,0,0,0,28000,7000
+1450,Mounted Crossbowman (Make avail),,0,0,0,0,28487,-1
+1451,Heavy Mounted Crossbowman,Heavy Mounted Crossbowman,0,1000,650,0,528008,507008
+1452,Cranequins,Cranequins,0,300,200,0,528024,507024
+1453,Varangian Guard (make avail),,0,0,0,0,28359,-1
+1454,Elite Varangian Guard,Elite Varangian Guard,0,750,475,0,528010,507010
+1455,,,0,0,0,0,28000,7000
+1456,,,0,0,0,0,28000,7000
+1457,,,0,0,0,0,28000,7000
+1458,Saxons,Saxons,1,0,0,0,41203,10330
+1459,Varangians,Varangians,1,0,0,0,41203,10331
+1460,Danes,Danes,1,0,0,0,41203,10332
+1461,Hearth Troop (make avail),,0,0,0,0,28000,7000
+1462,Elite Hearth Troop,Elite Hearth Troop,750,0,700,0,528011,507011
+1463,,,0,0,0,0,28000,7000
+1464,Shield Wall,Shield Wall,0,525,475,0,528013,507013
+1465,"C-Bonus, Dropsites +35 food, +10 stone",,0,0,0,0,28338,0
+1466,,,0,0,0,0,28000,7000
+1467,,,0,0,0,0,28000,7000
+1468,,,0,0,0,0,28000,7000
+1469,"C-Bonus, Castle/TC Foot Soldiers Discount",,0,0,0,0,28338,0
+1470,"C-Bonus, Longboats and Catapult Galleon +20% HP",,0,0,0,0,28338,0
+1471,Jarl (make avail),,0,0,0,0,28000,7000
+1472,Elite Jarl,Elite Jarl,0,825,725,0,528014,507014
+1473,Vendel Legacy,Vendel Legacy,0,500,300,0,528015,507015
+1474,Gothikon,Gothikon,0,475,400,0,528016,507016
+1475,"C-Bonus, gold from sheep, hunt, fishing ships",,0,0,0,0,28362,0
+1476,New Research,,0,0,0,0,-79000,0
+1477,New Research,,0,0,0,0,-79000,0
+1478,"C-Bonus, VG attack +25% faster",,0,0,0,0,28338,0
+1479,"C-Bonus, Lonbgoats and Catapult Galleon attack +15% faster",,0,0,0,0,28338,0
+1480,,,0,0,0,0,28000,7000
+1481,Jomsviking (make avail),,0,0,0,0,28000,7000
+1482,Elite Jomsviking ,Elite Jomsviking,0,825,825,0,528017,507017
+1483,Northmen's Fury,Northmen's Fury,950,0,900,0,528018,507018
+1484,Hamask,Hamask,0,250,450,0,528019,507019
+1485,"C-Bonus, Razing Bounty",,0,0,0,0,28362,0
+1486,"C-Bonus, Longboats & VG move +10% faster",,0,0,0,0,28338,0
+1487,,,0,0,0,0,28000,7000
+1488,"C-Bonus, VG +33% more gold",,0,0,0,0,28338,0
+1489,"C-Bonus, Bloodlines +65% more effective",,0,0,0,0,28338,0
+1490,"C-Bonus, Caravan +65% more effective",,0,0,0,0,28338,0
+1491,Clerical Recruitment,Clerical Recruitment,0,350,200,0,528020,507020
+1492,"C-Bonus, Barracks & Siege Workshop upgrades no gold",,0,0,0,0,28338,0
+1493,"C-Bonus, Towers and Castles x2 arrows",,0,0,0,0,28338,0
+1494,"C-Bonus, Villagers & Fishing Ships +10% food",,0,0,0,0,28000,7000
+1495,New Research,,0,0,0,0,-79000,0
+1496,Ordonnance Companies,Ordonnance Companies,0,400,250,0,528025,507025
+1497,Castle/TC Destroyed,,0,0,0,0,28258,7000
+1498,Castle/TC Built,,0,0,0,0,28258,7000
+1499,,,0,0,0,0,28000,7000
+1500,Blank Technology 30,,0,0,0,0,428185,407185
+1501,Blank Technology 31,,0,0,0,0,428186,407186
+1502,Blank Technology 32,,0,0,0,0,428187,407187
+1503,Blank Technology 33,,0,0,0,0,428188,407188
+1504,Blank Technology 34,,0,0,0,0,428189,407189
+1505,Blank Technology 35,,0,0,0,0,428190,407190
+1506,Blank Technology 36,,0,0,0,0,428191,407191
+1507,Blank Technology 37,,0,0,0,0,428192,407192
+1508,Blank Technology 38,,0,0,0,0,428193,407193
+1509,Blank Technology 39,,0,0,0,0,428194,407194

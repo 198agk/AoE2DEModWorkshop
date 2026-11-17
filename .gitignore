@@ -293,3 +293,18 @@ dat_archive/
 # what one person did on one machine -- the same reason `_probe/out_*.log` is
 # ignored -- and a committed copy would be a diff after every save.
 log/
+
+
+# ── 2026-11-17 发布前的收尾：不进公开仓库的东西 ─────────────────────────
+# 逆向产物与游戏数据副本：体积大、且是发行方的数据，不进仓库。
+/_re/
+/_age_analysis/
+/AGE3-EXE逆向/
+/AGE3-全量数据/
+/AdvancedGenieEditor20261022x86/
+# 构建产物与工作目录。
+/_build/
+/_mods/
+nohup.out
+# 探针的临时脚本（_probe/_tmp/ 已在上方忽略；这里是同级的 _tmp_*.py 一类草稿）。
+_probe/_tmp_*

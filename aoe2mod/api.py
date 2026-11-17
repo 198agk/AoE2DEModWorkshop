@@ -38,6 +38,7 @@ from .intent import availability as AV
 from .intent import compiler as C
 from .mod import emitter as E
 from .mod import strings as S
+from .semantic import pinyin as PZ
 from .mod import provenance as PV
 from .semantic import index as semantic
 from .semantic import prose as PR
@@ -918,13 +919,17 @@ class Toolkit(object):
         facts = None if kind == "tech" else self._unit_facts()
         types = (self._utypes or {}) if kind == "building" else {}
         q = str(query or "").strip().lower()
-        # A number is an id, not a name.  Until 2026-11-08 this filter only looked
-        # at `zh`/`en`/`internal`, so typing `5073` into any search box returned
-        # zero rows while the command panel's own box promised 「打名字或编号，
-        # 比如 村民、83」 and the editor offered no way to reach a record by the
-        # number printed next to it.  Measured: `q=83` -> total 0, `q=村民` -> 3.
-        # Matching the id exactly (not as a prefix) keeps the list stable: a prefix
-        # on 4-digit ids would put 5073 next to 50730 and read like a name search.
+        # A digit string narrows by NUMBER and by name.  Reported 2026-11-16 with
+        # a screenshot of 精锐掷矛手 (编号 6), verbatim: 「检索功能，应该把含6的
+        # 全显示才对吧」 -- typing `6` answered 4 rows (the record numbered 6 plus
+        # the three names that contain a 6) while 430 of the 1,651 listed records
+        # carry a 6 in their number.  The earlier rule here was 「an id is matched
+        # EXACTLY」 because a prefix search would put 5073 beside 50730 and read
+        # like a search that is wrong; the answer is not to drop the number
+        # match but to RANK it: the record whose number IS the query comes first,
+        # then every record whose number contains it, then the names.  `q=83`
+        # still answers with 83 on row one; `q=6` now also answers 60..69, 106,
+        # 600.. as the user asked.
         qid = int(q) if q.isdigit() else None
         rows = []
         for uid in sorted(table):
@@ -937,24 +942,47 @@ class Toolkit(object):
                 # type is filtered out here rather than by a name list, so a
                 # mod that renumbers its buildings still lists them.
                 continue
-            if q and uid != qid \
-                    and q not in (e.zh or "").lower() \
-                    and q not in (e.en or "").lower() \
-                    and q not in (e.internal or "").lower():
-                continue
+            hit = 0
+            if q:
+                if qid is not None and uid == qid:
+                    hit = 0                      # the record numbered exactly q
+                elif q in str(uid):
+                    hit = 1                      # a number that CONTAINS q
+                elif q in (e.zh or "").lower() \
+                        or q in (e.en or "").lower() \
+                        or q in (e.tw or "").lower() \
+                        or q in (e.internal or "").lower():
+                    hit = 2                      # a name that contains q
+                else:
+                    # Pinyin is the loosest door and ranks last.  Reported
+                    # 2026-11-16, verbatim: 「你能不能增强一下检索功能」, beside a
+                    # screenshot of the 科技 tab answering 0 rows for 「铁匠铺」.
+                    # The four things a player can know about a record are its
+                    # number, its Chinese name, its English name, and how the
+                    # name SOUNDS; only the last one was missing, and it is the
+                    # one that works when the player knows the unit and not the
+                    # spelling.  `tiejiangpu` and `tjpu` both find 铁匠铺 now.
+                    hit = PZ.rank(q, e.zh, e.tw, e.en)
+                    if hit is None:
+                        continue
             if kind == "tech":
                 icon_id = (getattr(e, "_extra", None) or {}).get("icon_id")
             else:
                 icon_id = (facts.get(uid) or {}).get("icon_id")
-            rows.append({"id": uid, "kind": kind, "name": e.display,
-                         "en": e.en, "zh": e.zh,
-                         "has_icon": bool(icon_id and int(icon_id) > 0),
-                         "icon_id": icon_id})
-        # Backwards is not "sorted by something else": it is the same rows in the
-        # opposite order, so a page of "new" is a page of the highest ids and the
-        # pager keeps counting toward the same total.
-        if str(order or "id").strip().lower() == "new":
-            rows.reverse()
+            rows.append((hit, uid, {"id": uid, "kind": kind, "name": e.display,
+                                    "en": e.en, "zh": e.zh,
+                                    "has_icon": bool(icon_id and int(icon_id) > 0),
+                                    "icon_id": icon_id}))
+        # The rank is the search's answer, so it survives the pager: page one is
+        # the record numbered q, page two starts with the next number that
+        # contains q.  Sorting the whole list by (rank, id) before slicing is
+        # what makes that true; a per-page sort would shuffle between pages.
+        new = str(order or "id").strip().lower() == "new"
+        # Ties inside one rank keep the id order -- or its reverse for "new",
+        # which is the same rows backwards and nothing else (the pager keeps
+        # counting toward the same total).
+        rows.sort(key=lambda t: (t[0], -t[1] if new else t[1]))
+        rows = [t[2] for t in rows]
         return {"ok": True, "kind": kind, "total": len(rows),
                 "offset": offset, "limit": limit, "order": order,
                 "rows": rows[offset:offset + limit]}

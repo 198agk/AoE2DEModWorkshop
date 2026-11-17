@@ -528,7 +528,8 @@ fn main() {
         // Windows deadlocks a synchronous command -- see online.rs.
         .invoke_handler(tauri::generate_handler![
             online::online_session,
-            online::online_login
+            online::online_login,
+            online::online_signout
         ])
         .setup(move |app| {
             // The child belongs to the app, not to this closure: dropping a

@@ -1,0 +1,56 @@
+模组工坊 · 第三方组件与署名
+
+本文件不是许可正文。许可正文在 LICENSE（PolyForm Noncommercial License 1.0.0）。
+
+────────────────────────────────────────
+一、本项目的许可
+────────────────────────────────────────
+
+代码：PolyForm Noncommercial License 1.0.0（见 LICENSE）
+      可以：私人使用、修改、分享、拿去改自己的模组、在视频和帖子里展示
+      不可以：任何商业用途 —— 收费下载、付费网盘、会员专享、塞进付费整合包、
+              「进群领工具」换钱、企业内部生产使用
+
+署名：二次发布（含改版、换皮、整合包）必须在仓库 README 与产品「关于」页
+      写明原作者与地址 https://github.com/198agk ，不得删改署名后再发。
+      这一条是 LICENSE 之外作者另行要求的条件；不接受的，LICENSE 授予的
+      使用权不适用于你。
+
+素材：本工具不包含、不分发游戏素材。它读写的是你本机安装的游戏数据，
+      那些数据的版权属于游戏发行方，不在这份许可的范围内。
+
+────────────────────────────────────────
+二、发布包里带的第三方组件
+────────────────────────────────────────
+
+发布包（含封印版）里带的每一件东西都有自己的许可，都不属于本项目：
+
+  CPython 3.12.14            PSF-2.0        https://docs.python.org/3/license.html
+  python312.dll / python3.dll / DLLs\*  随 CPython 分发
+  bottle 0.13.4              MIT            https://github.com/bottlepy/bottle
+  cffi 2.1.1                 MIT            https://github.com/python-cffi/cffi
+  pycparser 3.12             BSD-3-Clause   https://github.com/eliben/pycparser
+  clr_loader 0.3.1           MIT            https://github.com/pythonnet/clr-loader
+  pythonnet 3.2.1            MIT            https://github.com/pythonnet/pythonnet
+  pywebview 6.2.1            BSD-3-Clause   https://github.com/r0x0r/pywebview
+  proxy_tools 0.1.0          BSD-3-Clause   https://github.com/jtushman/proxy_tools
+  typing_extensions 4.16.0   PSF-2.0        https://github.com/python/typing_extensions
+  Tauri 2 / tauri-build 2    MIT OR Apache-2.0  https://github.com/tauri-apps/tauri
+  serde / serde_json         MIT OR Apache-2.0
+  flate2                     MIT OR Apache-2.0
+  WebView2Loader.dll         Microsoft 许可  https://learn.microsoft.com/microsoft-edge/webview2/
+  libcrypto-3-x64.dll / libssl-3-x64.dll  Apache-2.0  (OpenSSL)
+
+Rust 侧其余依赖的许可清单由 cargo 记录，逐条可用
+`cargo license` 或 `cargo metadata` 复现。
+
+这些组件的完整许可正文不在本仓库里逐份粘贴，需要时按上面的地址取原文。
+分发本项目的发布包时，这一节必须随包保留 —— MIT / BSD 类许可要求
+「保留版权声明与许可声明」，删掉它就是违约。
+
+────────────────────────────────────────
+三、本项目自己的图标
+────────────────────────────────────────
+
+应用的图标与 logo 全部来自 brand/app-icon.png（1024×1024 RGBA）这一份母版，
+由作者绘制。它随本项目一起按上面的代码许可分发，不单独授权。

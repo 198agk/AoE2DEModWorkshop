@@ -216,23 +216,146 @@ pub async fn online_session(app: AppHandle) -> Result<SessionInfo, String> {
 /// Decorations stay ON here, unlike the main window.  This window shows a
 /// third-party page whose own close button does not exist, and without a frame
 /// there is no way to dismiss it if the login stalls.
+///
+/// `provider` picks the door, because the two accounts are not interchangeable:
+/// a Steam copy signs in through Steam's OpenID and a Microsoft/Game Pass copy
+/// through `login.microsoftonline.com`.  Asking the wrong one lands on a form
+/// for an account the player does not have.  Measured 2026-11-15:
+///
+/// - `auth.ageofempires.com/loginsteam` -> 302 to `steamcommunity.com/openid/`
+/// - `auth.ageofempires.com/`           -> 302 to `login.microsoftonline.com`
+///
+/// `loginxbox`, `loginmicrosoft`, `login` are all 404, so the bare root is the
+/// only Microsoft door.
 #[tauri::command]
-pub async fn online_login(app: AppHandle) -> Result<(), String> {
+pub async fn online_login(app: AppHandle, provider: Option<String>) -> Result<(), String> {
+    let steam = provider.as_deref() != Some("microsoft");
+    let (url, title) = if steam {
+        (
+            "https://auth.ageofempires.com/loginsteam",
+            "登录 Age of Empires 账号 · Steam",
+        )
+    } else {
+        (
+            "https://auth.ageofempires.com/",
+            "登录 Age of Empires 账号 · 微软",
+        )
+    };
     if let Some(w) = app.get_webview_window("aoe-login") {
+        // Re-use the window, but send it to the right door: a player who first
+        // picked Steam and then said "no, I use Microsoft" should not have to
+        // close it by hand.
+        let _ = w.navigate(url.parse().map_err(|e| format!("登录地址读不懂：{e}"))?);
+        let _ = w.set_title(title);
         let _ = w.unminimize();
         let _ = w.set_focus();
         return Ok(());
     }
-    let url = "https://auth.ageofempires.com/loginsteam"
-        .parse()
-        .map_err(|e| format!("登录地址读不懂：{e}"))?;
-    WebviewWindowBuilder::new(&app, "aoe-login", WebviewUrl::External(url))
-        .title("登录 Age of Empires 账号")
-        .inner_size(520.0, 720.0)
-        .min_inner_size(420.0, 560.0)
-        .center()
-        .decorations(true)
-        .build()
-        .map_err(|e| format!("打不开登录窗：{e}"))?;
+    WebviewWindowBuilder::new(
+        &app,
+        "aoe-login",
+        WebviewUrl::External(url.parse().map_err(|e| format!("登录地址读不懂：{e}"))?),
+    )
+    .title(title)
+    .inner_size(520.0, 760.0)
+    .min_inner_size(420.0, 560.0)
+    .center()
+    .decorations(true)
+    .build()
+    .map_err(|e| format!("打不开登录窗：{e}"))?;
     Ok(())
+}
+
+/// What a sign-out actually removed, so the page can say it out loud instead of
+/// pretending the button worked.
+#[derive(serde::Serialize, Clone)]
+pub struct SignOut {
+    /// Cookies the webview acknowledged deleting (both origins, deduplicated).
+    pub cookies: usize,
+    /// Cookie names, never values -- same rule as [`SessionInfo::names`].
+    pub names: Vec<String>,
+    /// Whether the session file that the engine reads still exists afterwards.
+    pub file: bool,
+    /// Close the login window if it was somehow still open.
+    pub window: bool,
+}
+
+/// Sign the player out: delete the Age of Empires cookies from this app's own
+/// WebView2 profile and remove the session file the engine reads.
+///
+/// Two halves, because the credential lives in two places:
+///
+///   1. The webview's cookie jar.  `cookies_for_url` returns each cookie with
+///      the domain, path, secure and same-site flags already filled in, and
+///      wry's Windows `delete_cookie` rebuilds an `ICoreWebView2Cookie` from
+///      exactly those fields before calling `DeleteCookie` -- so reading them
+///      out and handing them straight back deletes the right cookie, not "a
+///      cookie with the same name somewhere else".
+///   2. `%LOCALAPPDATA%\aoe2de-mod-workshop\online-session.json`, which is what
+///      the Python engine reads on every call.  Deleting the cookies alone
+///      would leave a signed-in header on disk until the next
+///      `online_session`, and that file is the one a user would point at when
+///      asking "is this thing still holding my account?".
+///
+/// `clear_all_browsing_data` is deliberately NOT used: it also wipes local
+/// storage, and the page keeps its own preferences there -- the player's theme,
+/// window size and column state would vanish along with the login.
+///
+/// `async` for the same reason as [`online_session`]: touching cookies from a
+/// synchronous command deadlocks the IPC thread on Windows.
+#[tauri::command]
+pub async fn online_signout(app: AppHandle) -> Result<SignOut, String> {
+    let win = app
+        .get_webview_window("workshop")
+        .ok_or_else(|| "找不到主窗口，退不出去。".to_string())?;
+
+    let mut names: Vec<String> = Vec::new();
+    let mut count = 0usize;
+
+    for (_key, origin) in ORIGINS {
+        let url = origin
+            .parse()
+            .map_err(|e| format!("地址读不懂（{origin}）：{e}"))?;
+        let jar = win
+            .cookies_for_url(url)
+            .map_err(|e| format!("读 cookie 失败：{e}"))?;
+        for cookie in jar {
+            let name = cookie.name().to_string();
+            // A cookie scoped to `.ageofempires.com` comes back for BOTH
+            // origins.  Deleting it twice is harmless but counting it twice
+            // would make the receipt wrong.
+            if names.iter().any(|n| n == &name) {
+                continue;
+            }
+            match win.delete_cookie(cookie) {
+                Ok(()) => {
+                    count += 1;
+                    names.push(name);
+                }
+                // One stubborn cookie must not abort the sign-out: the rest
+                // still have to go, and the session file below is the part the
+                // engine actually trusts.
+                Err(_) => {}
+            }
+        }
+    }
+
+    let path = session_path();
+    let file = path.exists();
+    if file {
+        std::fs::remove_file(&path).map_err(|e| format!("删不掉会话文件 {path:?}：{e}"))?;
+    }
+
+    let mut window = false;
+    if let Some(w) = app.get_webview_window("aoe-login") {
+        let _ = w.close();
+        window = true;
+    }
+
+    Ok(SignOut {
+        cookies: count,
+        names,
+        file: !path.exists(),
+        window,
+    })
 }

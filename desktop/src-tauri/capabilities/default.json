@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "The workshop page draws its own title bar, so it needs the window commands from the WebView. The page is served over http://127.0.0.1:<port>, which Tauri classifies as a remote origin, so the remote block is what actually lets start_dragging through. The pattern must carry the port wildcard: tauri-utils turns a bare 'http://127.0.0.1' into port='' which only matches the default port 80, and the helper picks a random high port every launch. The last two entries are the app's own commands (online.rs); without them the online page's buttons do nothing, because a remote origin is ACL-checked even when the command belongs to the app.",
+  "description": "The workshop page draws its own title bar, so it needs the window commands from the WebView. The page is served over http://127.0.0.1:<port>, which Tauri classifies as a remote origin, so the remote block is what actually lets start_dragging through. The pattern must carry the port wildcard: tauri-utils turns a bare 'http://127.0.0.1' into port='' which only matches the default port 80, and the helper picks a random high port every launch. The last three entries are the app's own commands (online.rs); without them the online page's buttons do nothing, because a remote origin is ACL-checked even when the command belongs to the app. Sign-out is a command of its own rather than a core one: the core webview permissions carry no delete-cookie or clear-browsing-data entry, and clearing ALL browsing data would also wipe the page's own preferences.",
   "local": true,
   "remote": {
     "urls": ["http://127.0.0.1:*"]
@@ -18,6 +18,7 @@
     "core:window:allow-close",
     "core:window:allow-is-maximized",
     "allow-online-session",
-    "allow-online-login"
+    "allow-online-login",
+    "allow-online-signout"
   ]
 }

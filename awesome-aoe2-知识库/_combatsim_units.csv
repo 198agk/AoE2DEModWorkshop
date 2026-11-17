@@ -1,0 +1,145 @@
+key,name,age,hp,attackSpeed,range,delay,projSpeed,speed,food,wood,gold,radius,minRange,accuracy,attacks,armors
+arambai,Arambai,3,60.0,2.0,5.0,0.6,7.0,1.3,0.0,75.0,60.0,0.4,0.0,20.0,basePierce=12;ram=2,baseMelee=0;basePierce=1;archer=0;cavalryArcher=0;cavalry=0;uniqueUnit=0
+arbalester,Arbalester,4,40.0,2.0,5.0,0.35,7.0,0.96,0.0,25.0,45.0,0.2,0.0,90.0,basePierce=6;spearman=3,baseMelee=0;basePierce=0;archer=0
+archer,Archer,2,30.0,2.0,4.0,0.35,7.0,0.96,0.0,25.0,45.0,0.2,0.0,80.0,basePierce=4;spearman=3,baseMelee=0;basePierce=0;archer=0
+armoredElephant,Armored Elephant,3,180.0,3.0,0.0,0.5,,0.6,120.0,0.0,95.0,0.6,,,baseMelee=4;siegeWeapon=25,baseMelee=-2;basePierce=140;siegeWeapon=0;ram=0;cavalry=7;warElephant=17
+ballistaElephant,Ballista Elephant,3,250.0,2.5,5.0,0.4,6.0,0.8,100.0,0.0,80.0,0.6,,,basePierce=10,baseMelee=0;basePierce=3;cavalry=0;warElephant=0;siegeWeapon=0;uniqueUnit=0;heavySiege=20
+batteringRam,Battering Ram,3,175.0,5.0,0.0,0.75,,0.6,0.0,160.0,75.0,0.8,,,baseMelee=2;siegeWeapon=40,baseMelee=-3;basePierce=180;siegeWeapon=0;ram=0
+battleElephant,Battle Elephant,3,250.0,2.0,0.0,0.5,,0.85,110.0,0.0,70.0,0.6,,,baseMelee=12,baseMelee=1;basePierce=2;cavalry=0;warElephant=0
+berserk,Berserk,3,54.0,2.0,0.0,0.8,,1.05,65.0,0.0,25.0,0.2,0.0,100.0,baseMelee=12;eagleWarrior=2,baseMelee=1;basePierce=1;infantry=0;uniqueUnit=0
+boyar,Boyar,3,100.0,1.9,0.0,0.7,,1.3,60.0,0.0,70.0,0.4,,,baseMelee=12,baseMelee=4;basePierce=2;cavalry=0;uniqueUnit=0
+camelArcher,Camel Archer,3,55.0,2.0,4.0,0.63,7.0,1.4,0.0,50.0,60.0,0.4,0.0,95.0,basePierce=7;cavalryArcher=4,baseMelee=0;basePierce=1;archer=0;cavalryArcher=0;camel=0;uniqueUnit=0
+camelRider,Camel Rider,3,100.0,2.0,0.0,0.5,,1.45,55.0,0.0,60.0,0.4,,,baseMelee=6;cavalry=9;camel=5,baseMelee=0;basePierce=0;camel=0
+camelScout,Camel Scout,2,70.0,2.0,0.0,0.5,,1.45,55.0,0.0,60.0,0.4,,,baseMelee=4;cavalry=4;camel=2,baseMelee=0;basePierce=0;camel=0
+cappedRam,Capped Ram,4,200.0,5.0,0.0,0.75,,0.6,0.0,160.0,75.0,0.8,,,baseMelee=3;siegeWeapon=50,baseMelee=-3;basePierce=190;siegeWeapon=0;ram=1
+cataphract,Cataphract,3,110.0,1.8,0.0,0.68,,1.35,70.0,0.0,75.0,0.4,,,baseMelee=9;infantry=9;condottiero=9,baseMelee=2;basePierce=1;cavalry=12;uniqueUnit=0
+cavalier,Cavalier,4,120.0,1.8,0.0,0.68,,1.35,60.0,0.0,75.0,0.4,,,baseMelee=12,baseMelee=2;basePierce=2;cavalry=0
+cavalryArcher,Cavalry Archer,3,50.0,2.0,4.0,0.9,7.0,1.4,0.0,40.0,60.0,0.4,0.0,50.0,basePierce=6;spearman=2,baseMelee=0;basePierce=0;archer=0;cavalryArcher=0;cavalry=0
+centurion,Centurion,3,110.0,1.9,0.0,0.5,,1.35,75.0,0.0,85.0,0.4,,,baseMelee=13,baseMelee=2;basePierce=3;cavalry=0;uniqueUnit=0
+chakramThrower,Chakram Thrower,3,40.0,2.0,5.0,0.8,6.0,1.15,65.0,0.0,30.0,,,,baseMelee=3;eagleWarrior=1;infantry=1;condottiero=1,baseMelee=1;basePierce=0;infantry=0;uniqueUnit=0
+champion,Champion,4,70.0,2.0,0.0,0.63,,0.9,60.0,0.0,20.0,,,,eagleWarrior=8;baseMelee=13,infantry=0;baseMelee=1;basePierce=1
+chuKoNu,Chu Ko Nu,3,45.0,3.85,4.0,0.83,7.0,0.96,0.0,40.0,35.0,0.2,0.0,85.0,baseMelee=0;basePierce=8;spearman=2,baseMelee=0;basePierce=0;archer=0;uniqueUnit=0
+condottiero,Condottiero,4,80.0,1.9,0.0,0.75,,1.2,50.0,0.0,35.0,,,,baseMelee=10;gunpowderUnit=10,baseMelee=1;basePierce=0;infantry=10;uniqueUnit=0;condottiero=0
+conquistador,Conquistador,3,55.0,2.9,6.0,0.41,7.5,1.3,60.0,0.0,70.0,0.4,0.0,65.0,basePierce=16;ram=4,baseMelee=2;basePierce=1;archer=0;cavalryArcher=0;cavalry=0;gunpowderUnit=0;uniqueUnit=0
+coustillier,Coustillier,3,115.0,1.9,0.0,0.5,,1.35,55.0,0.0,55.0,0.4,,,baseMelee=8,baseMelee=2;basePierce=2;cavalry=0;uniqueUnit=0
+crossbowman,Crossbowman,3,35.0,2.0,5.0,0.35,7.0,0.96,0.0,25.0,45.0,0.2,0.0,85.0,basePierce=5;spearman=3,baseMelee=0;basePierce=0;archer=0
+eagleScout,Eagle Scout,2,50.0,2.0,0.0,0.8,,1.1,25.0,0.0,50.0,,,,siegeWeapon=3;cavalry=2;camel=1;baseMelee=4,infantry=0;eagleWarrior=0;baseMelee=0;basePierce=2
+eagleWarrior,Eagle Warrior,3,55.0,2.0,0.0,0.63,,1.15,25.0,0.0,50.0,,,,siegeWeapon=3;cavalry=3;camel=2;baseMelee=7,infantry=0;eagleWarrior=0;baseMelee=0;basePierce=3
+elephantArcher,Elephant Archer,3,230.0,2.0,4.0,0.4,7.0,0.9,80.0,0.0,70.0,0.6,0.0,70.0,basePierce=6,baseMelee=0;basePierce=2;archer=0;cavalryArcher=-4;cavalry=0;warElephant=0;uniqueUnit=0
+eliteArambai,Elite Arambai,4,65.0,2.0,5.0,0.6,7.0,1.3,0.0,75.0,60.0,0.4,0.0,30.0,basePierce=14;ram=2,baseMelee=0;basePierce=2;archer=0;cavalryArcher=0;cavalry=0;uniqueUnit=0
+eliteBallistaElephant,Elite Ballista Elephant,4,290.0,2.5,5.0,0.4,6.0,0.8,100.0,0.0,80.0,0.6,,,basePierce=11,baseMelee=0;basePierce=3;cavalry=0;warElephant=0;siegeWeapon=0;uniqueUnit=0;heavySiege=20
+eliteBattleElephant,Elite Battle Elephant,4,300.0,2.0,0.0,0.5,,0.85,110.0,0.0,70.0,0.6,,,baseMelee=14,baseMelee=1;basePierce=3;cavalry=0;warElephant=0
+eliteBerserk,Elite Berserk,4,62.0,2.0,0.0,0.5,,1.05,65.0,0.0,25.0,0.2,0.0,100.0,baseMelee=14;eagleWarrior=3,baseMelee=2;basePierce=1;infantry=0;uniqueUnit=0
+eliteBoyar,Elite Boyar,4,130.0,1.9,0.0,0.7,,1.3,60.0,0.0,70.0,0.4,,,baseMelee=14,baseMelee=8;basePierce=3;cavalry=0;uniqueUnit=0
+eliteCamelArcher,Elite Camel Archer,4,60.0,2.0,4.0,0.63,7.0,1.4,0.0,50.0,60.0,0.4,0.0,95.0,basePierce=8;cavalryArcher=6,baseMelee=1;basePierce=1;archer=0;cavalryArcher=0;camel=0;uniqueUnit=0
+eliteCataphract,Elite Cataphract,4,150.0,1.7,0.0,0.68,,1.35,70.0,0.0,75.0,0.4,,,baseMelee=12;infantry=12;condottiero=10,baseMelee=2;basePierce=1;cavalry=16;uniqueUnit=0
+eliteCenturion,Elite Centurion,4,155.0,1.9,0.0,0.5,,1.35,75.0,0.0,85.0,0.4,,,baseMelee=15,baseMelee=3;basePierce=3;cavalry=0;uniqueUnit=0
+eliteChakramThrower,Elite Chakram Thrower,4,50.0,2.0,6.0,0.8,6.0,1.15,65.0,0.0,30.0,,,,baseMelee=4;eagleWarrior=2;infantry=1;condottiero=1,baseMelee=1;basePierce=0;infantry=0;uniqueUnit=0
+eliteChuKoNu,Elite Chu Ko Nu,4,50.0,3.85,4.0,0.83,7.0,0.96,0.0,40.0,35.0,0.2,0.0,85.0,baseMelee=0;basePierce=8;spearman=2,baseMelee=0;basePierce=0;archer=0;uniqueUnit=0
+eliteConquistador,Elite Conquistador,4,70.0,2.9,6.0,0.41,7.5,1.3,60.0,0.0,70.0,0.4,0.0,70.0,basePierce=18;ram=6,baseMelee=2;basePierce=2;archer=0;cavalryArcher=0;cavalry=0;gunpowderUnit=0;uniqueUnit=0
+eliteCoustillier,Elite Coustillier,4,145.0,1.9,0.0,0.5,,1.35,55.0,0.0,55.0,0.4,,,baseMelee=11,baseMelee=2;basePierce=2;cavalry=0;uniqueUnit=0
+eliteEagleWarrior,Elite Eagle Warrior,4,60.0,2.0,0.0,0.8,,1.3,25.0,0.0,50.0,,,,siegeWeapon=5;cavalry=4;camel=3;baseMelee=9,infantry=0;eagleWarrior=0;baseMelee=0;basePierce=4
+eliteElephantArcher,Elite Elephant Archer,4,280.0,2.0,4.0,0.4,7.0,0.9,80.0,0.0,70.0,0.6,0.0,85.0,basePierce=7,baseMelee=0;basePierce=2;archer=0;cavalryArcher=-4;cavalry=0;warElephant=0;uniqueUnit=0
+eliteGbeto,Elite Gbeto,4,50.0,2.0,6.0,1.0,7.0,1.25,50.0,0.0,40.0,,,,baseMelee=13;eagleWarrior=1,baseMelee=0;basePierce=0;infantry=0;uniqueUnit=0
+eliteGenitour,Elite Genitour,4,55.0,3.0,4.0,0.5,7.0,1.35,40.0,35.0,0.0,0.4,1.0,90.0,basePierce=4;archer=5;spearman=2;cavalryArcher=2,baseMelee=0;basePierce=4;archer=0;skirmisher=0;cavalryArcher=1;cavalry=0;uniqueUnit=0
+eliteGenoeseCrossbowman,El. Gen. Crossbowman,4,50.0,2.0,4.0,0.5,7.0,0.96,0.0,45.0,40.0,,,,basePierce=6;cavalry=7;warElephant=7;camel=6,baseMelee=1;basePierce=0;archer=0;uniqueUnit=0
+eliteGhulam,Elite Ghulam,4,70.0,2.0,0.0,0.5,,1.2,30.0,0.0,45.0,,,,baseMelee=11;eagleWarrior=2;archer=6,baseMelee=0;basePierce=6;infantry=0;uniqueUnit=0
+eliteHuskarl,Elite Huskarl,4,70.0,2.0,0.0,0.8,,1.05,80.0,0.0,40.0,,,,baseMelee=12;eagleWarrior=3;archer=10,baseMelee=0;basePierce=8;infantry=0;uniqueUnit=0
+eliteHussiteWagon,Elite Hussite Wagon,4,230.0,3.45,6.0,0.62,7.0,0.8,0.0,110.0,70.0,0.8,0.0,90.0,basePierce=13;ram=3,baseMelee=1;basePierce=10;siegeWeapon=0;gunpowderUnit=0;uniqueUnit=0;heavySiege=0
+eliteJaguarWarrior,Elite Jaguar Warrior,4,75.0,2.0,0.0,0.8,,1.0,60.0,0.0,30.0,,,,baseMelee=12;infantry=11;condottiero=10;eagleWarrior=2,baseMelee=2;basePierce=2;infantry=0;uniqueUnit=0
+eliteJanissary,Elite Janissary,4,40.0,3.49,8.0,0.0,7.5,0.96,60.0,0.0,55.0,0.2,0.0,65.0,basePierce=22;ram=3,baseMelee=2;basePierce=0;archer=0;gunpowderUnit=0;uniqueUnit=0
+eliteKamayuk,Elite Kamayuk,4,80.0,2.0,1.0,0.5,,1.0,65.0,0.0,30.0,,,,baseMelee=8;warElephant=20;cavalry=12;camel=10;mameluke=1,baseMelee=1;basePierce=0;infantry=0;uniqueUnit=0
+eliteKarambitWarrior,Elite Karambit Warrior,4,40.0,2.0,0.0,0.81,,1.2,25.0,0.0,15.0,,,,baseMelee=8;eagleWarrior=2,baseMelee=1;basePierce=1;infantry=0;uniqueUnit=0
+eliteKeshik,Elite Keshik,4,140.0,1.9,0.0,0.7,,1.4,60.0,0.0,40.0,0.4,,,baseMelee=11,baseMelee=1;basePierce=3;cavalry=0;uniqueUnit=0
+eliteKipchak,Elite Kipchak,4,45.0,2.2,4.0,0.5,7.0,1.4,0.0,60.0,35.0,0.4,0.0,90.0,basePierce=5;spearman=1,baseMelee=0;basePierce=0;archer=0;cavalryArcher=0;cavalry=0;uniqueUnit=0
+eliteKonnik,Elite Konnik,4,120.0,2.4,0.0,0.7,,1.35,60.0,0.0,70.0,0.4,,,baseMelee=14,baseMelee=2;basePierce=2;cavalry=0;uniqueUnit=0
+eliteKonnikDismounted,Elite Konnik (Foot),4,50.0,2.4,0.0,0.7,,0.9,30.0,0.0,35.0,,,,baseMelee=13,baseMelee=0;basePierce=1;infantry=0;uniqueUnit=0
+eliteLeitis,Elite Leitis,4,130.0,1.9,0.0,0.7,,1.4,70.0,0.0,50.0,0.4,,,baseMelee=16,baseMelee=2;basePierce=1;cavalry=0;uniqueUnit=0
+eliteLongbowman,Elite Longbowman,4,40.0,2.0,6.0,0.5,7.0,0.96,0.0,35.0,40.0,0.2,0.0,80.0,basePierce=7;spearman=2,baseMelee=0;basePierce=1;archer=0;uniqueUnit=0
+eliteMagyarHuszar,Elite Magyar Huszar,4,85.0,1.8,0.0,0.68,,1.5,80.0,0.0,10.0,0.4,,,baseMelee=10;siegeWeapon=8;ram=2,baseMelee=0;basePierce=2;cavalry=0;uniqueUnit=0
+eliteMameluke,Elite Mameluke,4,80.0,2.0,3.0,0.2,7.0,1.4,55.0,0.0,85.0,0.4,,,baseMelee=10;cavalry=12;mameluke=1,baseMelee=1;basePierce=0;mameluke=0;camel=0;uniqueUnit=0
+eliteMangudai,Elite Mangudai,4,60.0,2.1,4.0,0.5,7.0,1.4,0.0,55.0,65.0,0.4,0.0,95.0,basePierce=8;spearman=1;siegeWeapon=5,baseMelee=1;basePierce=0;archer=0;cavalryArcher=0;cavalry=0;uniqueUnit=0
+eliteObuch,Elite Obuch,4,95.0,2.0,0.0,0.75,,0.9,55.0,0.0,20.0,0.2,,,baseMelee=10;eagleWarrior=3,baseMelee=2;basePierce=2;infantry=0;uniqueUnit=0
+eliteOrganGun,Elite Organ Gun,4,70.0,3.45,7.0,0.6,7.5,0.85,0.0,80.0,70.0,0.4,1.0,0.0,basePierce=9;ram=1;skirmisher=1;infantry=1,baseMelee=2;basePierce=6;siegeWeapon=0;gunpowderUnit=0;uniqueUnit=0
+elitePlumedArcher,Elite Plumed Archer,4,65.0,1.9,5.0,0.5,7.0,1.2,0.0,55.0,55.0,0.2,0.0,90.0,basePierce=5;spearman=2;infantry=2;condottiero=2,baseMelee=0;basePierce=2;archer=0;uniqueUnit=0
+eliteRatha_melee,Elite Ratha Melee,4,115.0,2.0,0.0,0.5,,1.3,0.0,60.0,60.0,0.4,,,baseMelee=12,baseMelee=2;basePierce=1;archer=0;cavalryArcher=0;cavalry=0;uniqueUnit=0
+eliteRatha_ranged,Elite Ratha Ranged,4,115.0,2.0,4.0,0.33,7.0,1.3,0.0,60.0,60.0,0.4,0.0,90.0,basePierce=6,baseMelee=2;basePierce=1;archer=0;cavalryArcher=0;cavalry=0;uniqueUnit=0
+eliteRattanArcher,Elite Rattan Archer,4,45.0,2.0,5.0,0.69,7.0,1.1,0.0,50.0,45.0,0.2,0.0,90.0,basePierce=7;spearman=2,baseMelee=0;basePierce=6;archer=0;uniqueUnit=0
+eliteSamurai,Elite Samurai,4,80.0,1.9,0.0,0.8,,1.0,50.0,0.0,30.0,,,,baseMelee=12;eagleWarrior=3;uniqueUnit=12,baseMelee=1;basePierce=1;infantry=0;uniqueUnit=0
+eliteSerjeant,Elite Serjeant,4,85.0,2.0,0.0,0.5,,0.9,50.0,0.0,35.0,0.2,,,baseMelee=11;eagleWarrior=3,baseMelee=4;basePierce=4;infantry=0;uniqueUnit=0
+eliteShotelWarrior,Elite Shotel Warrior,4,50.0,2.0,0.0,0.75,,1.2,50.0,0.0,30.0,,,,baseMelee=18;eagleWarrior=2,baseMelee=0;basePierce=1;infantry=0;uniqueUnit=0
+eliteShrivamshaRider,Elite Shrivamsha Rider,4,70.0,1.9,0.0,0.5,,1.6,70.0,0.0,30.0,0.4,,,baseMelee=11,baseMelee=0;basePierce=1;cavalry=0;uniqueUnit=0
+eliteSkirmisher,Elite Skirmisher,3,35.0,3.0,5.0,0.52,7.0,0.96,25.0,35.0,0.0,0.2,1.0,90.0,basePierce=3;archer=4;spearman=3;cavalryArcher=2,baseMelee=0;basePierce=4;archer=0;skirmisher=0
+eliteSteppeLancer,Elite Steppe Lancer,4,80.0,2.0,1.0,0.68,,1.45,70.0,0.0,40.0,0.4,,,baseMelee=11,baseMelee=0;basePierce=2;cavalry=0
+eliteTarkan,Elite Tarkan,4,150.0,2.1,0.0,0.95,,1.35,60.0,0.0,60.0,0.4,,,baseMelee=11,baseMelee=1;basePierce=4;cavalry=0;uniqueUnit=0
+eliteTeutonicKnight,Elite Teutonic Knight,4,100.0,2.0,0.0,0.75,,0.8,85.0,0.0,30.0,,,,baseMelee=17;eagleWarrior=4,baseMelee=10;basePierce=2;infantry=0;uniqueUnit=0
+eliteThrowingAxeman,Elite Throwing Axeman,4,70.0,2.0,4.0,0.82,7.0,1.0,55.0,0.0,25.0,,,,baseMelee=8;eagleWarrior=2,baseMelee=1;basePierce=0;infantry=0;uniqueUnit=0
+eliteUrumiSwordsman,Elite Urumi Swordsman,4,65.0,2.0,0.0,0.5,,1.05,65.0,0.0,20.0,,,,baseMelee=10;eagleWarrior=3,baseMelee=1;basePierce=0;infantry=0;uniqueUnit=0
+eliteWarElephant,Elite War Elephant,4,600.0,2.0,0.0,0.56,,0.6,170.0,0.0,85.0,0.6,,,baseMelee=20,baseMelee=1;basePierce=3;cavalry=0;warElephant=0;uniqueUnit=0
+eliteWarWagon,Elite War Wagon,4,200.0,2.5,5.0,1.0,6.0,1.2,0.0,200.0,60.0,0.8,0.0,100.0,basePierce=9,baseMelee=0;basePierce=4;archer=0;cavalryArcher=-1;cavalry=0;uniqueUnit=0
+eliteWoadRaider,Elite Woad Raider,4,85.0,2.0,0.0,0.72,,1.2,65.0,0.0,25.0,,,,baseMelee=14;eagleWarrior=3,baseMelee=0;basePierce=1;infantry=0;uniqueUnit=0
+flamingCamel,Flaming Camel,4,55.0,,0.0,0.0,,1.3,75.0,0.0,30.0,0.4,,,baseMelee=20;cavalry=50;camel=50;warElephant=130;siegeWeapon=25,baseMelee=0;basePierce=0;camel=0;uniqueUnit=0
+flemishMilitia,Flemish Militia,4,60.0,2.0,0.0,0.5,,0.9,50.0,0.0,15.0,0.2,,,baseMelee=11;cavalry=8;camel=6;warElephant=8;eagleWarrior=2,baseMelee=1;basePierce=0;infantry=0;uniqueUnit=0
+gbeto,Gbeto,3,40.0,2.0,5.0,1.0,7.0,1.25,50.0,0.0,40.0,,,,baseMelee=10;eagleWarrior=1,baseMelee=0;basePierce=0;infantry=0;uniqueUnit=0
+genitour,Genitour,3,50.0,3.0,4.0,0.5,7.0,1.35,40.0,35.0,0.0,0.4,1.0,90.0,basePierce=3;archer=4;spearman=2,baseMelee=0;basePierce=4;archer=0;skirmisher=0;cavalryArcher=1;cavalry=0;uniqueUnit=0
+genoeseCrossbowman,Gen. Crossbowman,3,45.0,2.0,4.0,0.5,7.0,0.96,0.0,45.0,40.0,,,,basePierce=6;cavalry=5;warElephant=5;camel=4,baseMelee=1;basePierce=0;archer=0;uniqueUnit=0
+ghulam,Ghulam,3,60.0,2.0,0.0,0.5,,1.15,30.0,0.0,45.0,,,,baseMelee=9;eagleWarrior=2;archer=5,baseMelee=0;basePierce=3;infantry=0;uniqueUnit=0
+halberdier,Halberdier,4,60.0,3.0,0.0,0.5,,1.0,35.0,25.0,0.0,,,,cavalry=32;warElephant=28;camel=26;mameluke=11;eagleWarrior=1;baseMelee=6,infantry=0;spearman=0;baseMelee=0;basePierce=0
+handCannoneer,Hand Cannoneer,4,40.0,3.45,7.0,0.35,7.5,0.96,45.0,0.0,50.0,0.2,0.0,75.0,basePierce=17;infantry=10;ram=2;spearman=1,baseMelee=1;basePierce=0;archer=0;gunpowderUnit=0
+heavyCamelRider,Heavy Camel Rider,4,120.0,2.0,0.0,0.5,,1.45,55.0,0.0,60.0,0.4,,,baseMelee=7;cavalry=18;camel=9;mameluke=7,baseMelee=0;basePierce=0;camel=0
+heavyCavalryArcher,Heavy Cavalry Archer,4,60.0,2.0,4.0,0.9,7.0,1.4,0.0,40.0,60.0,0.4,0.0,80.0,basePierce=7;spearman=4,baseMelee=1;basePierce=0;archer=0;cavalryArcher=0;cavalry=0
+heavyScorpion,Heavy Scorpion,4,55.0,3.6,7.0,0.21,6.0,0.65,0.0,75.0,75.0,0.5,2.0,100.0,baseMelee=0;basePierce=16;warElephant=8;ram=2,baseMelee=0;basePierce=8;siegeWeapon=0
+huskarl,Huskarl,3,60.0,2.0,0.0,0.8,,1.05,80.0,0.0,40.0,,,,baseMelee=10;eagleWarrior=2;archer=6,baseMelee=0;basePierce=6;infantry=0;uniqueUnit=0
+hussar,Hussar,4,75.0,1.9,0.0,0.68,,1.5,80.0,0.0,0.0,0.4,,,baseMelee=7,baseMelee=0;basePierce=2;cavalry=0
+hussiteWagon,Hussite Wagon,3,180.0,3.45,6.0,0.62,7.0,0.8,0.0,110.0,70.0,0.8,0.0,85.0,basePierce=11;ram=3,baseMelee=0;basePierce=7;siegeWeapon=0;gunpowderUnit=0;uniqueUnit=0;heavySiege=0
+imperialCamelRider,Imperial Camel Rider,4,140.0,2.0,0.0,0.5,,1.45,55.0,0.0,60.0,0.4,,,baseMelee=8;cavalry=18;camel=9;mameluke=7,baseMelee=0;basePierce=0;camel=0
+imperialSkirmisher,Imperial Skirmisher,4,35.0,3.0,5.0,0.51,7.0,0.96,25.0,35.0,0.0,0.2,1.0,95.0,basePierce=4;archer=5;spearman=3;cavalryArcher=3,baseMelee=0;basePierce=5;archer=0;skirmisher=0
+jaguarWarrior,Jaguar Warrior,3,65.0,2.0,0.0,0.8,,1.0,60.0,0.0,30.0,,,,baseMelee=10;infantry=10;condottiero=10;eagleWarrior=2,baseMelee=1;basePierce=2;infantry=0;uniqueUnit=0
+janissary,Janissary,3,35.0,3.49,7.0,0.4,7.5,0.96,60.0,0.0,55.0,0.2,0.0,65.0,basePierce=17;ram=2,baseMelee=1;basePierce=0;archer=0;gunpowderUnit=0;uniqueUnit=0
+kamayuk,Kamayuk,3,70.0,2.0,1.0,0.5,,1.0,65.0,0.0,30.0,,,,baseMelee=7;warElephant=20;cavalry=8;camel=6;mameluke=1,baseMelee=1;basePierce=0;infantry=0;uniqueUnit=0
+karambitWarrior,Karambit Warrior,3,30.0,2.0,0.0,0.81,,1.2,25.0,0.0,15.0,,,,baseMelee=7;eagleWarrior=2,baseMelee=0;basePierce=1;infantry=0;uniqueUnit=0
+keshik,Keshik,3,110.0,1.9,0.0,0.7,,1.4,60.0,0.0,40.0,0.4,,,baseMelee=9,baseMelee=1;basePierce=2;cavalry=0;uniqueUnit=0
+kipchak,Kipchak,3,40.0,2.2,4.0,0.5,7.0,1.4,0.0,60.0,35.0,0.4,0.0,90.0,basePierce=4;spearman=1,baseMelee=0;basePierce=0;archer=0;cavalryArcher=0;cavalry=0;uniqueUnit=0
+knight,Knight,3,100.0,1.8,0.0,0.68,,1.35,60.0,0.0,75.0,0.4,,,baseMelee=10,baseMelee=2;basePierce=2;cavalry=0
+konnik,Konnik,3,100.0,2.4,0.0,0.7,,1.35,60.0,0.0,70.0,0.4,,,baseMelee=12,baseMelee=2;basePierce=1;cavalry=0;uniqueUnit=0
+konnikDismounted,Konnik (Foot),3,45.0,2.4,0.0,0.7,,0.9,30.0,0.0,35.0,,,,baseMelee=12,baseMelee=0;basePierce=0;infantry=0;uniqueUnit=0
+legionary,Legionary,4,75.0,2.0,0.0,0.63,,0.9,60.0,0.0,20.0,,,,eagleWarrior=8;infantry=4;baseMelee=12,infantry=0;baseMelee=2;basePierce=2
+leitis,Leitis,3,100.0,1.9,0.0,0.7,,1.4,70.0,0.0,50.0,0.4,,,baseMelee=13,baseMelee=1;basePierce=1;cavalry=0;uniqueUnit=0
+lightCavalry,Light Cavalry,3,60.0,2.0,0.0,0.68,,1.5,80.0,0.0,0.0,0.4,,,baseMelee=7,baseMelee=0;basePierce=2;cavalry=0
+longSwordsman,Long Swordsman,3,60.0,2.0,0.0,0.63,,0.9,60.0,0.0,20.0,,,,eagleWarrior=6;baseMelee=9,infantry=0;baseMelee=1;basePierce=1
+longbowman,Longbowman,3,35.0,2.0,5.0,0.5,7.0,0.96,0.0,35.0,40.0,0.2,0.0,70.0,basePierce=6;spearman=2,baseMelee=0;basePierce=0;archer=0;uniqueUnit=0
+magyarHuszar,Magyar Huszar,3,70.0,1.8,0.0,0.68,,1.5,80.0,0.0,10.0,0.4,,,baseMelee=9;siegeWeapon=5;ram=1,baseMelee=0;basePierce=2;cavalry=0;uniqueUnit=0
+mameluke,Mameluke,3,65.0,2.0,3.0,0.2,7.0,1.4,55.0,0.0,85.0,0.4,,,baseMelee=8;cavalry=9;mameluke=1,baseMelee=0;basePierce=0;mameluke=0;camel=0;uniqueUnit=0
+manAtArms,Man-at-Arms,2,45.0,2.0,0.0,0.88,,0.9,60.0,0.0,20.0,,,,eagleWarrior=2;baseMelee=6,infantry=0;baseMelee=0;basePierce=1
+mangudai,Mangudai,3,60.0,2.1,4.0,0.5,7.0,1.4,0.0,55.0,65.0,0.4,0.0,95.0,basePierce=6;spearman=1;siegeWeapon=3,baseMelee=0;basePierce=0;archer=0;cavalryArcher=0;cavalry=0;uniqueUnit=0
+militia,Militia,1,40.0,2.0,0.0,0.5,,0.9,60.0,0.0,20.0,,,,baseMelee=4,infantry=0;baseMelee=0;basePierce=1
+obuch,Obuch,3,80.0,2.0,0.0,0.75,,0.9,55.0,0.0,20.0,0.2,,,baseMelee=8;eagleWarrior=2,baseMelee=2;basePierce=2;infantry=0;uniqueUnit=0
+organGun,Organ Gun,3,60.0,3.45,7.0,0.6,7.5,0.85,0.0,80.0,70.0,0.4,1.0,0.0,basePierce=7;ram=1;skirmisher=1;infantry=1,baseMelee=2;basePierce=4;siegeWeapon=0;gunpowderUnit=0;uniqueUnit=0
+paladin,Paladin,4,160.0,1.9,0.0,0.68,,1.35,60.0,0.0,75.0,0.4,,,baseMelee=14,baseMelee=2;basePierce=3;cavalry=0
+pikeman,Pikeman,3,55.0,3.0,0.0,0.5,,1.0,35.0,25.0,0.0,,,,cavalry=22;warElephant=25;camel=18;mameluke=11;eagleWarrior=1;baseMelee=4,infantry=0;spearman=0;baseMelee=0;basePierce=0
+plumedArcher,Plumed Archer,3,65.0,1.9,4.0,0.5,7.0,1.2,0.0,55.0,55.0,0.2,0.0,80.0,basePierce=5;spearman=2;infantry=1;condottiero=1,baseMelee=0;basePierce=1;archer=0;uniqueUnit=0
+ratha_melee,Ratha Melee,3,105.0,2.0,0.0,0.5,,1.3,0.0,60.0,60.0,0.4,,,baseMelee=10,baseMelee=2;basePierce=1;archer=0;cavalryArcher=0;cavalry=0;uniqueUnit=0
+ratha_ranged,Ratha Ranged,3,105.0,2.0,4.0,0.33,7.0,1.3,0.0,60.0,60.0,0.4,0.0,80.0,basePierce=5,baseMelee=2;basePierce=1;archer=0;cavalryArcher=0;cavalry=0;uniqueUnit=0
+rattanArcher,Rattan Archer,3,40.0,2.0,4.0,0.69,7.0,1.1,0.0,50.0,45.0,0.2,0.0,80.0,basePierce=6;spearman=2,baseMelee=0;basePierce=4;archer=0;uniqueUnit=0
+samurai,Samurai,3,70.0,1.9,0.0,0.8,,1.0,50.0,0.0,30.0,,,,baseMelee=10;eagleWarrior=2;uniqueUnit=10,baseMelee=1;basePierce=1;infantry=0;uniqueUnit=0
+scorpion,Scorpion,3,40.0,3.6,7.0,0.21,6.0,0.65,0.0,75.0,75.0,0.5,2.0,100.0,baseMelee=0;basePierce=12;warElephant=6;ram=1,baseMelee=0;basePierce=7;siegeWeapon=0
+scoutCavalry,Scout Cavalry,2,45.0,2.0,0.0,0.68,,1.55,80.0,0.0,0.0,0.4,,,baseMelee=5,baseMelee=0;basePierce=2;cavalry=0
+serjeant,Serjeant,2,50.0,2.0,0.0,0.5,,0.9,50.0,0.0,35.0,0.2,,,baseMelee=5;eagleWarrior=2,baseMelee=2;basePierce=2;infantry=0;uniqueUnit=0
+shotelWarrior,Shotel Warrior,3,45.0,2.0,0.0,0.75,,1.2,50.0,0.0,30.0,,,,baseMelee=16;eagleWarrior=2,baseMelee=0;basePierce=0;infantry=0;uniqueUnit=0
+shrivamshaRider,Shrivamsha Rider,3,55.0,2.0,0.0,0.5,,1.6,70.0,0.0,30.0,0.4,,,baseMelee=8,baseMelee=0;basePierce=1;cavalry=0;uniqueUnit=0
+siegeElephant,Siege Elephant,4,220.0,3.0,0.0,0.5,,0.6,120.0,0.0,95.0,0.6,,,baseMelee=4;siegeWeapon=35,baseMelee=-2;basePierce=150;siegeWeapon=0;ram=0;cavalry=10;warElephant=20
+siegeRam,Siege Ram,4,270.0,5.0,0.0,0.75,,0.6,0.0,160.0,75.0,0.8,,,baseMelee=4;siegeWeapon=65,baseMelee=-3;basePierce=195;siegeWeapon=0;ram=2
+skirmisher,Skirmisher,2,30.0,3.0,4.0,0.52,7.0,0.96,25.0,35.0,0.0,0.2,1.0,90.0,basePierce=2;archer=3;cavalryArcher=0;spearman=3,baseMelee=0;basePierce=3;archer=0;skirmisher=0
+slinger,Slinger,3,40.0,2.0,5.0,0.8,5.5,0.96,40.0,0.0,40.0,0.2,1.0,90.0,basePierce=4;infantry=10;condottiero=10;ram=3;spearman=1,baseMelee=0;basePierce=0;archer=0;uniqueUnit=0
+spearman,Spearman,2,45.0,3.0,0.0,0.5,,1.0,35.0,25.0,0.0,,,,cavalry=15;warElephant=15;camel=12;mameluke=4;eagleWarrior=1;baseMelee=3,infantry=0;spearman=0;baseMelee=0;basePierce=0
+steppeLancer,Steppe Lancer,3,60.0,2.0,1.0,0.68,,1.45,70.0,0.0,40.0,0.4,,,baseMelee=9,baseMelee=0;basePierce=1;cavalry=0
+tarkan,Tarkan,3,100.0,2.1,0.0,0.95,,1.35,60.0,0.0,60.0,0.4,,,baseMelee=8,baseMelee=1;basePierce=3;cavalry=0;uniqueUnit=0
+teutonicKnight,Teutonic Knight,3,80.0,2.0,0.0,0.75,,0.8,85.0,0.0,30.0,,,,baseMelee=14;eagleWarrior=4,baseMelee=7;basePierce=2;infantry=0;uniqueUnit=0
+throwingAxeman,Throwing Axeman,3,60.0,2.0,3.0,1.0,7.0,1.0,55.0,0.0,25.0,,,,baseMelee=7;eagleWarrior=1,baseMelee=0;basePierce=0;infantry=0;uniqueUnit=0
+twoHandedSwordsman,Two-Handed Swordsman,4,60.0,2.0,0.0,0.5,,0.9,60.0,0.0,20.0,,,,eagleWarrior=8;baseMelee=12,infantry=0;baseMelee=1;basePierce=1
+urumiSwordsman,Urumi Swordsman,3,55.0,2.0,0.0,0.5,,1.05,65.0,0.0,20.0,,,,baseMelee=8;eagleWarrior=2,baseMelee=1;basePierce=0;infantry=0;uniqueUnit=0
+villager,Villager,1,25.0,2.0,0.0,0.53,,0.8,50.0,0.0,0.0,,,,baseMelee=3;heavySiege=6,baseMelee=0;basePierce=0
+warElephant,War Elephant,3,450.0,2.0,0.0,0.56,,0.6,170.0,0.0,85.0,0.6,,,baseMelee=15,baseMelee=1;basePierce=2;cavalry=0;warElephant=0;uniqueUnit=0
+warWagon,War Wagon,3,150.0,2.5,4.0,1.0,6.0,1.2,0.0,200.0,60.0,0.8,0.0,100.0,basePierce=9,baseMelee=0;basePierce=3;archer=0;cavalryArcher=-1;cavalry=0;uniqueUnit=0
+wingedHussar,Winged Hussar,4,80.0,1.9,0.0,0.68,,1.5,80.0,0.0,0.0,0.4,,,baseMelee=9;gunpowderUnit=4,baseMelee=1;basePierce=2;cavalry=0
+woadRaider,Woad Raider,3,70.0,2.0,0.0,0.72,,1.2,65.0,0.0,25.0,,,,baseMelee=11;eagleWarrior=2,baseMelee=0;basePierce=1;infantry=0;uniqueUnit=0

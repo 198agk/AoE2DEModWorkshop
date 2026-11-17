@@ -62,6 +62,16 @@ ACTIONS = (
     ("attack", ("进攻", "攻击", "打过去", "推平", "总攻")),
     ("defend", ("防守", "防御", "守住", "守家")),
     ("count", ("数量", "有多少", "数一数", "达到", "超过", "少于", "多于")),
+    #: Changing a unit or building ATTRIBUTE.  This is the one thing the XS
+    #: department exists for in a mod workshop -- `xsEffectAmount` occurs 102
+    #: times in the shipped `Effects.xs`, 80 of them attribute writes -- and the
+    #: keywords are the attribute words themselves, because a player saying
+    #: 「村民血量改成 1000」 never types a verb at all.  Leftmost-longest keeps
+    #: 攻击力 ahead of 攻击: same offset, three characters beats two, so
+    #: 「攻击力加20%」 is an attribute change and not an attack order.
+    ("attr", ("血量", "生命值", "生命", "攻击力", "攻击间隔", "攻速", "护甲",
+              "防御力", "射程", "攻击距离", "移动速度", "速度", "采集速度",
+              "工作效率", "携带量", "负重", "视野", "属性", "HP")),
     ("gather", ("采集", "采资源", "收集", "分配", "农民分配", "经济")),
     #: Writing a goal.  Every keyword here contains the word `goal`, on
     #: purpose: `设成` / `设为` alone are the assignment words of the
@@ -91,8 +101,13 @@ EXAMPLES = {
     "ai": ("训练10个步弓手", "造20个骑士", "建造兵营", "造城堡", "盖城墙",
            "研究织布机", "升级到城堡时代", "弓箭手超过10个", "村民不少于20个",
            "采集50%食物"),
-    "xs": ("训练3个僧侣", "训练5个运输船", "让步弓手进攻", "村民不少于20个",
-           "防守", "把 goal 0 设成 1"),
+    #: Every sentence here is compiled by `_probe/test_rule_box_examples.py`, so
+    #: an example cannot silently rot.  「村民血量改成 1000」 is first because it
+    #: is the sentence the workshop exists for -- and the one that used to return
+    #: 没有读出动作, which is what a player reads as "the tool is broken".
+    "xs": ("村民血量改成1000", "弓箭手射程提高20%", "训练3个僧侣",
+           "训练5个运输船", "让步弓手进攻", "村民不少于20个", "防守",
+           "把 goal 0 设成 1"),
 }
 
 #: Two-character words that CONTAIN a verb character but are not that verb.
@@ -100,7 +115,7 @@ EXAMPLES = {
 #: holds `建` (build) and `建议` holds `建` too; `修理` holds `修`.  Length-
 #: preserving masking is what lets :data:`ACTIONS` carry single characters
 #: without the age sentence "升到封建时代" turning into "build something".
-_MASK_WORDS = ("封建", "建议", "修理", "建造物")
+_MASK_WORDS = ("封建", "建议", "修理", "建造物", "建筑")
 
 #: Direction words that turn a `count` into a comparison.  The engine's own
 #: operator set is the source: `< <= > >= == !=` appear in shipped conditions.
@@ -112,6 +127,88 @@ CMP_WORDS = (
     ("==", ("等于", "正好", "==")),
     ("!=", ("不等于", "!=")),
 )
+
+#: Chinese words for a unit ATTRIBUTE -> the ``extern const int`` name the
+#: shipped ``resources/_common/xs/Constants.xs`` declares in its
+#: "Tech Effect Constants" block (``cHitpoints = 0`` at line 419 through
+#: ``cAttackReloadTime = 10`` at 428, ``cWorkRate = 13``, ``cCarryCapacity = 14``).
+#:
+#: The emitted code writes the NAME, never the literal: ``xs_constants`` in the
+#: language payload already carries the value the file declares, so a number here
+#: would be a second copy of a fact that already has an owner and could drift.
+#:
+#: ``cSpeed``/``cRange`` do NOT exist in the file -- the real names are
+#: ``cMovementSpeed`` and ``cMaxRange``.  Inventing the short spelling would pass
+#: a human eye and fail the engine, which is why every entry below was read out
+#: of the file rather than guessed from the English word.
+ATTR_WORDS = (
+    ("cHitpoints", ("血量", "生命值", "生命", "HP")),
+    ("cAttackReloadTime", ("攻击间隔", "攻速")),
+    ("cAttack", ("攻击力", "攻击")),
+    ("cArmor", ("护甲", "防御力", "防御")),
+    ("cMaxRange", ("射程", "攻击距离")),
+    ("cMovementSpeed", ("移动速度", "速度")),
+    ("cWorkRate", ("采集速度", "工作效率")),
+    ("cCarryCapacity", ("携带量", "负重")),
+    ("cLineOfSight", ("视野",)),
+)
+
+#: Which of the three `xsEffectAmount` attribute ops the sentence asks for.
+#: Each keyword group is an op, and the % decides between the two arithmetic
+#: ones: `cAddAttribute` adds a flat number, `cMulAttribute` scales by a factor.
+#: Reading "攻击力加20%" as `cAddAttribute ... 20` would add twenty armour points
+#: -- a different change by two orders of magnitude, and a silent one.
+ATTR_OPS = (
+    ("set", ("改成", "改为", "设为", "设成", "调到", "调成", "变成", "设置成")),
+    ("mulup", ("增加", "提升", "提高", "加", "涨")),
+    ("muldown", ("降低", "减少", "减", "降")),
+)
+
+#: Chinese words for a unit CLASS -> the constant name.  A class beats a unit id
+#: when both match, and the reason is measured: `villager` id 83 is
+#: "Villager (Male)" only -- the DAT has separate ids for VillagerFemale,
+#: Builder, Farmer, Forager, Hunter, Fisherman, Lumberjack, Miner, Repairer and
+#: Shepherd.  Setting hit points on id 83 would leave eleven of the twelve
+#: villager variants untouched while telling the player it worked.
+CLASS_WORDS = (
+    ("cVillagerClass", ("村民", "农民")),
+    ("cCavalryArcherClass", ("骑射手", "弓骑兵")),
+    ("cInfantryClass", ("步兵",)),
+    ("cArcherClass", ("弓箭手", "弓兵")),
+    ("cCavalryClass", ("骑兵",)),
+    ("cSiegeWeaponClass", ("攻城武器",)),
+    ("cBuildingClass", ("建筑",)),
+    ("cTowerClass", ("塔",)),
+    ("cWallClass", ("城墙",)),
+    ("cMonkClass", ("僧侣",)),
+    ("cWarshipClass", ("战船",)),
+    ("cTradeCartClass", ("贸易车",)),
+)
+
+#: Machine names the page shows to a player, in the page's language.  The
+#: machine name stays in `action` because a test asserts on it; this table exists
+#: so the panel does not print `attr` at somebody who typed Chinese.
+ACTION_ZH = {
+    "train": "训练", "build": "建造", "research": "研究", "age": "升时代",
+    "attack": "进攻", "defend": "防守", "count": "看数量", "gather": "采集",
+    "setgoal": "写 goal", "attr": "改属性",
+}
+
+#: The attribute being changed, named the way the player named it.
+ATTR_ZH = {
+    "cHitpoints": "血量", "cAttack": "攻击力", "cAttackReloadTime": "攻击间隔",
+    "cArmor": "护甲", "cMaxRange": "射程", "cMovementSpeed": "移动速度",
+    "cWorkRate": "采集速度", "cCarryCapacity": "携带量", "cLineOfSight": "视野",
+}
+
+#: A class target, named the way the player named it.
+CLASS_ZH = {
+    "cVillagerClass": "村民", "cInfantryClass": "步兵", "cArcherClass": "弓箭手",
+    "cCavalryClass": "骑兵", "cCavalryArcherClass": "骑射手",
+    "cSiegeWeaponClass": "攻城武器", "cBuildingClass": "建筑",
+    "cTowerClass": "塔", "cWallClass": "城墙", "cMonkClass": "僧侣",
+    "cWarshipClass": "战船", "cTradeCartClass": "贸易车",
+}
 
 _ZH_NUM = {"零": 0, "一": 1, "二": 2, "两": 2, "三": 3, "四": 4, "五": 5,
            "六": 6, "七": 7, "八": 8, "九": 9, "十": 10, "十一": 11,
@@ -138,6 +235,18 @@ class Reading(object):
         #: the goal id out of the same field as the value loses one of them.
         self.number2 = None
         self.cmp = None
+        #: For ``attr``: the ``extern const int`` name of the attribute being
+        #: changed (``cHitpoints``), and the ``c*Class`` it applies to.  Both are
+        #: names, not numbers, because the payload owns the values and a second
+        #: copy could drift from ``Constants.xs``.
+        self.attr = None
+        self.attr_op = None         # "set" / "mulup" / "muldown"
+        self.klass = None           # e.g. "cVillagerClass"; None = use the unit id
+        #: True when the sentence said a percentage.  ``cMulAttribute`` takes a
+        #: FACTOR (1.2), not a percent (20): the shipped Effects.xs passes
+        #: `handicapMultiplier`, which is a factor.  Writing 20 there multiplies
+        #: hit points by twenty.
+        self.percent = False
         self.why = ""
         self.notes = []
 
@@ -184,6 +293,22 @@ def _longest(hay, table):
     return best
 
 
+def _lookup(hay, table):
+    """The VALUE of the longest key of ``table`` that occurs in ``hay``.
+
+    Distinct from :func:`_longest`, which answers with the key because its
+    callers want the word the player typed.  Here the table is word -> constant
+    name, and the constant name is what has to reach the code; returning the
+    Chinese word instead produced `xsEffectAmount(cSetAttribute, 村民, 血量, ...)`
+    -- valid-looking, and an engine error.
+    """
+    best = None
+    for key in table:
+        if key and key in hay and (best is None or len(key) > len(best)):
+            best = key
+    return table[best] if best is not None else None
+
+
 def _mask(low):
     """Replace :data:`_MASK_WORDS` with same-length filler.
 
@@ -221,17 +346,32 @@ def understand(text, vocab):
     # one that leaves a resolvable noun behind wins.  The verb is not a fact about
     # the sentence in isolation; it is the verb that makes the rest of the
     # sentence parse.
+    # An ASSIGNMENT on an attribute is an attribute change, whatever verb came
+    # first.  「村民攻击改成100」 contains 攻击, which the attack table has owned
+    # since before attributes existed; leftmost-longest gave that table the win and
+    # the sentence became an attack order carrying a number nobody asked for.
+    # The discriminator is not the noun but the assignment word: 攻击 in
+    # 「让步弓手攻击」 has no 改成/设为 next to it, and no attack sentence does.
+    # This is decided before the ladder so the ladder stays a pure ranking.
+    attr_words = {w: n for n, ws in ATTR_WORDS for w in ws}
+    op_words = {w: 1 for _, ws in ATTR_OPS for w in ws}
+    if "goal" not in low and _lookup(low, attr_words) and _longest(low, op_words):
+        r.action = "attr"
+        r.verb = _longest(low, op_words)
+
     masked = _mask(low)
     cands = []
-    for name, words in ACTIONS:
-        for word in words:
-            at = masked.find(word)
-            if at >= 0:
-                cands.append(((at, -len(word)), word, name))
-    cands.sort()
-    if not cands:
-        r.why = ("没有读出动作（训练/建造/研究/升时代/进攻/防守/数量/采集/写 goal）")
-        return r
+    if r.action is None:
+        for name, words in ACTIONS:
+            for word in words:
+                at = masked.find(word)
+                if at >= 0:
+                    cands.append(((at, -len(word)), word, name))
+        cands.sort()
+        if not cands:
+            r.why = ("没有读出动作（训练/建造/研究/升时代/进攻/防守/数量/采集/"
+                     "改属性/写 goal）")
+            return r
 
     # Entity: the AI name table is the ONLY name space the engine accepts in a
     # `.per` file, and it is also the table with Chinese names attached, so a
@@ -273,15 +413,21 @@ def understand(text, vocab):
         return _longest(body, by_zh)
 
     hit = None
-    for _key, word, name in cands:
-        got = _noun_of(word)
-        if got:
-            r.action, r.verb, hit = name, word, got
-            break
-    if r.action is None:
-        # No candidate leaves a resolvable noun.  Keep the best-ranked verb so
-        # the refusal can still name what the player seems to have meant.
-        r.action, r.verb = cands[0][2], cands[0][1]
+    if r.action == "attr":
+        # The verb is already decided, but the NOUN still has to resolve: an
+        # attribute change needs a target, and 「村民血量改成1000」 names it as a
+        # word with no verb in front of it.
+        hit = _noun_of(r.verb or "")
+    else:
+        for _key, word, name in cands:
+            got = _noun_of(word)
+            if got:
+                r.action, r.verb, hit = name, word, got
+                break
+        if r.action is None:
+            # No candidate leaves a resolvable noun.  Keep the best-ranked verb so
+            # the refusal can still name what the player seems to have meant.
+            r.action, r.verb = cands[0][2], cands[0][1]
     if hit:
         r.entity = by_zh[hit]
         row = units.get(r.entity) or {}
@@ -314,7 +460,33 @@ def understand(text, vocab):
         if _longest(low, words):
             r.cmp = op
             break
+    if r.action == "attr":
+        _read_attr(r, low)
     return r
+
+
+def _read_attr(r, low):
+    """Fill ``attr``/``attr_op``/``klass``/``percent`` for an `attr` sentence.
+
+    Every field is read from the words the player typed; nothing is inferred
+    from the entity name.  A unit id and a class are BOTH kept when both are
+    present, because they mean different scopes -- 「所有村民」 is the class,
+    「民兵」 is one unit -- and :func:`xs_lines` decides which one to emit.
+    """
+    r.attr = _lookup(low, {w: n for n, ws in ATTR_WORDS for w in ws})
+    if r.attr is None:
+        r.why = "没读出要改哪个属性（血量/攻击力/护甲/射程/移动速度/采集速度/视野）"
+        return
+    # 20% vs 20: `xsEffectAmount`'s multiplier is a factor.  The percent sign is
+    # the only signal in the sentence, so its presence is recorded, not guessed.
+    r.percent = "%" in low or "百分" in low
+    for op, words in ATTR_OPS:
+        if _longest(low, words):
+            r.attr_op = op
+            break
+    if r.attr_op is None:
+        r.attr_op = "set"          # 「村民血量 1000」 with no verb is a set
+    r.klass = _lookup(low, {w: n for n, ws in CLASS_WORDS for w in ws})
 
 
 def _kind(name, vocab):
@@ -480,6 +652,21 @@ def ai_lines(r, vocab):
         r.notes.append("unit=%s" % name)
         if src == "engine":
             r.notes.append("unwitnessed: %s 在引擎名域内但没有任何官方脚本训练过它" % name)
+        # A count in the sentence has to reach the rule or the engine trains
+        # forever: `(train villager)` alone has no upper bound, and a defrule
+        # fires on every evaluation until its condition turns false.  The
+        # shipped scripts express "keep 20 villagers" as a counting fact in the
+        # condition half -- measured by bracket depth over the 52 shipped files:
+        # 211 rules pair `(train X)` with a `unit-type-count-total` fact and every
+        # one of them has it on the LEFT of `=>` (0 on the right).  Without a
+        # number the shape stays the corpus's
+        # bare `(train X)`, which is what 训练村民 means when no count is said.
+        if r.number:
+            n = int(r.number)
+            r.notes.append("cap=%d" % n)
+            return ([";!cond (can-train %s)" % name,
+                     ";!cond (unit-type-count-total %s < %d)" % (name, n),
+                     "(train %s)" % name], "")
         return (["(train %s)" % name], "")
 
     if r.action == "build":
@@ -508,7 +695,12 @@ def ai_lines(r, vocab):
         r.notes.append("building=%s" % name)
         if src == "engine":
             r.notes.append("unwitnessed: %s 在引擎名域内但没有任何官方脚本建过它" % name)
-        return (["(can-build %s)" % name,
+        # `can-build` is a TEST, not a command.  Measured by bracket depth over
+        # the 52 shipped files: 461 rules put `(can-build X)` to the left of `=>`
+        # and 0 put it on the right.  A fact in the action half is evaluated for
+        # side effects and does nothing, so a rule spelled the old way tried to
+        # build every tick regardless of whether the player could afford it.
+        return ([";!cond (can-build %s)" % name,
                  "(build %s)" % name], "")
 
     if r.action == "age":
@@ -573,6 +765,16 @@ def ai_lines(r, vocab):
         if not r.number:
             return ([], "没读出要分配多少比例")
         return (["(set-strategic-number sn-food-gatherer-percentage %d)" % int(r.number)], "")
+
+    if r.action == "attr":
+        # Not a gap in the template table: the AI language has no attribute write
+        # at all.  `(set-strategic-number ...)` moves player-level dials, and the
+        # only way a `.per` file changes a unit's hit points is a custom DAT or a
+        # technology -- neither of which is a sentence.  The XS department reaches
+        # `xsEffectAmount` directly; saying so is more useful than a shrug, and
+        # 「换成 XS 部门」 is one click away in the same box.
+        return ([], "改单位或建筑属性是 XS 的事（xsEffectAmount），AI 脚本没有这个口子；"
+                    "点上面的部门切到 XS 脚本再问一次")
 
     return ([], "动作 %s 还没有模板" % r.action)
 
@@ -677,6 +879,9 @@ def xs_lines(r, vocab):
     if r.action is None:
         return ([], r.why or "没有读出动作")
 
+    if r.action == "attr":
+        return _attr_lines(r, vocab)
+
     if r.action == "count":
         # XS reads a goal the AI wrote -- that is the documented bridge, and
         # `xsGetGoal(n)` + `xsChatData("...: %d", v)` is the shape every shipped
@@ -756,6 +961,89 @@ def xs_lines(r, vocab):
     return ([], "动作 %s 在 XS 侧还没有模板" % r.action)
 
 
+def _attr_lines(r, vocab):
+    """``xsEffectAmount(<op>, <target>, <attr>, <value>, <player>)``.
+
+    The shape is read off ``resources/_common/xs/Effects.xs``: ``xsEffectAmount``
+    is called 102 times in that one file and the argument order never varies --
+
+        xsEffectAmount(cMulAttribute, cVillagerClass, cHitpoints,
+                       handicapMultiplier, playerId);              (line 149)
+        xsEffectAmount(cSetAttribute, HunnicHorseID, cAttackGraphic,
+                       newAttackGraphicId, playerId);             (line 71)
+
+    Three things in that shape are easy to get wrong and each one is silent:
+
+    1. **The second slot is the TARGET and it accepts a class constant, a unit
+       id, or a building id** -- not only ids.  A class is the right target for
+       「村民」 because the DAT has twelve villager variants (id 83 is
+       "Villager (Male)" only), so an id would modify one of them and report
+       success.
+    2. **``cMulAttribute`` takes a factor, not a percent.** ``Effects.xs``
+       passes ``handicapMultiplier``, which is 1.0 at no handicap.  A sentence
+       saying 20% therefore has to become 1.2, and writing 20 would multiply hit
+       points by twenty.
+    3. **The last slot is the player**, and ``-1`` means "whoever called this".
+       Every shipped call passes a variable that defaults to -1
+       (``void HandicapSetup(int playerId = -1)``), so -1 is the witnessed
+       spelling for "the player running this".
+    """
+    if not r.attr:
+        return ([], r.why or "没读出要改哪个属性")
+
+    op = {"set": "cSetAttribute",
+          "mulup": "cMulAttribute",
+          "muldown": "cMulAttribute"}.get(r.attr_op)
+    if not op:
+        return ([], "不知道要设、加还是减")
+
+    # Target: a class beats a unit id, because the class is the scope the player
+    # named.  「所有村民」 must not fall back to id 83.
+    if r.klass:
+        target = r.klass
+        r.notes.append("target=class %s" % r.klass)
+    elif r.entity_id:
+        target = str(int(r.entity_id))
+        r.notes.append("target=id %d (%s)" % (int(r.entity_id), r.entity))
+    else:
+        return ([], "没说改谁。XS 要单位名、单位组（村民/步兵/骑兵）或者数字 id；"
+                    "例如「村民血量改成 1000」")
+
+    if r.number is None:
+        return ([], "没说改成多少")
+
+    if op == "cSetAttribute":
+        value = _num_literal(r.number)
+    else:
+        # A factor.  `%` is the only marker the sentence carries, and without it
+        # 「攻击力加20」 means +20 points, not x1.2 -- two different edits, so the
+        # sign of the percent decides and nothing is assumed.
+        if r.percent:
+            factor = r.number / 100.0
+        else:
+            # A flat add has its own op; do not pretend a multiplier is one.
+            return ([], "「加/减一个数」在 XS 里是 cAddAttribute，本工具还没接；"
+                        "现在能写的是「改成 N」和「加/减 N%%」")
+        if r.attr_op == "muldown":
+            factor = 1.0 - factor
+        else:
+            factor = 1.0 + factor
+        if factor <= 0:
+            return ([], "减的百分比太大，乘数会变成 %s" % factor)
+        value = _num_literal(round(factor, 4))
+        r.notes.append("factor=%s" % value)
+
+    return (["xsEffectAmount(%s, %s, %s, %s, -1);"
+             % (op, target, r.attr, value)], "")
+
+
+def _num_literal(v):
+    """``1000`` not ``1000.0``; ``1.2`` stays ``1.2``."""
+    if isinstance(v, float) and v == int(v):
+        return str(int(v))
+    return str(v)
+
+
 # ---------------------------------------------------------------------------
 # Public entry
 # ---------------------------------------------------------------------------
@@ -769,12 +1057,32 @@ class Result(object):
         self.diagnostics = []
 
     def as_dict(self):
+        r = self.reading
         return dict(dept=self.dept, text=self.text,
-                    action=(self.reading.action if self.reading else None),
-                    entity=(self.reading.entity if self.reading else None),
-                    number=(self.reading.number if self.reading else None),
+                    action=(r.action if r else None),
+                    action_zh=ACTION_ZH.get(r.action, r.action) if r else None,
+                    entity=(r.entity if r else None),
+                    number=(r.number if r else None),
+                    # For `attr`: which attribute and which target, in the words a
+                    # player used.  Without these the page could only print
+                    # 「动作：attr 对象：villager 1000」 -- the number read as a
+                    # count of villagers and the attribute was invisible.
+                    attr_zh=(ATTR_ZH.get(r.attr) if r else None),
+                    target=self.target_text(),
                     code=self.code, why=self.why,
                     diagnostics=[list(d) for d in self.diagnostics])
+
+    def target_text(self):
+        """Who the code acts on, named for a human: 「村民（整组）」 / 「民兵 74」."""
+        r = self.reading
+        if not r:
+            return ""
+        if r.klass:
+            return "%s（整组）" % (CLASS_ZH.get(r.klass) or r.klass)
+        if r.entity:
+            zh = r.entity_zh or r.entity
+            return "%s %s" % (zh, r.entity_id) if r.entity_id else zh
+        return ""
 
 
 def translate(text, dept="ai", vocab=None):

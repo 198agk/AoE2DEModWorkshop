@@ -460,7 +460,8 @@ def emit_data_mod(mod_dir, dat_bytes, info, thumbnail=None, base_dir=None,
     # engine's own fallbacks, found adjacent to `info.json` and `Validating '%s'` in
     # the exe's string pool).  Note it is NOT about newlines: an accepted mod
     # (`423821_…`, 748 B) contains seven CRs, all inside the Description VALUE.
-    written.append(("info.json", write_info_json(mod_dir, info)))
+    info_abs = write_info_json(mod_dir, info)
+    written.append(("info.json", info_abs))
 
     thumb_abs = None
     if thumbnail:

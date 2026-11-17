@@ -58,6 +58,19 @@
   --tt-hl: #ffffff;
   --tt-hl-edge: #0b0e12;
   --tt-band: rgba(77, 54, 23, .30);
+    /* The corner character's own colours.  They are here rather than inline
+       because the acceptance gate forbids hex anywhere else, and they are tokens
+       rather than literals so a future restyle moves them with everything else.
+       Reference: a chibi fish-maid in navy with a white lace headband, a white
+       apron over a navy dress, gold trim on the hem, one whale tail. */
+    --skin: #fbe0cd;
+    --hair: #2f3f78;
+    --hair-2: #1d2750;
+    --fin: #86bede;
+    --dress: #2b3765;
+    --dress-2: #202a4e;
+    --bow: #3f63c8;
+    --gold: #d9b26a;
 
     /* ==== §13 the surface family ==========================================
        The window is one picture with panels floating on it.  A surface is
@@ -370,6 +383,55 @@
     padding: 16px;
   }
   .shell > * { min-width: 0; }
+
+  /* Right gutter, mirrored -- the gap, not the rail.
+
+     History, because this was got wrong twice.  The left column of this grid is
+     the rail, so the panel beside it started at 16 + 76 + 20 = 112px while it
+     ended 16px from the right edge: the player read that as "the right column is
+     crammed against the window frame" (and the 12px classic scrollbar sat on top
+     of those 16).  The first fix mirrored the rail's width too, a third empty
+     76px track, which put 112px of air on the right -- numerically symmetric, and
+     the player read THAT as "why is there extra space on the right", because the
+     eye does not compare margins, it compares what sits next to the panel: on the
+     left the rail is a lit object 20px away, on the right there was 112px of
+     nothing.
+
+     So the mirror is the gap only.  A zero-width third track still earns the
+     grid gap, and 16 padding + 20 gap = 36px of air on the right against the 20px
+     the player actually sees on the left -- near enough that neither side looks
+     off, and the panel keeps almost all of the width the rail was eating.
+     Only above 1100px: under it the rail stacks on top and the box is already
+     centred with 16px on both sides. */
+  @media (min-width: 1101px) {
+    /* 8px here, no third track.  The two sides have to LOOK equal, and the thing
+       that decides that is not this rule -- it is `main`, which is the scroller
+       and reserves a 12px `scrollbar-gutter` INSIDE its own column.  Whatever
+       this grid says, the card's right edge comes out 12px further from the
+       frame than the grid put it.  So the only numbers that matter are:
+
+         left air  = gap                        = 20
+         right air = padding-right + 12 (gutter) =  8 + 12 = 20
+
+       Two earlier attempts got this wrong in opposite directions, both by
+       leaving the third track in place and then adjusting padding around it.
+       With that track the gap supplied 20 on the right AND the gutter supplied
+       12 on top of it, so the card sat 32 from the frame against 20 on the left
+       (measured 2026-11-16 at 1240x862: rail right 92, box left 112, box right
+       1208).  Before that, a mirrored 76px rail track made it 112 against 20 --
+       arithmetically symmetric, and the player read it as "dead space on the
+       right", because the eye compares what sits NEXT TO the card, and on the
+       left the rail is a lit object 20px away.
+
+       Written as padding rather than a track because a 0-width track is a
+       rounding hazard: it is laid out at the padding edge and any extra gap
+       silently lands outside it.  Deleting the track also takes its gap with
+       it, which is the whole mechanism. */
+    .shell {
+      grid-template-columns: var(--rail-w) minmax(0, 1fr);
+      padding-right: 8px;
+    }
+  }
   /* The right column is a column of rows that ends at the window's bottom edge,
      so a view that wants "fill what is left" can ask for it instead of having
      a pixel constant guessed for it.
@@ -389,6 +451,24 @@
     display: flex;
     flex-direction: column;
     height: calc(100dvh - 32px);
+  }
+  /* The document must NOT be the scroller.  It used to be: `.rail` is
+     `position: sticky; top: 16px`, which only pins while the sticky box's own
+     parent still has room -- and this parent (.shell) is exactly one viewport
+     tall, so the rail had no travel and scrolled away with the page.  Measured
+     2026-11-16 at 1237x869 on the about page: document 1947px, rail at y=-584
+     after scrolling 600.  Taking the height off the document and giving it to
+     `main` fixes both halves at once: the window never scrolls, the rail has
+     nothing to leave, and the app bar stops sliding under the title bar.
+     `scrollbar-gutter: stable` keeps the column from jumping 12px sideways
+     when a view is short enough not to scroll. */
+  main {
+    overflow-y: auto;
+    overflow-x: hidden;
+    scrollbar-gutter: stable;
+    /* The focus ring of a row at the very bottom would otherwise be clipped
+       by the new scroll box; 4px is the ring's own offset. */
+    padding-bottom: 4px;
   }
 
   /* The rail.  Three bands, not one stack: identity / navigation / objects +
@@ -416,7 +496,14 @@
        longest string inside it.  Measured before the fix: rail 76px, children
        177px, x=25..202 -- the icons sat off-centre and the footer was decapitated. */
     grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: auto auto minmax(0, 1fr) auto;
+    /* Three bands, and the middle one is the only one that gives.  The rows used
+       to be `auto auto minmax(0,1fr) auto` -- that fourth track was for the
+       object list, which is `display:none` in this 76px build, so the growing
+       row was an empty one and the navigation stayed at its content height.  At
+       1237x600 that overflowed the rail by 49px and `overflow:hidden` cut the
+       last two rows off with no way to reach them.  Now the navigation owns the
+       growing row and scrolls inside it. */
+    grid-template-rows: auto minmax(0, 1fr) auto;
     gap: 8px;
     height: calc(100dvh - 32px);
     /* A real width, not a share of the grid: the column is a strip of glyphs
@@ -501,18 +588,37 @@
     color: var(--text-3);
     line-height: 1.3;
   }
-  .navlist { display: flex; flex-direction: column; gap: 6px; align-items: center; }
+  .navlist {
+    display: flex; flex-direction: column; gap: 6px; align-items: center;
+    /* The rail's only scrollable band.  `align-content: start` keeps ten rows
+       stacked from the top instead of spreading to fill a tall window. */
+    min-height: 0;
+    overflow-y: auto;
+    align-content: start;
+  }
   .navitem {
-    /* An icon chip, not a row.  The label is still in the DOM and still read by
-       a screen reader -- `text-indent` moves it out of the 44px box instead of
-       `display:none`, which would take the accessible name with it. */
+    /* An icon chip with its name under it.  For two rounds this was a 44px
+       square with the label pushed out of the box by `text-indent: -9999px`,
+       on the theory that a strip of nine glyphs was more "desktop".  What it
+       actually produced was a rail you had to hover to read: five of the ten
+       glyphs (a diamond, a card grid, a tree, two rings) mean nothing on the
+       first visit, and the tooltip only exists for a mouse.  A 12px label under
+       the glyph costs 14px of height per row and removes the guess.
+       `--navis` still sizes the brand mark, so the two stay in one column. */
     position: relative;
     display: flex;
+    flex-direction: column;
     align-items: center;
     justify-content: center;
-    width: var(--navis);
-    height: var(--navis);
-    padding: 0;
+    gap: 2px;
+    width: 100%;
+    height: auto;
+    /* `flex: none` so a short window shrinks the LIST (which can scroll) and
+       not the rows: without it ten 47px rows compress to 32px at 1237x540,
+       the glyph and its label overlap, and nothing reports an overflow because
+       nothing actually overflowed -- it just got squashed. */
+    flex: none;
+    padding: 6px 2px;
     border: 0;
     border-radius: var(--r-control);
     background: transparent;
@@ -523,11 +629,11 @@
        same value can be the glyph colour here and the chip fill on `.on`
        without keeping a second palette in sync. */
     color: var(--nic, var(--text-2));
-    font-size: var(--fs-body);
+    font-size: var(--fs-micro);
     font-weight: 400;
-    text-indent: -9999px;
+    line-height: 1.2;
+    text-indent: 0;
     overflow: hidden;
-    white-space: nowrap;
     transition: background var(--t-quick) var(--ease),
                 color var(--t-quick) var(--ease);
   }
@@ -555,6 +661,18 @@
     stroke-width: 1.5;
     stroke-linecap: round;
     stroke-linejoin: round;
+  }
+  /* The name under the glyph.  `nowrap` + ellipsis rather than a wrap: a rail
+     row that becomes two lines is taller than its neighbours, and 命令面板 next
+     to 主页 stops reading as a list.  58px of inner rail fits four CJK glyphs
+     at 12px, which is every label in this build. */
+  .navitem .nv {
+    display: block;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    letter-spacing: .01em;
   }
   .navitem.on .ni { opacity: 1; }
   /* Hover lifts the chip, it does not repaint the glyph: the hue is what says
@@ -687,7 +805,7 @@
      would be placed in row 3 -- the `1fr` slack row -- giving a 297px-tall
      footer hanging in the middle of the column.  Name the row instead of
      trusting source order. */
-  .railfoot { grid-row: -2 / -1; }
+  .railfoot { grid-row: 3; }
   .railfoot .railnote { padding: 0; }
   /* The status band's first row: liveness on the left, what was read on the
      right.  `space-between` is correct HERE because both halves are short. */
@@ -1083,12 +1201,23 @@
     }
     .content { height: auto; flex: 1; min-height: 0; }
     .rail {
-      position: static;
+      /* `relative`, not `static`: the progress line is pinned to this strip's
+         bottom edge (see .railbar below). */
+      position: relative;
       display: flex;
       flex-direction: row;
       flex-wrap: wrap;
       align-items: center;
       height: auto;
+      /* The strip is as wide as the window, so the fixed rail width has to go.
+         It never was reset before: the base rule's `width: var(--rail-w)` still
+         won here, so the "horizontal strip" was a 76px column of chips running
+         down the left edge -- which went unnoticed because the chips were
+         icon-only and 43px wide, just fitting.  Adding the label under each
+         glyph made them 60-80px, the navlist started overflowing its own box
+         sideways (measured 2026-11-16 at 1100x869: navlist 97px wide inside
+         50px), and that is what exposed it. */
+      width: auto;
       /* 8px vertical padding: the strip's own padding is height the editor cannot
          have, and at this width the rail is two rows of chips, not a panel. */
       padding: 8px 12px;
@@ -1096,15 +1225,45 @@
     }
     .railgroup { display: none; }
     .navlist { flex-direction: row; flex-wrap: wrap; }
-    .navitem { width: auto; height: 30px; padding: 0 12px; }
+    /* A strip, so the label goes BESIDE the glyph instead of under it: ten
+       stacked icon+label chips wrapped to two rows of 45px (measured 354px of
+       navlist at 1100px), and the strip is supposed to be one band. */
+    .navitem {
+      flex-direction: row;
+      gap: 6px;
+      width: auto;
+      height: 30px;
+      padding: 0 12px;
+    }
+    .navitem .nv { max-width: none; }
     .navitem.on::before { left: 6px; right: 6px; top: auto; bottom: 0; width: auto; height: 2px; }
     .railfoot {
+      /* `flex: none` so the footer keeps its own width.  As a strip it is the last
+         item in a wrapping row, and the navlist ahead of it is 908px: without this
+         the footer shrank to 49px and 就绪 wrapped one glyph per line, which read
+         as a vertical caption running down the right edge (measured 2026-11-16 at
+         1100x869). */
+      flex: none;
       flex-direction: row;
       align-items: center;
       gap: 12px;
       margin-top: 0;
+      margin-left: auto;
       padding: 0;
       border-top: 0;
+    }
+    .status { white-space: nowrap; }
+    /* The progress line moves to the strip's own bottom edge: a 3px bar in a ROW
+       becomes a 3px vertical sliver beside 就绪.  On the edge it still says a
+       build is running, and it costs the row no width. */
+    .railbar {
+      position: absolute;
+      left: 12px;
+      right: 12px;
+      bottom: 0;
+      width: auto;
+      height: 3px;
+      margin: 0;
     }
     /* As a strip the footer is horizontal, so the stacked name-over-version is
        45px of a 26px band.  Put them back on one line -- here there is room,
@@ -1232,9 +1391,22 @@
   #setgroup-adv > .setrow:nth-child(1) .si { --ibs: var(--ic7); --ibc: var(--on-dark); }
   #setgroup-adv > .setrow:nth-child(2) .si { --ibs: var(--ic8); --ibc: var(--on-dark); }
   #setgroup-adv > .setrow:nth-child(3) .si { --ibs: var(--panel-3); --ibc: var(--text-2); }
+  #setgroup-model > .setrow:nth-child(1) .si { --ibs: var(--ic5); --ibc: var(--on-dark); }
+  #setgroup-model > .setrow:nth-child(2) .si { --ibs: var(--ic4); --ibc: var(--on-dark); }
+  #setgroup-model > .setrow:nth-child(3) .si { --ibs: var(--ic9); --ibc: var(--on-dark); }
+  #setgroup-model > .setrow:nth-child(4) .si { --ibs: var(--ic6); --ibc: var(--on-dark); }
   .setrow .st { font-size: var(--fs-body); font-weight: 600; color: var(--text); }
   .setrow .sd { margin-top: 2px; font-size: var(--fs-micro); color: var(--text-2); }
   .setrow .sc { display: flex; align-items: center; gap: 8px; }
+  /* A field in a settings row.  `.box input` supplies the frame (28px, border,
+     control radius) but no width; three of them in one row then fell back to the
+     browser default and cut the URL placeholder at the hostname.  260px holds
+     `https://api.deepseek.com/v1` and still leaves the row's right edge free at
+     1100px, where the settings grid drops to a single column. */
+  .setrow .sc input { width: 260px; min-width: 0; }
+  /* `.hint` carries `margin: 12px 0 0` for prose under a heading; inside a row
+     it pushed the sentence below the switch it belongs to. */
+  .setrow .sc .hint { margin: 0; text-align: right; }
   .segs { display: flex; gap: 2px; padding: 2px; background: var(--panel-3); border-radius: var(--r-pill); }
   .seg {
     height: 26px; padding: 0 12px;
@@ -2531,6 +2703,20 @@ body.dragging-row, body.dragging-row * { cursor: grabbing !important; user-selec
     font-weight: 400;
     white-space: nowrap;
   }
+  /* The name of a stored id, beside the number that stores it.  Right-aligned
+     numbers and a 150px value column mean the name gets whatever is left, and
+     a graphics record name is a sentence (`Projectile Mangonel Ground (Fire)`),
+     so it clips with an ellipsis instead of pushing the row to two lines --
+     the whole name stays in the tooltip.  Reported 2026-11-16: 「很多这种下拉的
+     选项全是id，很难看懂是什么东西，没有解释」. */
+  #editor table.f td.v > span.vname {
+    display: inline-block;
+    margin-left: 4px;
+    max-width: 132px;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    vertical-align: bottom;
+    font-weight: 400; color: var(--text-2);
+  }
   #editor table.f td.e { display: flex; gap: 8px; align-items: center; }
   #editor table.f input { width: 84px; height: 26px; }
   #editor table.f button { height: 26px; padding: 0 8px; font-size: var(--fs-micro); }
@@ -2648,6 +2834,32 @@ body.dragging-row, body.dragging-row * { cursor: grabbing !important; user-selec
   #editor .edtools #edufx .fxbody {
     max-height: none; overflow: visible;
   }
+  /* ---- 有关的东西 ------------------------------------------------------
+     A .dat points one way only: a technology names the building it is
+     researched at, a unit names the hoard that shows its button.  Nothing
+     points back, so 「我搜铁匠铺，就能显示出这个铁匠铺有关的东西」
+     (reported 2026-11-16) needs /api/relations, which walks 1,510
+     technologies and 63 civilisation copies once and turns the arrows
+     around.  Drawn as the SAME chip the rest of the tool uses, because every
+     one of them is a record this screen can open -- a plain list of names
+     would be a dead end with better wording.
+     The rows are `flex-wrap` and NOT a table: 城堡 has 211 technologies and a
+     table would spend its whole height on a scrollbar.  The box scrolls at
+     320px, the same cap 哪些科技用它 already uses. */
+  #editor .edrel {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
+  }
+  #editor .edrel .chip { height: 28px; }
+  #editor .edrele { font-size: var(--fs-body); color: var(--text-2); }
+  /* The class name, repeated in front of the records that belong to it.
+     996 強化堡壘 names 塔 / 城墙 / 城门 and 118 records stand behind them; without
+     this rule the row reads as one flat pile and the tower is somewhere in it. */
+  #editor .edclslab {
+    flex-basis: 100%; margin-top: 6px;
+    font-size: var(--fs-micro); font-weight: 600; color: var(--text-2);
+  }
+  #editor .edrelfirst { margin-top: 6px; }
+  #editor .edtools #edrel .fxbody { max-height: 320px; overflow: auto; }
 
   /* ---- full-field pane ------------------------------------------------
      The record is 434 fields, so the pane needs three things the old 15-row
@@ -3086,7 +3298,7 @@ body.dragging-row, body.dragging-row * { cursor: grabbing !important; user-selec
      line at x=396 and "浏览器打开" fell to the second line at x=0 -- one button
      (a) right of the address and one far left, which reads as two unrelated
      rows.  A wrapper with `flex: none` cannot be split by the flex algorithm. */
-  .abact { display: flex; gap: 8px; }
+  .abact { flex: none; display: flex; gap: 8px; margin-left: auto; }
   .abv {
     min-width: 0;
     font-family: ui-monospace, monospace;
@@ -3095,6 +3307,109 @@ body.dragging-row, body.dragging-row * { cursor: grabbing !important; user-selec
   }
   /* 作者那一行是这一页唯一一个不是路径的值，别让它读起来像路径。 */
   #about-author { font-weight: 650; }
+
+  /* ---- 关于页的卡片行（2026-11-16，玩家「关于页面能不能学一下这个新境盒
+     的，它的这些图标可以跳转的」）----------------------------------------
+     旧版把爱发电 / B 站 / GitHub 写成三行「标签 + 一长串地址 + 两个文字
+     按钮」，整页没有一个能点的图形，读起来像一张表格。这里改成一行一张卡：
+     左边一个 42px 的圆形图标按钮（点它就是跳到那个网站），中间标题加地址，
+     右边一个复制按钮。
+     圆形用 `--r-pill`（999px）而不是 `50%`：门禁第 4/14 条只允许三个圆角
+     值，`50%` 会被算成第四个。42px 的方块配 999px 就是正圆。
+     图标底色用 `--panel`（白）而不是浅灰，因为九个 `--ic*` 色都是在白底上
+     量过对比度的（最低 --ic3 是 5.08:1），换一个底色这套数就作废了。 */
+  .abrow.link {
+    grid-template-columns: 42px minmax(0, 1fr) auto;
+    gap: 12px;
+    padding: 12px;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: var(--r-surface);
+  }
+  .abrow.link + .abrow.link { margin-top: 8px; }
+  .abtile {
+    display: grid;
+    place-items: center;
+    width: 42px;
+    height: 42px;
+    padding: 0;
+    border: 0;
+    border-radius: var(--r-pill);
+    /* 浅灰底，不是白底：卡行本身是 `--panel`（纯白），同色圆只能靠阴影看
+       出边界，在截图里几乎看不见。 `--panel-2` 只比白暗一点点，九个 `--ic*`
+       在这个底色上的对比度仍然全部在 4.5:1 以上（R4 会逐条量）。 */
+    background: var(--panel-2);
+    color: var(--abc, var(--text-2));
+    box-shadow: 0 1px 4px rgba(36, 42, 58, .12);
+    transition: background var(--t-quick) var(--ease),
+                color var(--t-quick) var(--ease);
+  }
+  .abtile:hover { background: var(--abc, var(--sel)); color: var(--on-dark); }
+  .abtile svg {
+    width: 20px; height: 20px;
+    fill: none; stroke: currentColor;
+    stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round;
+  }
+  /* GitHub 的标是一条闭合轮廓，描边画不出来（零面积），必须填色，和 rail 的
+     `.ni.st` 是同一个道理。 */
+  .abtile svg.fi { fill: currentColor; stroke: none; }
+  /* 每个入口自己的色。 九个 `--ic*` 都是在白底上量过对比度的（最低 5.08:1），
+     悬停时整块变成该色、图标转白，和 rail 的 `.navitem.on` 是同一套做法。 */
+  #about-open-fan, #about-open-sponsor { --abc: var(--ic1); }
+  #about-open-bili { --abc: var(--ic4); }
+  #about-open-gh { --abc: var(--sel); }
+  .abcol { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+  .abt { font-size: var(--fs-body); font-weight: 600; color: var(--text); }
+  .absub { font-size: var(--fs-micro); color: var(--text-2); }
+
+  /* 顶上那张身份卡。 一整条通栏（`column-span: all`），因为它是这一页的
+     抬头，压在左栏里会让两栏的起点高低不齐。 */
+  .abhero { column-span: all; }
+  .abhero .abwrap { display: flex; align-items: center; gap: 16px; min-width: 0; }
+  .abhero .ablogo {
+    flex: none;
+    width: 48px; height: 48px;
+    border-radius: var(--r-surface);
+    overflow: hidden;
+    box-shadow: 0 2px 10px rgba(36, 42, 58, .20);
+  }
+  .abhero .ablogo img { display: block; width: 100%; height: 100%; object-fit: cover; }
+  .abhero .abname { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+  .abhero .abname b { font-size: var(--fs-title); font-weight: 600; letter-spacing: -.01em; }
+  .abhero .abname span { font-size: var(--fs-micro); color: var(--text-2); }
+  .abhero .abver {
+    margin-left: auto;
+    display: flex; align-items: center; gap: 8px;
+    font-size: var(--fs-micro); color: var(--text-2);
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* 赞助卡里的二维码：爱发电那一页自己就分微信 / 支付宝两种付款方式，
+     所以这里只放一张码，指向同一个页面。120px 是量出来的：96px 从
+     显示器上手机扫要凑很近，136px 又把这张卡撑得比上面几行高一截。
+     码是 data URI 而不是 /static/ 下的文件，因为发布版的服务没有静态路由，
+     品牌的标在导航栏里也是这么内嵌的，两处理由相同。 */
+  .abqr {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-top: 8px;
+    margin-bottom: 12px;
+    padding: 12px;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: var(--r-surface);
+  }
+  .abqr img {
+    flex: none;
+    width: 120px;
+    height: 120px;
+    border-radius: var(--r-control);
+    background: var(--panel-2);
+  }
+  .abqr .abcol {
+    gap: 4px;
+  }
   /* The operation record.  A list, not a table: every row is a sentence and the
      sentences are different lengths (「改字段」 is six characters, 「保存 → 单位
      「SPRMN」 生命值（3 项改动，已装进 local）」 is thirty).  A grid would force
@@ -3198,10 +3513,21 @@ body.dragging-row, body.dragging-row * { cursor: grabbing !important; user-selec
        already used vertically. */
     #setgroup-general.on,
     #setgroup-look.on,
-    #setgroup-adv.on {
+    #setgroup-adv.on,
+    #setgroup-model.on {
       display: grid;
       grid-template-columns: repeat(2, minmax(0, 1fr));
       gap: 8px;
+    }
+    /* 模型 is four rows and every one of them holds a sentence and a control
+       side by side; in a 460px half-column the sentence wraps to four lines while
+       the field keeps its 260px.  It stays one column at every width.  The
+       selector repeats `#setgroup-model.on` on purpose: this rule must beat the
+       two-column one above, and equal specificity would leave the outcome to
+       source order for a panel added later. */
+    #setgroup-model.on {
+      display: flex;
+      flex-direction: column;
     }
 
     /* The script page is the worst case in the app for a wide window: three
@@ -3767,6 +4093,22 @@ body.dragging-row, body.dragging-row * { cursor: grabbing !important; user-selec
     height: 28px;
   }
   .ogbar select { height: 28px; }
+
+  /* The "signed in as X / sign out" line.  Its own row above the search bar
+     because it is a statement about the session, not a filter: inside `.ogbar`
+     it would read as one more control next to 排序 and 刷新数据. */
+  .ogwho {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+    font-size: var(--fs-micro);
+    color: var(--text-2);
+  }
+  .ogwho[hidden] { display: none; }
+  /* The name is the one thing on this row that must be readable at a glance --
+     "am I on the right account" is the question it answers. */
+  .ogwho-name { color: var(--text); font-weight: 600; }
   .ogcount {
     font-size: var(--fs-micro);
     color: var(--text-3);
@@ -3809,6 +4151,17 @@ body.dragging-row, body.dragging-row * { cursor: grabbing !important; user-selec
     min-height: 104px;
     text-align: left;
     font-size: var(--fs-body);
+    /* A card is a <button>, and the base button rule sets `white-space: nowrap`
+       so the 28px control labels never wrap.  That nowrap was inherited all the
+       way down into .ogname, which silently disabled the two-line clamp and hard
+       cut 13 of 24 names mid-word with no ellipsis (measured 2026-11-16 at
+       1255x869, every .ogname 18.89px tall = exactly one line).  These two lines
+       are what make the clamp real. */
+    white-space: normal;
+    /* Top-aligned, not centred: with `center` the 100px thumb floated beside a
+       3-to-5-line text block and every row sat at a slightly different optical
+       height, which is what "歪歪扭扭" was describing. */
+    align-items: flex-start;
     background: rgba(255, 255, 255, var(--glass));
     border: 1px solid var(--glass-edge);
     border-radius: var(--r-surface);
@@ -3842,6 +4195,8 @@ body.dragging-row, body.dragging-row * { cursor: grabbing !important; user-selec
     -webkit-line-clamp: 2;
     -webkit-box-orient: vertical;
     overflow: hidden;
+    overflow-wrap: anywhere;
+    white-space: normal;
   }
   .ogmeta {
     font-size: var(--fs-micro);
@@ -3854,6 +4209,18 @@ body.dragging-row, body.dragging-row * { cursor: grabbing !important; user-selec
     font-size: var(--fs-micro);
     color: var(--text-3);
     font-variant-numeric: tabular-nums;
+  }
+  .ognum .ogdate { color: var(--text-2); }
+  /* The original name, shown under the translation once 译成中文 is on.  One
+     micro line, clamped to a single line: the author's own words are worth
+     keeping in view -- a mistranslated name is otherwise unfindable -- but they
+     must not push the tag pills off the bottom of a 126px card. */
+  .ogorig {
+    font-size: var(--fs-micro);
+    color: var(--text-3);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
   .ogtags-row {
     display: flex;
@@ -3876,6 +4243,25 @@ body.dragging-row, body.dragging-row * { cursor: grabbing !important; user-selec
     margin-top: 12px;
   }
   .ogfoot .ogcount { margin-left: auto; }
+  /* Jumping to a page.  This list is 1722 pages long and 下一页 is the only way
+     through it -- 1721 clicks to reach the end.  The count sitting beside it
+     already says where you are, so the place to type where you want to be is
+     right next to it.  Number input, 28px like every other control on the row;
+     the spinner is left in place because it is the fastest way to nudge a page
+     up or down without retyping. */
+  .ogjump {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: var(--fs-micro);
+    color: var(--text-3);
+  }
+  .ogjump input {
+    width: 72px;
+    height: 28px;
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+  }
   /* The detail column is a sibling of the grid, not a drawer: the whole point
      of putting this next to the local mods page is comparing, and a drawer
      hides the list you are comparing against.  The second column is declared
@@ -3891,7 +4277,21 @@ body.dragging-row, body.dragging-row * { cursor: grabbing !important; user-selec
   }
   #view-online.on > .box.hasdetail {
     grid-template-columns: minmax(0, 1fr) minmax(320px, 380px);
+    /* The six rows the left column actually has, written down instead of left
+       implicit.  Without them the grid has exactly ONE explicit row, so the
+       detail column's `grid-row: 1 / -1` covers only that one row -- and the
+       second left-column item is pushed to row 2, which lands it below a hole
+       the height of the detail card.  Measured 2026-11-16 at 1255px: heading at
+       y=101 and the account row at y=279, 141px of nothing between them. */
+    grid-template-rows: auto auto auto auto auto auto;
   }
+  /* Everything in the left column is pinned to it by name.  `.ogwho` is in this
+     list because it is a child of the box like the rest: leaving it out lets
+     auto-placement drop it into column 2, where the detail column already spans
+     every row, so the account row lands one row down and the heading sits above
+     a 140px hole.  Measured 2026-11-16 at 1255px. */
+  #view-online.on > .box > h2,
+  #view-online.on > .box > .ogwho,
   #view-online.on > .box > .ogbar,
   #view-online.on > .box > .ogtags,
   #view-online.on > .box > .ogfoot,
@@ -3930,6 +4330,19 @@ body.dragging-row, body.dragging-row * { cursor: grabbing !important; user-selec
     max-height: 260px;
     overflow-y: auto;
   }
+  /* The author's own words, folded under the translation.  A `<details>` rather
+     than a second paragraph: the translated text is what the player asked for,
+     the English is the evidence behind it and should not take up the column. */
+  #og-detail .ogdesc-en {
+    margin-top: 6px;
+    font-size: var(--fs-micro);
+    color: var(--text-3);
+  }
+  #og-detail .ogdesc-en > summary {
+    cursor: pointer;
+    color: var(--text-2);
+  }
+  #og-detail .ogdesc-en > summary:hover { color: var(--text); }
   /* The empty/blocked state is a card, not a paragraph: an instruction the
      player has to read has to look like the thing they are meant to press.
      Capped and centred rather than stretched: a 1085px card holding three lines
@@ -3976,6 +4389,235 @@ body.dragging-row, body.dragging-row * { cursor: grabbing !important; user-selec
     #view-online.on > .box.hasdetail { grid-template-columns: minmax(0, 1fr); }
     #og-detail { grid-column: 1; grid-row: auto; margin-top: 12px; }
   }
+
+  /* ---- the assistant that sits in the corner of every screen -------------
+     One floating bubble plus its panel, outside every `.box`, because it is
+     not part of any screen: it follows the player from 模组 to 编辑器 to 语言.
+     Below the toast (60) and the notice (80) so a message or a modal still
+     wins the corner; above the shell so it is never scrolled away. */
+  #pet {
+    /* The ball sits on the card's right edge, so it reads as part of the page
+       rather than as a thing floating in the margin.  That edge is decided by
+       two numbers: the shell's padding-right, and the 12px `scrollbar-gutter`
+       `main` reserves inside its own column -- which is why this cannot be the
+       same 20 that a plain "line it up with the left" would suggest.  Under
+       1101px the shell has its own 16px padding and no extra gap, so the card
+       ends 16 + 0 + 12 = 28 from the frame; above it the shell gives up 8 and
+       the gap is spent on the left, so the card ends 8 + 12 = 20 out and the
+       ball follows.  Keep these two in step with the `.shell` media query. */
+    position: fixed; right: 28px; bottom: 24px; z-index: 55;
+    display: flex; align-items: flex-end; gap: 8px;
+    transition: bottom 160ms ease, transform 240ms ease;
+  }
+  /* Parked against an edge she tucks behind the frame, and steps half out to
+     look.  The offset lives on the wrapper, not on the ball: the ball already
+     owns two transforms (the press bounce and the landing squash), and a third
+     writer on one element means one of them silently stops working.
+
+     The parked ball is 56 wide and its right edge already sits 20 in from the
+     frame, so the offset is read as "how much of her is behind the wall":
+     pushed 64, exactly 12px of her shoulder is still on screen, which is the
+     difference between "she is behind the frame" and "she is gone".  Pushed 34,
+     42px is visible -- her head and upper body lean out while her skirt stays
+     behind the wall.  Peeking is therefore its own offset, never a full return;
+     a full return would make the wall stop meaning anything.
+
+     The previous version pushed 56 on a 56-wide ball: a full exit with a
+     comment claiming 20px stayed visible.  Only the screenshot caught it. */
+  #pet.hide { transform: translateX(64px); }
+  #pet.side-left.hide { transform: translateX(-64px); }
+  #pet.hide.out { transform: translateX(34px); }
+  #pet.side-left.hide.out { transform: translateX(-34px); }
+  /* Dragging must not fight the snap animation: while the pointer is down the
+     element is where the pointer says, and the spring-back is what stops it
+     feeling like a lost object. */
+  #pet.drag { transition: none; }
+  #pet.off { display: none; }
+  /* Two edges, one layout flip.  `row-reverse` puts the ball on the left and the
+     panel on its right; without it the panel would open off the left edge. */
+  #pet.side-left { right: auto; left: 16px; flex-direction: row-reverse; }
+  @media (min-width: 1101px) {
+    /* 20, to land on the card's right edge: 8 shell padding + 12 gutter. */
+    #pet { right: 20px; }
+    #pet.side-left { left: 16px; }
+  }
+  /* The panel floats over the ball instead of sitting beside it in the flow.
+     While it was a flex sibling, opening it stretched the wrapper from 48 to
+     286 tall, and every measurement of "where is the ball" had to be corrected
+     for a box that changed size underneath it.  Out of flow, the wrapper is
+     always the ball, the ball's coordinates mean one thing, and the panel can
+     be told to hang off either side without moving anything. */
+  #pet-panel {
+    position: absolute; right: 0; bottom: calc(100% + 8px);
+    display: none; flex-direction: column; gap: 8px;
+    width: 336px; max-width: calc(100vw - 88px);
+    max-height: calc(100vh - 96px); overflow-y: auto;
+    padding: 12px;
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: var(--r-surface); box-shadow: var(--shadow-lift);
+  }
+  #pet.open #pet-panel { display: flex; }
+  #pet.side-left #pet-panel { right: auto; left: 0; }
+  /* A ball parked near the top of the window has no room above it.  Opening
+     downward keeps the ball where the hand left it and still shows the panel,
+     which is the only one of the two options that does not lie about or hide
+     something.  `petSync` sets this class from measured heights, not media
+     queries, because where the ball is is a fact about the drag, not the
+     viewport. */
+  #pet.down #pet-panel { bottom: auto; top: calc(100% + 8px); }
+  #pet-head { display: flex; align-items: center; gap: 8px; }
+  #pet-title { font-size: var(--fs-title); font-weight: 600; color: var(--text); }
+  #pet-state { font-size: var(--fs-micro); color: var(--text-2); margin-left: auto; }
+  #pet-log {
+    display: flex; flex-direction: column; gap: 6px;
+    max-height: 240px; overflow-y: auto;
+    font-size: var(--fs-body); line-height: 1.6;
+  }
+  #pet-log:empty { display: none; }
+  .pturn {
+    padding: 8px; border-radius: var(--r-control);
+    white-space: normal; overflow-wrap: anywhere;
+  }
+  .pturn.me { align-self: flex-end; background: var(--accent-soft); color: var(--accent-ink); }
+  .pturn.ai { background: var(--panel-2); color: var(--text); border: 1px solid var(--line); }
+  .pturn.bad { background: var(--bad-soft); color: var(--bad); border-color: var(--bad); }
+  .pturn .src {
+    display: block; margin-top: 4px;
+    font-size: var(--fs-micro); color: var(--text-2);
+  }
+  #pet-in {
+    padding: 8px; min-height: 48px; max-height: 120px; resize: vertical;
+    font-family: inherit; font-size: var(--fs-body); line-height: 1.6;
+    color: var(--text); background: var(--panel-2);
+    border: 1px solid var(--line); border-radius: var(--r-control);
+  }
+  #pet-in:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  #pet-code {
+    display: none; margin: 0; padding: 8px;
+    max-height: 132px; overflow: auto; white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    font-size: var(--fs-micro); line-height: 1.6;
+    color: var(--text); background: var(--panel-2);
+    border: 1px solid var(--line); border-radius: var(--r-control);
+  }
+  #pet-code.on { display: block; }
+  #pet-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  /* The frame is a portrait box, not a disc.  A circle held a whale that read as
+     one blob; a standing character is about twice as tall as she is wide, so the
+     box is too.  Sizing for the picture rather than for a square is what decides
+     whether you can see a face at all: the drawings are 112x220, and squeezing
+     that into 80 px of height leaves a 41 px wide figure. */
+  #pet-btn {
+    position: relative; flex: none;
+    width: 84px; height: 148px; padding: 0;
+    /* No plate.  The drawing has its own silhouette; a border and a fill would
+       put a rounded box around a character.  The shadow underneath does the
+       work the plate used to do (separating her from the page) without drawing
+       an edge nobody asked for. */
+    background: none; border: 0; box-shadow: none; color: var(--accent-ink);
+    /* The landing squash is a scaleY on this element; pinning the origin to the
+       bottom edge is what makes it land rather than shrink in mid-air. */
+    transform-origin: 50% 100%;
+    cursor: grab; touch-action: none;
+  }
+  /* She has to answer the pointer everywhere her body is, and the picture is
+     shorter than the button box on purpose: the extra room at the bottom is
+     where the landing squash has somewhere to go. */
+  #pet-btn:hover .pimg { filter: drop-shadow(0 4px 10px rgba(31, 35, 40, .22)) brightness(1.04); }
+  /* Parked against an edge she shrinks, she does not move off screen: an element
+     with a negative offset still answers hit tests, and a character you can
+     press but cannot see is worse than one that is merely small. */
+  #pet.peek #pet-btn { width: 56px; height: 100px; }
+  /* ---- the portrait, and the three transforms that act on it ---- */
+  /* No white pill behind her any more: the painting has its own silhouette and
+     a border would draw a box around a drawing.  The shadow is what separates
+     her from the page. */
+  .pimg {
+    display: block; width: 84px; height: 144px;
+    object-fit: contain; object-position: 50% 100%;
+    -webkit-user-drag: none; user-select: none;
+    filter: drop-shadow(0 4px 10px rgba(31, 35, 40, .22));
+  }
+  #pet.peek .pimg { width: 56px; height: 96px; }
+  /* A clip and a still take the same box and never show at once: the clip is
+     the walk, the still is everything else.  `object-fit: contain` on both so
+     the character does not change size when the walk starts. */
+  .pvid {
+    display: none; width: 84px; height: 144px;
+    object-fit: contain; object-position: 50% 100%;
+    -webkit-user-drag: none; user-select: none; pointer-events: none;
+    filter: drop-shadow(0 4px 10px rgba(31, 35, 40, .22));
+  }
+  #pet.clip .pimg { display: none; }
+  #pet.clip .pvid { display: block; }
+  #pet.peek .pvid { width: 56px; height: 96px; }
+  #pet.side-left .pvid { transform: scaleX(-1); }
+  /* Press bounce, taken from `mdd111/deepseek-dafeiyu-pet`: on a press the body
+     goes wide and short from a pinned bottom edge, then decays back
+     (`press_t = 1.0`, `-0.12` a frame, `sx = 1 + 0.13 t`, `sy = 1 - 0.13 t`).
+     Three transforms own three separate elements, and they have to stay
+     separate: the press, the breathing bob, and the left-side flip.  Any two on
+     one element means one of them silently overwrites the other. */
+  #pet-btn .ppress {
+    display: block; transform-box: fill-box; transform-origin: 50% 100%;
+  }
+  #pet-btn .pbob {
+    display: block; transform-box: fill-box; transform-origin: 50% 100%;
+    animation: petbob 2.8s ease-in-out infinite alternate;
+  }
+  #pet.m-think .pbob { animation-duration: 1.1s; }
+  #pet.m-happy .pbob { animation-duration: .8s; }
+  #pet.m-sad .pbob { animation-duration: 5.2s; }
+  #pet.m-sleep .pbob { animation-duration: 7s; }
+  /* Being scratched behind the ear: a quick, wider bounce, not a colour. */
+  #pet.side-left .pimg { transform: scaleX(-1); }
+  #pet.pat .pimg { transform: scaleX(1) scale(1.08); }
+  #pet.side-left.pat .pimg { transform: scaleX(-1) scale(1.08); }
+
+    /* One line above the ball.  `pointer-events: none` is not decoration: the
+     acceptance gate flags overlapping pressable boxes, and a bubble that eats
+     the click meant for the ball is worse than no bubble. */
+  #pet-bubble {
+    position: absolute; bottom: calc(100% + 8px); right: 0;
+    display: none; width: 176px; padding: 8px;
+    font-size: var(--fs-micro); font-weight: 400; line-height: 1.55;
+    text-align: left; white-space: normal;
+    color: var(--text); background: var(--panel);
+    border: 1px solid var(--line); border-radius: var(--r-surface);
+    box-shadow: var(--shadow-lift); pointer-events: none;
+  }
+  #pet-bubble.on { display: block; }
+  /* Same problem as the panel, same answer, decided separately: the bubble
+     also appears when the panel is shut (a pat, a stray thought), so it cannot
+     borrow the panel's flip.  A remark that renders off the top of the window
+     is worse than a remark that renders under the ball. */
+  #pet.bdown #pet-bubble { bottom: auto; top: calc(100% + 8px); }
+  #pet.side-left #pet-bubble { right: auto; left: 0; }
+  #pet-bond { font-size: var(--fs-micro); color: var(--text-2); }
+  /* One keyframes block only.  The acceptance gate treats anything after `}` as
+     a selector, so a second animation would register `50%` twice and red the
+     duplicate-selector check. */
+  /* The breathing ring was an outline around a green ball; around a painting it
+     reads as a focus ring, so the breathing moved into the bob and only the
+     ring's glow survives, faintly, under her feet. */
+  #pet-btn::after {
+    content: ""; position: absolute; left: 50%; bottom: 4px;
+    width: 44px; height: 8px; margin-left: -22px;
+    border-radius: var(--r-pill); background: var(--accent);
+    opacity: 0; filter: blur(3px);
+    animation: petbreathe 3.2s ease-in-out infinite;
+  }
+  @keyframes petbreathe {
+    0%, 100% { opacity: 0; }
+    50% { opacity: .45; }
+  }
+  /* The bob is the whole of the idle life: the picture is a painting, so an
+     eyelid would mean a second file per blink. */
+  @keyframes petbob {
+    from { transform: translateY(0); }
+    to { transform: translateY(-2px); }
+  }
+
 </style>
 </head>
 <body>
@@ -3990,21 +4632,21 @@ body.dragging-row, body.dragging-row * { cursor: grabbing !important; user-selec
     </span>
   </div>
   <div class="navlist">
-    <button class="navitem on" id="nav-home"><svg class="ni" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.6 1.8 6.8v7.6h4.6v-4.2h3.2v4.2h4.6V6.8z"/></svg>主页</button>
-    <button class="navitem" id="nav-mods"><svg class="ni" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 3.2h5.2v4.4H2zM8.8 3.2H14v4.4H8.8zM2 8.4h5.2V14H2zM8.8 8.4H14V14H8.8z"/></svg>模组</button>
+    <button class="navitem on" id="nav-home"><svg class="ni" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.6 1.8 6.8v7.6h4.6v-4.2h3.2v4.2h4.6V6.8z"/></svg><span class="nv">主页</span></button>
+    <button class="navitem" id="nav-mods"><svg class="ni" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 3.2h5.2v4.4H2zM8.8 3.2H14v4.4H8.8zM2 8.4h5.2V14H2zM8.8 8.4H14V14H8.8z"/></svg><span class="nv">模组</span></button>
     <!-- Directly after 模组 because they answer the same question about two
          collections: what is installed here, and what exists out there.  The
          globe is a stroke icon (`.st`) for the same reason the gear is: a
          meridian network is zero-area line work, and `fill` would paint the
          disc solid. -->
-    <button class="navitem" id="nav-online"><svg class="ni st" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.1"/><path d="M1.9 8h12.2"/><path d="M8 1.9c1.9 1.9 2.9 4 2.9 6.1S9.9 12.2 8 14.1C6.1 12.2 5.1 10.1 5.1 8S6.1 3.8 8 1.9z"/></svg>线上工坊</button>
-    <button class="navitem" id="nav-editor"><svg class="ni" viewBox="0 0 16 16" aria-hidden="true"><path d="M11.7 1.6 14.4 4.3 5.6 13.1 1.9 14.1l1-3.7zM10.6 2.7 13.3 5.4"/></svg>编辑器</button>
-    <button class="navitem" id="nav-card"><svg class="ni" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 4h4v4H2zM7 4h4v4H7zM12 4h2v4h-2zM2 9h4v4H2zM7 9h4v4H7z"/></svg>命令面板</button>
-    <button class="navitem" id="nav-lang"><svg class="ni st" viewBox="0 0 16 16" aria-hidden="true"><path d="M6.6 4.4 2.9 8l3.7 3.6M9.4 4.4 13.1 8l-3.7 3.6"/></svg>脚本语言</button>
-    <button class="navitem" id="nav-intents"><svg class="ni" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.9 14.1 8 8 14.1 1.9 8z"/></svg>能做的事</button>
-    <button class="navitem" id="nav-tree"><svg class="ni" viewBox="0 0 16 16" aria-hidden="true"><path d="M7.1 1.7h1.8v4.1h3.2v1.7H8.9v6.8H7.1V7.5H3.9V5.8h3.2z"/></svg>科技树</button>
-    <button class="navitem" id="nav-settings"><svg class="ni" viewBox="0 0 24 24" aria-hidden="true"><path fill-rule="evenodd" d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg>设置</button>
-    <button class="navitem" id="nav-about"><svg class="ni st" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.1"/><path d="M8 7.1v4.4"/><circle cx="8" cy="4.7" r=".8" fill="currentColor" stroke="none"/></svg>关于</button>
+    <button class="navitem" id="nav-online"><svg class="ni st" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.1"/><path d="M1.9 8h12.2"/><path d="M8 1.9c1.9 1.9 2.9 4 2.9 6.1S9.9 12.2 8 14.1C6.1 12.2 5.1 10.1 5.1 8S6.1 3.8 8 1.9z"/></svg><span class="nv">线上工坊</span></button>
+    <button class="navitem" id="nav-editor"><svg class="ni" viewBox="0 0 16 16" aria-hidden="true"><path d="M11.7 1.6 14.4 4.3 5.6 13.1 1.9 14.1l1-3.7zM10.6 2.7 13.3 5.4"/></svg><span class="nv">编辑器</span></button>
+    <button class="navitem" id="nav-card"><svg class="ni" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 4h4v4H2zM7 4h4v4H7zM12 4h2v4h-2zM2 9h4v4H2zM7 9h4v4H7z"/></svg><span class="nv">命令面板</span></button>
+    <button class="navitem" id="nav-lang"><svg class="ni st" viewBox="0 0 16 16" aria-hidden="true"><path d="M6.6 4.4 2.9 8l3.7 3.6M9.4 4.4 13.1 8l-3.7 3.6"/></svg><span class="nv">脚本语言</span></button>
+    <button class="navitem" id="nav-intents"><svg class="ni" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.9 14.1 8 8 14.1 1.9 8z"/></svg><span class="nv">能做的事</span></button>
+    <button class="navitem" id="nav-tree"><svg class="ni" viewBox="0 0 16 16" aria-hidden="true"><path d="M7.1 1.7h1.8v4.1h3.2v1.7H8.9v6.8H7.1V7.5H3.9V5.8h3.2z"/></svg><span class="nv">科技树</span></button>
+    <button class="navitem" id="nav-settings"><svg class="ni" viewBox="0 0 24 24" aria-hidden="true"><path fill-rule="evenodd" d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg><span class="nv">设置</span></button>
+    <button class="navitem" id="nav-about"><svg class="ni st" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.1"/><path d="M8 7.1v4.4"/><circle cx="8" cy="4.7" r=".8" fill="currentColor" stroke="none"/></svg><span class="nv">关于</span></button>
   </div>
   <!-- Band three.  The rail used to jump from four nav rows straight to the
        footer, leaving 543px of nothing at 1237x880.  That band is where a
@@ -4513,12 +5155,14 @@ body.dragging-row, body.dragging-row * { cursor: grabbing !important; user-selec
       名字表；某个名字只有在官方脚本里真的被调用过才算见证，只有名字表里有、官方从没用过
       的，会单独标出来，因为那种调用能加载、但什么都不做。
       写完按「放进本地模组」，脚本会落到 mods/local 的模组文件夹里并自动启用；再按一次是覆盖
-      同一份文件，不会越存越多。
+      同一份文件，不会越存越多。「让模型写整份」要先把大模型接上：接口地址、模型名和密钥在
+      「设置 → 模型」那一栏填；不填也照样能本地生成，只是能写的命令少。
     </div>
     <div class="tabs">
       <input type="text" id="lang-ai-text" aria-label="用一句中文说一条 AI 规则"
              placeholder="例如：造20个骑士">
       <button class="chip" id="lang-ai-run">写出来</button>
+      <button class="chip" id="lang-ai-llm">让模型写整份</button>
     </div>
     <div class="tabs">
       <select id="lang-ai-file" aria-label="要改哪个 .per 文件"></select>
@@ -4551,8 +5195,9 @@ body.dragging-row, body.dragging-row * { cursor: grabbing !important; user-selec
     </div>
     <div class="tabs">
       <input type="text" id="lang-xs-text" aria-label="用一句中文说一条 XS 要做的事"
-             placeholder="例如：把 goal 0 设成 1">
+             placeholder="例如：村民血量改成 1000">
       <button class="chip" id="lang-xs-run">写出来</button>
+      <button class="chip" id="lang-xs-llm">让模型写</button>
     </div>
     <div class="tabs">
       <select id="lang-xs-file" aria-label="要改哪个 .xs 文件"></select>
@@ -4635,8 +5280,16 @@ body.dragging-row, body.dragging-row * { cursor: grabbing !important; user-selec
      server, so an ordinary link would navigate the workshop away from itself
      and there is no Back button to come home with. -->
 <section class="view" id="view-about">
-  <div class="box">
+  <div class="box abhero">
     <h2>关于</h2>
+    <div class="abwrap">
+      <span class="ablogo"><img id="about-logo-img" alt=""></span>
+      <span class="abname">
+        <b id="about-hero-name">模组工坊</b>
+        <span>AoE2 DE 的本地模组编辑器</span>
+      </span>
+      <span class="abver" id="about-hero-ver">正在读取版本…</span>
+    </div>
     <div class="hint">
       模组工坊是一个本地工具。它读你机器上的 <b>.dat</b> 与 JSON，写出来的也是你机器上的文件，
       不上传任何东西。改动只落在你自己建的模组文件夹里，游戏装不装、启不启用，都由你决定。
@@ -4649,42 +5302,66 @@ body.dragging-row, body.dragging-row * { cursor: grabbing !important; user-selec
       <span class="abi">署名</span>
       <span class="abv" id="about-author">RemonBo</span>
     </div>
-    <div class="abrow">
-      <span class="abi">爱发电</span>
-      <span class="abv" id="about-fan-url">https://afdian.com/a/RemonBo</span>
+    <div class="abrow link">
+      <button class="abtile" id="about-open-fan" title="在浏览器里打开爱发电" aria-label="在浏览器里打开爱发电">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8l8.8 8.8 8.8-8.8a5.5 5.5 0 0 0 0-7.8z"/></svg>
+      </button>
+      <span class="abcol">
+        <span class="abt">爱发电</span>
+        <span class="abv absub" id="about-fan-url">https://afdian.com/a/RemonBo</span>
+      </span>
       <span class="abact">
-        <button class="chip" id="about-copy-fan">复制链接</button>
-        <button class="chip" id="about-open-fan">浏览器打开</button>
+        <button class="chip" id="about-copy-fan">复制</button>
       </span>
     </div>
-    <div class="abrow">
-      <span class="abi">B 站</span>
-      <span class="abv" id="about-bili-url">https://space.bilibili.com/6978282</span>
+    <div class="abrow link">
+      <button class="abtile" id="about-open-bili" title="在浏览器里打开 B 站" aria-label="在浏览器里打开 B 站">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6" width="18" height="13" rx="3"/><path d="M8 3l3 3M16 3l-3 3"/><path d="M10 10.5l4.5 2.5-4.5 2.5z"/></svg>
+      </button>
+      <span class="abcol">
+        <span class="abt">B 站</span>
+        <span class="abv absub" id="about-bili-url">https://space.bilibili.com/6978282</span>
+      </span>
       <span class="abact">
-        <button class="chip" id="about-copy-bili">复制链接</button>
-        <button class="chip" id="about-open-bili">浏览器打开</button>
+        <button class="chip" id="about-copy-bili">复制</button>
       </span>
     </div>
-    <div class="abrow">
-      <span class="abi">GitHub</span>
-      <span class="abv" id="about-gh-url">https://github.com/198agk</span>
+    <div class="abrow link">
+      <button class="abtile" id="about-open-gh" title="在浏览器里打开 GitHub" aria-label="在浏览器里打开 GitHub">
+        <svg viewBox="0 0 24 24" aria-hidden="true" class="fi"><path d="M12 .5C5.73.5.5 5.73.5 12c0 5.08 3.29 9.39 7.86 10.91.58.11.79-.25.79-.55v-2.1c-3.2.7-3.88-1.41-3.88-1.41-.52-1.33-1.28-1.68-1.28-1.68-1.05-.72.08-.7.08-.7 1.16.08 1.77 1.19 1.77 1.19 1.03 1.77 2.7 1.26 3.36.96.1-.75.4-1.26.73-1.55-2.55-.29-5.24-1.28-5.24-5.7 0-1.26.45-2.29 1.19-3.1-.12-.29-.52-1.46.11-3.05 0 0 .97-.31 3.18 1.18a11 11 0 0 1 5.8 0c2.2-1.49 3.17-1.18 3.17-1.18.63 1.59.23 2.76.11 3.05.74.81 1.19 1.84 1.19 3.1 0 4.43-2.7 5.41-5.26 5.7.41.36.78 1.06.78 2.14v3.17c0 .3.21.67.8.55A11.5 11.5 0 0 0 23.5 12C23.5 5.73 18.27.5 12 .5z"/></svg>
+      </button>
+      <span class="abcol">
+        <span class="abt">GitHub</span>
+        <span class="abv absub" id="about-gh-url">https://github.com/198agk</span>
+      </span>
       <span class="abact">
-        <button class="chip" id="about-copy-gh">复制链接</button>
-        <button class="chip" id="about-open-gh">浏览器打开</button>
+        <button class="chip" id="about-copy-gh">复制</button>
       </span>
     </div>
     <div class="hint">
-      报问题请带上截图或录屏，再说一句你在哪个页签。一眼能看出来的东西，
-      比三段描述准；说清在哪一页，我才能照着走一遍。
+      报问题请带上截图或录屏。
     </div>
   </div>
 
   <div class="box">
-    <h2>赞助者</h2>
-    <div class="ablist">
-      <p><b>还没有名单</b></p>
-      <p>目前没有任何赞助者，也不需要有：全部功能免费，不看赞助。以后真有人赞助，
-        会在这里按时序列出来（随时可以要求撤下）。</p>
+    <h2>支持开发者</h2>
+    <div class="abrow link">
+      <button class="abtile" id="about-open-sponsor" title="在浏览器里打开爱发电" aria-label="在浏览器里打开爱发电">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8l8.8 8.8 8.8-8.8a5.5 5.5 0 0 0 0-7.8z"/></svg>
+      </button>
+      <span class="abcol">
+        <span class="abt">如果您觉得 模组工坊 对您有帮助</span>
+        <span class="absub">欢迎请作者喝杯咖啡</span>
+      </span>
+      <span class="abact">
+        <button class="chip" id="about-copy-sponsor">复制</button>
+      </span>
+    </div>
+    <div class="abqr">
+      <img id="about-qr" alt="爱发电赞助页的二维码" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAPAAAADwAQMAAAAEm3vRAAAABlBMVEX///8AAABVwtN+AAAACXBIWXMAAA7EAAAOxAGVKw4bAAABoklEQVRYheWYsZHFMAhE8ThQ6BJUikuzSnMpKkGhAo+5BSR/nTsQJrq55wT+woKIvhqscRGFQhtzpsh8HvbfqfEt2a0XBeYCDI44kubsGi8oynoZLRF0P4FRmK9gFj1kfLCfnnClrZCInM9vYNO5lAV10RD8agN/uM21UEPZygY1RCnLe+z5wy0CV8hh0y7gk94xIRadm1Hp7x05y+B6svaLaQFca6hiU5hr0uD4I/U28IqVMovOVdyiB4y19MhhUsw6r8HFp9SBLQ5N2y++ZVzLxqX9rQZtuOvcKbb2hs7VpiL3SKZzv1j6QNRQrRzDQkZTY9YGJ3FgUqOKPW92jRe+Vec0VGVPg86dYhiVzLUKgy7tRDaj6hu2V7xoWfqFzO2ysO6eGuvmIUInu4Gjpt117hjDqfQD+LMa1W79zc9bj0vcItg4jyYHGnbsWbFpu20e8gHyHo3KK35uf5wO5XcqHoPOfeL+1tNWrtz7+/UU5BYT6VutNgL9DHp+LA5cANvgat3vF5vO+5NH1sXjebP0i9tc62XJ/fU9/Rt7/vA34w+qkNpMzHPXQAAAAABJRU5ErkJggg==">
+      <span class="abcol">
+        <span class="abt">扫码去爱发电</span>
+      </span>
     </div>
   </div>
 
@@ -4771,7 +5448,6 @@ body.dragging-row, body.dragging-row * { cursor: grabbing !important; user-selec
     <h2>版本</h2>
     <div class="ablist">
       <p id="about-version">正在读取版本…</p>
-      <p id="about-read"></p>
     </div>
   </div>
 </section>
@@ -4788,6 +5464,7 @@ body.dragging-row, body.dragging-row * { cursor: grabbing !important; user-selec
         <button class="settab on" id="settab-general" data-setgroup="general">通用</button>
         <button class="settab" id="settab-look" data-setgroup="look">外观</button>
         <button class="settab" id="settab-adv" data-setgroup="adv">高级</button>
+        <button class="settab" id="settab-model" data-setgroup="model">模型</button>
       </nav>
       <div class="setbody">
 
@@ -4811,6 +5488,11 @@ body.dragging-row, body.dragging-row * { cursor: grabbing !important; user-selec
             <span class="si"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3.4 2.6h9.2v10.8l-4.6-2.4-4.6 2.4z"/></svg></span>
             <div><div class="st">重建前提醒未保存的改动</div><div class="sd">编辑器里有改动时，点「重建并重装」先问一句</div></div>
             <div class="sc"><button class="switch on" id="pref-warnunsaved" role="switch" aria-checked="true" aria-label="重建前提醒未保存的改动"><i></i></button></div>
+          </div>
+          <div class="setrow">
+            <span class="si"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.6 3.4h10.8v8.2H8.4L5.2 14v-2.4H2.6z"/><path d="M5.6 6.6h4.8"/></svg></span>
+            <div><div class="st">角落助手</div><div class="sd">在窗口右下角常驻一个气泡，哪一页都能问它写 AI 与 XS 脚本</div></div>
+            <div class="sc"><button class="switch on" id="pref-pet" role="switch" aria-checked="true" aria-label="角落助手"><i></i></button></div>
           </div>
         </div>
 
@@ -4918,6 +5600,36 @@ body.dragging-row, body.dragging-row * { cursor: grabbing !important; user-selec
           </div>
         </div>
 
+        <div class="setgroup" id="setgroup-model">
+          <div class="setrow">
+            <span class="si"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3.2 5.2h9.6v6.4H3.2z"/><path d="M5.6 8h4.8M5.6 3.2v2M10.4 3.2v2"/></svg></span>
+            <div><div class="st">接一个大模型当副驾</div><div class="sd">说一句人话，它写第一稿，再由 exe 里读出来的命令表逐条验收：参数个数不对、类型不对、命令名不存在，都会退回让它重写，最多三轮。不填也能用，中文句子走本地模板，只是能写的命令少。</div></div>
+            <div class="sc"><span class="hint" id="ai-model-verdict">还没有配置</span></div>
+          </div>
+          <div class="setrow">
+            <span class="si"><svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="5.8"/><path d="M2.2 8h11.6M8 2.2c3.4 3.6 3.4 8 0 11.6M8 2.2c-3.4 3.6-3.4 8 0 11.6"/></svg></span>
+            <div><div class="st">接口地址</div><div class="sd">OpenAI 兼容的根地址，通常以 /v1 结尾</div></div>
+            <div class="sc"><input type="text" id="ai-model-base" aria-label="接口地址"
+                   placeholder="https://api.deepseek.com/v1"></div>
+          </div>
+          <div class="setrow">
+            <span class="si"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.6 4.4h10.8v7.2H2.6z"/><path d="M4.6 7h3.2M4.6 9.2h6"/></svg></span>
+            <div><div class="st">模型名</div><div class="sd">由服务方决定；写错时这张表第一行右边会说出来</div></div>
+            <div class="sc"><input type="text" id="ai-model-name" aria-label="模型名"
+                   placeholder="deepseek-chat"></div>
+          </div>
+          <div class="setrow">
+            <span class="si"><svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="5.6" cy="8" r="2.6"/><path d="M8.2 8h5.4M11.4 8v2.2"/></svg></span>
+            <div><div class="st">密钥</div><div class="sd">只存在这台机器的一个用户文件里，不进模组、不进发布包；装好之后再打开这一页也读不回来</div></div>
+            <div class="sc">
+              <input type="text" id="ai-model-key" aria-label="接口密钥"
+                     placeholder="粘贴密钥">
+              <button class="chip" id="ai-model-save">保存</button>
+              <button class="chip" id="ai-model-clear">忘掉密钥</button>
+            </div>
+          </div>
+        </div>
+
       </div>
     </div>
   </div>
@@ -4932,6 +5644,16 @@ body.dragging-row, body.dragging-row * { cursor: grabbing !important; user-selec
 <section class="view" id="view-online">
   <div class="box">
     <h2>线上工坊</h2>
+    <!-- Who the tool is borrowing, and the way out of it.
+         The sign-out control is not buried in settings: the page says "you are
+         signed in as X" the moment it knows, so the answer to "then how do I
+         stop?" has to be in the same place as the statement.  Hidden until a
+         session is actually confirmed -- a button that signs out of nothing
+         trains people to ignore it. -->
+    <div class="ogwho" id="og-who" hidden>
+      <span class="ogwho-name" id="og-who-name"></span>
+      <button class="chip" id="og-signout">退出登录</button>
+    </div>
     <div class="ogbar">
       <input type="search" id="og-q" placeholder="搜模组名或作者" aria-label="搜索线上模组">
       <select id="og-sort" aria-label="排序方式">
@@ -4942,6 +5664,11 @@ body.dragging-row, body.dragging-row * { cursor: grabbing !important; user-selec
       </select>
       <button class="chip" id="og-search">搜索</button>
       <button class="chip" id="og-refresh">刷新数据</button>
+      <!-- Translation is a choice, not a default: the names are the authors'
+           own words and a machine reading of them is a second opinion, not a
+           replacement.  Off until asked for, and the original stays on the card
+           when it is on. -->
+      <button class="chip" id="og-zh" aria-pressed="false" title="把模组名、类型和简介译成中文">译成中文</button>
       <span class="ogcount" id="og-stamp">还没取过数据</span>
     </div>
     <div class="ogtags" id="og-tags" aria-label="按类型筛选"></div>
@@ -4950,6 +5677,16 @@ body.dragging-row, body.dragging-row * { cursor: grabbing !important; user-selec
       <button class="chip" id="og-prev">上一页</button>
       <button class="chip" id="og-next">下一页</button>
       <span class="ogcount" id="og-page"></span>
+      <!-- 1722 pages with only 下一页 to move through is the long way round; the
+           number box takes you straight there.  Enter works as well as the
+           button, because a box you have to reach for the mouse to leave is a
+           box that did not need to be a box. -->
+      <span class="ogjump">
+        <label for="og-jump">跳到</label>
+        <input id="og-jump" type="number" min="1" inputmode="numeric" aria-label="跳到第几页">
+        <span>页</span>
+        <button class="chip" id="og-goto">跳转</button>
+      </span>
     </div>
     <aside id="og-detail" aria-live="polite"></aside>
   </div>
@@ -5044,11 +5781,114 @@ body.dragging-row, body.dragging-row * { cursor: grabbing !important; user-selec
 
 <div class="toast" id="toast"></div>
 
+<!-- The corner assistant.  It is outside every screen because it is not a
+     screen: the same panel answers on 模组, in the 编辑器, and in 语言.  Its
+     switch lives in 设置 → 通用, and turning it off leaves the pages alone. -->
+<div id="pet" class="off">
+  <div id="pet-panel" role="dialog" aria-label="角落助手">
+    <div id="pet-head">
+      <span id="pet-title">角落助手</span>
+      <span id="pet-bond"></span>
+      <span id="pet-state"></span>
+      <button class="chip" id="pet-hide">收起</button>
+    </div>
+    <div id="pet-log" aria-live="polite"></div>
+    <textarea id="pet-in" aria-label="问角落助手" rows="2"></textarea>
+    <pre id="pet-code"></pre>
+    <div id="pet-row">
+      <button class="chip" id="pet-dept">AI 脚本</button>
+      <button class="chip" id="pet-write">写脚本</button>
+      <button class="chip" id="pet-copy">复制</button>
+      <button class="chip" id="pet-pat">摸摸</button>
+      <button class="chip" id="pet-feed">喂食</button>
+      <button class="chip" id="pet-clear">清空</button>
+      <button class="chip" id="pet-edge">贴边</button>
+    </div>
+  </div>
+  <div id="pet-bubble" aria-live="polite"></div>
+  <button id="pet-btn" aria-label="角落助手" aria-expanded="false">
+    <!-- The portrait is the 立绘 shipped in mdd111/deepseek-dafeiyu-pet
+         (MIT, LICENSE-mdd111.txt sits beside the files).  Eleven painted
+         states at 200px tall, one per row of PET_FACE; the state is a file
+         swap, not a CSS trick, because the expressions are drawn. -->
+    <span class="ppress"><span class="pbob">
+      <img id="pet-img" class="pimg" src="/static/art/pet/idle.png" alt="" draggable="false">
+      <video id="pet-vid" class="pvid" muted loop playsinline preload="auto"
+             aria-hidden="true"></video>
+    </span></span>
+  </button>
+</div>
+
 <script>
 const $ = (s) => document.querySelector(s);
 let META = null;
 let LAST = null;          // last successful parse payload
 let LAST_UPDATE = null;   // last /api/update-check payload
+
+// The corner assistant's own state.  Declared here, with the other page-level
+// state, because `applyPrefs()` runs during boot and calls `petSync()`, which
+// reads this object: a `const` further down the file would still be in its
+// temporal dead zone at that moment.
+const PET = {dept: "ai", open: false, busy: false, code: "", log: [],
+             side: "right", top: null, peek: false, last: "", error: "",
+             tipShown: {}, mood: "idle", bond: 0, treats: 2, turns: 0,
+             lastPat: 0, lastFeed: 0, treatAt: 0, actAt: 0, tucked: false,
+             out: false};
+const PET_KEY = "aoe2mod.pet";
+// Nine steps, not a number the player has to interpret.  The thresholds widen
+// as they climb on purpose: the first four are reachable in one sitting so the
+// mechanic teaches itself, and the last two are a season of use.
+const PET_RANKS = [[0, "初次见面"], [5, "认得你"], [15, "熟络"], [30, "伙伴"],
+                   [60, "老搭档"], [120, "心有灵犀"], [240, "形影不离"],
+                   [480, "生死之交"], [900, "鲸生共渡"]];
+const PET_LINES = ["点我一下。", "双击是摸头。", "三十四卷资料都在这儿，问我。",
+                   "编辑器里选中什么，我就看得见。", "语言页能直接写脚本。",
+                   "拖我到左边也行。", "……"];
+
+// Same reason as PET: `showView()` runs at boot and calls `petWatch()`, which
+// reads this.  A `let` declared next to `petMeta()` further down would still be
+// in its temporal dead zone at that moment, and the throw would take out the
+// rest of boot -- the pet stayed `.off` and the page reported
+// "Cannot access 'PET_META' before initialization".
+let PET_META = null;
+
+// Kept in the page, not fetched: these are statements about THIS tool's layout,
+// and a wrong one is worse than none.  Mirrors `TIPS` in `aoe2mod/chatter.py`.
+const PET_TIPS = {
+  mods: "想改数值去「编辑器」，这里只管启用和禁用。",
+  editor: "改完要点底部的生成，否则改的只是内存里的表。",
+  lang: "AI 部门管行为，XS 部门管数值。改血量、射程只有 XS 能做。",
+  tree: "点节点看前置，比在文档里翻快。",
+  intents: "这里列的是工具真听得懂的说法。",
+};
+
+function petGreet() {
+  // Local first, endpoint second: the greeting must appear in the same frame the
+  // panel opens, and a 60-second model round trip for "hello" would read as a
+  // broken button.
+  const ctx = petContext();
+  const tip = PET_TIPS[ctx.view];
+  const cfg = PET_META && PET_META.available;
+  const line = (PET_PAGES[ctx.view] || "我在右下角，哪一页都能问。") +
+    (tip ? " " + tip : "") +
+    (cfg ? "" : " 现在没配模型，问答会直接给资料原文。");
+  petPush("assistant", line);
+  petState(cfg ? "模型已接" : "没配模型", cfg ? "ok" : "");
+}
+
+const PET_PAGES = {
+  home: "主页：用一句中文说你要做什么，工具把它拆成命令。",
+  mods: "模组：本机装了哪些模组，能启用、禁用、看它改了什么。",
+  online: "线上工坊：从网上搜模组并安装。",
+  editor: "编辑器：直接改 .dat 里的单位、建筑、科技字段。",
+  card: "命令面板：填参数就能执行的操作卡。",
+  lang: "脚本语言：AI 与 XS 两个部门，用中文说话生成代码。",
+  intents: "能做的事：工具当前听懂的全部说法。",
+  tree: "科技树：按文明看单位与科技的前置关系。",
+  settings: "设置：界面偏好、外观、高级选项。",
+  about: "关于：版本、日志、诊断。",
+};
+
 
 // The screen's own wording.  Every sentence the page says about itself comes
 // from `aoe2mod/schema/locales/zh.json` via `/api/locale`; the Chinese still
@@ -5200,6 +6040,10 @@ const OG = {
   total: 0,
   mods: [],
   tags: [],
+  // name (lowercased) -> Chinese, the whole tag vocabulary.  The filter chips
+  // are the app's own words, so they read in Chinese from the first paint;
+  // `译成中文` governs the authors' names and descriptions, not this table.
+  tagZh: {},
   picked: [],          // tag ids, ANDed by the server
   sort: "recentpopular",
   text: "",
@@ -5207,6 +6051,15 @@ const OG = {
   busy: false,
   watch: 0,            // setInterval id for the "waiting for sign-in" poll
   seen: false,         // has the page ever loaded a listing this session
+  user: "",            // account name the official endpoint reported, "" = unknown
+  // Translation is per-session and never persisted: a player who wants the
+  // Chinese has to ask for it each time the app starts, because the names on
+  // these cards belong to their authors and a machine reading of them is a
+  // second opinion laid on top, not the thing itself.
+  zh: false,
+  zhmap: {},           // original text -> {zh, translated}; shared by cards and detail
+  zhdone: {},          // text -> true once asked, so a failed one is not re-asked
+  detailMod: null,     // the last Detail response, kept so a late translation can repaint
 };
 
 // The dat switch is the one operation that makes every panel on screen describe
@@ -5270,6 +6123,16 @@ function showView(name) {
   // boot.  `ogBoot` is guarded by `OG.seen`, so returning to the page does not
   // refetch a listing that is already on screen.
   if (name === "online") ogBoot();
+  // The model settings live in a user file outside the install folder, so they
+  // can change while this window is open (an env var from a launcher, a hand
+  // edit). Re-reading on open costs one local request and keeps the panel from
+  // reporting a state that was true at boot.
+  if (name === "settings") aiModelLoad();
+  // The corner assistant is told which screen it is on.  Called through the
+  // global because `showView` is defined long before the assistant block runs,
+  // and a direct call would be a ReferenceError during the first `showView("home")`
+  // at boot.
+  if (typeof petWatch === "function") petWatch("view", name);
   // Both panels are filled during `boot()`, so there is nothing lazy left to do
   // here. This branch used to set `ED_LOADED = true` and then fall off the end
   // of the block with the fetch nowhere in sight -- a guard around nothing,
@@ -5900,6 +6763,7 @@ const ABOUT_LINKS = [
   ["about-copy-fan", "about-open-fan", "https://afdian.com/a/RemonBo"],
   ["about-copy-bili", "about-open-bili", "https://space.bilibili.com/6978282"],
   ["about-copy-gh", "about-open-gh", "https://github.com/198agk"],
+  ["about-copy-sponsor", "about-open-sponsor", "https://afdian.com/a/RemonBo"],
 ];
 
 async function aboutCopy(url) {
@@ -6164,6 +7028,16 @@ function drawAbout(meta) {
     const ver = m.app_version ? ("ver " + m.app_version) : "版本未知";
     v.textContent = "模组工坊 " + ver + "，作者 RemonBo。";
   }
+  // 抬头卡的版本号与 logo。 logo 的字节在这份文件里只存一份（rail 那个
+  // `.mark img` 的 data URI），这里把它拷过来，而不是再粘一段 136K 的 base64：
+  // 两份字节迟早会有一份忘了换。
+  const hv = $("#about-hero-ver");
+  if (hv) {
+    hv.textContent = m.app_version ? ("ver " + m.app_version) : "版本未知";
+  }
+  const lg = $("#about-logo-img");
+  const src = document.querySelector(".mark img");
+  if (lg && src) lg.src = src.src;
   const lb = $("#log-open");
   if (lb) {
     lb.onclick = async () => {
@@ -6177,11 +7051,6 @@ function drawAbout(meta) {
   }
   const lr = $("#log-refresh");
   if (lr) lr.onclick = () => loadLog();
-  const r = $("#about-read");
-  if (r) {
-    r.textContent = "这次读到的数据格式是 " + (m.version != null ? m.version : "未知")
-      + "，文明 " + ((m.civs || []).length || 0) + " 个。";
-  }
 }
 
 // A deep link wins over "home", so `#editor` in the Tauri address bar works.
@@ -6359,7 +7228,16 @@ async function boot() {
   edPaintKind(EDKIND);
   loadDatSources();
   if ($("#edq")) {
-    $("#edq").oninput = () => loadEditor();
+    // 220 ms of quiet before asking the server.  Without it every keystroke is
+    // a `/api/browse` round trip that also re-asks for 400 icons, and the list
+    // flickered through four half-drawn states while somebody typed 「铁匠铺」.
+    // Same number as the online workshop box (`ogQueueZh`), so the two search
+    // fields in this app feel the same.
+    let _edqT = 0;
+    $("#edq").oninput = () => {
+      clearTimeout(_edqT);
+      _edqT = setTimeout(() => loadEditor(), 220);
+    };
   }
   if ($("#ed-bulk-add2")) $("#ed-bulk-add2").onclick = (ev) => edBulkAdd(ev.currentTarget, "#ed-bulk-n2");
   if ($("#ed-blank-add")) $("#ed-blank-add").onclick = (ev) => edBulkAdd(ev.currentTarget, "#ed-bulk-n2", true);
@@ -8381,7 +9259,7 @@ async function loadEditor(more, keepPane) {
   // list that lost 51 rows.
   if (!EDROWS.length) {
     $("#edcount").textContent = ED_OFFSET + " / " + ED_TOTAL;
-    if (!more) box.appendChild(el("div", "empty", "没有匹配的。"));
+    if (!more) edNothing(box, q, j);
     return;
   }
 
@@ -8548,6 +9426,43 @@ function edPick(r, row, ev) {
   openEditor(r);
 }
 
+// An empty list is where a search is judged.  「没有匹配的。」 was all it said
+// (reported 2026-11-16, verbatim: 「你能不能增强一下检索功能」, with a screenshot
+// of the 科技 tab answering 0 rows for 「铁匠铺」): true, unhelpful, and silent
+// about the two things the player needs -- that the record lives in ANOTHER
+// tab, and that a name can be typed four ways.  The route answers
+// `browse.elsewhere` with the other table's count and first few names; this
+// draws that as a door, because a count the player has to act on by hand is
+// the same dead end with better wording.
+function edNothing(box, q, j) {
+  const qq = String(q || "").trim();
+  box.appendChild(el("div", "empty", qq ? "这里没有「" + qq + "」。" : "没有匹配的。"));
+  if (!qq) return;
+  const hint = (j && j.browse && j.browse.elsewhere) || null;
+  if (hint) {
+    for (const kind of ["unit", "tech"]) {
+      const found = hint[kind];
+      if (!found) continue;
+      const name = kind === "tech" ? "科技" : "单位/建筑";
+      const row = el("div", "empty", name + "里有 " + found.total + " 条：" +
+                     (found.names || []).filter(Boolean).join("、") + "　");
+      const go = el("button", "chip", "去" + name + "看");
+      // Setting the box BEFORE the tab switch matters: `edKind` reloads with
+      // whatever the box holds, so the query has to be in place first or the
+      // new tab opens on its whole list and the player has to type again.
+      go.onclick = () => {
+        const q0 = $("#edq");
+        if (q0) q0.value = qq;
+        edKind(kind);
+      };
+      row.appendChild(go);
+      box.appendChild(row);
+    }
+  }
+  box.appendChild(el("div", "empty",
+    "一个名字有四种打法学：编号（6）、中文名（铁匠铺）、英文名（blacksmith）、" +
+    "拼音或首字母（tiejiangpu / tjpu / tjp）。"));
+}
 function edRow(r, icons) {
   const row = el("div", "edrow");
   row.dataset.id = String(r.id);
@@ -10517,6 +11432,20 @@ function drawFields(pane, d) {
   // replaced.  Measured width of the strip is 632px on a 1264 window, so the
   // five summaries have to total under that on one line.  The long version
   // lives in `title`, which is where a reader looks when 换图标 is not enough.
+  // 有关的东西 sits FIRST, not last.  It is the only box in this strip that
+  // answers a question the player asked in the LIST (「我搜铁匠铺，就能显示出
+  // 这个铁匠铺有关的东西」, reported 2026-11-16); the other five are about the
+  // record you already have open.
+  //
+  // IT STAYS SHUT.  The first cut opened it whenever the search box had text,
+  // on the theory that the search WAS the question.  On screen that meant every
+  // click in the result list threw a 320px wall of chips over the fields the
+  // player had just asked to see (「还有让这个有关的东西默认收起来」, reported
+  // 2026-11-16), and 城堡 alone fills it with 24 technologies and 24 units.
+  // Collapsed by default; one click opens it, and the summary is always there.
+  const rel = edTool(tools, "edrel", "有关的东西", "",
+    "反着查：这条记录和哪些科技、兵、建筑连在一起",
+    (t) => { drawRelations(t.body, d); });
   edTool(tools, "edrecbox", "记录本身", "",
     "复制成新记录 / 删除这一条 / 改名字 / 一次新增很多条",
     (t) => { t.body.appendChild(edRecordActions(d)); });
@@ -10775,6 +11704,172 @@ function drawLegend(body) {
     ul.appendChild(li);
   }
   body.appendChild(ul);
+}
+
+// ---- 有关的东西 ---------------------------------------------------------
+// The reverse direction, drawn.  A .dat points one way only: a technology
+// names the building it is researched at, a unit names the hoard that shows
+// its button, and nothing points back.  So 「我搜铁匠铺，就能显示出这个铁匠铺
+// 有关的东西」 (reported 2026-11-16) is answered by /api/relations, which walks
+// 1,510 technologies and 63 civilisation copies once (0.48 s, cached per file
+// generation) and turns the arrows around.
+//
+// TWO THINGS THIS SCREEN MUST SAY OUT LOUD, both measured on the shipped file:
+//
+//  1. 铁匠铺 is FIVE records (18, 19, 103, 105, 2441) with one name.  Opening
+//     the first from the list shows one building-owner and nothing else, which
+//     reads as a broken feature -- the fifteen technologies hang off 103.  134
+//     unit names and 7 tech names repeat in this file (船坞 appears 15 times),
+//     so the pane has to name the other copies instead of looking empty.
+//  2. A class target is a NUMBER THE ENGINE READS, not a record: 锻造 has
+//     eleven commands, six of them addressing 步兵 / 骑兵 / 长枪兵 and five
+//     naming single odd units.  Filing all eleven as "units this changes"
+//     would print 骆驼投石机 under 锻造 and leave out the infantry, so the
+//     class rows get their own group and a 「整类」 mark.
+function drawRelations(body, d) {
+  const cnt = el("div", "hint", "读取中…");
+  body.appendChild(cnt);
+  const kind = edKindOf(d);
+  const id = edIdOf(d);
+  api("/api/relations?kind=" + kind + "&id=" + id).then(j => {
+    cnt.textContent = "";
+    if (!j || !j.ok) {
+      body.appendChild(el("div", "ednone", (j && j.error) || "读不到关联。"));
+      return;
+    }
+    const groups = j.groups || [];
+    const sibs = j.siblings || [];
+    if (!groups.length && !sibs.length) {
+      body.appendChild(el("div", "ednone",
+        "数据里没有任何东西指到这条记录。它不是单位、不是建筑、也没有科技改它。"));
+      return;
+    }
+    // The sibling line comes first: on 铁匠铺 it is the difference between
+    // "this record is empty" and "you opened the wrong one of five".
+    if (sibs.length) {
+      body.appendChild(el("div", "seclab", "同名的还有 " + sibs.length + " 条"));
+      const row = el("div", "edrel edrelfirst");
+      for (const s of sibs) row.appendChild(relChip(s.kind, s.id, s.name, false));
+      body.appendChild(row);
+    }
+    for (const g of groups) {
+      body.appendChild(el("div", "seclab", g.label + " " + g.total));
+      const row = el("div", "edrel");
+      relFill(row, g.items || []);
+      body.appendChild(row);
+      // A cut list has to say it was cut AND hand over the rest.  城堡 carries
+      // 211 technologies in one group and 171 units in the next; the route
+      // sends 24 so the box stays readable, but 「还有 187 条没列」 with nothing
+      // to click is the same dead end as the old 0 / 0 (reported 2026-11-16:
+      // 「像这种没有全部列出来的，没有列出来的操作功能」).
+      if (g.total > (g.items || []).length) relCut(row, kind, id, g);
+    }
+    // What this box is NOT, said once.  A player who looks for "this tech
+    // needs 城堡" will not find it here, and silence about that is a lie.
+    body.appendChild(el("div", "hint",
+      "只列这条数据文件里真的写着的箭头（在哪研究、在哪造、改了谁）。"
+      + "科技的前置条件不在这张图里。"));
+  }).catch(e => {
+    cnt.textContent = "";
+    body.appendChild(el("div", "ednone", "读不到关联：" + e.message));
+  });
+}
+
+// The entries of one group, in the row they live in.  Split out of the group
+// loop because 看全部 refills the SAME row after the tail arrives, and a second
+// copy of this loop is how the 「整类」 rule would get lost.
+function relFill(row, items) {
+  // 996 强化堡垒 lists three classes and 118 records stand behind them; a flat
+  // row of 118 chips turns "is a tower in here" into a scavenger hunt.  The
+  // route tags each record with the class it came from, so the class name is
+  // printed again in front of its own records -- and only when there is more
+  // than one class, because a single-class tech does not need the ceremony.
+  let cur = null;
+  for (const it of items) {
+    if (it.cls && it.cls !== cur) {
+      cur = it.cls;
+      row.appendChild(el("span", "edclslab", it.cls));
+    }
+    row.appendChild(
+      it.kind === "class"
+        ? el("span", "edrele", it.name + "（整类）")
+        : relChip(it.kind, it.id, it.name, false));
+  }
+}
+
+// The tail of a long group, on demand.  城堡 has 211 technologies and 171 units;
+// the route sends 24 of each so the strip stays readable, and this is the only
+// way the other 187 records were reachable at all.  `limit=0` means no cut -- the
+// items are already in memory in relations.py, so this is one dict lookup, not a
+// re-walk of the file.
+function relCut(row, kind, id, g) {
+  const left = g.total - (g.items || []).length;
+  const b = el("button", "chip", "看全部 " + g.total + " 条");
+  b.title = "还有 " + left + " 条没列，点这里一次列全";
+  b.onclick = () => {
+    b.disabled = true;
+    b.textContent = "读取中…";
+    api("/api/relations?kind=" + kind + "&id=" + id
+      + "&group=" + encodeURIComponent(g.key) + "&limit=0").then(j => {
+      const one = (j && j.ok && (j.groups || [])[0]) || null;
+      if (!one) {
+        b.disabled = false;
+        b.textContent = "看全部 " + g.total + " 条";
+        toast("读不到这一组，刚才那次请求没答上来", "warn");
+        return;
+      }
+      row.textContent = "";
+      relFill(row, one.items || []);
+    }).catch(e => {
+      b.disabled = false;
+      b.textContent = "看全部 " + g.total + " 条";
+      toast("读不到这一组：" + e.message, "warn");
+    });
+  };
+  row.appendChild(b);
+  // The sentence stays next to the button: a reader who never clicks still has
+  // to be told the list is short.
+  row.appendChild(el("span", "edrele", "还有 " + left + " 条没列"));
+}
+
+// One record in a relation list.  Every entry is a record this screen can open,
+// so it is a chip and not a name: a list of names would be the same dead end as
+// the old 「没有匹配的。」.
+function relChip(kind, id, name, isOn) {
+  const b = el("button", "chip" + (isOn ? " on" : ""), name || ("#" + id));
+  b.title = (kind === "tech" ? "科技 " : "单位 ") + id + "：" + (name || "");
+  b.onclick = () => edRelGo(kind, id, name);
+  return b;
+}
+
+// Walking to a related record keeps the TAB, the LIST and the PANE telling the
+// same story.  Switching tabs by hand and then opening a record is exactly the
+// four-await bug that once left a tab reading 科技 above a pane reading 民兵, so
+// a cross-space jump goes through `edKind` with the id in the search box -- the
+// list reloads around that one record and `loadEditor` opens it.
+function edRelGo(kind, id, name) {
+  if (!id) return;
+  const want = kind === "tech" ? "tech" : "unit";
+  // 建筑 is a VIEW of the unit table, not a third id space, so a unit under a
+  // building matches without a reload.
+  const same = want === EDKIND || (want === "unit" && EDKIND === "building");
+  if (!same) {
+    const q0 = $("#edq");
+    if (q0) q0.value = String(id);
+    ED_WANT = id;
+    edKind(want);
+    return;
+  }
+  const box = $("#edlist");
+  if (box) {
+    const old = box.querySelector(".edrow.on");
+    if (old) old.className = old.className.split(" ").filter(c => c !== "on").join(" ");
+    for (const row of box.children) {
+      if (row.dataset && row.dataset.id === String(id)) { row.className += " on"; break; }
+    }
+  }
+  EDSEL = { kind: want, id: id };
+  openEditor({ kind: want, id: id, name: name });
 }
 
 // Fills the body of the 哪些东西改了这个单位 strip box.  The details element is
@@ -11093,6 +12188,18 @@ function renderFieldRows(d) {
   body.appendChild(tbl);
 }
 
+// The one-liner the value cell and the picker both print beside a number.
+//
+// WHY THE HOTKEY CASE IS SPECIAL: every other id space is spelled with words
+// (靶场, Grass, SPRMN_W0), so the note stands on its own.  A hotkey is spelled
+// with a SINGLE LETTER -- the only thing the player presses, and the only thing
+// that is true across the several commands sharing one id.  A lone 「Q」 beside
+// a number looks like a typo, so it says 「Q 键」.
+function spelledFor(f, spelled) {
+  if (f.seen_space === "hotkey" && spelled.length <= 2) return spelled + " 键";
+  return spelled;
+}
+
 // One row.  `ro` fields keep their value visible but offer no input: a length
 // prefix or a count that the list itself defines is not a number the player
 // owns, and writing it shifts every field after it.
@@ -11124,15 +12231,32 @@ function fieldRow(d, f) {
   // printed the word, and `enum_text` and `seen_names` come from the same table
   // (`fieldlabels`), so appending both printed 「鹰勇士  鹰勇士」 on every one of
   // the 434 rows that has a class, a task or a resource slot.
-  if (!f.ref_text && f.enum_text === undefined && f.seen_names && f.seen
-      && f.seen[String(f.value)] !== undefined) {
-    const nm = f.seen_names[String(f.value)];
-    if (nm && nm.charAt(0) !== "#") shown = shown + "  " + nm;
-  }
+  //
+  // `value_name` is the same answer for a column that ships no dropdown: a
+  // hotkey list is 263 entries long, so the server refuses the LIST and still
+  // knows what the one number on this row means.  Without it the pane showed
+  // 18067 and hid 「近战攻击力升级 Q」 -- the only thing the row says.
+  const spelled = (f.ref_text || f.enum_text !== undefined) ? null
+    : ((f.seen_names && f.seen && f.seen[String(f.value)] !== undefined)
+      ? f.seen_names[String(f.value)] : (f.value_name || null));
   // A string field is not a number: it needs a wrapping, left-aligned cell or a
   // 30-character filename prints out of a 96px right-aligned column and lands on
   // top of the field name beside it (seen on the 图形 tab, 2026-11-02).
   const tdV = el("td", f.kind === "str" ? "v str" : "v", shown);
+  // Spell the number, as its own span.  It was appended to the same text node
+  // until 2026-11-16, which was fine while only six task columns had names;
+  // now that a graphic column can say `Projectile Mangonel Ground (Fire)` the
+  // note needs to be able to clip on its own and keep the number readable.
+  if (spelled && spelled.charAt(0) !== "#") {
+    // A hotkey answers with ONE letter, and 「Q」 alone in a value cell reads
+    // like a stray character.  「Q 键」 says what it is without saying which
+    // command it runs -- 「很多都是共用同一串编码的，我只需要知道这些编码指的是
+    // 什么热键」, and the command name was the part that misled.
+    const sp = el("span", "vname", spelledFor(f, spelled));
+    sp.title = (f.seen_space_zh ? f.seen_space_zh + "：" : "")
+      + String(f.value) + " = " + spelled;
+    tdV.appendChild(sp);
+  }
   if (!f.ro && f.hi !== undefined) tdV.title = "范围 " + (f.lo === undefined ? "?" : f.lo) + " .. " + f.hi;
   // The two sentinels, spelled out where they appear.  A `-1` in IconID means
   // "no icon"; a `-1` in CopyID means "points at nothing"; a `0` in Speed means
@@ -11235,7 +12359,12 @@ function fieldRow(d, f) {
     const keys = seenKeys;
     const sel = el("select", "ev");
     sel.setAttribute("aria-label", (f.label || f.name) + " 常用取值");
-    sel.title = ["这一列在 63 个文明里实际出现过的取值（按出现次数排序）："]
+    // The tooltip says WHAT KIND of number this is before it lists the values.
+    // `87 - 靶场` and `633 - CANGA_A1` answer different questions, and the
+    // column name alone (`StandingGraphic.0`) does not say which table to look
+    // 633 up in -- only the server knows that, so it ships `seen_space_zh`.
+    sel.title = [(f.seen_space_zh ? "这是" + f.seen_space_zh + "。" : "")
+      + "这一列在 63 个文明里实际出现过的取值（按出现次数排序）："]
       .concat(keys.map(k => ((f.seen_names && f.seen_names[k]) || ("#" + k))
         + " = " + k + "  " + f.seen[k] + " 处"))
       .join(String.fromCharCode(10));
@@ -11244,8 +12373,12 @@ function fieldRow(d, f) {
     // player reads; the label only has to say what the box is.
     sel.appendChild(opt("常用", ""));
     for (const k of keys) {
+      // 「名字 编号」, and ONLY the number when there is no name: the old label
+      // printed `#87 87`, which is the same digits twice and teaches nothing.
+      // The number stays because it is what the box beside it takes.
       const nm = (f.seen_names && f.seen_names[k]) || ("#" + k);
-      sel.appendChild(opt(nm + " " + k, k));
+      const lbl = nm.charAt(0) === "#" ? k : (spelledFor(f, nm) + "  " + k);
+      sel.appendChild(opt(lbl, k));
     }
     sel.onchange = () => { if (sel.value !== "") inp.value = sel.value; };
     editTd.appendChild(sel);
@@ -12251,6 +13384,7 @@ const PREFS_DEFAULT = {
   bigtext: false,
   calm: false,
   diag: false,
+  pet: true,             // the corner assistant bubble
 };
 
 let PREFS = Object.assign({}, PREFS_DEFAULT);
@@ -12373,6 +13507,10 @@ function applyPrefs() {
   // setter the toolbar uses -- one path, not two.
   setModsView(PREFS.modsview);
   prefsPaint();
+  // The corner assistant is shown or hidden, not rebuilt: `#pet` lives outside
+  // every `#view-*`, so it survives navigation and only this one flag decides
+  // whether it is on screen.  `petSync()` is idempotent.
+  petSync();
 }
 
 // The painted layer is one custom property (`--bgimg`), so switching between
@@ -12450,6 +13588,7 @@ function prefsPaint() {
   sw("#pref-bigtext", PREFS.bigtext);
   sw("#pref-calm", PREFS.calm);
   sw("#pref-diag", PREFS.diag);
+  sw("#pref-pet", PREFS.pet);
   // The three background swatches are a radio group drawn as pictures, so the
   // selected one is the one carrying `.on` -- and the custom swatch doubles as
   // the preview of whatever the player picked, which is why it is the only one
@@ -12539,7 +13678,8 @@ if ($("#pref-view-list")) $("#pref-view-list").onclick = () => prefSet("modsview
 // One binding shape for the six booleans: the id names the key, and a switch
 // flips whatever it is currently showing rather than a remembered copy.
 for (const id of ["#pref-checkupdate", "#pref-warnunsaved", "#pref-art",
-                  "#pref-lg", "#pref-bigtext", "#pref-calm", "#pref-diag"]) {
+                  "#pref-lg", "#pref-bigtext", "#pref-calm", "#pref-diag",
+                  "#pref-pet"]) {
   const n = $(id);
   if (!n) continue;
   const key = id.slice(6).replace(/-/g, "");
@@ -12669,7 +13809,7 @@ if ($("#lg-fold")) $("#lg-fold").onclick = () => {
   $("#lg-fold").textContent = open ? "收起" : "调节";
 };
 
-// The three category tabs.  `data-setgroup` names the panel, so the list and the
+// The four category tabs.  `data-setgroup` names the panel, so the list and the
 // panels cannot drift out of sync the way two hard-coded arrays would.
 document.querySelectorAll("[data-setgroup]").forEach(function (tab) {
   tab.onclick = () => {
@@ -12770,6 +13910,110 @@ function ogStampText(at, total) {
   return total ? head + " · " + total + " 个模组" : head;
 }
 
+// The API's dates are ISO 8601 WITHOUT a timezone suffix: "2025-08-13T14:31:28.84".
+// `new Date(...)` reads that as local time, which is right here -- the value is
+// the author's own clock, not an instant -- but only if the string is parsed by
+// hand.  Safari and older WebKit return Invalid Date for the fractional part,
+// and the whole card would then show nothing at all.
+function ogDate(iso) {
+  if (!iso || typeof iso !== "string") return "";
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso);
+  return m ? m[1] + "-" + m[2] + "-" + m[3] : "";
+}
+
+// ---- translation -------------------------------------------------------
+// Machine translation of what the authors wrote.  Three rules shape all of it:
+//
+//   1. It is opt-in.  `OG.zh` starts false and never persists across restarts.
+//      These names are somebody's work; a machine reading of them is a
+//      convenience laid on top, so it waits to be asked for.
+//   2. The original stays on screen.  A translated name is shown above the
+//      author's own words, never instead of them -- searching by the English
+//      name has to keep working, and a bad translation has to be visibly bad.
+//   3. One round trip per page, not one per card.  Every card appends its text
+//      to `OG.zhmap` and a single debounced request fills the whole grid.
+
+// The seventeen tag names are a fixed table on the Python side (`TAG_ZH`), and
+// `peek` sends them along with each tag.  This turns that list into a lookup so
+// a card's tag pills can be re-labelled without asking the network anything.
+function ogTagZh(name) {
+  const key = String(name || "").trim().toLowerCase();
+  if (!key) return "";
+  // The table `peek` sends down is the whole vocabulary, including the two
+  // names the tag endpoint does not list ("Official", "Scenario").  Fall back
+  // to the per-tag `zh` field so an older backend still works.
+  if (OG.tagZh && OG.tagZh[key]) return OG.tagZh[key];
+  for (const t of OG.tags) {
+    if (t && t.name === name && t.zh) return t.zh;
+  }
+  return "";
+}
+
+function ogZhOf(text) {
+  // Gated on the switch, not only on the map: turning translation off has to
+  // take the Chinese off the screen on the next repaint, and the map is kept
+  // (it cost a request to fill) so turning it back on is instant.
+  if (!OG.zh) return null;
+  const key = (text || "").trim();
+  if (!key) return null;
+  const hit = OG.zhmap[key];
+  if (!hit) return null;
+  // `translated: false` means the backend kept the original -- either it was
+  // already Chinese or the translator declined.  Either way there is nothing
+  // worth drawing a second line for.
+  return hit.translated && hit.zh && hit.zh !== key ? hit.zh : null;
+}
+
+// Ask for every card's text in one request, then repaint.  `OG.zhdone` keeps a
+// failed string from being asked for again on the next page turn -- the free
+// backend meters bytes against a daily allowance, and re-asking a sentence it
+// already refused is how that allowance disappears.
+let OG_ZH_TIMER = 0;
+function ogQueueZh(texts) {
+  if (!OG.zh) return;
+  const want = [];
+  for (const raw of texts) {
+    const text = (raw || "").trim();
+    if (!text || OG.zhdone[text] || want.indexOf(text) >= 0) continue;
+    want.push(text);
+  }
+  if (!want.length) return;
+  if (OG_ZH_TIMER) clearTimeout(OG_ZH_TIMER);
+  OG_ZH_TIMER = setTimeout(() => { OG_ZH_TIMER = 0; ogAskZh(want); }, 220);
+}
+
+async function ogAskZh(want) {
+  for (const text of want) OG.zhdone[text] = true;
+  try {
+    const j = await api("/api/online/zh", { texts: want });
+    const out = j.out || [];
+    for (let i = 0; i < out.length && i < want.length; i++) {
+      OG.zhmap[want[i]] = out[i] || { zh: want[i], translated: false };
+    }
+    // Repaint only what is on screen: the grid, plus the detail column if it
+    // shows a translated name or description.
+    ogRenderGrid();
+    if (OG.detailId) ogRepaintDetail();
+  } catch (e) {
+    // A failed translation is not a failed page.  Say it once, quietly, and
+    // leave the English where it is.
+    toast("翻译暂时用不了：" + e.message, "warn");
+  }
+}
+
+async function ogToggleZh() {
+  OG.zh = !OG.zh;
+  const b = $("#og-zh");
+  if (b) {
+    b.classList.toggle("on", OG.zh);
+    b.setAttribute("aria-pressed", OG.zh ? "true" : "false");
+    b.title = OG.zh ? "点一下看回原文" : "把模组名、类型和简介译成中文";
+  }
+  ogRenderGrid();
+  ogRenderTags();
+  if (OG.detailId) ogRepaintDetail();
+}
+
 // The blocked state is a card with a reason and the one button that fixes it,
 // because the thing the player must read is also the thing they must press.
 function ogState(kind) {
@@ -12787,11 +14031,14 @@ function ogState(kind) {
   if (kind === "login") {
     title.textContent = "先登录，才能看到线上模组";
     why.textContent = "官方接口不接受匿名查询：不登录它是一个空列表加 401，"
-      + "所以这一页没有「游客浏览」。登录走 Steam 或微软账号，在工具自己开的一个小窗口里完成；"
+      + "所以这一页没有「游客浏览」。挑你买游戏的那个账号登录，在工具自己开的一个小窗口里完成；"
       + "工具只读取会话凭证去查列表，不做订阅、不下载、不改你的账号。";
-    const go = el("button", "chip", "登录账号");
-    go.onclick = ogLogin;
-    act.appendChild(go);
+    const steam = el("button", "chip", "用 Steam 登录");
+    steam.onclick = () => ogLogin("steam");
+    const ms = el("button", "chip", "用微软账号登录");
+    ms.onclick = () => ogLogin("microsoft");
+    act.appendChild(steam);
+    act.appendChild(ms);
   } else if (kind === "offline") {
     title.textContent = "连不上官方服务器";
     why.textContent = "其他八个页面照常可用，它们只读本地文件。等网络恢复后按「重试」。";
@@ -12842,16 +14089,42 @@ function ogCard(m) {
     card.appendChild(ph);
   }
   const body = el("div", "ogbody");
-  body.appendChild(el("div", "ogname", m.name || "(没有名字)"));
+  const zhName = ogZhOf(m.name);
+  body.appendChild(el("div", "ogname", zhName || m.name || "(没有名字)"));
+  // The author's own words stay on the card under the translation.  Searching
+  // by the English name has to keep working, and a machine reading of a name is
+  // exactly the kind of thing that is sometimes wrong -- the original is how
+  // the player checks it.
+  if (zhName) body.appendChild(el("div", "ogorig", m.name || ""));
   body.appendChild(el("div", "ogmeta", m.author || "未知作者"));
   const nums = el("div", "ognum");
   const dn = typeof m.downloads === "number" ? m.downloads : 0;
   const rt = typeof m.rating === "number" && m.rating > 0 ? m.rating.toFixed(1) : "";
   nums.textContent = dn.toLocaleString("zh-CN") + " 次下载" + (rt ? " · ★ " + rt : "");
+  // The date rides in its own span so it can be a shade darker than the counter
+  // (`.ognum .ogdate`): the number is scannable at a glance, the date is what
+  // tells you whether the mod is still alive, and `--text-3` on the card's own
+  // glass was too faint to read at 12px.
+  const day = ogDate(m.updated);
+  if (day) {
+    const when = el("span", "ogdate", " · " + day);
+    when.title = m.updated === m.created ? "发布 " + day : "更新 " + day;
+    nums.appendChild(when);
+  }
   body.appendChild(nums);
   if (m.tags && m.tags.length) {
     const row = el("div", "ogtags-row");
-    for (const t of m.tags.slice(0, 3)) row.appendChild(el("span", "ogpill", t));
+    for (const t of m.tags.slice(0, 3)) {
+      // Tag names are the app's own vocabulary -- the seventeen the tag list
+      // holds plus the couple the listing adds ("Official", "Scenario") -- so
+      // they read in Chinese whether or not 译成中文 is on.  The switch is about
+      // the author's prose; a pill that says "Graphics" is just an untranslated
+      // label.  The English stays in `title`, one hover away.
+      const pill = el("span", "ogpill", ogTagZh(t) || t);
+      const en = ogTagZh(t) ? t : "";
+      if (en) pill.title = en;
+      row.appendChild(pill);
+    }
     body.appendChild(row);
   }
   card.appendChild(body);
@@ -12877,6 +14150,19 @@ function ogRenderGrid() {
   $("#og-page").textContent = "第 " + OG.page + " / " + OG.pages + " 页";
   $("#og-prev").disabled = OG.page <= 1;
   $("#og-next").disabled = OG.page >= OG.pages;
+  // The box tracks the page you are actually on, so it doubles as a readout of
+  // where you are and as the starting point for the next jump.  Setting max is
+  // what keeps the spinner from offering a page that does not exist.
+  const jump = $("#og-jump");
+  if (jump) {
+    jump.max = String(OG.pages);
+    jump.value = String(OG.page);
+  }
+  if ($("#og-goto")) $("#og-goto").disabled = OG.pages <= 1;
+  // One request for the whole grid, queued after it is on screen: the cards
+  // draw in English first and the Chinese arrives a moment later, which beats
+  // an empty grid that waits on a third-party translator to answer.
+  if (OG.zh) ogQueueZh(OG.mods.map((m) => m.name || ""));
 }
 
 function ogRenderTags() {
@@ -12884,8 +14170,15 @@ function ogRenderTags() {
   if (!box) return;
   box.innerHTML = "";
   for (const t of OG.tags) {
-    const b = el("button", "ogtag", t.name);
+    // Same table lookup as the pills on the cards, so a tag reads the same
+    // whether it is being filtered by or shown under a mod's name -- and it
+    // reads that way from the first paint, because these are the app's own
+    // filter words, not anything an author wrote.
+    const zh = t.zh || ogTagZh(t.name);
+    const b = el("button", "ogtag", zh || t.name);
+    if (zh) b.title = t.name || "";
     b.type = "button";
+    b.setAttribute("data-tag", t.name || "");
     if (OG.picked.indexOf(t.id) >= 0) b.classList.add("on");
     b.setAttribute("aria-pressed", OG.picked.indexOf(t.id) >= 0 ? "true" : "false");
     b.onclick = () => {
@@ -12901,6 +14194,7 @@ function ogRenderTags() {
 
 function ogClearDetail() {
   OG.detailId = 0;
+  OG.detailMod = null;
   const d = $("#og-detail");
   if (d) { d.classList.remove("on"); d.innerHTML = ""; }
   const box = $("#view-online > .box");
@@ -12912,6 +14206,7 @@ async function ogOpen(id) {
   if (!id) return;
   if (OG.detailId === id) { ogClearDetail(); return; }
   OG.detailId = id;
+  OG.detailMod = null;
   for (const c of document.querySelectorAll("#view-online .ogcard")) {
     c.classList.toggle("on", c.getAttribute("data-id") === String(id));
   }
@@ -12924,41 +14219,86 @@ async function ogOpen(id) {
   d.appendChild(el("div", "ogcount", "正在读详情…"));
   try {
     const j = await api("/api/online/detail?id=" + encodeURIComponent(id));
-    const m = j.mod || {};
-    d.innerHTML = "";
-    if (m.shots && m.shots.length) {
-      const shot = el("img", "ogshot");
-      shot.src = m.shots[0].thumb || m.shots[0].full;
-      shot.alt = "";
-      d.appendChild(shot);
-    }
-    d.appendChild(el("h3", "", m.name || "(没有名字)"));
-    d.appendChild(el("div", "ogmeta", m.author || "未知作者"));
-    const nums = el("div", "ognum");
-    const dn = typeof m.downloads === "number" ? m.downloads : 0;
-    nums.textContent = dn.toLocaleString("zh-CN") + " 次下载";
-    d.appendChild(nums);
-    if (m.tags && m.tags.length) {
-      const row = el("div", "ogtags-row");
-      for (const t of m.tags) row.appendChild(el("span", "ogpill", t));
-      d.appendChild(row);
-    }
-    if (m.description) {
-      const p = el("div", "ogdesc");
-      p.textContent = m.description;
-      d.appendChild(p);
-    }
-    const act = el("div", "ogfoot");
-    const open = el("button", "chip", "在浏览器打开");
-    open.onclick = () => aboutOpen(m.url);
-    act.appendChild(open);
-    const shut = el("button", "chip", "收起");
-    shut.onclick = ogClearDetail;
-    act.appendChild(shut);
-    d.appendChild(act);
+    // Kept so a translation arriving later can repaint the column without a
+    // second round trip to the API.
+    OG.detailMod = j.mod || {};
+    ogPaintDetail(OG.detailMod);
   } catch (e) {
     d.innerHTML = "";
     d.appendChild(el("div", "ogcount", "详情读不出来：" + e.message));
+  }
+}
+
+function ogRepaintDetail() {
+  if (OG.detailMod && OG.detailId) ogPaintDetail(OG.detailMod);
+}
+
+function ogPaintDetail(m) {
+  const d = $("#og-detail");
+  if (!d) return;
+  d.innerHTML = "";
+  if (m.shots && m.shots.length) {
+    const shot = el("img", "ogshot");
+    shot.src = m.shots[0].thumb || m.shots[0].full;
+    shot.alt = "";
+    d.appendChild(shot);
+  }
+  const zhName = ogZhOf(m.name);
+  d.appendChild(el("h3", "", zhName || m.name || "(没有名字)"));
+  if (zhName) d.appendChild(el("div", "ogorig", m.name || ""));
+  d.appendChild(el("div", "ogmeta", m.author || "未知作者"));
+  const nums = el("div", "ognum");
+  const dn = typeof m.downloads === "number" ? m.downloads : 0;
+  nums.textContent = dn.toLocaleString("zh-CN") + " 次下载";
+  const made = ogDate(m.created);
+  const saw = ogDate(m.updated);
+  if (made) {
+    const span = el("span", "ogdate", " · 发布 " + made);
+    nums.appendChild(span);
+  }
+  if (saw && saw !== made) {
+    const span = el("span", "ogdate", " · 更新 " + saw);
+    nums.appendChild(span);
+  }
+  d.appendChild(nums);
+  if (m.tags && m.tags.length) {
+    const row = el("div", "ogtags-row");
+    for (const t of m.tags) {
+      const pill = el("span", "ogpill", ogTagZh(t) || t);
+      if (ogTagZh(t)) pill.title = t;
+      row.appendChild(pill);
+    }
+    d.appendChild(row);
+  }
+  if (m.description) {
+    const p = el("div", "ogdesc");
+    const zhDesc = ogZhOf(m.description);
+    p.textContent = zhDesc || m.description;
+    d.appendChild(p);
+    if (zhDesc) {
+      // The description is long enough that replacing it outright would hide
+      // the author's text entirely.  The English stays, folded, one line high,
+      // as the evidence behind the translation.
+      const orig = el("details", "ogdesc-en");
+      orig.appendChild(el("summary", "", "原文"));
+      const pre = el("div", "ogdesc");
+      pre.textContent = m.description;
+      orig.appendChild(pre);
+      d.appendChild(orig);
+    }
+  }
+  const act = el("div", "ogfoot");
+  const open = el("button", "chip", "在浏览器打开");
+  open.onclick = () => aboutOpen(m.url);
+  act.appendChild(open);
+  const shut = el("button", "chip", "收起");
+  shut.onclick = ogClearDetail;
+  act.appendChild(shut);
+  d.appendChild(act);
+  if (OG.zh) {
+    // Name and description are the two long strings here; asking for both in
+    // one request is the whole reason the route takes a list.
+    ogQueueZh([m.name || "", m.description || ""]);
   }
 }
 
@@ -12978,6 +14318,15 @@ async function ogLoad(fresh) {
     OG.mods = j.mods || [];
     OG.total = j.total || 0;
     OG.pages = j.pages || 1;
+    // The catalogue can shrink between two clicks (someone deleted a mod), which
+    // leaves the current page number past the end.  The server reports the real
+    // page count even for an out-of-range page, so snap to it and ask again
+    // rather than drawing an empty grid under "第 1723 / 1722 页".
+    if (OG.page > OG.pages) {
+      OG.page = OG.pages;
+      OG.busy = false;
+      return ogLoad(fresh);
+    }
     OG.stamp = j.fetchedAt || 0;
     OG.seen = true;
     OG.signed = true;
@@ -12993,7 +14342,17 @@ async function ogLoad(fresh) {
     // page never sees.
     if (msg.indexOf("登录") >= 0) {
       OG.signed = false;
-      slot.appendChild(ogState("login"));
+      // The session died between the last peek and this call; the row that
+      // claims "browsing as X" has to go with it.
+      ogWho("");
+      const card = ogState("login");
+      // "登录还没完成" is a different situation from "never signed in": the
+      // handshake started and stopped.  Keep the buttons, but say what happened
+      // instead of repeating the first-time explanation.
+      if (msg.indexOf("还没完成") >= 0) {
+        card.querySelector(".ogwhy").textContent = msg;
+      }
+      slot.appendChild(card);
     } else if (msg.indexOf("连不上") >= 0) {
       slot.appendChild(ogState("offline"));
     } else {
@@ -13016,14 +14375,14 @@ async function ogLoad(fresh) {
 // something in it, then loads.  Three minutes is long enough for an OAuth round
 // trip and a Steam 2FA prompt, and short enough that a forgotten window does not
 // leave a timer running all evening.
-async function ogLogin() {
+async function ogLogin(provider) {
   const internals = (typeof window !== "undefined") ? window.__TAURI_INTERNALS__ : null;
   if (!internals || typeof internals.invoke !== "function") {
     toast("登录窗口只在打包好的工具里可用。开发页面请用「在浏览器打开」。", "warn");
     return;
   }
   try {
-    await internals.invoke("online_login");
+    await internals.invoke("online_login", { provider: provider === "microsoft" ? "microsoft" : "steam" });
   } catch (e) {
     toast("打不开登录窗口：" + String(e), "bad");
     return;
@@ -13033,18 +14392,102 @@ async function ogLogin() {
   let tries = 0;
   OG.watch = setInterval(async () => {
     tries += 1;
-    if (tries > 120) { clearInterval(OG.watch); OG.watch = 0; return; }
+    if (tries > 160) { clearInterval(OG.watch); OG.watch = 0; return; }
     try {
-      const r = await internals.invoke("online_session");
-      if (r && r.saved && r.names && r.names.length) {
+      // Two steps, because they answer different questions.  `online_session`
+      // copies the shell's cookie jar to disk; `peek` then asks the official
+      // endpoint whether that jar belongs to a signed-in player.
+      //
+      // Checking the jar alone is not enough: the Microsoft door writes an
+      // anonymous `AgeAuthSession` the instant its form paints, so "there is a
+      // cookie" was true before anyone typed anything (seen 2026-11-16).
+      await internals.invoke("online_session");
+      const s = await api("/api/online/peek");
+      if (s && s.signed) {
         clearInterval(OG.watch);
         OG.watch = 0;
         OG.signed = true;
+        ogWho(s.user);
         ogLoad(true);
-        toast("登录好了，正在取线上列表。", "ok");
+        toast(s.user ? ("登录好了（" + s.user + "），正在取线上列表。") : "登录好了，正在取线上列表。", "ok");
       }
     } catch (e) { /* the jar fills on the shell's schedule, not ours */ }
   }, 1500);
+}
+
+// "signed in as X" is a statement about borrowed credentials, so it only shows
+// when a session is actually confirmed -- an empty or stale name would be the
+// page guessing at something it cannot know.  Passing "" hides the row again,
+// which is what happens right after a sign-out.
+function ogWho(user) {
+  OG.user = user || "";
+  const row = $("#og-who");
+  const name = $("#og-who-name");
+  // The translate button rides with the account row: both are statements about
+  // the listing that only make sense once there is a listing, and a lone
+  // "译成中文" above a login card would be a switch for nothing.
+  const zh = $("#og-zh");
+  if (zh) zh.hidden = !OG.user;
+  if (!row || !name) return;
+  if (!OG.user) {
+    row.hidden = true;
+    name.textContent = "";
+    return;
+  }
+  name.textContent = "正在以 " + OG.user + " 的身份浏览线上工坊";
+  row.hidden = false;
+}
+
+// Signing out has two halves because the credential lives in two processes:
+// the shell owns the WebView2 cookie jar, and the engine owns the session file
+// plus the listing cache.  Both are asked, and neither failure stops the other
+// -- "half signed out" is worse than either half failing loudly, so whatever
+// the shell says, the local file still goes.
+async function ogSignOut() {
+  const btn = $("#og-signout");
+  if (btn) btn.disabled = true;
+  let shellSaid = "";
+  const internals = (typeof window !== "undefined") ? window.__TAURI_INTERNALS__ : null;
+  if (internals && typeof internals.invoke === "function") {
+    try {
+      await internals.invoke("online_signout");
+    } catch (e) {
+      shellSaid = String(e);
+    }
+  }
+  try {
+    await api("/api/online/signout", {});
+  } catch (e) {
+    if (!shellSaid) shellSaid = String(e.message || e);
+  }
+  if (OG.watch) { clearInterval(OG.watch); OG.watch = 0; }
+  OG.signed = false;
+  OG.mods = [];
+  OG.total = 0;
+  OG.stamp = 0;
+  OG.seen = false;
+  OG.detailId = 0;
+  ogWho("");
+  ogClearDetail();
+  ogRenderGrid();
+  $("#og-stamp").textContent = "还没登录";
+  const foot = $("#og-foot");
+  if (foot) foot.hidden = true;
+  const slot = $("#og-slot");
+  if (slot) {
+    slot.innerHTML = "";
+    const card = ogState("login");
+    const why = card.querySelector(".ogwhy");
+    if (why) {
+      why.textContent = shellSaid
+        ? ("本地记录已经清掉了，但浏览器里的登录状态没清干净：" + shellSaid
+          + "。重启工具后再退一次就行。")
+        : "已经退出了。下次要看得再登录一次，其他页面不受影响。";
+    }
+    slot.appendChild(card);
+  }
+  if (btn) btn.disabled = false;
+  toast(shellSaid ? "退出了，但有一半没清干净。" : "已经退出登录。", shellSaid ? "warn" : "ok");
 }
 
 // First paint for this page.  `peek` is one round trip and fetches no listing,
@@ -13057,16 +14500,39 @@ async function ogBoot() {
   slot.innerHTML = "";
   slot.appendChild(el("div", "ogcount", "正在检查登录状态…"));
   try {
+    // Refresh the exported copy of the jar before asking.  The session file is
+    // just a copy the engine reads, and it can legitimately go missing while the
+    // browser still holds a good cookie -- signing out of the engine half alone,
+    // a wiped state directory, or the shell writing an empty result during an
+    // OAuth redirect.  Without this line those cases all look like "you were
+    // never signed in" and send the player through a login they did not need.
+    const internals = (typeof window !== "undefined") ? window.__TAURI_INTERNALS__ : null;
+    if (internals && typeof internals.invoke === "function") {
+      try { await internals.invoke("online_session"); } catch (e) { /* no shell jar yet */ }
+    }
     const j = await api("/api/online/peek");
     OG.signed = !!j.signed;
     OG.stamp = j.at || 0;
     OG.tags = j.tags || [];
+    OG.tagZh = j.tagZh || {};
     ogRenderTags();
+    ogWho(OG.signed ? j.user : "");
     if (OG.signed) {
       await ogLoad(false);
     } else {
       slot.innerHTML = "";
-      slot.appendChild(ogState("login"));
+      const card = ogState("login");
+      // `why` comes from the official endpoint: "anon" means the jar holds an
+      // anonymous session (the sign-in page writes one before you type), so the
+      // explanation should be "finish the form", not "you never signed in".
+      if (j.why === "anon" && j.count > 0) {
+        card.querySelector(".ogwhy").textContent = j.user
+          ? ("这个账号（" + j.user + "）的会话已经失效了。再登录一次就行，其他页面不受影响。")
+          : "登录窗口还没走完：账号和密码填完之后，这里会自己继续。";
+      } else if (j.why === "offline") {
+        card.querySelector(".ogwhy").textContent = "连不上官方服务器，登录状态没法确认。等网络恢复后按「重试」。";
+      }
+      slot.appendChild(card);
       $("#og-stamp").textContent = "还没登录";
       const foot = $("#og-foot");
       if (foot) foot.hidden = true;
@@ -13098,11 +14564,56 @@ if ($("#og-sort")) {
 if ($("#og-refresh")) {
   $("#og-refresh").onclick = () => ogLoad(true);
 }
+if ($("#og-zh")) {
+  $("#og-zh").onclick = () => ogToggleZh();
+}
 if ($("#og-prev")) {
   $("#og-prev").onclick = () => { if (OG.page > 1) { OG.page -= 1; ogLoad(false); } };
 }
 if ($("#og-next")) {
   $("#og-next").onclick = () => { if (OG.page < OG.pages) { OG.page += 1; ogLoad(false); } };
+}
+
+// Typing a page number and landing on it.  Three things this must not do:
+//   * send a page the catalogue does not have (the box is clamped to OG.pages,
+//     and ogLoad would come back empty rather than say why);
+//   * reload the page already on screen -- one round trip to redraw nothing;
+//   * swallow what was typed.  A number out of range is corrected, not ignored,
+//     so 9999 lands on the last page with the box now reading that number.
+function ogJump() {
+  const box = $("#og-jump");
+  if (!box) return;
+  const raw = String(box.value || "").trim();
+  const want = parseInt(raw, 10);
+  if (!raw || !isFinite(want)) {
+    toast("跳页要填一个页码，比如 5", "warn");
+    box.value = String(OG.page);
+    return;
+  }
+  const target = Math.min(Math.max(want, 1), Math.max(OG.pages, 1));
+  if (target !== want) {
+    // Say it out loud once: silently turning 9999 into the last page looks like
+    // a mistyped box rather than an answer.
+    toast("第 " + want + " 页不存在，这里一共 " + OG.pages + " 页", "warn");
+  }
+  box.value = String(target);
+  if (target === OG.page) return;
+  OG.page = target;
+  ogLoad(false);
+}
+
+if ($("#og-goto")) {
+  $("#og-goto").onclick = () => ogJump();
+}
+if ($("#og-jump")) {
+  $("#og-jump").addEventListener("keydown", (e) => {
+    if (e.key !== "Enter") return;
+    e.preventDefault();
+    ogJump();
+  });
+}
+if ($("#og-signout")) {
+  $("#og-signout").onclick = () => ogSignOut();
 }
 
 boot();
@@ -15108,9 +16619,15 @@ function langReading(host, r) {
   if (!r.code) return;
   const head = el("div", "detailhead");
   head.appendChild(el("span", "name", r.text));
-  if (r.action) head.appendChild(el("span", "stat", r.action));
-  if (r.entity) head.appendChild(el("span", "id", r.entity));
-  if (typeof r.number === "number") head.appendChild(el("span", "id", String(r.number)));
+  // The page is Chinese, so the chip is the Chinese name; the machine name is
+  // what the JSON carries for a test to assert on, not what a player reads.
+  if (r.action) head.appendChild(el("span", "stat", r.action_zh || r.action));
+  if (r.attr_zh) head.appendChild(el("span", "id", r.attr_zh));
+  if (r.target) head.appendChild(el("span", "id", r.target));
+  else if (r.entity) head.appendChild(el("span", "id", r.entity));
+  if (typeof r.number === "number" && !r.attr_zh) {
+    head.appendChild(el("span", "id", String(r.number)));
+  }
   host.appendChild(head);
   langCode(host, r.code);
   langDiagnostics(host, r.diagnostics);
@@ -15218,6 +16735,7 @@ async function loadLang() {
   // it must appear even when the vocabulary payload fails to load.
   loadScriptFiles("ai");
   loadScriptFiles("xs");
+  aiModelLoad();
   if (LANG_META) return;
   try {
     const r = await api("/api/ai-lang-meta");
@@ -15450,8 +16968,132 @@ async function saveLocalScript(prefix, dept) {
   if (sel2 && r.path) { sel2.value = r.path; SCRIPT_LOADED[prefix] = r.path; }
 }
 
+async function langLlm(dept) {
+  // The model writes the whole file; the checker decides whether it may stand.
+  // `draft` runs up to three repair rounds inside one request, so the wait is
+  // long enough that silence reads as a hang -- hence the button saying what it
+  // is doing instead of a spinner that would need a style change to draw.
+  const text = $("#lang-" + dept + "-text").value.trim();
+  const host = $("#lang-" + dept + "-result");
+  const verdict = $("#lang-" + dept + "-verdict");
+  const code = $("#lang-" + dept + "-code");
+  if (!text) { toast("先说一句要做什么", "warn"); return; }
+  const btn = $("#lang-" + dept + "-llm");
+  const label = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = "模型在写…";
+  host.textContent = "";
+  verdict.textContent = "";
+  try {
+    const r = await api("/api/ai-script-draft", {dept: dept, text: text});
+    if (r.code) code.value = r.code;
+    const rounds = r.rounds || 0;
+    if (r.clean) {
+      verdict.textContent = "模型写的，命令表验过";
+      verdict.className = "hint ok";
+      langLines(host, (r.model || "模型") + " 写了 " + rounds + " 轮，验收零问题。", "dim");
+    } else {
+      // A draft with diagnostics is still worth keeping: the remaining defect is
+      // usually one argument, and dropping the file would make the player start
+      // over.  Say that in the same breath as the failure.
+      verdict.textContent = "还差 " + (r.diagnostics || []).length + " 条";
+      verdict.className = "hint warn";
+      langLines(host, "命令表没通过，草稿留在上面，改掉这些就能用：", "why");
+    }
+    langDiagnostics(host, r.diagnostics);
+  } catch (err) {
+    langLines(host, "模型没接上：" + err.message, "why");
+  } finally {
+    btn.disabled = false;
+    btn.textContent = label;
+  }
+}
+
+// ------------------------------------------------------- model settings -----
+// The panel exists because the shipped artifact is an exe: nobody exports
+// `AOE2MOD_AI_KEY` before double-clicking one.  The key is written to a
+// per-user file outside the install folder; this page never reads it back, only
+// the last four characters, so a screenshot of the panel is not a leaked key.
+async function aiModelLoad() {
+  const verdict = $("#ai-model-verdict");
+  try {
+    const r = await api("/api/ai-settings");
+    const s = r.settings || {};
+    if (s.base) $("#ai-model-base").value = s.base;
+    if (s.model) $("#ai-model-name").value = s.model;
+    $("#ai-model-key").value = "";
+    if (!s.available) {
+      verdict.textContent = "还没有配置；三栏空着也能用本地模板";
+      verdict.className = "hint";
+    } else {
+      const src = s.source === "env" ? "环境变量" : "本机文件";
+      verdict.textContent = "已接上 " + (s.model || "") + "（" + src
+        + (s.key_tail ? "，密钥 …" + s.key_tail : "") + "）";
+      verdict.className = "hint ok";
+    }
+  } catch (err) {
+    verdict.textContent = "读不出设置：" + err.message;
+    verdict.className = "hint warn";
+  }
+}
+
+async function aiModelSave() {
+  const verdict = $("#ai-model-verdict");
+  const key = $("#ai-model-key").value.trim();
+  if (!key) {
+    // Saving an empty key would delete a working one.  "Forget" is the button
+    // for that, so this one refuses rather than doing it by accident.
+    toast("密钥栏是空的；要清掉请按「忘掉密钥」", "warn");
+    return;
+  }
+  try {
+    const r = await api("/api/ai-settings", {
+      base: $("#ai-model-base").value.trim(),
+      key: key,
+      model: $("#ai-model-name").value.trim(),
+    });
+    $("#ai-model-key").value = "";
+    const s = r.settings || {};
+    verdict.textContent = "存好了" + (s.key_tail ? "（密钥 …" + s.key_tail + "）" : "");
+    verdict.className = "hint ok";
+    if (r.note) { toast(r.note, "warn"); }
+  } catch (err) {
+    verdict.textContent = "存不下来：" + err.message;
+    verdict.className = "hint warn";
+  }
+}
+
+async function aiModelClear() {
+  const verdict = $("#ai-model-verdict");
+  try {
+    const r = await api("/api/ai-settings", {base: "", key: "", model: ""});
+    const s = r.settings || {};
+    // The file that held all three values is gone, so the two address boxes are
+    // cleared as well: leaving them filled would show a configuration that no
+    // longer exists anywhere on disk.
+    $("#ai-model-base").value = "";
+    $("#ai-model-name").value = "";
+    $("#ai-model-key").value = "";
+    if (s.available) {
+      // An exported variable still wins, so the honest report is "still on".
+      verdict.textContent = "本机的已删掉，但环境变量还设着，模型仍然可用";
+      verdict.className = "hint warn";
+    } else {
+      verdict.textContent = "这一页的三栏都清空了";
+      verdict.className = "hint";
+    }
+  } catch (err) {
+    verdict.textContent = "删不掉：" + err.message;
+    verdict.className = "hint warn";
+  }
+}
+
 $("#lang-ai-run").onclick = () => langRun("ai");
 $("#lang-xs-run").onclick = () => langRun("xs");
+$("#lang-ai-llm").onclick = () => langLlm("ai");
+$("#lang-xs-llm").onclick = () => langLlm("xs");
+$("#ai-model-save").onclick = () => aiModelSave();
+$("#ai-model-clear").onclick = () => aiModelClear();
 $("#lang-ai-check").onclick = () => langCheck("ai");
 $("#lang-xs-check").onclick = () => langCheck("xs");
 $("#lang-plan-run").onclick = () => langPlan();
@@ -15627,6 +17269,1270 @@ if (typeof document !== "undefined" && document.addEventListener) {
     }
   }, true);
 }
+
+// ---- the corner assistant ---------------------------------------------------
+// Two jobs, kept apart because they fail differently.
+//
+// 1. It is a real conversation.  `/api/pet-chat` carries the question plus the
+//    screen the player is on, the record they have selected, and the last thing
+//    they did; the reply is a turn in `PET.log`, not a replacement for the last
+//    one.  The reason a transcript is safe here and was not before: every turn
+//    that contains CODE was produced by `/api/ai-script-draft`, which loops
+//    until `validate_ai` is silent, and every turn that claims a fact carries
+//    the volume and line it came from.  A transcript of checked answers is a
+//    record; a transcript of unchecked ones is a rumour.
+//
+// 2. It knows where it is.  `petWatch()` is called from `showView()` and from
+//    the few actions worth mentioning, and what it collects is what
+//    `_ctx_lines()` in `aoe2mod/chatter.py` turns into the 「用户现在的位置」
+//    block.  Nothing here is inferred: if the page did not say it, the model is
+//    not told it.
+//
+// `PET` itself is declared at the top with the other page state, because boot
+// calls `applyPrefs()` before this block runs.
+
+function petState(text, kind) {
+  const n = $("#pet-state");
+  if (!n) return;
+  n.textContent = text || "";
+  n.className = kind === "bad" ? "hint bad" : (kind === "ok" ? "hint ok" : "");
+}
+
+// One bubble in the log.  `src` is the citation line ("06-场景…，第 1549 行起"),
+// rendered small and grey under the text: a quote the player cannot check is
+// worth less than the sentence "资料里没有".
+function petPush(role, text, extra) {
+  const log = $("#pet-log");
+  if (!log) return;
+  const e = extra || {};
+  const turn = {role: role, text: text || ""};
+  PET.log.push(turn);
+  // Forty turns is about a screen of scrolling and far more than the endpoint
+  // is ever handed (six).  The cap is for the DOM, not the prompt.
+  if (PET.log.length > 40) PET.log.splice(0, PET.log.length - 40);
+  const row = el("div", "pturn " + (role === "user" ? "me" : (e.kind === "bad" ? "bad" : "ai")),
+                 text || "");
+  if (e.src) row.appendChild(el("span", "src", e.src));
+  log.appendChild(row);
+  log.scrollTop = log.scrollHeight;
+}
+
+function petClear() {
+  PET.log = [];
+  const log = $("#pet-log");
+  if (log) log.textContent = "";
+  petCode("");
+  petState("");
+}
+
+function petCode(code) {
+  PET.code = code || "";
+  const n = $("#pet-code");
+  if (!n) return;
+  n.textContent = PET.code;
+  n.classList.toggle("on", !!PET.code);
+}
+
+// --- the character ------------------------------------------------------
+// Mood is one class on #pet and nothing else.  Everything the player sees --
+// how fast it bobs, whether the eye is open, whether the spout is blowing --
+// hangs off that class in the stylesheet, so the drawing code never has to
+// know which pose it is in.
+let PET_MOOD_T = 0;
+let PET_BUB_T = 0;
+// Which portrait is showing.  Every file under /static/art/pet/ was drawn for
+// this project: one prompt per pose, flat #00FF00 backdrop, keyed to alpha at
+// build time (tools/pet_art.py), so the set is ours and the hands are consistent.
+// Moods and ACTIONS share the set; a pose is reused only where it already says
+// the same thing (tapping a quill means both "writing" and "reading the docs").
+// Two extra files, side.png and back.png, are kept for the facing swap.
+const PET_FACE = {
+  idle: "idle", think: "think", happy: "happy", sad: "sad", sleep: "sleep",
+  start: "happy", approval: "approval", sing: "sing",
+  shell: "edit", edit: "edit", read: "think", web: "think",
+};
+// Every pose that exists on disk.  A mood picks one of these through PET_FACE;
+// the idle loop picks one directly, which is why this list is separate -- a
+// mood is a thing the assistant feels, and "she happens to be waving" is not.
+const PET_POSES = ["idle", "think", "happy", "sad", "sleep", "approval", "edit",
+                   "sing", "side", "back", "wave", "eat", "pat", "look",
+                   "walk1", "walk2"];
+// What the idle loop is allowed to show when nothing is happening.  `think`,
+// `sad` and `approval` are left out on purpose: they say something went wrong
+// or is pending, and a character that frowns for no reason reads as broken.
+// walk1 and walk2 are the two halves of one stride, not two poses.  They
+// are driven by petWalk() below; leaving them here would show a character
+// standing still in between.
+const PET_LIVE = ["wave", "eat", "pat", "look", "side", "back",
+                  "happy", "sing", "edit"];
+
+function petFace(name) {
+  const img = document.querySelector("#pet-img");
+  if (!img) return;
+  // A name is either a mood (goes through the table) or a pose (used as-is).
+  const file = PET_FACE[name] || (PET_POSES.indexOf(name) >= 0 ? name : "idle");
+  const next = "/static/art/pet/" + file + ".png";
+  if (img.getAttribute("src") !== next) img.setAttribute("src", next);
+  // `petFace` is the single place that decides what she looks like, so the
+  // breathing loop belongs here rather than in every caller: every road that
+  // ends on plain idle ends here.
+  if (file === "idle") petAmbient();
+}
+
+// Show one pose for a while, then hand the face back to the mood.  Separate
+// from petMood because a mood also drives the bob speed and the class the
+// stylesheet hangs everything off; a pose is only a picture.
+// The poses that were also rendered as clips.  A still borrowed for three
+// seconds reads as a picture being held up; the same pose breathing for three
+// seconds reads as the character doing something.  Listed explicitly instead of
+// probed: a 404 would cost a round trip on every borrow and show as a frozen
+// face, and a test can diff this list against the folder.
+const PET_CLIPS = ["walk", "pat", "idle", "think", "happy", "sad", "sleep",
+                   "approval", "edit", "sing", "side", "back", "wave", "eat", "look"];
+
+let PET_POSE_T = 0;
+function petPose(file, ms) {
+  if (PET_POSES.indexOf(file) < 0) return;
+  if (PET_CLIPS.indexOf(file) >= 0 && petClip("anim_" + file, ms)) {
+    // A clip ends itself and hands the face back to the mood, so there is
+    // nothing to schedule here.  Scheduling as well would cut it short.
+    if (PET_POSE_T) { clearTimeout(PET_POSE_T); PET_POSE_T = 0; }
+    return;
+  }
+  petWalkStop();
+  petFace(file);
+  if (PET_POSE_T) clearTimeout(PET_POSE_T);
+  PET_POSE_T = setTimeout(() => { PET_POSE_T = 0; petFace(PET.mood); }, ms);
+  // petFace(idle) restarts the breathing loop by itself; no extra call here.
+}
+
+// A flipbook, which is what every walking desktop pet actually is: two drawn
+// frames alternating.  `setInterval` on `src` costs one decoded image and no
+// compositing layer, so this stays cheap enough to run next to the physics.
+// 240ms is 4 frames a second -- slow for film, right for a chibi stride, and
+// slow enough that a single missed frame is invisible.
+let PET_WALK_T = 0;
+let PET_WALK_F = 0;
+let PET_WALK_END = 0;
+const PET_WALK = ["walk1", "walk2"];
+// Play a real clip where one exists.  There is one <video> in the DOM and its
+// source is swapped per call, because two hidden video elements would double
+// the decoded-frame memory for something only one of them shows at a time.
+// The clips come from tools/clip_alpha.py: 124 drawn frames, green removed.
+// `ms` of 0 means "no end": the clip is ambient and runs until something else
+// takes the screen.  Every clip is one shared <video>; `PET_VIDEO_KIND` says
+// which of the two kinds is on screen so the idle loop knows whether starting
+// the breathing loop would be a no-op or would cut a guest clip short.
+let PET_VIDEO_KIND = "";
+// A clip that failed to load once is not retried.  Without this a missing file
+// would be requested on every borrow: the still would be hidden by the `clip`
+// class, the video would stay blank, and she would simply vanish for three
+// seconds at a time with nothing in the console but a 404.
+let PET_CLIP_BAD = {};
+function petClip(name, ms) {
+  const box = $("#pet");
+  const vid = $("#pet-vid");
+  if (!box || !vid) return false;
+  if (PET_CLIP_BAD[name]) return false;
+  const src = "/static/art/pet/" + name + ".webm";
+  if (vid.getAttribute("src") !== src) {
+    vid.setAttribute("src", src);
+    // The failure arrives asynchronously, one turn after the caller already
+    // returned true, so the recovery has to live on the element itself.
+    vid.onerror = () => {
+      PET_CLIP_BAD[name] = true;
+      if (PET_VIDEO_KIND === "guest" || PET_VIDEO_KIND === "ambient") {
+        petWalkStop();
+        petFace(PET.mood);
+      }
+    };
+  }
+  if (PET_WALK_T) { clearInterval(PET_WALK_T); PET_WALK_T = 0; }
+  if (PET_WALK_END) { clearTimeout(PET_WALK_END); PET_WALK_END = 0; }
+  box.classList.add("clip");
+  PET_VIDEO_KIND = ms ? "guest" : "ambient";
+  try { vid.currentTime = 0; } catch (e) { /* not seekable yet, start anywhere */ }
+  const p = vid.play();
+  if (p && p.catch) p.catch(() => {});
+  if (ms) PET_WALK_END = setTimeout(() => { petWalkStop(); petFace(PET.mood); }, ms);
+  return true;
+}
+
+// The idle pose is a looped clip, not a still.  A still frame reads as a
+// screenshot of a character; three seconds of her breathing reads as a
+// character.  It is the one clip with no timer: it stays until a mood or a
+// guest clip takes the screen and comes back when they let go.
+function petAmbient() {
+  if (PET_VIDEO_KIND === "ambient") return true;
+  if (PET.mood !== "idle" || PET_POSE_T) return false;
+  return petClip("anim_idle", 0);
+}
+
+function petWalk(ms) {
+  petWalkStop();
+  // A real clip is 124 drawn frames at 24fps; the two stills are the fallback
+  // for when the clip will not decode.  Both paths end the same way, so the
+  // caller does not have to know which ran.
+  if (petClip("anim_walk", ms)) return;
+  PET_WALK_F = 0;
+  petFace(PET_WALK[0]);
+  PET_WALK_T = setInterval(() => {
+    PET_WALK_F = 1 - PET_WALK_F;
+    petFace(PET_WALK[PET_WALK_F]);
+  }, 240);
+  PET_WALK_END = setTimeout(() => { petWalkStop(); petFace(PET.mood); }, ms);
+}
+function petWalkStop() {
+  if (PET_WALK_T) { clearInterval(PET_WALK_T); PET_WALK_T = 0; }
+  if (PET_WALK_END) { clearTimeout(PET_WALK_END); PET_WALK_END = 0; }
+  PET_VIDEO_KIND = "";
+  const box = $("#pet");
+  if (box) box.classList.remove("clip");
+  const vid = $("#pet-vid");
+  if (vid && !vid.paused) vid.pause();
+}
+
+function petMood(name, ms) {
+  const box = $("#pet");
+  if (!box) return;
+  for (const m of ["idle", "think", "happy", "sad", "sleep"]) {
+    box.classList.toggle("m-" + m, m === name);
+  }
+  PET.mood = name;
+  // A new mood outranks whatever the idle loop was showing: if the assistant
+  // just started thinking, it must not keep waving because a timer said so.
+  if (PET_POSE_T) { clearTimeout(PET_POSE_T); PET_POSE_T = 0; }
+  petWalkStop();
+  petFace(name);
+  if (PET_MOOD_T) { clearTimeout(PET_MOOD_T); PET_MOOD_T = 0; }
+  // A transient mood goes back to idle by itself; a mood with no duration is
+  // the state machine's to change.
+  if (ms) PET_MOOD_T = setTimeout(() => petMood("idle"), ms);
+}
+
+// Where the ball will have settled, not where it happens to be painted right
+// now.  `#pet` tweens its `bottom` over 160ms, so a remark triggered straight
+// after a drag would otherwise be placed against the position the ball is
+// leaving rather than the one it is going to.
+function petBallTop() {
+  const bh = $("#pet-btn") ? $("#pet-btn").offsetHeight : 48;
+  if (PET.top === null || PET.top === undefined) return window.innerHeight - 24 - bh;
+  return PET.top;
+}
+
+function petBubble(text, ms) {
+  const b = $("#pet-bubble");
+  if (!b) return;
+  const box = $("#pet");
+  b.textContent = text || "";
+  b.classList.toggle("on", !!text);
+  if (box) {
+    // Measured once the text is in, because the height depends on how long the
+    // line is: a two-word reply fits above a ball that a three-line one does
+    // not.  Height is read after layout, so this cannot be hoisted.
+    box.classList.remove("bdown");
+    if (text && petBallTop() < b.offsetHeight + 16) box.classList.add("bdown");
+  }
+  if (PET_BUB_T) { clearTimeout(PET_BUB_T); PET_BUB_T = 0; }
+  if (text) PET_BUB_T = setTimeout(() => b.classList.remove("on"), ms || 6000);
+}
+
+function petRank(bond) {
+  let name = PET_RANKS[0][1];
+  for (const pair of PET_RANKS) if (bond >= pair[0]) name = pair[1];
+  return name;
+}
+
+function petBondPaint() {
+  const b = $("#pet-bond");
+  if (b) b.textContent = petRank(PET.bond) + " · " + PET.bond;
+  const f = $("#pet-feed");
+  if (f) f.textContent = "喂食 ×" + PET.treats;
+}
+
+function petSave() {
+  try {
+    localStorage.setItem(PET_KEY, JSON.stringify({
+      bond: PET.bond, treats: PET.treats, turns: PET.turns,
+      lastPat: PET.lastPat, lastFeed: PET.lastFeed, treatAt: PET.treatAt,
+      side: PET.side, top: PET.top,
+    }));
+  } catch (e) { /* private mode: it simply forgets, which is not an error */ }
+}
+
+function petLoad() {
+  let got = {};
+  try { got = JSON.parse(localStorage.getItem(PET_KEY) || "{}") || {}; }
+  catch (e) { got = {}; }
+  const num = (v, lo, hi) => (typeof v === "number" && isFinite(v) && v >= lo
+                              && v <= hi ? Math.floor(v) : null);
+  if (num(got.bond, 0, 1e9) !== null) PET.bond = num(got.bond, 0, 1e9);
+  if (num(got.treats, 0, 20) !== null) PET.treats = num(got.treats, 0, 20);
+  if (num(got.turns, 0, 1e9) !== null) PET.turns = num(got.turns, 0, 1e9);
+  if (num(got.lastPat, 0, 4e12) !== null) PET.lastPat = num(got.lastPat, 0, 4e12);
+  if (num(got.lastFeed, 0, 4e12) !== null) PET.lastFeed = num(got.lastFeed, 0, 4e12);
+  if (num(got.treatAt, 0, 4e12) !== null) PET.treatAt = num(got.treatAt, 0, 4e12);
+  if (got.side === "left" || got.side === "right") PET.side = got.side;
+  if (num(got.top, 0, 1e5) !== null) PET.top = num(got.top, 0, 1e5);
+  // `peek` is not restored: see petSave.  A remembered tuck is indistinguishable
+  // from an assistant that is not there.
+  petBondPaint();
+  petSync();
+}
+
+// Patting is rate-limited because the number is the reward: an unbounded click
+// is a counter the player can finish in ten seconds and then never look at.
+function petPat() {
+  const now = Date.now();
+  PET.actAt = now;
+  if (PET.mood === "sleep") petMood("idle");
+  if (now - PET.lastPat < 10000) {
+    petBubble("刚摸过，等十秒。", 2400);
+    return;
+  }
+  PET.lastPat = now;
+  PET.bond += 1;
+  // Same length as the clip.  A 1.6s mood would yank the clip away at the point
+  // where she has only just closed her eyes, and petMood stops clips on purpose
+  // (a mood change has to outrank whatever was playing).
+  petMood("happy", 3200);
+  // The clip is what being patted looks like; the squash was what it looked
+  // like while there was only one still of it.  Letterboxing the reaction in
+  // five seconds of animation is the whole point of rendering one.
+  if (!petClip("anim_pat", 3200)) {
+    const box = $("#pet");
+    if (box) {
+      box.classList.add("pat");
+      setTimeout(() => box.classList.remove("pat"), 220);
+    }
+  }
+  petBubble("摸摸头 +1");
+  petBondPaint();
+  petSave();
+}
+
+function petFeed() {
+  const now = Date.now();
+  PET.actAt = now;
+  if (PET.treats <= 0) {
+    petBubble("没有小鱼干了。多问我几次就攒得到。", 3600);
+    return;
+  }
+  if (now - PET.lastFeed < 30000) {
+    petBubble("刚喂过，等半分钟。", 2400);
+    return;
+  }
+  PET.lastFeed = now;
+  PET.treats -= 1;
+  PET.bond += 5;
+  petMood("happy", 2000);
+  petBubble("吃了，好吃 +5");
+  petBondPaint();
+  petSave();
+}
+
+// The treat economy, and the only place it is minted: one per twelve answered
+// questions, plus one per five hours so a returning player finds something.
+function petTurn() {
+  const now = Date.now();
+  PET.turns += 1;
+  if (now - PET.treatAt > 300000) {
+    PET.treatAt = now;
+    PET.treats = Math.min(20, PET.treats + 1);
+  } else if (PET.turns % 12 === 0) {
+    PET.treats = Math.min(20, PET.treats + 1);
+  }
+  petBondPaint();
+  petSave();
+}
+
+// One timer, one question: is the player still here?  Ninety seconds of quiet
+// puts the character to sleep and parks the ball against the edge, which is the
+// behaviour every desktop pet has and the reason they stop being furniture.
+let PET_SAY = 0;
+let PET_TICK = 0;
+function petIdleTick() {
+  if (!PREFS.pet || !$("#pet")) return;
+  const now = Date.now();
+  if (PET.busy) { petMood("think"); return; }
+  if (now - PET.actAt > 90000) {
+    petMood("sleep");
+    if (!PET.open && !PET.peek) {
+      // Parking is not a drag-only verb.  Left alone on a fresh window she used
+      // to stay wherever the last resize put her, which is why "auto hide at the
+      // edge" and "never anywhere near an edge" could both be true at once.
+      // `petSettle` stamps `actAt`, so the stamp is restored afterwards: with it
+      // left at "now" the next tick would read the window as active and wake her
+      // up twenty seconds after she fell asleep.
+      const was = PET.actAt;
+      petSettle();
+      PET.actAt = was;
+      PET.peek = true;
+      petSync();
+      petSave();
+    }
+    return;
+  }
+  petMood("idle");
+  // Whispering is off in 静心 mode and off while the window is in the
+  // background: a tool that talks to an empty room is the one users mute.
+  if (!PET.open && !PREFS.calm && document.hasFocus() && now - PET_SAY > 180000) {
+    PET_SAY = now;
+    petBubble(PET_LINES[Math.floor(Math.random() * PET_LINES.length)], 7000);
+  }
+}
+
+function petDeptPaint() {
+  const n = $("#pet-dept");
+  if (n) n.textContent = PET.dept === "ai" ? "AI 脚本" : "XS 脚本";
+  petWritePaint();
+}
+
+// The write button stays pressable without a model on purpose: pressing it is
+// how the player learns that this is the one button that needs a key, and the
+// answer is a sentence with the two environment variable names in it.  A hidden
+// button teaches nothing and looks like the feature does not exist.
+function petWritePaint() {
+  const w = $("#pet-write");
+  if (!w) return;
+  const base = PET.dept === "ai" ? "写 AI 脚本" : "写 XS 脚本";
+  w.textContent = (PET_META && PET_META.available) ? base : base + "（需模型）";
+}
+
+// Where the ball sits.  All of it goes through this one function so a drag, a
+// snap and a restored preference cannot disagree: `style` is written here and
+// nowhere else, because a pixel position chosen by the pointer cannot be
+// expressed as a class.
+function petPlace() {
+  const box = $("#pet");
+  if (!box) return;
+  box.classList.toggle("side-left", PET.side === "left");
+  box.classList.toggle("peek", !!PET.peek);
+  // `hide` only while she is actually parked.  The flag is kept as-is, but the
+  // class is gated on the same two conditions the edge clock uses, because
+  // opening the panel is a request to see her: a container that stays off
+  // screen after you clicked it looks like the click did nothing.
+  box.classList.toggle("hide", !!PET.tucked && !!PET.peek && !PET.open);
+  // Leaning out is a second, smaller offset rather than the absence of the
+  // first one: `hide` minus `out` is her whole body behind the frame, `hide`
+  // plus `out` is her upper body past it.
+  box.classList.toggle("out", !!PET.out && !!PET.peek && !PET.open);
+  box.classList.remove("drag");
+  // Clear the drag position rather than re-writing it: which edge the ball
+  // belongs to, and how far off the frame that edge sits, is the stylesheet's
+  // business (it differs either side of the 1101px breakpoint and has to dodge
+  // the scrollbar gutter).  Writing a pixel here is how the ball used to end up
+  // sitting on the thumb, 12px out from the panel edge it was supposed to line
+  // up with.
+  box.style.right = "";
+  box.style.left = "";
+  box.style.top = "";
+  // Anchored by the wrapper's BOTTOM edge, never its top.  The ball is pinned
+  // to that edge (align-items: flex-end), and the wrapper's height walks from
+  // 32 to 286 when the panel opens -- so a `top` handed to the wrapper moves
+  // the ball by exactly the amount the panel grew, which is how a dropped ball
+  // ended up back at the bottom of the window.  `bottom` does not care how
+  // tall the wrapper is, so the ball lands where the hand left it.
+  if (PET.top === null || PET.top === undefined) {
+    box.style.bottom = "24px";
+  } else {
+    const bh = $("#pet-btn") ? $("#pet-btn").offsetHeight : 48;
+    box.style.bottom = Math.max(0, Math.round(window.innerHeight - (PET.top + bh))) + "px";
+  }
+}
+
+// The bubble follows one preference and nothing else.  Navigating between
+// screens must not close a panel the player opened, so `open` is held in PET
+// rather than in the DOM: `showView` never touches this element.
+// A press squashes the whale and springs it back.  Numbers are the ones
+// mdd111 uses: one full second of press energy, decaying 0.12 a frame, which
+// lands the whole bounce in about a sixth of a second -- long enough to feel,
+// short enough that a double press still reads as two presses.
+const PET_PRESS = {t: 0, raf: 0};
+function petPress() {
+  const g = document.querySelector("#pet-btn .ppress");
+  if (!g) return;
+  PET_PRESS.t = 1;
+  if (PET_PRESS.raf) return;
+  const step = () => {
+    PET_PRESS.t = Math.max(0, PET_PRESS.t - 0.12);
+    const t = PET_PRESS.t;
+    if (t <= 0) {
+      PET_PRESS.raf = 0;
+      g.style.transform = "";
+      return;
+    }
+    g.style.transform = "scale(" + (1 + 0.13 * t).toFixed(3) + "," +
+                        (1 - 0.13 * t).toFixed(3) + ")";
+    PET_PRESS.raf = requestAnimationFrame(step);
+  };
+  PET_PRESS.raf = requestAnimationFrame(step);
+}
+
+function petSync() {
+  const box = $("#pet");
+  if (!box) return;
+  box.classList.toggle("off", !PREFS.pet);
+  box.classList.toggle("open", !!PET.open && !PET.peek);
+  const b = $("#pet-btn");
+  if (b) b.setAttribute("aria-expanded", PET.open ? "true" : "false");
+  petPlace();
+  // Which side the panel hangs off is measured, not guessed: the ball moves,
+  // the viewport does not, and only the ball knows how much room it has left
+  // above it.  Re-measured on every open, so dragging the ball to the top and
+  // then opening it behaves like dragging it anywhere else.
+  const panel = $("#pet-panel");
+  if (panel) {
+    box.classList.remove("down");
+    if (PET.open && !PET.peek && b) {
+      const bh = b.offsetHeight;
+      const above = petBallTop();
+      const below = window.innerHeight - above - bh;
+      if (above < panel.offsetHeight + 16 && below > above) box.classList.add("down");
+    }
+  }
+}
+
+function petToggle(open) {
+  // Pressing the ball while it is parked on the edge un-parks it: the ball is
+  // the only control left at that point, so it has to mean "come back".
+  if (PET.peek && open !== false) {
+    PET.peek = false;
+    PET.open = true;
+    petSync();
+    return;
+  }
+  PET.open = open === undefined ? !PET.open : !!open;
+  petSync();
+  if (PET.open) {
+    const t = $("#pet-in");
+    if (t && !t.value.trim()) t.value = $("#say") ? $("#say").value.trim() : "";
+    petMeta();
+    if (!PET.log.length) petGreet();
+    if (t) setTimeout(() => t.focus(), 0);
+  }
+}
+
+async function petMeta() {
+  if (PET_META) {
+    petState(PET_META.available ? "模型已接" : "没配模型",
+             PET_META.available ? "ok" : "");
+    petWritePaint();
+    return;
+  }
+  try {
+    const j = await api("/api/pet-status");
+    const kn = (j && j.knowledge) || {};
+    PET_META = {available: !!j.available, name: j.model || "",
+                chunks: kn.chunks || 0};
+    petState(PET_META.available ? (PET_META.name || "模型已接") : "没配模型",
+             PET_META.available ? "ok" : "");
+  } catch (e) {
+    PET_META = {available: false, name: "", chunks: 0};
+    petState("没配模型");
+  }
+  petWritePaint();
+}
+
+// What the page tells the assistant about itself.  Every field here is something
+// the page actually knows; nothing is guessed from the view name.
+function petContext() {
+  const v = VIEW || "home";
+  const nav = $("#nav-" + v);
+  const label = nav ? (nav.querySelector(".nv") || {}).textContent : "";
+  let sel = "";
+  try {
+    if (v === "editor" && EDSEL) {
+      sel = [EDKIND === "unit" ? "单位" : "记录", EDSEL.name, "#" + EDSEL.id]
+        .filter(Boolean).join(" ");
+    } else if (v === "mods" && window.RAIL_MODS && $("#mods-host")) {
+      const on = document.querySelector(".modcard.on .mname");
+      if (on) sel = "模组 " + on.textContent.trim();
+    } else if (v === "lang") {
+      const t = $("#lang-ai-text");
+      if (t && t.value.trim()) sel = "语言框里写着：" + t.value.trim().slice(0, 80);
+    }
+  } catch (e) { /* a page that is not built yet has nothing selected */ }
+  return {view: v, title: label || v, sel: sel,
+          last: PET.last || "", error: PET.error || ""};
+}
+
+function petWatch(what, detail) {
+  if (what === "view") {
+    // A tip is offered once per page, in the open panel only.  Offering it while
+    // the panel is shut would be a notification the player did not ask for, and
+    // a tool that talks to itself in the corner is the thing users mute.
+    if (PET.open && !PET.log.length) petGreet();
+    const tip = PET_TIPS[detail];
+    if (tip && PET.open && PET.tipShown[detail] !== true) {
+      PET.tipShown[detail] = true;
+      const last = PET.log[PET.log.length - 1];
+      if (!last || last.text !== tip) petPush("assistant", tip);
+    }
+    petState(PET_META && PET_META.available ? "模型已接" : "没配模型",
+             PET_META && PET_META.available ? "ok" : "");
+    return;
+  }
+  PET.last = String(detail || "").slice(0, 160);
+}
+
+async function petAsk() {
+  const t = $("#pet-in");
+  const wish = t ? t.value.trim() : "";
+  if (!wish) { toast("先打字再问", "warn"); return; }
+  if (PET.busy) return;
+  PET.busy = true;
+  if (t) t.value = "";
+  petPush("user", wish);
+  petState("在想…");
+  PET.actAt = Date.now();
+  petMood("think");
+  try {
+    // The transcript is built into a variable, not inline: an object literal
+    // nested inside this one makes the route-contract probe read the replay's
+    // `role` as a key the server ignores.  The probe cannot tell a nested
+    // shape from a top-level one, and it is right not to guess.
+    const ctx = petContext();
+    const hist = PET.log.slice(0, -1).map((x) => ({role: x.role, text: x.text}));
+    const r = await api("/api/pet-chat", {
+      text: wish,
+      view: ctx.view,
+      title: ctx.title,
+      sel: ctx.sel,
+      last: ctx.last,
+      error: ctx.error,
+      history: hist,
+    });
+    const hits = (r && r.hits) || [];
+    const src = hits.length
+      ? hits.slice(0, 3).map((h) => {
+          const name = String(h.doc || "").split("/").pop();
+          const sec = h.section ? " · " + h.section : "";
+          return name + sec + "，第 " + h.line + " 行起";
+        }).join("；")
+      : "";
+    petPush("assistant", (r && r.text) || "这次没答上来。", {src: src});
+    petState(r && r.offline ? "资料原文" : ((r && r.model) || "模型已接"),
+             r && r.offline ? "" : "ok");
+    petMood("happy", 2000);
+    petTurn();
+  } catch (e) {
+    petPush("assistant", "问不通：" + e.message, {kind: "bad"});
+    petState("出错", "bad");
+    petMood("sad", 2400);
+  } finally {
+    PET.busy = false;
+  }
+}
+
+// The local reader and the model writer stay separate buttons.  Enter asks the
+// local one because it is free and instant; "写脚本" is the only one that spends
+// a request, and it says so in its own label when no key is configured.
+async function petRead() {
+  const t = $("#pet-in");
+  const wish = t ? t.value.trim() : "";
+  if (!wish) { toast("先说一句要做什么", "warn"); return; }
+  if (PET.busy) return;
+  PET.busy = true;
+  if (t) t.value = "";
+  petPush("user", wish);
+  petState("在读…");
+  PET.actAt = Date.now();
+  petMood("think");
+  petCode("");
+  try {
+    const r = await api("/api/ai-script-edit", {dept: PET.dept, text: wish});
+    const res = (r && r.result) || {};
+    const lines = [];
+    if (res.action) {
+      let what = "动作：" + (res.action_zh || res.action);
+      // For an attribute change the target and the attribute ARE the answer;
+      // 「对象 villager 1000」 would print the new hit points as if they were a
+      // number of villagers, which is the one reading a player must not get.
+      if (res.target) what += " " + res.target;
+      if (res.attr_zh) what += " · " + res.attr_zh;
+      // A count is written as a multiple, not as a trailing digit: 「村民 83 20」
+      // reads as an id followed by a mystery, 「村民 83 ×20」 reads as twenty.
+      if (!res.attr_zh && typeof res.number === "number") what += " ×" + res.number;
+      lines.push(what);
+    }
+    if (res.why) lines.push(res.why);
+    const diags = res.diagnostics || [];
+    if (diags.length) lines.push("校验：" + diags.length + " 条要改");
+    petPush("assistant", lines.join("\n") || "没读出动作。",
+            {kind: res.code ? "" : "bad"});
+    if (res.code) {
+      petCode(res.code);
+      petState("本地生成", "ok");
+      petMood("happy", 1600);
+    } else {
+      petState("没写出来", "bad");
+      petMood("sad", 2000);
+    }
+  } catch (e) {
+    petPush("assistant", "没写出来：" + e.message, {kind: "bad"});
+    petState("出错", "bad");
+  } finally {
+    PET.busy = false;
+  }
+}
+
+async function petWrite() {
+  const t = $("#pet-in");
+  const wish = t ? t.value.trim() : (PET.log.length ? "" : "");
+  if (!wish) { toast("先在框里说要写什么", "warn"); return; }
+  if (PET.busy) return;
+  PET.busy = true;
+  if (t) t.value = "";
+  petPush("user", wish);
+  petState("在写…");
+  PET.actAt = Date.now();
+  petMood("think");
+  petCode("");
+  try {
+    const r = await api("/api/ai-script-draft", {dept: PET.dept, text: wish});
+    const diags = (r && r.diagnostics) || [];
+    petCode((r && r.code) || "");
+    if (!PET.code) {
+      petPush("assistant", (r && r.error) || "这次没写出能过的脚本。", {kind: "bad"});
+      petState("没通过", "bad");
+    } else if (diags.length) {
+      const first = diags[0] || [];
+      petPush("assistant", "还差 " + diags.length + " 条，例如第 " +
+              (first[0] || 0) + " 行 " + (first[1] || ""), {kind: "bad"});
+      petState("有 " + diags.length + " 条", "bad");
+    } else {
+      const rounds = (r && r.rounds) || 1;
+      petPush("assistant", "写好了，校验零条。改写了 " + rounds + " 轮。");
+      petState((r && r.model) || "模型", "ok");
+      petMood("happy", 2200);
+    }
+  } catch (e) {
+    petPush("assistant", "写不出来：" + e.message, {kind: "bad"});
+    // Not `petMeta()` here: that would read the cached meta and overwrite this
+    // verdict with "没配模型" a moment later, so the one line explaining why the
+    // button did nothing would be replaced by a label that does not explain it.
+    petState("模型不可用", "bad");
+  } finally {
+    PET.busy = false;
+  }
+}
+
+async function petCopy() {
+  if (!PET.code) { toast("还没有脚本可复制", "warn"); return; }
+  try {
+    await navigator.clipboard.writeText(PET.code);
+    toast("脚本已复制。粘到 语言 页的框里就能存。", "ok");
+  } catch (e) {
+    const n = $("#pet-code");
+    if (n && document.createRange) {
+      const rg = document.createRange();
+      rg.selectNodeContents(n);
+      const sel = window.getSelection();
+      if (sel) { sel.removeAllRanges(); sel.addRange(rg); }
+      toast("已选中下面的脚本，按 Ctrl+C。", "warn");
+    }
+  }
+}
+
+// Dragging, snapping, throwing and landing.  The ball is not placed on a grid:
+// while held it springs after the pointer, on release it leaves with the speed
+// the hand had, falls under gravity, bounces off the frame and lands with a
+// squash.  Every number below is a physical quantity with a unit, which is why
+// they live here and not in the stylesheet.
+const PH = {
+  threshold: 5, slingMs: 200, k: 200, c: 30,
+  dead: 500, maxV: 3600, anchor: 1200,
+  gravity: 1400, restitution: 0.78, friction: 2.5,
+  restNormal: 40, restTangent: 15,
+  trailMs: 200, winMs: 150, staleMs: 150, minSpan: 20, segDt: 8,
+  peakW: 0.5, accelRef: 8000, accelGain: 0.6, slingRatio: 0.6,
+  subPx: 8, subMax: 64, maxDt: 0.05, sqMs: 220, sqSquash: 0.55,
+};
+
+// One owner for the motion state.  `pos` is the BALL's left/top in float, not
+// the wrapper's: the wrapper is a flex column that also holds the open panel,
+// so its width and height change with the conversation, and using them put the
+// floor 533px above the real one (the ball froze in mid air, convinced it had
+// landed).  The ball is 48px in every state, so it is the only honest frame.
+// Floats, not the style attribute: reading a pixel position back out every
+// frame would quantise the spring and make the tail of the settle shake.
+const PET_MOTION = {
+  follow: 0, fly: 0, goal: null,
+  pos: {x: 0, y: 0}, vel: {vx: 0, vy: 0},
+  trail: [], press: null, lastPress: 0,
+};
+
+// Where the ball sits inside its wrapper right now.  Zero offset while the
+// panel is closed (the wrapper then *is* the ball), but measured rather than
+// assumed so an open panel can never silently shift the physics again.
+function petBallOffset() {
+  const box = $("#pet");
+  const btn = $("#pet-btn");
+  if (!box || !btn) return {x: 0, y: 0};
+  const b = box.getBoundingClientRect();
+  const r = btn.getBoundingClientRect();
+  return {x: r.left - b.left, y: r.top - b.top};
+}
+
+// Write the ball's position by converting back into the wrapper's coordinates.
+function petBallWrite(x, y) {
+  const box = $("#pet");
+  if (!box) return;
+  const off = petBallOffset();
+  box.style.left = Math.round(x - off.x) + "px";
+  box.style.top = Math.round(y - off.y) + "px";
+}
+
+// Soft ceiling: cap*(1-e^(-s/cap)).  Monotone everywhere, so a harder throw is
+// always visibly harder, yet nothing leaves the window in a single frame.
+function phSoft(speed) {
+  if (!(speed > 0)) return 0;
+  return PH.maxV * (1 - Math.exp(-speed / PH.maxV));
+}
+
+// Squash curve: compress for the first 45%, then spring back with about 4%
+// overshoot.  Both the landing and the Q-bounce use this one curve.
+function phSquashCurve(u, sq) {
+  if (u < 0.45) {
+    const p = u / 0.45;
+    return 1 - (1 - sq) * p * p;
+  }
+  const p = (u - 0.45) / 0.55;
+  const c1 = 1.70158;
+  const c3 = c1 + 1;
+  const f = 1 + c3 * Math.pow(p - 1, 3) + c1 * Math.pow(p - 1, 2);
+  return Math.min(1.12, sq + (1 - sq) * Math.max(f, 0));
+}
+
+// How hard the landing was, as a dent: a soft set-down barely shows, a hard
+// throw flattens to just over half height.  scaleY only: the width is what
+// tells the eye it is still the same animal.
+function petSquash(impact) {
+  const btn = $("#pet-btn");
+  if (!btn) return;
+  const t = Math.min(Math.max((Math.abs(impact) - 300) / 1200, 0), 1);
+  const sq = Math.min(0.8, 1 - t * (1 - PH.sqSquash));
+  const t0 = performance.now();
+  const step = (now) => {
+    const u = Math.min((now - t0) / PH.sqMs, 1);
+    btn.style.transform = "scaleY(" + phSquashCurve(u, sq).toFixed(3) + ")";
+    if (u < 1) requestAnimationFrame(step);
+    else btn.style.transform = "";
+  };
+  requestAnimationFrame(step);
+}
+
+function phTrailPush(now, x, y) {
+  const M = PET_MOTION;
+  M.trail.push({t: now, x: x, y: y});
+  const cut = now - PH.trailMs;
+  while (M.trail.length && M.trail[0].t < cut) M.trail.shift();
+}
+
+// Release speed: direction from the first and last sample of the window (that
+// is the part hand tremor cannot fake), size from the mean weighted against the
+// peak, plus a bonus when the hand was still accelerating at the end.  Null
+// means the hand had already stopped, so the ball is simply put down.
+function phEstimate(now) {
+  const M = PET_MOTION;
+  const trail = M.trail;
+  if (!trail.length) return null;
+  if (now - trail[trail.length - 1].t > PH.staleMs) return null;
+  const win = trail.filter((s) => now - s.t <= PH.winMs);
+  if (win.length < 2) return null;
+  const t0 = win[0].t, x0 = win[0].x, y0 = win[0].y;
+  const t1 = win[win.length - 1].t, x1 = win[win.length - 1].x, y1 = win[win.length - 1].y;
+  const span = t1 - t0;
+  if (span < PH.minSpan) return null;
+  const bvx = ((x1 - x0) / span) * 1000;
+  const bvy = ((y1 - y0) / span) * 1000;
+  const bsp = Math.hypot(bvx, bvy);
+  if (bsp < 1e-6) return null;
+  const segs = [];
+  let px = x0, py = y0, pt = t0;
+  for (let i = 1; i < win.length; i++) {
+    const s = win[i];
+    const d = s.t - pt;
+    if (d >= PH.segDt) {
+      segs.push({speed: (Math.hypot(s.x - px, s.y - py) / d) * 1000, tEnd: s.t});
+      px = s.x; py = s.y; pt = s.t;
+    }
+  }
+  const peak = segs.length ? Math.max.apply(null, segs.map((v) => v.speed)) : bsp;
+  let accel = 0;
+  if (segs.length >= 2) {
+    const a = segs[segs.length - 1], b = segs[0];
+    accel = (a.speed - b.speed) / Math.max((a.tEnd - b.tEnd) / 1000, PH.minSpan / 1000);
+  }
+  const raw =
+    ((1 - PH.peakW) * bsp + PH.peakW * peak) *
+    (1 + Math.min(Math.max(accel, 0) / PH.accelRef, 1) * PH.accelGain);
+  const speed = phSoft(raw);
+  if (speed < PH.dead) return null;
+  return {vx: (bvx / bsp) * speed, vy: (bvy / bsp) * speed};
+}
+
+// Slingshot: a second press within a fifth of a second starts a pull.  Power is
+// the pull distance and nothing else, so the same pull always throws the same
+// way, and the ball flies opposite the pull.
+function phSling(ax, ay, cx, cy, size) {
+  const px = cx - ax;
+  const py = cy - ay;
+  const dist = Math.hypot(px, py);
+  const ref = size > 0 ? size * PH.slingRatio : 0;
+  if (!(ref > 0) || !(dist > 0)) return {vx: 0, vy: 0};
+  const power = dist / ref;
+  const speed = PH.anchor * Math.max(0, power);
+  if (!speed) return {vx: 0, vy: 0};
+  const angle = (Math.atan2(py, -px) * 180) / Math.PI;
+  const rad = (angle * Math.PI) / 180;
+  return {vx: Math.cos(rad) * speed, vy: -Math.sin(rad) * speed};
+}
+
+// One contact, solved in the surface's own frame: the normal bounces, the
+// tangent only rubs.  Both edges of a corner go through here, which is why a
+// ball thrown into a corner loses speed on both axes instead of pinging.
+function phHit(v, edge, dt) {
+  const n = {left: [1, 0], right: [-1, 0], ceiling: [0, 1], floor: [0, -1]}[edge];
+  const nx = n[0], ny = n[1];
+  const tx = -ny, ty = nx;
+  const vn = v.vx * nx + v.vy * ny;
+  const vt = v.vx * tx + v.vy * ty;
+  const ns = Math.abs(vn) < PH.restNormal ? 0 : Math.abs(vn) * PH.restitution;
+  const ts = vt * Math.max(0, 1 - PH.friction * dt);
+  v.vx = ns * nx + ts * tx;
+  v.vy = ns * ny + ts * ty;
+}
+
+function petFollowStop() {
+  const M = PET_MOTION;
+  M.goal = null;
+  if (M.follow) { cancelAnimationFrame(M.follow); M.follow = 0; }
+}
+
+// Over-damped: it never overshoots the pointer, it only lags it.  That lag is
+// what turns a pointer that arrives in 8px jumps into something with weight.
+function petFollowStart() {
+  const M = PET_MOTION;
+  if (M.follow) return;
+  const box = $("#pet");
+  if (!box) return;
+  let last = performance.now();
+  const step = (now) => {
+    if (!M.goal) { M.follow = 0; return; }
+    const dt = Math.min((now - last) / 1000, 1 / 30);
+    last = now;
+    M.vel.vx += ((M.goal.x - M.pos.x) * PH.k - M.vel.vx * PH.c) * dt;
+    M.vel.vy += ((M.goal.y - M.pos.y) * PH.k - M.vel.vy * PH.c) * dt;
+    M.pos.x += M.vel.vx * dt;
+    M.pos.y += M.vel.vy * dt;
+    petBallWrite(M.pos.x, M.pos.y);
+    M.follow = requestAnimationFrame(step);
+  };
+  M.follow = requestAnimationFrame(step);
+}
+
+function petFlyStop() {
+  const M = PET_MOTION;
+  if (M.fly) { cancelAnimationFrame(M.fly); M.fly = 0; }
+}
+
+// The flight is the only thing writing left/top while it runs, so a grab has to
+// cancel it first -- two writers on one property is how a pet ends up jittering
+// between two positions forever.
+function petFly(vx, vy) {
+  const box = $("#pet");
+  if (!box) return;
+  petFlyStop();
+  petFollowStop();
+  const M = PET_MOTION;
+  box.classList.add("drag");
+  let x = M.pos.x, y = M.pos.y;
+  const v = {vx: vx, vy: vy};
+  let last = performance.now();
+  const step = (now) => {
+    const raw = Math.min(Math.max((now - last) / 1000, 0), PH.maxDt);
+    last = now;
+    // The ball's size, not the wrapper's: the wrapper grows with the panel.
+    const bw = $("#pet-btn") ? $("#pet-btn").offsetWidth : 48;
+    const bh = $("#pet-btn") ? $("#pet-btn").offsetHeight : 48;
+    const maxX = Math.max(0, window.innerWidth - bw);
+    const maxY = Math.max(0, window.innerHeight - bh);
+    // Sub-stepping: a slingshot can leave at thousands of px/s, and one 16ms
+    // step at that speed would jump straight past the floor and the bounce.
+    const travel = Math.hypot(v.vx, v.vy) * raw;
+    const subs = travel > PH.subPx ? Math.min(PH.subMax, Math.ceil(travel / PH.subPx)) : 1;
+    const dt = raw / subs;
+    let hit = 0;
+    for (let i = 0; i < subs; i++) {
+      v.vy += PH.gravity * dt;
+      x += v.vx * dt;
+      y += v.vy * dt;
+      if (x < 0) { x = 0; hit = Math.max(hit, Math.abs(v.vx)); phHit(v, "left", dt); }
+      else if (x > maxX) { x = maxX; hit = Math.max(hit, Math.abs(v.vx)); phHit(v, "right", dt); }
+      if (y < 0) { y = 0; hit = Math.max(hit, Math.abs(v.vy)); phHit(v, "ceiling", dt); }
+      else if (y > maxY) { y = maxY; hit = Math.max(hit, Math.abs(v.vy)); phHit(v, "floor", dt); }
+    }
+    M.pos.x = x;
+    M.pos.y = y;
+    M.vel.vx = v.vx;
+    M.vel.vy = v.vy;
+    petBallWrite(x, y);
+    if (hit) petSquash(hit);
+    const grounded = y >= maxY - 0.5;
+    if (grounded && Math.abs(v.vy) < PH.restNormal && Math.abs(v.vx) < PH.restTangent) {
+      M.fly = 0;
+      box.classList.remove("drag");
+      petSettle();
+      return;
+    }
+    M.fly = requestAnimationFrame(step);
+  };
+  M.fly = requestAnimationFrame(step);
+}
+
+// Landing: snap to whichever edge the centre is nearer -- a ball that also
+// jumps to a corner has lost the player's vertical place -- then hand the
+// position back to the stylesheet, which is the only thing that knows how far
+// each edge sits from the frame.
+// Four edges, not two.  The ball snaps horizontally when its centre is in the
+// outer quarter of the window, and vertically on the same quarter rule, so the
+// corners are reachable and a ball left high up sits against the top instead of
+// hovering wherever the hand stopped.  The quarter rule is the one
+// `mdd111/deepseek-dafeiyu-pet` uses in `_snap_to_edge`: a quarter is far enough
+// in that the player had to mean it, and near enough that a lazy toss reaches
+// it.
+function petSettle() {
+  const box = $("#pet");
+  const btn = $("#pet-btn");
+  if (!box || !btn) return;
+  const r = btn.getBoundingClientRect();
+  const cx = r.left + r.width / 2;
+  const cy = r.top + r.height / 2;
+  const w = window.innerWidth;
+  const h = window.innerHeight;
+  // Horizontal snap is expressed as a side, because the stylesheet owns the
+  // inset (it differs either side of the breakpoint so the ball clears the
+  // scrollbar).  Vertical snap has to be a number, because `PET.top` is the
+  // ball's own top edge and nothing else knows the ball's height.
+  if (cx < w / 4) PET.side = "left";
+  else if (cx > w - w / 4) PET.side = "right";
+  if (cy < h / 4) PET.top = 24;
+  else if (cy > h - h / 4) PET.top = h - r.height - 24;
+  else PET.top = Math.max(8, Math.min(r.top, h - r.height - 8));
+  PET.open = false;
+  PET.actAt = Date.now();
+  petSync();
+  petSave();
+}
+
+// Press, drag, throw.  A pointer that moves less than five pixels is a click:
+// without that threshold every press nudges the ball and the panel never opens.
+function petBindDrag() {
+  const btn = $("#pet-btn");
+  const box = $("#pet");
+  if (!btn || !box) return;
+  const M = PET_MOTION;
+  btn.addEventListener("pointerdown", (ev) => {
+    if (ev.button !== 0) return;
+    petFlyStop();
+    petFollowStop();
+    box.classList.remove("drag");
+    const br = btn.getBoundingClientRect();
+    M.pos.x = br.left;
+    M.pos.y = br.top;
+    M.vel.vx = 0;
+    M.vel.vy = 0;
+    M.trail = [];
+    const now = performance.now();
+    // The slingshot window is measured between presses only: how long the pull
+    // lasts and when it is released have no say in whether it is a slingshot.
+    const sling = now - M.lastPress < PH.slingMs;
+    M.lastPress = sling ? 0 : now;   // cleared after a hit, so three presses do not fire two slingshots
+    M.press = {
+      x: ev.clientX,
+      y: ev.clientY,
+      offX: ev.clientX - (br.left + br.width / 2),
+      offY: ev.clientY - (br.top + br.height / 2),
+      ax: br.left + br.width / 2,
+      ay: br.top + br.height / 2,
+      size: br.width,
+      sling: sling,
+      moved: false,
+    };
+    PET.actAt = Date.now();
+    if (PET.mood === "sleep") petMood("idle");
+    petPress();
+    btn.setPointerCapture(ev.pointerId);
+  });
+  btn.addEventListener("pointermove", (ev) => {
+    const p = M.press;
+    if (!p) return;
+    const dx = ev.clientX - p.x;
+    const dy = ev.clientY - p.y;
+    if (!p.moved) {
+      if (Math.hypot(dx, dy) < PH.threshold) return;
+      p.moved = true;
+      // Collapse the panel first, then measure: with the panel open the wrapper
+      // is the panel's width and its left edge belongs to the panel, not the
+      // ball, so anchoring there made the ball leap sideways on every drag.
+      box.classList.remove("open");
+      box.classList.add("drag");
+      const wr = btn.getBoundingClientRect();
+      M.pos.x = wr.left;
+      M.pos.y = wr.top;
+      box.style.right = "auto";
+      box.style.bottom = "auto";
+      petBallWrite(M.pos.x, M.pos.y);
+    }
+    phTrailPush(performance.now(), ev.clientX, ev.clientY);
+    M.goal = {
+      x: ev.clientX - p.offX - btn.offsetWidth / 2,
+      y: ev.clientY - p.offY - btn.offsetHeight / 2,
+    };
+    petFollowStart();
+  });
+  const end = () => {
+    const p = M.press;
+    if (!p) return;
+    M.press = null;
+    if (!p.moved) {
+      petFollowStop();
+      petToggle();
+      return;
+    }
+    petFollowStop();
+    let v = null;
+    if (p.sling) {
+      v = phSling(p.ax, p.ay, M.pos.x + btn.offsetWidth / 2, M.pos.y + btn.offsetHeight / 2, p.size);
+    } else {
+      v = phEstimate(performance.now());
+    }
+    if (!v) {
+      box.classList.remove("drag");
+      petSettle();
+      return;
+    }
+    petFly(v.vx, v.vy);
+  };
+  btn.addEventListener("pointerup", end);
+  btn.addEventListener("pointercancel", end);
+}
+
+window.addEventListener("resize", () => {
+  // The frame moved, so "against the edge" is now a different set of pixels.
+  // Re-settling is cheap and it is the only thing that keeps the parked state
+  // honest across a resize.
+  if (!PET.open && !PET_MOTION.fly) petSettle();
+});
+if ($("#pet-btn")) $("#pet-btn").onclick = null;   // the drag handler owns it
+if ($("#pet-hide")) $("#pet-hide").onclick = () => petToggle(false);
+if ($("#pet-clear")) $("#pet-clear").onclick = petClear;
+if ($("#pet-edge")) $("#pet-edge").onclick = () => {
+  // Parking is explicit rather than a drag gesture: a player who drags the ball
+  // off the edge by accident must be able to get it back, and a hidden control
+  // cannot be dragged back.
+  PET.peek = !PET.peek;
+  if (PET.peek) PET.open = false;
+  petSync();
+};
+if ($("#pet-dept")) $("#pet-dept").onclick = () => {
+  PET.dept = PET.dept === "ai" ? "xs" : "ai";
+  petDeptPaint();
+};
+if ($("#pet-write")) $("#pet-write").onclick = petWrite;
+if ($("#pet-copy")) $("#pet-copy").onclick = petCopy;
+if ($("#pet-pat")) $("#pet-pat").onclick = petPat;
+if ($("#pet-feed")) $("#pet-feed").onclick = petFeed;
+// Double-clicking the ball pats it.  A single click still opens the panel: that
+// is what every existing habit and probe expects, and moving the panel behind a
+// timed double-click would make the whole assistant feel broken.
+if ($("#pet-btn")) $("#pet-btn").addEventListener("dblclick", petPat);
+petLoad();
+petMood("idle");
+PET.actAt = Date.now();
+PET_TICK = setInterval(petIdleTick, 20000);
+// A second, faster clock for the picture.  Twenty seconds is the right pace for
+// "is the player still here" and the wrong pace for "she is alive": at that
+// rate a player sees one pose and then goes back to work.  This one only ever
+// repaints the portrait; it never changes a mood.
+function petPoseTick() {
+  if (!PREFS.pet || !$("#pet")) return;
+  if (PET.open || PET.busy) return;
+  // `PET.peek` is deliberately not a gate.  Parking her used to stop this
+  // clock for good, because the sleep branch sets peek and nothing clears it:
+  // after the first ninety quiet seconds the other fifteen pictures never
+  // appeared again on that run.
+  if (PET.mood !== "idle") return;
+  if (PET_POSE_T) return;                       // one at a time
+  // A borrowed clip runs about five seconds.  Without this guard the next
+  // tick lands at 3.6 and cuts it off mid-gesture, so every clip would be
+  // seen only from the waist up and none of them would finish.
+  if (PET_VIDEO_KIND === "guest") return;
+  const roll = Math.random();
+  if (roll > 0.70) return;
+  // One time in four she crosses a couple of steps instead of striking a pose.
+  // Without this the character is a photograph with a wobble.
+  if (roll < 0.12) { petWalk(1800 + Math.random() * 900); return; }
+  const pick = PET_LIVE[Math.floor(Math.random() * PET_LIVE.length)];
+  petPose(pick, 3200 + Math.random() * 2600);
+}
+
+// Parked on an edge, she tucks away and looks out now and then.  Without this
+// the "hide" control only changed the size, which reads as a smaller window
+// ornament rather than as a character that is waiting for you to come back.
+let PET_EDGE_OUT = 0;
+function petEdgeTick() {
+  if (!PREFS.pet || !$("#pet")) return;
+  const parked = PET.peek && !PET.open;
+  if (!parked) {
+    if (PET.tucked || PET.out) { PET.tucked = false; PET.out = false; petSync(); }
+    return;
+  }
+  const now = Date.now();
+  if (PET.out) {
+    if (now - PET_EDGE_OUT > 2200) {
+      PET_EDGE_OUT = now;
+      PET.out = false;
+      PET.tucked = true;
+      petSync();
+    }
+    return;
+  }
+  // Long enough that looking out is a small event, not a twitch, and short
+  // enough that a player who glances over has a fair chance of catching it.
+  if (now - PET_EDGE_OUT > 9000) {
+    PET_EDGE_OUT = now;
+    PET.tucked = true;
+    PET.out = true;
+    petSync();
+    petPose("look", 2200);
+    return;
+  }
+  if (!PET.tucked) {
+    // The clock starts when she arrives at the wall, not when the page loaded:
+    // `PET_EDGE_OUT` is a module-level zero, so without this stamp the very
+    // first tick reads "nine seconds have passed" and she leans out instantly.
+    PET_EDGE_OUT = now;
+    PET.tucked = true;
+    petSync();
+  }
+}
+
+PET_POSE_TICK = setInterval(petPoseTick, 3600);
+PET_EDGE_TICK = setInterval(petEdgeTick, 1500);
+if ($("#pet-in")) {
+  // Enter asks; Shift+Enter is a newline.  The two buttons beside it cover the
+  // other two verbs, so the box never has to guess which one was meant.
+  $("#pet-in").addEventListener("keydown", (ev) => {
+    if (ev.key === "Enter" && !ev.shiftKey) { ev.preventDefault(); petAsk(); }
+  });
+}
+petBindDrag();
+petDeptPaint();
+if (typeof petSync === "function") petSync();
+if (typeof petSync === "function") petSync();
 </script>
 </body>
 </html>
