@@ -8,6 +8,12 @@ the first function that moves it is the one whose layout is wrong -- which is a
 measurement, not a guess about which edit broke things.
 """
 import collections
+import os as _os, sys as _sys
+_p = _os.path.dirname(_os.path.abspath(__file__))
+while _p and not _os.path.isfile(_os.path.join(_p, "_gamepaths.py")):
+    _p = _os.path.dirname(_p)
+if _p and _p not in _sys.path:
+    _sys.path.insert(0, _p)
 import _gamepaths as GP
 import os
 import sys

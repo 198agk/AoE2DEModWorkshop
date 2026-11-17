@@ -6,6 +6,12 @@ trace=True.  The byte before the divergence is what tells us which write_* call
 emitted the wrong width -- far more useful than re-reading the code.
 """
 import os
+import os as _os, sys as _sys
+_p = _os.path.dirname(_os.path.abspath(__file__))
+while _p and not _os.path.isfile(_os.path.join(_p, "_gamepaths.py")):
+    _p = _os.path.dirname(_p)
+if _p and _p not in _sys.path:
+    _sys.path.insert(0, _p)
 import _gamepaths as GP
 import sys
 

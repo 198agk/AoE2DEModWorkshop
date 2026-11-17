@@ -1,3 +1,9 @@
+import os as _os, sys as _sys
+_p = _os.path.dirname(_os.path.abspath(__file__))
+while _p and not _os.path.isfile(_os.path.join(_p, "_gamepaths.py")):
+    _p = _os.path.dirname(_p)
+if _p and _p not in _sys.path:
+    _sys.path.insert(0, _p)
 import _gamepaths as GP
 """Anatomy of one unit record: every field, its live value, and what a user-facing
 'stat' actually decomposes into. Goal: know exactly what an intent like

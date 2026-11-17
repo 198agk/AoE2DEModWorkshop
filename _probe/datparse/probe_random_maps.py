@@ -10,6 +10,12 @@ and would silently truncate this script's output.  Parse fully instead, and
 instrument read_random_maps to learn the section's byte span.
 """
 import os
+import os as _os, sys as _sys
+_p = _os.path.dirname(_os.path.abspath(__file__))
+while _p and not _os.path.isfile(_os.path.join(_p, "_gamepaths.py")):
+    _p = _os.path.dirname(_p)
+if _p and _p not in _sys.path:
+    _sys.path.insert(0, _p)
 import _gamepaths as GP
 import sys
 import contextlib

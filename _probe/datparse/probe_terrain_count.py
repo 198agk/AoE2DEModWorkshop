@@ -5,6 +5,12 @@ and checking whether the bytes that follow look like a plausible RandomMaps
 header (uint32 count, int32 ptr) and then a plausible Effects int32 count."""
 
 import sys
+import os as _os, sys as _sys
+_p = _os.path.dirname(_os.path.abspath(__file__))
+while _p and not _os.path.isfile(_os.path.join(_p, "_gamepaths.py")):
+    _p = _os.path.dirname(_p)
+if _p and _p not in _sys.path:
+    _sys.path.insert(0, _p)
 import _gamepaths as GP
 import os
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))

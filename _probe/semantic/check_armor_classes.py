@@ -14,6 +14,12 @@ Then we collect every observed Class number across all 136,861 unit records and
 check it against the [AoE2DEArmorNames] table from AGE3NamesV0007.ini (0..36).
 """
 import os
+import os as _os, sys as _sys
+_p = _os.path.dirname(_os.path.abspath(__file__))
+while _p and not _os.path.isfile(_os.path.join(_p, "_gamepaths.py")):
+    _p = _os.path.dirname(_p)
+if _p and _p not in _sys.path:
+    _sys.path.insert(0, _p)
 import _gamepaths as GP
 import struct
 import sys
