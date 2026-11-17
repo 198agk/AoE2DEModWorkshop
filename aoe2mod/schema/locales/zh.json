@@ -59,7 +59,12 @@
     "update.count": "有 {n} 个模组要重建",
     "update.failed": "有 {n} 个没重建成功：{names}",
     "update.rebuilding": "重建中… ({done}/{total})",
-    "update.rebuilt": "已重建 {n} 个，重开游戏才会生效"
+    "update.rebuilt": "已重建 {n} 个，重开游戏才会生效",
+    "update.checking": "正在问 GitHub…",
+    "update.version_ahead": "远端只有 {version}，比这一份还旧，不用管",
+    "update.version_behind": "远端有 {version}：去 GitHub 页面下载新版，覆盖掉这一份就是升级",
+    "update.version_offline": "连不上 GitHub，这一份是不是最新就不知道了；过一会儿再按一次",
+    "update.version_same": "{version} 已经是最新的"
   },
   "version": 1
 }

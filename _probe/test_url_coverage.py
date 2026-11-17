@@ -24,17 +24,20 @@ SERVER = os.path.join(ROOT, "aoe2mod", "ui", "server.py")
 
 # `api("/api/forms")` and `api(`/api/icon?...`)` -- the leading slash matters:
 # a relative call would resolve against whatever the window's base is.
-CALL = re.compile(r"""api\(\s*[`"](/api/[a-z0-9\-]+)""")
+CALL = re.compile(r"""api\(\s*[`"](/api/[a-z0-9\-/]+)""")
+# 尾巴上的 `/`：`api("/api/online/peek")` 截到第一段斜杠就只剩 `/api/online`，
+# 而服务端只有 `/api/online/peek` 这类带子名的分支。 2026-11-17 之前这条正则
+# 一直把 `/api/online` 报成「页面调了个没人实现的路由」，红在门禁自己身上。
 # `if path == "/api/meta":` -- the exact-match branches, which is how almost every
 # route in this server is written.
-ROUTE = re.compile(r'''if path ==\s*"(/api/[a-z0-9\-]+)"''')
+ROUTE = re.compile(r'''if path ==\s*"(/api/[a-z0-9\-/]+)"''')
 # `if path in ("/api/pseudo-page-put", "/api/pseudo-page-del"):` -- the branches
 # that answer more than one url from the same body.  Read only as a comparison,
 # this form left `/api/pseudo-page-put` out of `served`, so the pin called a route
 # that exists a missing one and went red for a defect it invented.  A route
 # spelled two ways is still one route; the pin has to read both.
 ROUTE_IN = re.compile(r"""if path in \(([^)]*)\)""")
-IN_URL = re.compile(r'''"(/api/[a-z0-9\-]+)"''')
+IN_URL = re.compile(r'''"(/api/[a-z0-9\-/]+)"''')
 
 # Panels that load themselves on boot or on a chip.  Each one is a thing a player
 # sees; a missing route means a visible empty box, so these are named rather than
@@ -104,7 +107,10 @@ def main():
                 nxt = pos
                 break
         body = server[idx:nxt]
-        reaches = ("app." in body) or ('"ok"' in body)
+        # `/api/online/*` 走的是 `ON`（`aoe2mod/ui/online.py`），不是 `app`：
+        # 它在 2026-11 拆成了独立模块，网关那几条路由因此看起来"什么都不调"。
+        # 判据问的是「有没有到一个真生产者」，所以把 `ON.` 也算进去。
+        reaches = (("app." in body) or ("ON." in body) or ('"ok"' in body))
         check("the %s route reaches a producer" % url, reaches,
               body.strip()[:80])
 

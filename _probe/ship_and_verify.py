@@ -462,6 +462,17 @@ def check_routes(port):
     note("/api/update-check", u.get("ok") is True,
          " rows=%d" % len(u.get("rows") or []))
 
+    # 这一条问的是「这一份工具自己有没有新版」，和上面那条（游戏数据动过吗）
+    # 是两回事。 判据故意用 `behind is not None` 而不是 reachable：门禁可能
+    # 跑在没有外网的机器上，那时答案必须是「不知道」而不是一条不存在的错误；
+    # 有网时它才去读 raw.githubusercontent 上的 appversion.py。
+    vc = json.loads(get("/api/version-check?force=1"))
+    note("/api/version-check", vc.get("ok") is True
+         and "behind" in vc and "current" in vc,
+         " current=%r remote=%r behind=%r" % (vc.get("current"),
+                                                vc.get("remote"),
+                                                vc.get("behind")))
+
     return ok
 
 

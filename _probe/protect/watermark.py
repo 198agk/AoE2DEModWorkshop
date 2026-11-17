@@ -90,7 +90,7 @@ def stamp_image_bytes(data, buyer, bits=2):
         return data
     # a tEXt chunk is legal, ignored by decoders, and survives re-save in most
     # editors; it also keeps the pixel data bit-identical so nothing shifts.
-    text = b"Comment\x00aoe2mod:" + sig.encode("ascii") + b":" + tag.hex().encode("ascii")
+    text = b"Comment\x00aoe2mod:" + sig + b":" + tag.hex().encode("ascii")
     chunks = chunks[:-1] + [(b"tEXt", text)] + chunks[-1:]
     return _png_rebuild(chunks)
 

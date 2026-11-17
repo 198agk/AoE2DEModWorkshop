@@ -40,6 +40,7 @@ from .mod import emitter as E
 from .mod import strings as S
 from .semantic import pinyin as PZ
 from .mod import provenance as PV
+from . import updates as UPD
 from .semantic import index as semantic
 from .semantic import prose as PR
 
@@ -7411,6 +7412,23 @@ class Toolkit(object):
         """
         return PV.check(profile_root=profile_root, game_dat=game_dat,
                         path=state_file)
+
+    def version_check(self, force=False):
+        """Is there a newer build of the workshop itself upstream?
+
+        The other half of the word 「更新」, and the reason it is a second
+        method rather than a flag on :meth:`update_check`: that one answers a
+        LOCAL question about the game's data and never opens a socket, while
+        this one asks the project's own repository.  A player can be in either
+        state independently -- a game patch with no new build, or a new build
+        the day after a patch -- so one screen must not be able to answer one
+        with the other's numbers.
+
+        ``force`` skips the six-hour cache, because a press of 检查更新 means
+        "now".  Never raises and never installs: the answer always carries
+        ``reachable``, and a dead network is a sentence, not an exception.
+        """
+        return UPD.check(force=force)
 
     def mods(self):
         from .game import locations as G

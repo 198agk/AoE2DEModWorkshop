@@ -8805,6 +8805,22 @@ class App(object):
                 out[key] = got[key]
         return out
 
+    def version_check(self, force=False):
+        """Is there a newer build of the workshop itself upstream?
+
+        The other half of 更新, and the reason it is a SEPARATE route rather
+        than a flag on `/api/update-check`: that one hashes the player's own
+        `.dat` and never opens a socket, this one asks the project's
+        repository over HTTPS.  A patch with no new build and a new build
+        the day after a patch are independent states, so one screen must
+        not be able to answer one of them with the other's numbers.
+
+        `force` skips `updates.CACHE_SECONDS` because a press of 检查更新
+        means "now".  The answer always carries `reachable`: a dead network
+        is a sentence in the row, not an exception on the page.
+        """
+        return self.tk.version_check(force=force)
+
     def repair_check(self, profile_root=None):
         """Which installed mods ship a `.dat` the game has since outgrown.
 
@@ -10058,6 +10074,17 @@ def make_handler(app):
                     mode=q.get("mode", [""])[0]))
             if path == "/api/update-check":
                 return self._guard(app.update_check)
+            if path == "/api/version-check":
+                # The other half of 更新, and deliberately a second route:
+                # `/api/update-check` answers a LOCAL question (did the game's
+                # data move under an installed mod) and never opens a socket,
+                # while this one asks the project's own repository.  One screen
+                # must not be able to answer either with the other's numbers.
+                # `force` skips the six-hour cache because a press of 检查更新
+                # means "now".
+                q = _query(self.path)
+                return self._guard(lambda: app.version_check(
+                    force=bool(int(q.get("force", ["0"])[0] or 0))))
             if path == "/api/ai-meta":
                 # Cheap and keyless (no call is made): the page reads this on
                 # load to decide whether to draw the AI box at all.  An AI box

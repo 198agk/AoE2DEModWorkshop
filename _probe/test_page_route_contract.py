@@ -420,7 +420,14 @@ def main():
                  "stat": "native contract; the page goes through /api/build",
                  "sprite": "native contract; the page goes through /api/build",
                  "toggle-group": "native contract; the page goes through "
-                                 "/api/build"}
+                                 "/api/build",
+                 # 这两条是 2026-11 的 AI/宠物改造留下的无按钮路由。 打招呼
+                 # 优先走本机（`petGreet()` 直接在当帧写出那句话，不等一次
+                 # 往返），服务端那份是给别的调用方和之后接远端时用的；
+                 # `/api/ai-script-explain` 是脚本解释，界面上还没有入口。
+                 "pet-greet": "the page greets locally first; the route stays "
+                              "for callers that have no copy of the lines",
+                 "ai-script-explain": "no screen explains a whole script yet"}
     unsent = sorted(r for r in read if r not in sent)
     unexpected = [r for r in unsent if r.rsplit("/", 1)[-1] not in no_screen]
     check("every POST route the page never calls is a declared decision",

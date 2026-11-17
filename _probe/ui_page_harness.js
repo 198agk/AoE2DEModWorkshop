@@ -24,7 +24,22 @@ const src = m[1];
 function node(tag) {
   const n = {
     tagName: (tag || "div").toUpperCase(),
-    className: "", innerHTML: "", style: {},
+    className: "", innerHTML: "",
+    // `#pet-vid` 是 `<video>`：宠物球借用动画片时读 `paused`、调 `play()` / `pause()`。
+    // 替身的节点都长一样，缺这三个就会在 `petWalkStop()` 里抛
+    // "vid.pause is not a function" —— 而那读起来像页面坏了。 play() 必须返回
+    // 带 catch 的 promise，页面就是这么接的（自动播放被拒是常态）。
+    paused: true,
+    play() { this.paused = false; return Promise.resolve(); },
+    pause() { this.paused = true; },
+    // 偏好设置里那几项（背景、模糊、字号）落到 :root 的自定义属性上，页面用的是
+    // `root.style.setProperty("--bgimg", …)`。 一个空的 `{}` 会让整页在加载时
+    // 抛 TypeError，而那看起来像页面坏了，其实是替身缺了一个方法。
+    style: {
+      setProperty(k, v) { this[k] = String(v); },
+      removeProperty(k) { delete this[k]; },
+      getPropertyValue(k) { return k in this ? this[k] : ""; },
+    },
     children: [], value: "", disabled: false, onclick: null, title: "",
     parentNode: null,
     // The form panel labels each control with the slot it fills (`data-slot`),
@@ -222,6 +237,9 @@ const ids = {};
 let DOC_HIT = null;
 const document = {
   body: node("body"),
+  // 偏好设置的开关把自定义属性写在文档根上（`applyBg()`），diagnostics 还读
+  // `documentElement.clientWidth` 判断有没有横向滚动。 真浏览器里它一直在。
+  documentElement: node("html"),
   createElement: node,
   // The tech-tree legend puts the label beside a colour swatch with
   // `createTextNode`, because `textContent` on the span would replace the
@@ -523,6 +541,13 @@ const LOCALE = {ok: true, locale: "zh", strings: {
   "status.stale": "游戏更新过了，要重建",
   "update.banner": "游戏数据在你装这些模组之后更新过：{names}。"
     + "它们带着旧的一整份 .dat，会把更新盖掉；重建一次就好。",
+  // 检查更新那五句。和上面的 update.banner 是两条不同的消息：一个说模组要
+  // 重建，一个说工具有没有新版。表里少一句，`T()` 就会把键名原样印到屏幕上。
+  "update.checking": "正在问 GitHub…",
+  "update.version_ahead": "远端只有 {version}，比这一份还旧，不用管",
+  "update.version_behind": "远端有 {version}：去 GitHub 页面下载新版，覆盖掉这一份就是升级",
+  "update.version_offline": "连不上 GitHub，这一份是不是最新就不知道了；过一会儿再按一次",
+  "update.version_same": "{version} 已经是最新的",
   "btn.form": "✎ 填表",
   "pick.unit": "单位",
   "pick.search": "在这个列表里找…"
@@ -595,6 +620,26 @@ const UPDATE = {
   },
 };
 let UPDATE_ANSWER = UPDATE.stale;
+
+// /api/version-check 的三种答案。它不是 /api/update-check 的别名：那个问的是
+// 磁盘上游戏的 .dat 变没变，这个问的是远端仓库里这一份工具自己有没有新版。
+// behind 是唯一会让人去下载的状态，所以它必须点名远端版本号。
+const VERSIONS = {
+  behind: { ok: true, reachable: true, cached: false, current: "1.0",
+            remote: "1.1", behind: true, same: false,
+            source: "raw", url: "https://raw.githubusercontent.com/x/appversion.py",
+            project_url: "https://github.com/198agk/aoe2-mod-workshop",
+            checked_at: "2026-11-17 20:00", notes: [] },
+  same: { ok: true, reachable: true, cached: true, current: "1.0",
+          remote: "1.0", behind: false, same: true, source: "cache",
+          url: "", project_url: "https://github.com/198agk/aoe2-mod-workshop",
+          checked_at: "2026-11-17 20:00", notes: [] },
+  offline: { ok: true, reachable: false, cached: false, current: "1.0",
+             remote: "", behind: false, same: false, source: "", url: "",
+             project_url: "https://github.com/198agk/aoe2-mod-workshop",
+             checked_at: "", notes: ["连不上"] },
+};
+let VERSION_ANSWER = VERSIONS.behind;
 const rebuilt = [];
 // The game-running warning, as a switchable state: the same install route must
 // say something when the game is open and NOTHING when it is closed (a warning
@@ -773,12 +818,27 @@ let PARSE_ANSWER = FIXTURES.mixed;
 
 // ---- run the real script -------------------------------------------------
 const posted = [];
+const versionAsked = [];
 let RECIPE_ANSWER = RECIPES;
 let RECIPES_FAIL = false;
 const savedNow = [];
 const forgotten = [];
+// 页面顶层有一句不带守卫的 `window.addEventListener("resize", …)`（宠物球贴边重排），
+// 还有几处 `typeof window !== "undefined"` 的分支。 浏览器里 window 是天生就有的，
+// 替身里没有它，整段脚本在加载期就抛 ReferenceError，读起来像页面坏了。
+// `getSelection` 故意留成 undefined：页面那些守卫会因此跳过选区清理，正好。
+const window = {
+  addEventListener() {}, removeEventListener() {},
+  __TAURI_INTERNALS__: null,
+  confirm: () => false,
+  innerWidth: 1264, innerHeight: 821,
+  matchMedia: () => ({ matches: false, addEventListener() {}, addListener() {} }),
+  location: { href: "", assign() {}, replace() {} },
+};
+
 const sandbox = {
   document,
+  window,
   fetch: async (url, opt) => {
     posted.push({ url, body: opt && opt.body ? JSON.parse(opt.body) : null });
     // /api/describe answers with one of the two captured entities.  The page's
@@ -856,6 +916,12 @@ const sandbox = {
       RECIPE_ANSWER = { ok: true, recipes: (RECIPE_ANSWER.recipes || [])
         .filter((r) => r.name !== body.name).concat([row]) };
       return { json: async () => ({ ok: true, recipe: row }) };
+    }
+    if (url.indexOf("/api/version-check") === 0) {
+      // 版本检查问的是这一份工具本身，和 /api/update-check（问磁盘上游戏的
+      // .dat 有没有被游戏改过）是两件事。答案形状照抄服务端的扁平结构。
+      versionAsked.push(url);
+      return { json: async () => VERSION_ANSWER };
     }
     if (url.indexOf("/api/update-check") === 0) {
       // The route wraps its answer the way the server does ({ok, update}); a stub
@@ -1008,13 +1074,18 @@ const sandbox = {
   JSON,
 };
 const fn = new Function(
-  "document", "fetch", "setTimeout", "clearTimeout", "console", "JSON",
+  "document", "window", "fetch", "setTimeout", "clearTimeout", "console", "JSON",
+  // 页面在几个地方起计时器（宠物球、数据面纱）。 node 的 setInterval 会真的挂住
+  // 事件循环，脚本跑完不退出；requestAnimationFrame 在 node 里根本不存在。
+  "setInterval", "clearInterval", "requestAnimationFrame", "cancelAnimationFrame",
   src + "\n;return {renderClauses: renderClauses, buildable: buildable, " +
   "doBuild: doBuild, doParse: doParse, renderDetail: renderDetail, " +
   "loadPick: loadPick, pickCell: pickCell, pickName: pickName, " +
   "setPickKind: setPickKind, PICK: () => PICK, PINS: () => PINS, " +
   "dropOnSay: dropOnSay, DRAGGING: () => DRAGGING, " +
   "checkUpdates: checkUpdates, rebuildAll: rebuildAll, " +
+  "versionCheck: versionCheck, VERSION_ASKED: () => versionAsked, " +
+  "VERSION_FIXTURE: () => VERSION_ANSWER, " +
   "checkRepairs: checkRepairs, adaptAll: adaptAll, " +
   "TODO: () => ADAPT_TODO, UPGRADE_FIXTURE: () => UPGRADE_ANSWER, " +
   "APPLIED: () => appliedBodies, " +
@@ -1031,8 +1102,9 @@ const fn = new Function(
   "loadLocale: loadLocale, applyLocale: applyLocale, T: T, STR: () => STR, " +
   "loadRecipes: loadRecipes, renderRecipes: renderRecipes, RECIPES: () => RECIPES, " +
   "setLast: (v) => { LAST = v; }};");
-const page = fn(sandbox.document, sandbox.fetch, sandbox.setTimeout,
-                sandbox.clearTimeout, sandbox.console, sandbox.JSON);
+const page = fn(sandbox.document, sandbox.window, sandbox.fetch, sandbox.setTimeout,
+                sandbox.clearTimeout, sandbox.console, sandbox.JSON,
+                () => 0, () => {}, () => 0, () => {});
 
 // ---- assertions ----------------------------------------------------------
 const fails = [];
@@ -2472,6 +2544,54 @@ function localeChecks() {
 }
 
 
+// ---- 检查更新：问的是这一份工具自己 ------------------------------------
+// 和上面的 update banner 是两条不同的消息，所以分两次检查。 banner 说的是
+// 「游戏的 .dat 在你装模组之后被游戏改过，模组要重建」；这条说的是「远端仓库
+// 里这一份工具有没有新版」。两条混成一条，玩家会在数据没变的时候被叫去下载
+// 一个不存在的升级包，或者在新版出来的时候什么都没看到。
+function versionChecks() {
+  // boot 已经静默问过一次（设置里没关的话），那一次必须是 force=0：启动时强制
+  // 刷缓存会让「六小时缓存」形同不存在。
+  check("boot asks once, without forcing",
+        versionAsked.length >= 1 && versionAsked[0].indexOf("force=0") >= 0,
+        JSON.stringify(versionAsked));
+  // behind 是唯一会让人去下载的状态，所以它必须点名远端版本号，并且说去哪儿。
+  VERSION_ANSWER = VERSIONS.behind;
+  return page.versionCheck(true).then(() => {
+    check("the button asks again, and forces the cache",
+          versionAsked[versionAsked.length - 1].indexOf("force=1") >= 0,
+          JSON.stringify(versionAsked.slice(-2)));
+    const line = text(ids["about-update"]);
+    check("a newer remote version is named on the line",
+          line.indexOf("1.1") >= 0, line);
+    check("...and says where to get it",
+          line.indexOf("GitHub") >= 0, line);
+    // same：已经最新时说一句就行，不要留一个「去下载」的按钮引导。
+    VERSION_ANSWER = VERSIONS.same;
+    return page.versionCheck(false);
+  }).then(() => {
+    const line = text(ids["about-update"]);
+    check("an up-to-date copy says so", line.indexOf("最新") >= 0, line);
+    // offline：连不上就直说不知道，不能静默留白，也不能说成最新。
+    VERSION_ANSWER = VERSIONS.offline;
+    return page.versionCheck(true);
+  }).then(() => {
+    const line = text(ids["about-update"]);
+    // 「不知道」这一条不能点名版本号，也不能说成已经最新 —— 文案里允许出现
+    // 「是不是最新就不知道了」这种否认句，所以判据是「没有点名 1.1」。
+    check("an unreachable repository says it does not know",
+          line.indexOf("连不上") >= 0 && line.indexOf("1.1") < 0, line);
+    // 按钮在自己问完之后必须是能按的：一个转圈转到永远的按钮比错误更糟。
+    check("the button is usable again after the answer",
+          ids["about-check"].disabled === false
+          || ids["about-check"].disabled === undefined,
+          String(ids["about-check"].disabled));
+    return recipeChecks();
+  }).catch((e) => { fails.push("the version check threw: " + e.message);
+                    console.log("FAIL the version check threw :: " + e.stack);
+                    finish(); });
+}
+
 // ---- the 能做的事 list ---------------------------------------------------
 // A plugin adds intents to the schema and this box lists the schema, but the
 // sentence layer is hand-written: a plugin intent is reachable only through the
@@ -2512,7 +2632,7 @@ function intentListChecks() {
           String((ids.intents.children || []).map((n) => n.title).join(" "))
             .indexOf("/api/plan") >= 0,
           JSON.stringify(walk(ids.intents, []).map((n) => n.title)));
-    return localeChecks().then(() => recipeChecks());
+    return localeChecks().then(() => versionChecks());
   }).catch((e) => { fails.push("the capability list threw: " + e.message);
                     console.log("FAIL the capability list threw :: " + e.stack);
                     finish(); });

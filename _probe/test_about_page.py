@@ -78,8 +78,12 @@ def main():
     check("and it sits last in the rail", names[-1] == "about", names)
     check("a nav button carries the same id",
           'id="nav-about"' in page)
+    # 2026-11-16 的 rail 改版把每个 navitem 的标签包进了 `<span class="nv">`，
+    # 因为 `petContext()` 用 `nav.querySelector(".nv").textContent` 取当前视图名。
+    # 包一层不影响这条断言的本意（按钮上写着「关于」），所以两种形态都收。
     check("the button is labelled 关于",
-          bool(re.search(r'id="nav-about"[^>]*>\s*(?:<svg[\s\S]{0,400}?</svg>)?\s*关于\s*</button>',
+          bool(re.search(r'id="nav-about"[^>]*>\s*(?:<svg[\s\S]{0,400}?</svg>)?\s*'
+                         r'(?:<span class="nv">)?关于(?:</span>)?\s*</button>',
                          page)))
     check("the view section exists",
           bool(re.search(r'<section class="view" id="view-about">', page)))
