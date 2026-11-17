@@ -3,9 +3,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/198agk/AoE2ModWorkshop/releases/latest"><img src="https://img.shields.io/github/v/release/198agk/AoE2ModWorkshop?style=flat-square&label=%E6%9C%80%E6%96%B0%E7%89%88&color=2dd4bf" alt="Release"></a>
-  <a href="https://github.com/198agk/AoE2ModWorkshop"><img src="https://img.shields.io/github/stars/198agk/AoE2ModWorkshop?style=flat-square&label=Stars&color=2dd4bf" alt="Stars"></a>
-  <a href="https://github.com/198agk/AoE2ModWorkshop/releases"><img src="https://img.shields.io/github/downloads/198agk/AoE2ModWorkshop/total?style=flat-square&label=%E4%B8%8B%E8%BD%BD%E9%87%8F&color=2dd4bf" alt="下载量"></a>
+  <a href="https://github.com/198agk/AoE2ModWorkshop/releases/latest"><img src="https://img.shields.io/badge/%E6%9C%80%E6%96%B0%E7%89%88-v1.0.0-2dd4bf?style=flat-square" alt="最新版"></a>
   <img src="https://img.shields.io/badge/%E5%B9%B3%E5%8F%B0-Windows%2010%20%2F%2011-0078d4?style=flat-square&logo=windows" alt="平台">
   <img src="https://img.shields.io/badge/Python-3.12%20%E5%86%85%E7%BD%AE-3776ab?style=flat-square&logo=python" alt="Python">
   <img src="https://img.shields.io/badge/%E8%AE%B8%E5%8F%AF-PolyForm%20NC%201.0.0-green?style=flat-square" alt="许可">
