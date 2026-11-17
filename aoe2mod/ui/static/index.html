@@ -4876,15 +4876,12 @@ body.dragging-row, body.dragging-row * { cursor: grabbing !important; user-selec
              lives in the SUMMARY line, shut: it costs one line of height, and
              the one line is the whole answer -- open it only for the details. -->
         <details class="edguide" id="edguide">
-          <summary>第一次用？<b>左边挑一条 → 挑要改的字段 → 在「改成」里填新值 → 右上角「保存全部改动」</b>（点开看细节）</summary>
+          <summary>第一次用？<b>左边挑一条 → 挑要改的字段 → 在「改成」里填新值 → 右上角「保存全部改动」</b></summary>
           <ol>
-            <li>左边列表点一条记录（比如 <b>民兵</b>）。右边立刻列出它全部 434 个字段，分成 10 组。</li>
-            <li>点上面一组（<b>战斗 54</b>）缩小范围，或者在<b>找字段</b>里打「生命值」。表格不会一次让你看 434 行。</li>
-            <li>在那一行的<b>「改成」</b>框里打新数字，按 <b>Enter</b> 就记下了。旁边 <b>常用</b> 下拉是本作实际出现过的取值，想稳妥就点它。<b>先看看</b>只是试算会改几个字节，不写入。</li>
-            <li>这一步只是记在内存里，游戏数据还没动。改完要改的全部，点右上角 <b>保存全部改动</b>，才真的写进 .dat 并做成模组。</li>
-            <li>嫌不够再按 <b>Ctrl+Z</b> 撤回，<b>放弃</b>丢掉这一轮全部改动。左边「已改 N 项」就是还没写盘的条数。</li>
+            <li>左边点一条记录，右边列出它的全部字段，按上面那些分组缩小范围，或者用<b>找字段</b>搜。</li>
+            <li>在那一行<b>「改成」</b>框里填新值，按 <b>Enter</b>。<b>常用</b> 是本作出现过的取值，<b>先看看</b> 只试算几个字节，不写盘。</li>
+            <li>改完点右上角 <b>保存全部改动</b>，才真的写进 .dat 并做成模组。<b>Ctrl+Z</b> 撤回，<b>放弃</b>丢掉这一轮。</li>
           </ol>
-          <div class="hint">十三个页签，每个字段都在这里。</div>
         </details>
         <div id="editor">
           <div class="edtabs">
@@ -4977,9 +4974,7 @@ body.dragging-row, body.dragging-row * { cursor: grabbing !important; user-selec
         <button class="chip" id="mods-view-list">列表</button>
         <button class="chip on" id="mods-view-card">图 + 简介</button>
       </div>
-      <div class="hint" id="mods-drag-hint">
-        拿住任意一行拖到别的位置，就能改它的先后。越靠上越先加载，两个模组改同一个东西时上面那个赢。
-      </div>
+      <div class="hint" id="mods-drag-hint">拖动行换顺序，越靠上越先加载，改同一处时上面那个赢。</div>
       <!-- Which .dat.  The editor's tab bar has had a <select> of these since
            2026-11-03 and it is the wrong place for it: the question ("which of
            these twenty builds am I editing?") is asked while looking at the
@@ -5118,7 +5113,7 @@ body.dragging-row, body.dragging-row * { cursor: grabbing !important; user-selec
 <section class="view" id="view-lang">
   <div class="box">
     <h2>AI 脚本 (.per)</h2>
-    <div class="hint">一句中文一条规则。写完按「放进本地模组」，脚本会装进 mods/local 并自动启用。</div>
+    <div class="hint">一句中文一条规则。写完按「放进本地模组」，脚本装进 mods/local 并自动启用。</div>
     <div class="tabs">
       <input type="text" id="lang-ai-text" aria-label="用一句中文说一条 AI 规则"
              placeholder="例如：造20个骑士">
@@ -5147,7 +5142,7 @@ body.dragging-row, body.dragging-row * { cursor: grabbing !important; user-selec
 
   <div class="box">
     <h2>XS 脚本 (.xs)</h2>
-    <div class="hint">XS 改的是数据和 goal。写完按「放进本地模组」，脚本会装进 mods/local 并自动启用。</div>
+    <div class="hint">XS 改数据和 goal。写完按「放进本地模组」，脚本装进 mods/local 并自动启用。</div>
     <div class="tabs">
       <input type="text" id="lang-xs-text" aria-label="用一句中文说一条 XS 要做的事"
              placeholder="例如：村民血量改成 1000">
@@ -5319,46 +5314,44 @@ body.dragging-row, body.dragging-row * { cursor: grabbing !important; user-selec
   <div class="box">
     <h2>版权</h2>
     <div class="ablist">
-      <p>本工具由 <b>RemonBo</b> 独立开发，是第三方工具，与 Microsoft、World's Edge、
-        Forgotten Empires 及任何官方团队没有隶属或授权关系。</p>
-      <p>《帝国时代 2：决定版》及其素材、文本、图标、数据文件的版权属于各自的权利人。
-        本工具<b>不包含、不分发</b>游戏本体，也不包含任何从游戏里提取的素材；它只读你本机上已经有的文件。</p>
-      <p>你用它改出来的东西，版权与责任都是你的。工具不会替你在任何平台上发布任何东西。</p>
+      <p>本工具由 <b>RemonBo</b> 独立开发，与 Microsoft、World's Edge、Forgotten Empires
+        及任何官方团队没有隶属或授权关系。</p>
+      <p>《帝国时代 2：决定版》及其素材、文本、图标、数据的版权属于各自的权利人。本工具
+        <b>不包含、不分发</b>游戏本体与游戏素材，只读你本机已有的文件。</p>
+      <p>你改出来的东西，版权与责任都是你的。</p>
     </div>
   </div>
 
   <div class="box">
     <h2>可以做什么</h2>
     <div class="ablist">
-      <p>自己玩、做模组、把做好的模组发给别人、录视频、开直播、写教程、在模组说明里写「用模组工坊做的」。</p>
-      <p>把工具放进你自己的整合包，只要不收费、不删署名、不假装是你写的。</p>
+      <p>自己玩、做模组、把模组发给别人、录视频、开直播、写教程、在模组说明里写明用了它。</p>
+      <p>放进自己的整合包，只要不收费、不删署名、不假装是你写的。</p>
     </div>
   </div>
 
   <div class="box">
     <h2>不可以做什么（倒卖与盗版）</h2>
     <div class="ablist">
-      <p><b>不可以卖这个工具。</b>包括直接收费下载、付费网盘、会员专享、把免费工具塞进付费整合包、
-        用「进群领工具」换关注或换钱。</p>
-      <p><b>不可以把别人的模组改成自己的。</b>去掉署名、改个名字再发布，是侵权，不是二次创作。
-        想改别人的模组，先问，并在说明里写清原作者。</p>
-      <p><b>本工具不提供、不索取、不校验游戏本体。</b>它不含破解、不含绕过验证、不含任何激活手段。
-        你手上那份游戏从哪来，与这个工具无关；用盗版副本出的任何问题，作者不负责，也不提供支持。</p>
-      <p><b>不可以用它分发受版权保护的内容。</b>把官方素材、官方数据整包导出再发布，不是做模组。</p>
-      <p><b>不可以拿它做联机作弊。</b>改数据模组在联机里通常不被允许，被判定作弊是玩家自己的选择与后果。</p>
+      <p><b>不可以卖这个工具。</b>收费下载、付费网盘、会员专享、塞进付费整合包都不行。</p>
+      <p><b>不可以把别人的模组改成自己的。</b>去掉署名、改个名字再发，是侵权。要改别人的模组先问，
+        并在说明里写清原作者。</p>
+      <p><b>本工具不提供、不索取、不校验游戏本体。</b>你手上那份游戏从哪来与本工具无关，
+        用盗版副本出的任何问题作者不负责。</p>
+      <p><b>不可以分发受版权保护的内容。</b>把官方素材整包导出再发布，不是做模组。</p>
+      <p><b>不可以拿它做联机作弊。</b>被判定作弊是玩家自己的后果。</p>
     </div>
   </div>
 
   <div class="box">
     <h2>防伪声明</h2>
     <div class="ablist" id="notice-src">
-      <p>本软件完全免费，也完全开源。作者：<b>RemonBo</b>（窗口顶部与「关于」页都写着这个名字）。</p>
+      <p>本软件完全免费，也完全开源。作者：<b>RemonBo</b>。</p>
       <p>如果你是花钱买到的，请立即退款：作者没有、也不会出售这款工具。</p>
-      <p>任何收费群、代购、二手转卖、加密压缩包、改个名字再发一遍的，都不是作者本人。</p>
-      <p>唯一的发布渠道是作者自己发出的链接（GitHub: github.com/198agk；爱发电与 B 站
-        地址见「关于」页）。别的地方拿到的一律存疑。</p>
-      <p>软件不会要求你付费解锁任何功能，也不会向你索要游戏账号或密码。</p>
-      <p>觉得有用的话，怎么支持作者写在「关于」页里。赞助全凭自愿，不赞助也一个功能都不会少。</p>
+      <p>收费群、代购、二手转卖、加密压缩包、改个名字再发的，都不是作者本人。</p>
+      <p>唯一发布渠道是作者的 GitHub（github.com/198agk）与「关于」页里的爱发电、B 站。</p>
+      <p>不会要你付费解锁功能，也不会要你的游戏账号或密码。</p>
+      <p>觉得有用可以赞助，不赞助也一个功能都不会少。</p>
       <p><button class="chip" id="about-notice-again">再看一次启动时那个窗口</button></p>
     </div>
   </div>
@@ -5366,18 +5359,16 @@ body.dragging-row, body.dragging-row * { cursor: grabbing !important; user-selec
   <div class="box">
     <h2>免责</h2>
     <div class="ablist">
-      <p>工具每次保存前都会保留原文件的副本，每次写入都能逐字节撤回。但<b>仍然请你另外备份</b>
-        <b>resources/_common/dat</b> 目录。</p>
-      <p>作者不对存档损坏、模组冲突、联机不同步、成就失效负责。改数据是有风险的操作，
-        而这个工具的全部意义就是让你能改；它把「改坏了能不能回来」做到了能，但没能做到「改不坏」。</p>
-      <p>这个工具与游戏官方没有任何关系。游戏更新可能让某些字段的含义变化，工具会尽量说清它读到的是什么，
-        但读不出来的时候它会说读不出来，而不是猜一个数。</p>
+      <p>每次保存前都会留一份原文件副本，写入能逐字节撤回。仍然请你另外备份
+        <b>resources/_common/dat</b>。</p>
+      <p>作者不对存档损坏、模组冲突、联机不同步、成就失效负责。改数据有风险。</p>
+      <p>游戏更新可能改变字段含义，工具只报它真正读到的东西。</p>
     </div>
   </div>
 
   <div class="box">
     <h2>操作记录</h2>
-    <div class="hint">每次改动往 <b>log</b> 文件夹里追加一行，只记做了什么，不记文件内容。</div>
+    <div class="hint">每次改动往 <b>log</b> 文件夹追加一行，只记做了什么。</div>
     <div class="abrow">
       <span class="abi">文件夹</span>
       <span class="abv" id="log-dir">正在读取…</span>
@@ -5558,7 +5549,7 @@ body.dragging-row, body.dragging-row * { cursor: grabbing !important; user-selec
         <div class="setgroup" id="setgroup-model">
           <div class="setrow">
             <span class="si"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3.2 5.2h9.6v6.4H3.2z"/><path d="M5.6 8h4.8M5.6 3.2v2M10.4 3.2v2"/></svg></span>
-            <div><div class="st">接一个大模型当副驾</div><div class="sd">说一句人话，它写第一稿，再由 exe 里读出来的命令表逐条验收：参数个数不对、类型不对、命令名不存在，都会退回让它重写，最多三轮。不填也能用，中文句子走本地模板，只是能写的命令少。</div></div>
+            <div><div class="st">接一个大模型当副驾</div><div class="sd">它把你说的写成句子，再由 exe 里的命令表逐条验收，不合格退回重写，最多三轮。不填也能用，只是能写的命令少。</div></div>
             <div class="sc"><span class="hint" id="ai-model-verdict">还没有配置</span></div>
           </div>
           <div class="setrow">
@@ -5575,7 +5566,7 @@ body.dragging-row, body.dragging-row * { cursor: grabbing !important; user-selec
           </div>
           <div class="setrow">
             <span class="si"><svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="5.6" cy="8" r="2.6"/><path d="M8.2 8h5.4M11.4 8v2.2"/></svg></span>
-            <div><div class="st">密钥</div><div class="sd">只存在这台机器的一个用户文件里，不进模组、不进发布包；装好之后再打开这一页也读不回来</div></div>
+            <div><div class="st">密钥</div><div class="sd">只存在本机的一个用户文件里，不进模组、不进发布包，存好之后读不回来</div></div>
             <div class="sc">
               <input type="text" id="ai-model-key" aria-label="接口密钥"
                      placeholder="粘贴密钥">
@@ -8036,8 +8027,7 @@ async function aiBoot() {
     $("#btn-ai").title = "把上面的愿望写成这个工具认得的句子"
       + (AI_META.model ? "（" + AI_META.model + "）" : "");
     $("#ainote").textContent =
-      "AI 只负责把你的话说成这个工具认得的句子，认不认、能不能做，"
-      + "仍然由下面那些同一条规则判断，它不会直接改任何数据。";
+      "AI 只把你说的话写成句子，改不改仍然由下面判断。";
   }
 }
 
@@ -8354,7 +8344,7 @@ async function loadDatPicker(force) {
     note.textContent = loads.reads === "game"
       ? "没有启用任何改数据的模组，游戏读的就是「游戏本体」那一份。"
       : loads.reads === "mod"
-        ? "已经启用 " + n + " 个改数据的模组，你现在改的这一份就是排在前面那一份，游戏读的就是它。"
+        ? "启用了 " + n + " 个改数据的模组，你改的这一份排在最前，游戏读的就是它。"
         : loads.reads === "other"
           ? "已经启用 " + n + " 个改数据的模组，优先级最高的是「"
             + ((loads.winner || {}).title || "?") + "」。改别的份游戏看不到。"
@@ -8440,7 +8430,7 @@ function archiveRows(box, got) {
   box.textContent = "";
   if (!rows.length) {
     box.appendChild(el("div", "empty",
-      "还没有存过官方数据。工具每次打开都会看一眼游戏本体，装着游戏就会自己存下来。"));
+      "还没有存过官方数据。工具每次打开都会看一眼游戏本体。"));
     return;
   }
   if (!ARCHIVE_OPEN) ARCHIVE_OPEN = {};
@@ -9935,13 +9925,10 @@ function drawTableFields(pane, d) {
     // scrolls to slot 91 expecting 初始食物 finds 0 and needs to be told that
     // the lobby sets it, not this file -- otherwise the data looks broken.
     pane.appendChild(el("div", "hint fnote",
-      "一条文明记录里有 601 个资源槽。这份数据里只有 65 个槽在某个文明里有值，"
-      + "24 个槽在不同文明之间不一样，其余 536 个在 63 个文明里全是 0。"
-      + "排在最前面的是会变的槽，然后是有值的、有名字的，最后是游戏从没命名也从没填过的。"
+      "601 个资源槽，只有 65 个在某个文明里有值，24 个文明之间不一样，其余 536 个全是 0。"
       // No em dash: DESIGN.md item 12 forbids one in Chinese copy, and this
       // sentence is inside a JS string, which the markup scan also reads.
-      + "「初始食物 / 初始木材 / 初始石料 / 初始黄金」这四项在这里全是 0；"
-      + "开局的资源由大厅和地图设置决定，不在这张表里。"));
+      + "「初始食物 / 初始木材 / 初始石料 / 初始黄金」在这里全是 0，开局资源由大厅和地图设置决定。"));
   }
   if (d.table === "effect") {
     // Why the slots are read-only belongs next to them, not in a doc.  The
@@ -9953,8 +9940,7 @@ function drawTableFields(pane, d) {
     // whole reason 效果 is a table here instead of four mystery integers.
     pane.appendChild(el("div", "hint fnote",
       "一条效果是一串命令，每条 5 个槽：类型 / 参数1 / 参数2 / 参数3 / 数值。"
-      + "前四个决定了第五个数字是什么意思，所以只读；改它们等于换一种效果，"
-      + "要做那种改动就换一条命令或换一条科技指向的效果。"));
+      + "前四个决定第五个是什么意思，所以只读。"));
   }
 
   if (d.table === "task") {
@@ -9963,10 +9949,8 @@ function drawTableFields(pane, d) {
     // misread ones in the whole file.  Saying so here beats letting them find
     // out by building a mod that changes nothing.
     pane.appendChild(el("div", "hint fnote",
-      "一条任务 = 一个动作（采集/建造/治疗/攻击）+ 一个目标 + 一组数值。"
-      + "「工作量 1」不是采集速度：村民各条采集任务这里都是 1.0，"
-      + "而每种资源的采集速度是引擎写死的，不在这份文件里。"
-      + "「工作范围」才是能立刻看出效果的：0.1 是贴身，改大到 2.0 就能隔着两格干活。"));
+      "一条任务 = 一个动作 + 一个目标 + 一组数值。「工作量」不是采集速度，那是引擎写死的；"
+      + "能看出效果的是「工作范围」，0.1 贴身，2.0 隔两格。"));
   }
 
   pane.appendChild(el("div", "seclab", "找字段"));
@@ -10030,8 +10014,7 @@ function drawTableFields(pane, d) {
   pane.appendChild(q);
 
   pane.appendChild(el("div", "hint fnote",
-    "改之前点「先看看」：服务器只算出会变的字节，不动文件。"
-    + "改完点右上角「保存全部改动」一次写盘。"));
+    "「先看看」只算会变的字节，不动文件；「保存全部改动」才写盘。"));
 
   const body = el("div", "fbody tbf");
   body.id = "fbody";
@@ -11344,8 +11327,7 @@ function drawIconBox(body, d) {
   body.appendChild(go);
   body.appendChild(was);
   body.appendChild(el("div", "hint",
-    "图标不是写在记录里的一张图，是四样东西一起指过去：贴图文件、材质表、贴图表、记录里的图标编号。"
-    + "四样有一半对不上，命令卡上就是一个空框。所以这一块只走服务器那一条路。"));
+    "图标是贴图文件、材质表、贴图表、记录里的编号四样一起指过去的，有一样对不上就是空框。"));
 }
 
 async function edIconPlan(kind, id, data, filename, inplace) {
@@ -12356,7 +12338,7 @@ function fieldRow(d, f) {
     const soft = el("span", "soft", "共用");
     soft.title = (f.hint || "") +
       (f.hint ? " " : "") +
-      "这一列可以直接改，但它的值往往被别的记录共用：改完等于把共用同一个值的记录一起改了。";
+      "这一列能改，但它的值常被别的记录共用，改了一起动。";
     tdV.appendChild(soft);
   }
 
@@ -12615,7 +12597,7 @@ function edPaintKind(kind) {
     // its civilization with a field; a graphic or a sound is not per-civ at all.
     civ.disabled = (kind !== "unit");
     civ.title = kind === "tech"
-      ? "科技记录不分文明：一条科技只有一份，它的「限定文明」是表里的一个字段，改成哪个文明就只给哪个文明。"
+      ? "科技不分文明：一条科技只有一份，「限定文明」是表里的一个字段。"
       : (kind === "unit" ? ""
          : "图形、音效、效果这三张表不按文明分：同一条记录所有文明共用。");
   }
@@ -14079,9 +14061,8 @@ function ogState(kind) {
   const act = el("div", "ogfoot");
   if (kind === "login") {
     title.textContent = "先登录，才能看到线上模组";
-    why.textContent = "官方接口不接受匿名查询：不登录它是一个空列表加 401，"
-      + "所以这一页没有「游客浏览」。挑你买游戏的那个账号登录，在工具自己开的一个小窗口里完成；"
-      + "工具只读取会话凭证去查列表，不做订阅、不下载、不改你的账号。";
+    why.textContent = "官方接口不接受匿名查询。用你买游戏的那个账号登录，"
+      + "工具只拿会话凭证查列表，不改你的账号。";
     const steam = el("button", "chip", "用 Steam 登录");
     steam.onclick = () => ogLogin("steam");
     const ms = el("button", "chip", "用微软账号登录");
