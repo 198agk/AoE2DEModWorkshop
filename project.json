@@ -359,7 +359,8 @@
       "/api/update-check",
       "/api/upgrade-candidates",
       "/api/upgrade-check",
-      "/api/version-check"
+      "/api/version-check",
+  "/api/version-changelog"
     ],
     "post": [
       "/api/ai-script-build",

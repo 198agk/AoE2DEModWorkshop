@@ -93,6 +93,27 @@ UA = "aoe2mod-updater/1 (+https://github.com/%s)" % REPO
 TIMEOUT = 6.0
 
 CACHE_FILE = "update.json"
+
+#: The full changelog, read from the same place the releases live.  Kept apart
+#: from `update.json` on purpose: that file answers 「有没有新版」 and is asked on
+#: every boot, while this one is thirty release notes and is asked when somebody
+#: opens the 关于 page and wants to know what changed three versions ago.
+CHANGELOG_FILE = "changelog.json"
+CHANGELOG_SECONDS = 6 * 3600
+
+#: How many releases the 关于 page lists.  Everything this project has published
+#: fits in thirty; the API pages at 100 if a day ever comes when it does not.
+RELEASE_COUNT = 30
+RELEASES_API = ("https://api.github.com/repos/%s/releases?per_page=%d"
+                % (REPO, RELEASE_COUNT))
+
+#: The API is reachable from this machine and answers in under a second, but
+#: the same hardening that put gh-proxy in `SOURCES` applies: one route that
+#: works today is not a promise about tomorrow.
+RELEASES_SOURCES = (
+    ("api.github.com", RELEASES_API),
+    ("gh-proxy.com (api)", "https://gh-proxy.com/" + RELEASES_API),
+)
 #: Six hours.  The switch on the 设置 page is called 「每次启动检查更新」, and a
 #: player who restarts the tool six times in a minute should not make six
 #: requests; the manual chip bypasses this cache, because a press of 检查更新
@@ -263,6 +284,167 @@ def local_changes():
     except Exception:
         return []
 
+def _clean_line(text):
+    """One line of a release note, with the Markdown taken off.
+
+    The notes are written for the release page, so they arrive as bullets and
+    headings.  The 关于 box is a list of sentences, not a rendered document: a
+    row that begins with 「- 」 or 「## 」 reads like a file rather than a changelog.
+    """
+    line = str(text or "").strip()
+    for mark in ("- ", "* ", "#", "> "):
+        while line.startswith(mark):
+            line = line[len(mark):].strip()
+    return line
+
+
+def parse_releases(text):
+    """The release list from GitHub, as rows the page can print.
+
+    Accepts what ``/repos/<owner>/<repo>/releases`` answers: an array of
+    objects with ``tag_name``, ``name``, ``published_at`` and ``body``.  Drafts
+    are dropped -- a draft is not something a player can install, and a
+    changelog that lists one lies about what is published.
+
+    Only the bullets of a body are kept when the body has any: the release page
+    also carries a paragraph about which archive is which and a line about the
+    numbering rule, and both are said once on the 关于 page already.  A body
+    with no bullets keeps its sentences, because a short note is still the note.
+    """
+    body = (text or "").strip()
+    if not body or body[0] not in "[{":
+        return []
+    try:
+        doc = json.loads(body)
+    except ValueError:
+        return []
+    if isinstance(doc, dict):
+        doc = doc.get("releases")
+    if not isinstance(doc, (list, tuple)):
+        return []
+    rows = []
+    for one in doc:
+        if not isinstance(one, dict) or one.get("draft"):
+            continue
+        tag = str(one.get("tag_name") or "").strip()
+        version = parse_version('{"version": "%s"}' % tag.lstrip("vV")) or tag.lstrip("vV")
+        notes = []
+        bullets = []
+        plain = []
+        for raw in str(one.get("body") or "").splitlines():
+            line = _clean_line(raw)
+            if not line or line.startswith("|") or line.startswith("```"):
+                continue
+            if str(raw or "").strip().startswith(("- ", "* ")):
+                bullets.append(line)
+            elif not str(raw or "").strip().startswith("#"):
+                plain.append(line)
+        notes = bullets or plain
+        if not version and not notes:
+            continue
+        rows.append({
+            "version": version,
+            "name": str(one.get("name") or "").strip(),
+            "date": str(one.get("published_at") or "")[:10],
+            "notes": notes,
+            "url": str(one.get("html_url") or ""),
+        })
+    rows.sort(key=lambda r: ver_tuple(r.get("version")), reverse=True)
+    return rows
+
+
+def local_changelog():
+    """The one release this build can vouch for, for a machine with no network.
+
+    A changelog that is blank because the fetch failed teaches the player that
+    the box is empty rather than that the network is down.  This build knows its
+    own number and its own lines, so it says those.
+    """
+    try:
+        from . import appversion as AV
+        return [{"version": str(AV.VERSION),
+                 "name": str(getattr(AV, "TITLE", "") or ""),
+                 "date": "",
+                 "notes": local_changes(),
+                 "url": PROJECT_URL}]
+    except Exception:
+        return []
+
+
+def changelog_path():
+    return os.path.join(state_dir(), CHANGELOG_FILE)
+
+
+def _read_changelog():
+    try:
+        with open(changelog_path(), "r", encoding="utf-8") as fh:
+            doc = json.load(fh)
+    except (OSError, ValueError):
+        return None
+    return doc if isinstance(doc, dict) else None
+
+
+def _write_changelog(doc):
+    path = changelog_path()
+    try:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        tmp = path + ".tmp"
+        with open(tmp, "w", encoding="utf-8", newline="") as fh:
+            json.dump(doc, fh, ensure_ascii=False, indent=1, sort_keys=True)
+        os.replace(tmp, path)
+    except OSError:
+        pass
+
+
+def changelog(force=False, timeout=TIMEOUT, opener=None, sources=None,
+              cache_dir=None):
+    """Every release this project has published, newest first.
+
+    The 关于 page used to print only the lines compiled into the running copy: a
+    player who wanted to know what changed three versions ago had to open the
+    release page.  This asks GitHub for the release list instead, which is where
+    those notes are actually written and kept.
+
+    ``force`` skips the cache for a press of the button.  Never raises: a dead
+    network answers with this build's own one release and says so through
+    ``reachable``, because a blank list reads as 「这个工具没有历史」.
+    """
+    fetch = opener or _fetch
+    if not force:
+        doc = _read_changelog()
+        if doc:
+            age = time.time() - float(doc.get("at") or 0)
+            if 0 <= age < CHANGELOG_SECONDS and doc.get("rows"):
+                return {"ok": True, "reachable": True, "cached": True,
+                        "source": doc.get("source"), "url": doc.get("url"),
+                        "project_url": PROJECT_URL,
+                        "checked_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+                        "notes": ["来自本机缓存（%d 分钟前）" % int(age // 60)],
+                        "rows": doc["rows"]}
+
+    notes = []
+    for name, url in (sources or RELEASES_SOURCES):
+        try:
+            text = fetch(url, timeout)
+        except Exception as exc:
+            notes.append("%s 连不上：%s" % (name, str(exc)[:120]))
+            continue
+        rows = parse_releases(text)
+        if not rows:
+            notes.append("%s 读到了内容，里面没有版本记录" % name)
+            continue
+        _write_changelog({"at": time.time(), "source": name, "url": url,
+                          "rows": rows})
+        return {"ok": True, "reachable": True, "cached": False,
+                "source": name, "url": url, "project_url": PROJECT_URL,
+                "checked_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+                "notes": notes, "rows": rows}
+
+    return {"ok": True, "reachable": False, "cached": False, "source": None,
+            "url": None, "project_url": PROJECT_URL,
+            "checked_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+            "notes": notes or ["没有一个地址连得上"],
+            "rows": local_changelog()}
 
 def _answer(current, reachable, source=None, url=None, remote="",
             notes=None, cached=False, changes=None):

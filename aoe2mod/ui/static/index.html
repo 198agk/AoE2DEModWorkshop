@@ -3381,6 +3381,14 @@ body.dragging-row, body.dragging-row * { cursor: grabbing !important; user-selec
   .abchanges { list-style: disc; margin: 8px 0 0; padding: 0 0 0 20px; }
   .abchanges li { margin: 0 0 6px; max-width: var(--measure); }
   .abchanges li:last-child { margin-bottom: 0; }
+  /* 更新日志里每个版本一段：版本号和日期同一行，改动行缩在下面。 段落之间
+     留 12px 而不是 6px，因为「两条改动属于同一版」和「这里换了一版」是两种
+     间距，读起来才分得清。 */
+  .ablog { margin: 12px 0 0; }
+  .ablog-head { display: flex; align-items: baseline; gap: 8px; }
+  .ablog-ver { font-weight: 650; color: var(--text); }
+  .ablog-date { font-size: var(--fs-micro); color: var(--text-2); }
+  .ablog .abchanges { margin: 6px 0 0; }
   #about-remote { margin: 12px 0 0; }
 
   /* ---- 关于页的卡片行（2026-11-16，玩家「关于页面能不能学一下这个新境盒
@@ -5446,14 +5454,17 @@ body.dragging-row, body.dragging-row * { cursor: grabbing !important; user-selec
       <!-- 装新版时的进度。 换文件夹那一步在服务端派出的独立进程里做（Windows
            不许覆盖正在运行的 exe），页面只负责按下按钮和把 job 槽画出来。 -->
       <div id="about-install-bar" hidden></div>
-      <!-- 这一版改了什么。 一个只有号码的版本卡，等于让玩家盲下 286 MB：他
-           看不出新版值不值得装。 行文来自 /api/meta 的 app_changes（编译进
-           这一份的那一段），检查更新说「有新版」时下面再接一段远端自己写的。
-           两段分开是因为「我手上这版有什么」和「新版多了什么」是两个问题，
-           合成一张表会被读成「我已经用上了」。 -->
-      <div id="about-changes">
-        <p class="abi">这一版改了什么</p>
+      <!-- 更新日志：从 GitHub 的发布记录读全部版本，最新的在上。 只有号码的
+           版本卡等于让玩家盲下 286 MB，他看不出值不值得装；而只印手上这一份
+           的改动，又回答不了「上一版改了什么」。 连不上时退回这一份自己的那
+           一条，不留一片空白。 -->
+      <div id="about-changelog">
+        <p class="abi">更新日志</p>
+        <div id="about-changelog-list"></div>
       </div>
+      <!-- 检查出有新版时，新版自己写的改动单独列在这里：日志讲的是历史，
+           这一块讲的是「你要不要装」。 两件事分开写，否则刚打开页面的人会
+           以为那些还没装的改动已经在用了。 -->
       <div id="about-remote" hidden>
         <p class="abi" id="about-remote-head">新版本改了什么</p>
       </div>
@@ -6129,7 +6140,9 @@ function showView(name) {
   // The record is a page you look at after something went wrong, so it is read
   // when the tab opens rather than once at boot: a boot-time read would show the
   // log as it was before the twelve operations the player just did.
-  if (name === "about") loadLog();
+  // 更新日志每次打开都重拉一次：它在 GitHub 上，可能刚发了新版，而服务端只
+  // 缓存六小时，一次本地请求换一个不会过期的答案。 拉不到就照旧画手上那份。
+  if (name === "about") { loadLog(); loadChangelog(); }
   // The online page is the one view with a cost to showing it (a request, a
   // network round trip, a session check), so it loads when opened and not at
   // boot.  `ogBoot` is guarded by `OG.seen`, so returning to the page does not
@@ -7060,6 +7073,50 @@ function drawChanges(box, items, head, headText) {
   box.hidden = false;
 }
 
+// 更新日志：一行一个版本，版本号与日期同一行，改动列在下面。 全部版本来自
+// GitHub 的发布记录（`/api/version-changelog`），而不是只印手上这一份：
+// 「上一版改了什么」正是玩家点开版本卡想问的事。
+// `CHANGELOG` 记住最后一次拿到的整页：切走再回来时先按记忆重画，不等网络；
+// 拉不到时用 `localChangelog()` 顶上，屏幕上永远有这一份自己写的那一条。
+let CHANGELOG = null;
+function localChangelog() {
+  const m = META || {};
+  return [{
+    version: m.app_version || "",
+    date: "",
+    notes: (m.app_changes || []).slice(),
+  }];
+}
+function drawChangelog(rows) {
+  const box = $("#about-changelog-list");
+  if (!box) return;
+  while (box.firstChild) box.removeChild(box.firstChild);
+  const list = (rows || []).filter((r) => r && (r.notes || []).length);
+  for (const r of list) {
+    const wrap = el("div", "ablog");
+    const head = el("div", "ablog-head");
+    if (r.version) head.appendChild(el("span", "ablog-ver", "ver " + r.version));
+    if (r.date) head.appendChild(el("span", "ablog-date", String(r.date)));
+    wrap.appendChild(head);
+    const ul = el("ul", "abchanges");
+    for (const line of r.notes) ul.appendChild(el("li", "", String(line)));
+    wrap.appendChild(ul);
+    box.appendChild(wrap);
+  }
+}
+async function loadChangelog(force) {
+  let got = null;
+  try {
+    got = await api(force ? "/api/version-changelog?force=1" : "/api/version-changelog");
+  } catch (e) {
+    got = null;
+  }
+  const rows = (got && got.rows && got.rows.length) ? got.rows : localChangelog();
+  CHANGELOG = rows;
+  drawChangelog(rows);
+  return got;
+}
+
 function drawAbout(meta) {
   const m = meta || META || {};
   const v = $("#about-version");
@@ -7075,10 +7132,9 @@ function drawAbout(meta) {
       + (m.version != null ? m.version : "未知")
       + "，文明 " + ((m.civs || []).length || 0) + " 个。";
   }
-  // 这一版改了什么，就印在版本号下面：玩家问「版本」时想知道的是这一份里有
-  // 什么，不是一串号码。 远端那一段由 `versionCheck` 在答「有新版」时另写。
-  drawChanges($("#about-changes"), m.app_changes,
-    $("#about-changes .abi"), "这一版改了什么");
+  // 更新日志画在版本号下面：玩家问「版本」时想知道的是这一份里有什么、以前
+  // 又改过什么，不是一串号码。 还没拉到远端记录时先印手上这一条，免得空白。
+  drawChangelog(CHANGELOG && CHANGELOG.length ? CHANGELOG : localChangelog());
 
   const lb = $("#log-open");
   if (lb) {

@@ -8986,6 +8986,15 @@ class App(object):
         """
         return self.tk.version_check(force=force)
 
+    def version_changelog(self, force=False):
+        """The full changelog, newest first.
+
+        Read when the 关于 page opens rather than at boot: it is a list of every
+        release, and a player who never opens that page should not pay for it.
+        Cached six hours, so opening the page twice does not ask twice.
+        """
+        return self.tk.version_changelog(force=force)
+
     def update_install(self):
         """Download the newer build and leave a process behind to install it.
 
@@ -10262,6 +10271,14 @@ def make_handler(app):
                 # means "now".
                 q = _query(self.path)
                 return self._guard(lambda: app.version_check(
+                    force=bool(int(q.get("force", ["0"])[0] or 0))))
+            if path == "/api/version-changelog":
+                # Every release, newest first, for the 关于 page.  Separate from
+                # `/api/version-check` because that one is asked on every boot
+                # for a single number; this one is thirty release notes and is
+                # asked when a player opens the page that shows them.
+                q = _query(self.path)
+                return self._guard(lambda: app.version_changelog(
                     force=bool(int(q.get("force", ["0"])[0] or 0))))
             if path == "/api/ai-meta":
                 # Cheap and keyless (no call is made): the page reads this on

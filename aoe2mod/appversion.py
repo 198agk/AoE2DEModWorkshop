@@ -41,15 +41,14 @@ turns a nail red instead of shipping two answers.
 #: 1.0001 -> 1.0002 and so on.  A four-decimal number is not decoration: the
 #: comparison in `aoe2mod/updates.py` reads the dot part as a decimal fraction,
 #: which keeps 1.0001 sorted below 1.1 and above 1.0.
-VERSION = "1.0003"
+VERSION = "1.0004"
 
-#: What this build changed, newest first, in one short line each.  Printed on
-#: the 关于 page under the version and published into the gist next to the same
-#: number, so 「检查更新」 can say what is new instead of only that something is:
-#: a version number alone asks the player to download 286 MB blind.
+#: What this build changed，一行一件，用玩家看得懂的话写。 印在 关于 页的版本
+#: 下面，也发进 gist 的同号旁边，让「检查更新」能说出新在哪儿，而不是只报一个号码。
+#: 只写改了什么都别写怎么改的：玩家要知道值不值得装，不需要读实现。
 CHANGES = (
-    "下载新版改成六段同时下载：镜像对每条连接单独限速，同样的 29 MB 从八分钟缩到两分钟",
-    "装完自己重开；换掉的只有 app 目录与 exe，玩家的数据与已生成的模组一个字节都不动",
+    "关于页加了完整更新日志，以前每一版改了什么都能翻到",
+    "更新内容只写改了什么、加了什么功能",
 )
 
 #: The same number with the word in front, so screens do not each spell it.

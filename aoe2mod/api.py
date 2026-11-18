@@ -7458,6 +7458,18 @@ class Toolkit(object):
         from . import autoupdate as AU
         return AU.start()
 
+    def version_changelog(self, force=False):
+        """Every release this project has published, newest first.
+
+        The read-only sibling of the version check, and a separate route for
+        the same reason `version_check` is separate from `update_check`: this
+        one answers 「以前都改过什么」, which is a history question, while that
+        one answers 「有没有新版」, which is a today question.  Cached for six
+        hours like the version check, and it never raises: a dead network
+        answers with the one release this build can vouch for.
+        """
+        return UPD.changelog(force=force)
+
     def mods(self):
         from .game import locations as G
         prof = G.find_profile_root()

@@ -20,6 +20,7 @@ No network in this file.  `check()` takes an `opener`, which is exactly the seam
 that makes the four answers testable without asking GitHub anything: behind /
 same / ahead / unreachable.
 """
+import json
 import os
 import sys
 import tempfile
@@ -214,6 +215,67 @@ check("the local list is reported even when nothing answers",
       U.check(current="1.0", force=True,
               opener=opener_for(OSError("down"))[0],
               sources=U.SOURCES)["changes"] == U.local_changes(), "")
+
+# ---- 6b. 更新日志：关于页要能翻到以前每一版，而不只是手上这一份 ------
+# 发布记录是 JSON 数组，每项带 tag_name / name / body / published_at / html_url。
+# 这里钉三件事：名字与日期读得出来、正文里的「怎么做的」不会被当成改动、
+# 顺序是新的在上（屏幕上第一眼看到的是刚发的这一版）。
+RELEASES = json.dumps([
+    {"tag_name": "v1.0003", "name": "模组工坊 1.0003", "draft": False,
+     "published_at": "2026-11-17T09:12:00Z", "html_url": "https://github.com/x/r/releases/tag/v1.0003",
+     "body": "## 这一版改了什么\n\n- 下载新版快多了\n- 装完自己重新打开\n\n版本号规则：每有一轮改动就加 0.0001。\n"},
+    {"tag_name": "v1.0002", "name": "模组工坊 1.0002", "draft": False,
+     "published_at": "2026-11-16T03:40:00Z", "html_url": "https://github.com/x/r/releases/tag/v1.0002",
+     "body": "## 这一版改了什么\n\n* 有新版时可以直接按按钮装好\n"},
+    {"tag_name": "v9.9.9", "name": "draft", "draft": True,
+     "published_at": "2026-11-18T00:00:00Z", "body": "- 还没发的一版\n"},
+], ensure_ascii=False)
+rows = U.parse_releases(RELEASES)
+check("the release list is read as versions, newest first",
+      [r["version"] for r in rows] == ["1.0003", "1.0002"],
+      [r["version"] for r in rows])
+check("a draft is not a version the player can read",
+      "9.9.9" not in [r["version"] for r in rows], [r["version"] for r in rows])
+check("each row keeps the date the release was published",
+      rows[0]["date"] == "2026-11-17", rows[0]["date"])
+check("the bullets are the changes, and the trailing explanation is not",
+      rows[0]["notes"] == ["下载新版快多了", "装完自己重新打开"], rows[0]["notes"])
+check("a body that uses * instead of - is read the same way",
+      rows[1]["notes"] == ["有新版时可以直接按按钮装好"], rows[1]["notes"])
+check("a table row or a fenced block is not a change",
+      U.parse_releases(json.dumps([{"tag_name": "v2.0", "body":
+          "- 真改动\n| 文件 | 大小 |\n```\ncode\n```\n"}]))[0]["notes"] == ["真改动"],
+      U.parse_releases(json.dumps([{"tag_name": "v2.0", "body":
+          "- 真改动\n| 文件 | 大小 |\n```\ncode\n```\n"}]))[0]["notes"])
+check("a body with no bullets falls back to its plain lines",
+      U.parse_releases(json.dumps([{"tag_name": "v2.0", "body":
+          "## 标题\n只改了一行\n"}]))[0]["notes"] == ["只改了一行"],
+      U.parse_releases(json.dumps([{"tag_name": "v2.0", "body":
+          "## 标题\n只改了一行\n"}]))[0]["notes"])
+check("a wrapper object around the array is accepted too",
+      len(U.parse_releases(json.dumps({"releases": [{"tag_name": "v3.0",
+          "body": "- 一行"}]}))) == 1, "")
+check("garbage is not a changelog",
+      U.parse_releases("<html>404</html>") == []
+      and U.parse_releases("") == [], "")
+
+fetch, seen = opener_for(RELEASES)
+got = U.changelog(force=True, opener=fetch, sources=U.RELEASES_SOURCES)
+check("a reachable release list comes back as the whole log",
+      got["ok"] and got["reachable"] and len(got["rows"]) == 2, len(got.get("rows") or []))
+check("...and it names which address answered",
+      got["source"] == U.RELEASES_SOURCES[0][0], got["source"])
+check("...with the changes already split into lines",
+      got["rows"][0]["notes"][0] == "下载新版快多了", got["rows"][0]["notes"])
+got = U.changelog(force=True, opener=opener_for(OSError("down"))[0],
+                  sources=U.RELEASES_SOURCES)
+check("nothing answering is said out loud, not faked into a list",
+      got["reachable"] is False and got["rows"] == U.local_changelog(),
+      got.get("notes"))
+check("and the fallback is what this copy says about itself",
+      U.local_changelog()[0]["version"] == AV.VERSION
+      and U.local_changelog()[0]["notes"] == U.local_changes(),
+      U.local_changelog())
 
 # ---- 7. the three-part spelling the manifests need, derived not typed ----
 check("SEMVER is a three-part version a manifest accepts",

@@ -645,6 +645,18 @@ const VERSIONS = {
              checked_at: "", notes: ["连不上"] },
 };
 let VERSION_ANSWER = VERSIONS.behind;
+// /api/version-changelog 的答案：GitHub 的发布记录，最新的在上。 关于页要能
+// 翻到以前每一版改了什么，所以这一份是好几条，而不是一条。
+let CHANGELOG_ANSWER = { ok: true, reachable: true, cached: false,
+  rows: [
+    { version: "1.0004", name: "模组工坊 1.0004", date: "2026-11-18",
+      notes: ["关于页加了完整更新日志", "日志只写改了什么"], url: "" },
+    { version: "1.0003", name: "模组工坊 1.0003", date: "2026-11-17",
+      notes: ["下载新版的网络慢，现在快多了"], url: "" },
+    { version: "1.0002", name: "模组工坊 1.0002", date: "2026-11-16",
+      notes: ["有新版时可以直接按按钮装好"], url: "" },
+  ] };
+const changelogAsked = [];
 // 这一份是不是装好的副本（`/api/meta` 的 `app_can_update`）。 源码目录里跑的那
 // 一份是 false：没有可以替换的 app/，按钮不该出现。
 let CAN_UPDATE = true;
@@ -937,6 +949,11 @@ const sandbox = {
     if (url.indexOf("/api/job?key=update") === 0) {
       return { json: async () => ({ ok: true, job: JOB_ANSWER }) };
     }
+    if (url.indexOf("/api/version-changelog") === 0) {
+      // 更新日志是另一条路由：它要的是全部版本，而 version-check 只答这一次。
+      changelogAsked.push(url);
+      return { json: async () => CHANGELOG_ANSWER };
+    }
     if (url.indexOf("/api/version-check") === 0) {
       // 版本检查问的是这一份工具本身，和 /api/update-check（问磁盘上游戏的
       // .dat 有没有被游戏改过）是两件事。答案形状照抄服务端的扁平结构。
@@ -1113,6 +1130,9 @@ const fn = new Function(
   "installUpdate: installUpdate, installTick: installTick, " +
   "INSTALL_ASKED: () => installAsked, " +
   "VERSION_FIXTURE: () => VERSION_ANSWER, " +
+  "loadChangelog: loadChangelog, drawChangelog: drawChangelog, " +
+  "CHANGELOG_ANSWER: () => CHANGELOG_ANSWER, " +
+  "CHANGELOG_ASKED: () => changelogAsked, " +
   "checkRepairs: checkRepairs, adaptAll: adaptAll, " +
   "TODO: () => ADAPT_TODO, UPGRADE_FIXTURE: () => UPGRADE_ANSWER, " +
   "APPLIED: () => appliedBodies, " +
@@ -2680,6 +2700,34 @@ function versionChecks() {
           ids["about-check"].disabled === false
           || ids["about-check"].disabled === undefined,
           String(ids["about-check"].disabled));
+    // 更新日志：打开关于页时拉一次，把 GitHub 上每一版都列出来。 只印手上这一
+    // 份的改动，回答不了「上一版改了什么」，而那正是点开版本卡想问的事。
+    return page.loadChangelog();
+  }).then(() => {
+    check("opening the version card fetches the whole log, not just this copy",
+          changelogAsked.length >= 1, JSON.stringify(changelogAsked));
+    const logBox = text(ids["about-changelog-list"]);
+    check("...and every release in it is on screen",
+          logBox.indexOf("1.0004") >= 0 && logBox.indexOf("1.0003") >= 0
+          && logBox.indexOf("1.0002") >= 0, logBox);
+    check("...newest first",
+          logBox.indexOf("1.0004") < logBox.indexOf("1.0003")
+          && logBox.indexOf("1.0003") < logBox.indexOf("1.0002"), logBox);
+    check("...with the date beside the number",
+          logBox.indexOf("2026-11-17") >= 0, logBox);
+    check("...and each line says what changed, not how",
+          logBox.indexOf("下载新版的网络慢，现在快多了") >= 0, logBox);
+    // 连不上时不能留白：手上这一份自己写了什么，是唯一不需要网络的答案。
+    CHANGELOG_ANSWER = { ok: true, reachable: false, cached: false,
+                         rows: [{ version: "1.0004", date: "",
+                                  notes: ["这一份自己写了什么"], url: "" }] };
+    return page.loadChangelog(true);
+  }).then(() => {
+    const logBox = text(ids["about-changelog-list"]);
+    check("an unreachable log falls back to what this copy says about itself",
+          logBox.indexOf("这一份自己写了什么") >= 0, logBox);
+    check("...instead of leaving the previous release list behind",
+          logBox.indexOf("1.0003") < 0, logBox);
     return recipeChecks();
   }).catch((e) => { fails.push("the version check threw: " + e.message);
                     console.log("FAIL the version check threw :: " + e.stack);
