@@ -88,6 +88,22 @@
 | 全局数值 | 7 条 | 1 |
 | 科技树 | 550 条 | 44 到 66 |
 
+## 三十秒上手
+
+**双击根目录里的 `启动模组工坊.cmd`。** 就这一步。
+
+它会自己找 python —— 先找已知的那份 `dependencies\python\python.exe`，再找 `py` 启动器，
+最后才用 PATH 上的 `python`（那个可能是应用商店的存根，一试就弹商店）—— 然后在**一个窗口里**
+打开工坊。出错时窗口会停住并留下原因，不会一闪就没。
+
+> 窗口：页面在一个原生窗口里开，没有地址栏、不会误点走。用的是本机的 Edge WebView2 运行时，
+> 不打包、不构建。万一某个环境装不了 `pywebview`，它会自己退回浏览器并说明原因 ——
+> 「要窗口」和「能开」是两件事。想强制只要窗口（开不了就报错而不是退回）加 `--window`，
+> 想回到浏览器老行为加 `--browser`。
+
+图标那层也能写：`unit.create` / `tech.create` 都带得动一张自己的图，**已经在一局真游戏里画出来过** —— 产品自己发出去的图标，出现在城镇中心的命令卡上，用的是自动分配的新槽。
+`.dat` 与 `widgetui` 要拆成两个 mod 才画得出来，放同一个文件夹里是空框。
+
 ## 安装
 
 **安装包**：从 [Releases](https://github.com/198agk/AoE2ModWorkshop/releases/latest) 下
@@ -125,12 +141,29 @@ python -X utf8 -u tools\run_ui.py     # 需要 Python 3.10+，控制台会打印
 
 ## 开发
 
+需要 Python 3.10+。装好的包自带 `runtime\python.exe`；从源码跑用系统那份，命令一样。
+
 ```powershell
 python -X utf8 -u '_probe\run_suites.py'    # 234 条快套件，约 100 分钟
 python -X utf8 -u '_probe\run_long.py'      # 17 条长套件，约 2.8 小时
 ```
 
-`aoe2mod/dat/{parser,writer,locate}.py` 是 vendored，要改就改 `_probe/datparse/` 与 `_probe/serializer/`。
+两条环境铁律：
+
+1. `aoe2mod/dat/{parser,writer,locate}.py` 是 **vendored** —— 直接改无效，下次 `tools\sync_engine.py`
+   会覆盖。要改就改 `_probe/datparse/` 与 `_probe/serializer/` 里的源，再跑一次同步。
+2. 超过几句话的 Python 不要内联在 shell 里（here-string 会吞引号），写成 `.py` 再跑。
+
+接大模型只从环境变量读，三条都认：
+
+```powershell
+$env:AOE2MOD_AI_BASE  = 'https://api.openai.com/v1'
+$env:AOE2MOD_AI_KEY   = 'sk-...'
+$env:AOE2MOD_AI_MODEL = 'gpt-4o-mini'
+```
+
+**它只会把你说的话换成这个工具认得的句子**，不产生任何改动：句子仍然要过「读一下」那一关、
+仍然要看预览能不能构建。配置只从环境变量读，项目不存任何 key。
 
 全部由 AI 写，模型是 **Deepseek-V4.1-Flash**；人负责定方向、在真游戏里开一局验证、拒掉没实测的改动。
 

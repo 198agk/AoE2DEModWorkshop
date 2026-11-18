@@ -57,7 +57,21 @@ def read(path):
 
 
 def inline_pngs(text):
-    return re.findall(r"data:image/png;base64,([A-Za-z0-9+/=]+)", text)
+    """The inline PNG that sits in a logo slot (``class="mark"``).
+
+    Not every inline image on a page is a logo.  The about page carries the
+    sponsor's QR code as a second inline PNG, three hundred thousand bytes
+    away from the brand slot, so counting every one of them made a rule about
+    the brand fail for a reason that has nothing to do with the brand.  The
+    rule is about the logo, so only the logo slot is counted.
+    """
+    same_tag = re.findall(
+        r'<img[^>]*class="mark"[^>]*data:image/png;base64,([A-Za-z0-9+/=]+)',
+        text)
+    in_span = re.findall(
+        r'<span class="mark"><img[^>]*data:image/png;base64,([A-Za-z0-9+/=]+)',
+        text)
+    return same_tag + in_span
 
 
 def main():

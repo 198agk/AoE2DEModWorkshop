@@ -72,20 +72,15 @@ def read(path):
 
 
 
-_ZH_DIGITS = {"一": 1, "二": 2, "三": 3, "四": 4, "五": 5,
-              "六": 6, "七": 7, "八": 8, "九": 9, "十": 10}
+def _ed_tables(page):
+    """The list the page's own loader carries, read back as strings."""
+    m = re.search(r"ED_TABLES\s*=\s*\[([^\]]*)\]", page)
+    return re.findall(r'"([a-z]+)"', m.group(1)) if m else []
 
 
-def _zh_num(word):
-    """`十一` / `十` / `九` -> int.  Only the form the page actually writes."""
-    if word == "十":
-        return 10
-    if word.startswith("十"):
-        return 10 + _ZH_DIGITS.get(word[1:], 0)
-    if "十" in word:
-        head, _sep, tail = word.partition("十")
-        return _ZH_DIGITS.get(head, 0) * 10 + (_ZH_DIGITS.get(tail, 0) if tail else 0)
-    return _ZH_DIGITS.get(word, 0)
+def _tabs(page):
+    """The tab buttons, in the order the row draws them."""
+    return re.findall(r'data-edkind="([a-z]+)"', page)
 
 def section(title):
     print("\n=== %s ===" % (title,))
@@ -299,17 +294,14 @@ def main():
     ck("a tab exists for it", 'data-edkind="civ"' in page)
     ck("the tab is in the table kinds the loader knows",
        re.search(r'ED_TABLES\s*=\s*\[[^\]]*"civ"', page, re.S) is not None)
-    # The count in the copy has to equal the buttons on the row, whatever the
-    # number is: pinning 十 would fail the day a family gets an address, which
-    # punishes the feature it guards (the tab-row pin in test_table_tabs.py
-    # made the same point).
-    _n_tabs = len(re.findall(r'data-edkind="', page))
-    ck("the page states a tab count",
-       re.search(r"([一二三四五六七八九十]+)个页签", page) is not None)
-    ck("...and it matches the buttons on the row",
-       (_zh_num(re.search(r"([一二三四五六七八九十]+)个页签", page).group(1))
-        if re.search(r"([一二三四五六七八九十]+)个页签", page) else -1) == _n_tabs,
-       (_n_tabs, page.count("个页签")))
+    # There used to be a sentence here counting the tabs.  It is gone -- the
+    # editor says what to DO in one line now instead of counting its own
+    # buttons -- so what gets pinned is the thing that sentence was guarding:
+    # every space the loader knows has a button on the row, in order.  A
+    # literal count would fail the day a family is added; this does not.
+    ck("the tab row lists every space the loader knows",
+       _tabs(page) == ["unit", "tech"] + _ed_tables(page),
+       (_tabs(page), _ed_tables(page)))
     ck("the page explains the 536 zeros", "536" in page)
     ck("the page says the lobby sets starting resources", "大厅" in page)
 
@@ -340,7 +332,11 @@ def main():
                 # 文明 is the last RECORD table; the three file-block tabs
                 # follow it because they are not record lists.
                 ck("文明 is the last record table",
-                   "文明" in taps and taps.index("文明") == _n_tabs - 4, taps)
+                   # `taps` is the row itself, so its own length is the count the
+                   # old `_n_tabs` helper used to spell out.  The helper went when
+                   # the page's 「N 个页签」 sentence did; the property it stood for
+                   # (文明 is the last record table, then three file blocks) did not.
+                   "文明" in taps and taps.index("文明") == len(taps) - 4, taps)
                 ck("the tab row ends with the three file blocks",
                    taps[-3:] == ["地图块", "全局数值", "科技树"], taps)
                 pg.click('[data-edkind="civ"]')

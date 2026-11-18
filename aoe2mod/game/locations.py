@@ -1166,8 +1166,12 @@ def set_mod_info(profile_root, name, title=None, author=None,
         acc = profile_root
     else:
         acc = pick_account(profile_root)
-    folder, kind, _how = resolve_mod_any(profile_root, name, kind=kind,
-                                        account=acc)
+    # The third value says HOW the name was found (path / title / folder / bare).
+    # This caller does not care: a mod it cannot find on disk raises below either
+    # way, and the message names the folder it looked for.  Discarding it keeps
+    # `_how` in this file to the one place that branches on it.
+    folder, kind, _ = resolve_mod_any(profile_root, name, kind=kind,
+                                     account=acc)
     target = os.path.join(account_mods_dir(acc, kind), folder)
     if not os.path.isdir(target):
         raise FileNotFoundError(

@@ -17,9 +17,11 @@ Read-only against BASE; writes only under _probe/out_effect/.
 import os, sys, io, json, struct, contextlib, collections
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, HERE)
 sys.path.insert(0, os.path.join(HERE, "datparse"))
 import parse_dat as P
 import intent_patch as IP
+import _gamepaths as GP
 
 BASE = GP.DAT
 OUT = os.path.join(HERE, "out_effect")
@@ -152,7 +154,6 @@ for i, (x, y) in enumerate(zip(effs[target]["commands"], after_cmds)):
 
 print("\n=== 6. would an effect edit change file size? ===")
 import zlib
-import _gamepaths as GP
 comp = zlib.compressobj(6, zlib.DEFLATED, -15)
 blob = comp.compress(bytes(patched)) + comp.flush()
 print("  decompressed %d (unchanged) | recompressed %d (game original 12,023,754)"

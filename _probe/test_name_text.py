@@ -218,7 +218,7 @@ srv = io.open(os.path.join(ROOT, "aoe2mod", "ui", "server.py"),
 ck("table_rows decodes the row label",
    'nm = NTX.readable(rec.get("name")) or ""' in srv)
 ck("table_rows searches the decoded label, not the raw one",
-   "if qs and qs not in nm.lower():" in srv)
+   "elif qs in nm.lower():" in srv)
 ck("table_fields decodes the record name",
    '"name": NTX.readable(rec.get("name")) or ""' in srv)
 ck("an effect's own name in the effect list decodes",
@@ -269,24 +269,24 @@ _ = _tk2.version
 # `Toolkit.browse` is the raw one; `App.browse` is what wraps it in `{ok, browse}`.
 _all = _tk2.browse("unit", limit=1)["total"]
 _by_id = _tk2.browse("unit", query="83", limit=5)
-ck("a number finds the one record with that id",
-   _by_id["total"] == 1 and _by_id["rows"][0]["id"] == 83,
+ck("a number puts the record with that id on row one",
+   bool(_by_id["rows"]) and _by_id["rows"][0]["id"] == 83,
    (_by_id["total"], [r["id"] for r in _by_id["rows"][:3]]))
 ck("and nothing else came along with it", _by_id["total"] < _all, _all)
-# An id is matched EXACTLY.  A prefix rule would put 5073 beside 50730 and read
-# like a name search that happens to be wrong.  `8` also appears INSIDE four real
-# names (碎石 8 x 8, 山脉 8), so the honest check is: the record numbered 8 comes
-# first, and every other row earned its place from its name, not from its number.
+# The rule is a RANK, not a filter: the record whose number IS the query comes
+# first, then every record whose number CONTAINS it, then the names.  Reported
+# 2026-11-16 with a screenshot of 精锐掷矛手 (编号 6), verbatim: 「检索功能，应该把
+# 含6的全显示才对吧」 -- typing `6` answered 4 rows while 430 of the 1,651 listed
+# records carry a 6 in their number.  This section used to nail the older
+# exact-match-only rule, which is what made `q=6` answer nothing useful; the
+# checks below nail the rule the page actually runs.
 _by_id2 = _tk2.browse("unit", query="8", limit=20)
-_rest = _by_id2["rows"][1:]
 ck("the record with that number comes first",
    _by_id2["rows"][0]["id"] == 8, [r["id"] for r in _by_id2["rows"][:4]])
-# A prefix rule on the id would have dragged in 80..89 and 800..899.  What the
-# rest of the page holds is instead names that contain the digit somewhere --
-# 碎石 8 x 8, 山脉 8, and 空 (whose internal name has an 8 in it).
-ck("a number is not a prefix search",
-   all(not str(r["id"]).startswith("8") for r in _rest),
-   [(r["id"], r.get("name")) for r in _rest[:4]])
+ck("and every other row either carries that digit in its number, or spells it",
+   all("8" in str(r["id"]) or "8" in (r.get("name") or "")
+       for r in _by_id2["rows"]),
+   [(r["id"], r.get("name")) for r in _by_id2["rows"][:4]])
 ck("a number no record uses finds nothing",
    _tk2.browse("unit", query="31999", limit=5)["total"] == 0)
 # A digit string that happens to be inside a name still has to find that name:
@@ -299,8 +299,9 @@ ck("a name still finds its rows", _by_name["total"] >= 1,
 _api_src = io.open(os.path.join(ROOT, "aoe2mod", "api.py"), encoding="utf-8").read()
 ck("browse turns a digit string into an id",
    "qid = int(q) if q.isdigit() else None" in _api_src)
-ck("and compares it with the id before the names",
-   "if q and uid != qid " in _api_src)
+ck("and compares the id before the names",
+   -1 < _api_src.find("elif q in str(uid):") < _api_src.find("hit = 2"),
+   (_api_src.find("elif q in str(uid):"), _api_src.find("hit = 2")))
 _page = io.open(os.path.join(ROOT, "aoe2mod", "ui", "static", "index.html"),
                 encoding="utf-8").read()
 ck("the editor's box says it takes a number",

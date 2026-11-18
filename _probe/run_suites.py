@@ -6,7 +6,16 @@ import shutil
 import subprocess
 import sys
 
-import _gamepaths as GP
+# `_gamepaths` is this folder's neighbour.  Spelled `import _gamepaths` it
+# resolves only when this file is the SCRIPT being run; imported as
+# `_probe.run_suites` (which `test_runner_contract.py` does on purpose, to prove
+# the import is inert) the sibling folder is not on the path and the import
+# dies.  Find the folder first, then import.
+_p = os.path.dirname(os.path.abspath(__file__))
+if _p not in sys.path:
+    sys.path.insert(0, _p)
+
+import _gamepaths as GP  # noqa: E402
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)

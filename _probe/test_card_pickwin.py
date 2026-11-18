@@ -397,19 +397,33 @@ def main():
         want = "83"
         pg.fill("#cardpick-q", want)
         pg.click("#cardpick-go")
+        # 搜索是子串匹配，不是编号匹配：`q=83` 的答案里除了 83 还有 283、483、
+        # 1083，以及名字里带 83 的（实测 total 34，第一行就是 83）。所以这里钉
+        # 的是「那一条排在第一」，加上「其余每一条要么编号里有这几个字，要么名字
+        # 里有」，而不是旧的那套「结果不超过四条」。2026-11-16 用户原话：检索
+        # 应该把含这几个字的全列出来。
         pg.wait_for_function(
             "(w) => { const c = [...document.querySelectorAll('#cardpick-grid .cell')];"
-            " return c.length > 0 && c.length <= 4"
-            " && c.some(x => x.dataset.unit === w); }", arg=want, timeout=180000)
-        one = pg.evaluate("""() => {
+            " return c.length > 0 && c[0].dataset.unit === w; }",
+            arg=want, timeout=180000)
+        one = pg.evaluate("""(w) => {
             const cells = [...document.querySelectorAll('#cardpick-grid .cell')];
+            const bad = cells.filter(c => {
+                const u = c.dataset.unit || '';
+                const nm = ((c.querySelector('.nm') || {}).textContent || '');
+                return !u.includes(w) && nm.toLowerCase().indexOf(w.toLowerCase()) < 0;
+            }).map(c => c.dataset.unit);
             return {n: cells.length,
+                    first: cells[0] ? cells[0].dataset.unit : '',
                     units: cells.slice(0, 4).map(c => c.dataset.unit),
+                    bad: bad.slice(0, 4),
                     nm: cells[0] ? (cells[0].querySelector('.nm') || {}).textContent : ''};
-        }""")
-        check(one["n"] >= 1 and want in one["units"],
-              "typing an id narrows the wall to that unit", one)
-        check(one["n"] <= 4, "and to almost nothing else", one["n"])
+        }""", want)
+        check(one["n"] >= 1 and one["first"] == want,
+              "typing an id puts that unit on the first tile", one)
+        check(one["bad"] == [],
+              "and every other tile spells those digits, in its number or its name",
+              one["bad"])
 
         # Place it.  The unit must land in the box that was clicked.
         pg.click("#cardpick-grid .cell")

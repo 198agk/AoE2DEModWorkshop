@@ -63,20 +63,15 @@ def read(path):
     return io.open(path, encoding="utf-8").read()
 
 
-_ZH_DIGITS = {"一": 1, "二": 2, "三": 3, "四": 4, "五": 5,
-              "六": 6, "七": 7, "八": 8, "九": 9, "十": 10}
+def _ed_tables(page):
+    """The list the page's own loader carries, read back as strings."""
+    m = re.search(r"ED_TABLES\s*=\s*\[([^\]]*)\]", page)
+    return re.findall(r'"([a-z]+)"', m.group(1)) if m else []
 
 
-def _zh_num(word):
-    """`十一` / `十` / `九` -> int.  Only the form the page actually writes."""
-    if word == "十":
-        return 10
-    if word.startswith("十"):
-        return 10 + _ZH_DIGITS.get(word[1:], 0)
-    if "十" in word:
-        head, _sep, tail = word.partition("十")
-        return _ZH_DIGITS.get(head, 0) * 10 + (_ZH_DIGITS.get(tail, 0) if tail else 0)
-    return _ZH_DIGITS.get(word, 0)
+def _tabs(page):
+    """The tab buttons, in the order the row draws them."""
+    return re.findall(r'data-edkind="([a-z]+)"', page)
 
 
 def section(title):
@@ -210,17 +205,14 @@ def main():
     ck("a tab exists for it", 'data-edkind="task"' in page)
     ck("the tab is in the table kinds the loader knows",
        re.search(r'ED_TABLES\s*=\s*\[[^\]]*"task"', page) is not None)
-    # The Chinese numeral in that sentence went stale the moment 文明 became the
-    # tenth tab (this check failed with "the page counts nine tabs" while the
-    # page was correctly counting ten).  Pinning a WORD means every new tab edits
-    # every older suite, so what is pinned now is the arithmetic: the number the
-    # sentence states must equal the number of tab buttons the page ships.
-    m = re.search(r"([一二三四五六七八九十]+)个页签", page)
-    ck("the page states a tab count", m is not None, m and m.group(1))
-    if m is not None:
-        ck("...and it equals the number of tab buttons",
-           _zh_num(m.group(1)) == len(re.findall(r'data-edkind="', page)),
-           (_zh_num(m.group(1)), len(re.findall(r'data-edkind="', page))))
+    # There used to be a sentence here counting the tabs.  It is gone -- the
+    # editor says what to DO in one line now instead of counting its own
+    # buttons -- so what gets pinned is the thing that sentence was guarding:
+    # every space the loader knows has a button on the row, in order.  A
+    # literal count would fail the day a family is added; this does not.
+    ck("the tab row lists every space the loader knows",
+       _tabs(page) == ["unit", "tech"] + _ed_tables(page),
+       (_tabs(page), _ed_tables(page)))
     ck("the page warns that 工作量 is not a gather rate",
        "不是采集速度" in page)
     ck("the page says which field does show an effect",

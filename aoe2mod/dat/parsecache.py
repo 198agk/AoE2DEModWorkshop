@@ -86,7 +86,19 @@ import zlib
 #: display-string ids.  Renaming a record for the PLAYER (not just for the
 #: editor's lists) rewrites those ids, and a v2 model has no address to rewrite,
 #: so the rename would silently change only the internal name.
-CACHE_VERSION = 3
+#:
+#: v4 (2026-11-18): `_start`/`_end` are stamped by `locate.walk_civ` again.  A
+#: refactor had stopped writing them while this comment kept claiming they were
+#: there, so a fresh parse produced a model `relocate` could not shift and a
+#: stale v3 pickle would hide that: the version guard is what forces a re-parse
+#: instead of loading the model that was missing them.
+#:
+#: v5 (2026-11-18): records carry `_off_dll_name` (units) and `_off_lang_name` /
+#: `_off_lang_description` (techs) again, for the same reason and after the same
+#: kind of loss.  A rename writes the display name through those three
+#: addresses; a model without them reports the rename as accepted while changing
+#: nothing the player can see, which is the worst possible failure shape.
+CACHE_VERSION = 5
 
 #: `pickle` files are not portable across CPython versions, so the name says
 #: which interpreter wrote it.  Proton/Wine users can run the game from either.

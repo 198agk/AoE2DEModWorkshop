@@ -233,6 +233,19 @@ def _slot_load(raw, sha):
         return None
     if box.get("raw_bytes") != len(raw):
         return None
+    # A slot outlives the code that wrote it, and a model without spans loads
+    # without complaint: `build_unit_index` then raises `KeyError: _start`
+    # somewhere far from here.  The span check is the cheap shape assertion --
+    # 136k dict lookups, under 0.1 s -- that turns a stale slot back into a miss.
+    civs = box.get("civs")
+    if not civs:
+        return None
+    for c in civs:
+        if c.get("_start") is None or c.get("_end") is None:
+            return None
+        for u in c.get("units") or ():
+            if u.get("_start") is None:
+                return None
     try:
         return (box["stats"], box["civs"], box["civs_start"], box["gv"],
                 box["tail"], "slot")

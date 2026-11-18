@@ -101,6 +101,11 @@ def walk_unit(r, ci):
     # here, while two genuinely different units carry different ids.  The
     # age-family rule needs it to tell "another age of this building" apart from
     # "a different building that happens to share a name".
+    # The ADDRESS of that id, not just its value: renaming a record for the
+    # player rewrites this int32 in all 63 civ copies, and without the offset
+    # there is no byte to write -- the rename would change the internal name
+    # only and the game would keep showing the old one.
+    u["_off_dll_name"] = r.at("dll_name")
     u["_dll_name"] = r.i32()                  # LanguageDLLName
     r.i32()                                   # Creation
     u["_dll_names"] = {u["_dll_name"]}         # set form, for the family rule
@@ -313,6 +318,13 @@ def walk_unit(r, ci):
 
 def walk_civ(r, ci):
     c = {"index": ci}
+    # `_start`/`_end`: the byte range this civilisation occupies.  `relocate`
+    # carries the whole model across a splice by adding one number to every
+    # offset, and `chain_ok()` proves the walk covered the civ block exactly by
+    # checking each record starts where the previous one ended.  Both need the
+    # spans, and no other code records them -- a model without them raises
+    # `KeyError: _start` on the first added record.
+    c["_start"] = r.o
     c["player_type"] = r.u8()
     c["name"] = r.debug_string()[1]
     n = r.i16()
@@ -326,8 +338,13 @@ def walk_civ(r, ci):
     units = []
     for i in range(m):
         if ptrs[i] != 0:
-            units.append(walk_unit(r, ci))
+            at = r.o                  # the record starts here; walk_unit ends it
+            u = walk_unit(r, ci)
+            u["_start"] = at
+            u["_end"] = r.o
+            units.append(u)
     c["units"] = units
+    c["_end"] = r.o
     return c
 
 
@@ -382,11 +399,18 @@ def walk_tech(r):
     # compare against.  Keeping them makes "the id on disk is the id we meant"
     # a checkable statement instead of a hope.
     if r.gv >= P.GV_MATT:
+        # Same reason as the unit's display id: these two are the addresses the
+        # rename writes through, and the record named in the file is not the
+        # name the player sees until they are rewritten.
         if P.GV_C18 <= r.gv <= P.GV_LatestDE2:
+            t["_off_lang_name"] = r.at("lang_name")
             t["lang_name"] = r.i32()          # LanguageDLLName
+            t["_off_lang_description"] = r.at("lang_description")
             t["lang_description"] = r.i32()   # LanguageDLLDescription
         else:
+            t["_off_lang_name"] = r.at("lang_name")
             t["lang_name"] = r.i16()
+            t["_off_lang_description"] = r.at("lang_description")
             t["lang_description"] = r.i16()
     # Research time has TWO storage shapes and the binding must tolerate both:
     #   * gv <  GV_C31 -- one scalar in the record (the legacy shape)

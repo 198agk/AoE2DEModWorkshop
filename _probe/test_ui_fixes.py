@@ -139,21 +139,28 @@ with sync_playwright() as p:
     # and broke into 「模组工」/「坊」, and 「就绪」 was printed twice (once by the
     # dot, once inside 「63 个文明 · 已就绪」).  These three checks measure the
     # card, not the words in it, because the words were all correct.
+    # The name moved up to the app bar on 2026-11-18, when the rail became a
+    # 76px icon column: a four-character name cannot be given 90px inside 76px,
+    # so `.railprod` is `display: none` there and the header carries it instead
+    # (`.content > header > h1`, "帝国时代 2 DE · 模组工坊").  What was reported
+    # was a name broken into 「模组工」/「坊」, so the measurement follows the name.
     shape = pg.evaluate("""() => {
       const foot = document.querySelector('.railfoot');
-      const nm = document.querySelector('.railprodname');
+      const nm = document.querySelector('.content > header > h1');
       const r = nm.getBoundingClientRect();
       const lh = parseFloat(getComputedStyle(nm).lineHeight) || 0;
+      const cs = getComputedStyle(nm);
       return {
         footH: Math.round(foot.getBoundingClientRect().height),
         nameW: Math.round(r.width), nameH: Math.round(r.height),
         lines: lh ? Math.round(r.height / lh) : null,
+        whiteSpace: cs.whiteSpace,
         ready: (foot.innerText.match(/就绪/g) || []).length,
         footText: foot.innerText,
       };
     }""")
-    check(shape["lines"] == 1,
-          "the product name is one line, not 「模组工」/「坊」", shape)
+    check(shape["lines"] == 1 and shape["whiteSpace"] == "nowrap",
+          "the product name is on one line, not 「模组工」/「坊」", shape)
     check(shape["nameW"] >= 90,
           "and it is given the width a four-character name needs", shape["nameW"])
     check(shape["ready"] == 1,
@@ -239,7 +246,7 @@ with sync_playwright() as p:
     wide = pg.evaluate("""() => {
       const out = [];
       for (const el of document.querySelectorAll('#view-editor .hint, #view-editor .box p')) {
-        if (el.textContent.trim().length < 40) continue;
+        if (el.textContent.trim().length < 20) continue;
         const r = el.getBoundingClientRect();
         const cs = getComputedStyle(el);
         const lh = parseFloat(cs.lineHeight) || 1;
@@ -263,16 +270,32 @@ with sync_playwright() as p:
       }
       return out;
     }""")
-    check(len(wide) >= 1, "the editor has a long hint to measure", wide)
-    # An inline `.hint` (the count next to a select, for one) is as wide as its
-    # words; that is not a paragraph with half a card of nothing beside it.
-    # Judged on the ones that actually wrap: a paragraph on two or more lines
-    # has to use the width it was given.
-    wraps = [x for x in wide if x["lines"] >= 2]
-    check(len(wraps) >= 1, "at least one hint wraps onto two lines", wide)
-    alone = [x for x in wraps if x["beside"] == "empty" and x["blank"] >= 200]
+    # The property is "no paragraph stops at half a card", and it is measured on
+    # whatever prose the editor actually has.  This used to require a \u226540-glyph
+    # paragraph that wrapped onto two lines; the editor no longer carries one --
+    # the five-step guide was cut to three lines of one sentence each on
+    # 2026-11-16, on purpose.  A test that demands long prose comes back red the
+    # moment somebody acts on 「把多余的废话清掉」, so it now measures the widths
+    # of the paragraphs that exist instead of requiring one.
+    paved = pg.evaluate("""() => {
+      const out = [];
+      for (const el of document.querySelectorAll('#view-editor .edguide li, #view-editor .edguide summary')) {
+        const r = el.getBoundingClientRect();
+        const box = el.closest('.box').getBoundingClientRect();
+        if (!r.width) continue;
+        out.push({chars: (el.textContent || "").trim().length,
+                  w: Math.round(r.width), boxW: Math.round(box.width),
+                  blank: Math.round(box.right - 8 - r.right)});
+      }
+      return out;
+    }""")
+    check(len(paved) >= 1 and all(x["blank"] < 40 for x in paved),
+          "the editor guide uses the width of its card, not a 32-glyph measure",
+          paved)
+    alone = [x for x in wide if x["beside"] == "empty" and x["blank"] >= 200]
     check(not alone,
-          "and none of them wraps with half a card of blank beside it", alone)
+          "and no editor paragraph wraps with half a card of blank beside it",
+          alone)
 
     # m20489 「预览，还没动任何文件」这张卡片里什么都没有：`#preview:empty`
     # hides the whole well, and `boot()` cleared the static empty sentence and
