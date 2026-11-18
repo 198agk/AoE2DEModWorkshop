@@ -29,7 +29,7 @@ PrivilegesRequired=lowest
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 OutputDir={#RepoDir}\_out
-OutputBaseFilename=AoE2ModWorkshop-{#AppVer}-setup
+OutputBaseFilename=AoE2DEModWorkshop-{#AppVer}-setup
 SetupIconFile={#RepoDir}\brand\app-icon.ico
 ; 安装向导左右两张图也从同一张母版 app-icon.png 生成（_probe/installer/ 下两个 .bmp），
 ; 不再用 Inno 自带的那个蓝色盒子 —— 一个包从图标到向导里外都该是同一个东西。

@@ -11,7 +11,7 @@
 ## 一、怎么开
 
 从 [Releases](https://github.com/198agk/AoE2DEModWorkshop/releases/latest) 下安装包，双击，下一步。
-装好之后双击桌面上的「AoE2 模组工坊」——它在**一个窗口**里开（本机 Edge WebView2），
+装好之后双击桌面上的「AoE2 DE Mod Workshop」——它在**一个窗口**里开（本机 Edge WebView2），
 自带 Python，不需要管理员权限。
 
 ### 双击的那个 exe 里跑的是哪一套
