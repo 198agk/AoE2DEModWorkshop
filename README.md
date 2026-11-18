@@ -83,12 +83,6 @@
 | 开局时把某单位换成另一个 | `unit.replace_on_map` | `objreplacement.json` + `.dat` |
 | 把单位挪到命令卡另一格 | `unit.card_move` | `.dat` |
 
-放一个 `plugins/<名字>/schema/intents.json` 就多一个意图，不用改 Python。
-
-图标那层也能写：`unit.create` / `tech.create` 都带得动一张自己的图，**已经在一局真游戏里画出来过** ——
-产品自己发出去的图标，出现在城镇中心的命令卡上，用的是自动分配的新槽。`.dat` 与 `widgetui` 要拆成
-两个 mod 才画得出来，放同一个文件夹里是空框。
-
 ## 编辑器页签
 
 | 页签 | 记录数 | 字段 |
@@ -152,13 +146,11 @@ $env:AOE2MOD_AI_MODEL = 'gpt-4o-mini'
 **它只会把你说的话换成这个工具认得的句子**，不产生任何改动：句子仍然要过「读一下」那一关、
 仍然要看预览能不能构建。配置只从环境变量读，项目不存任何 key。
 
-## ☕ 请我们喝咖啡
-
-如果 模组工坊 帮你省下了不少时间，不妨请开发者喝杯咖啡？
-
-你的支持是我持续更新的最大动力！💖
+## 赞助
 
 <a href="https://afdian.com/a/RemonBo"><img src="https://img.shields.io/badge/%E5%9C%A8%E7%88%B1%E5%8F%91%E7%94%B5%E6%94%AF%E6%8C%81%E6%88%91-946ce6?style=for-the-badge&logoColor=white" alt="在爱发电支持我"></a>
+
+全凭自愿，不赞助也一个功能都不会少。
 
 ## 许可
 

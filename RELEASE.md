@@ -10,10 +10,9 @@
 
 ## 一、怎么开
 
-双击仓库根目录的 `启动模组工坊.cmd`。就这一步。
-
-它在**一个窗口**里开（本机 Edge WebView2），找不到 python 会停住并说原因，
-装不了 `pywebview` 会退回浏览器并说原因。
+从 [Releases](https://github.com/198agk/AoE2ModWorkshop/releases/latest) 下安装包，双击，下一步。
+装好之后双击桌面上的「AoE2 模组工坊」——它在**一个窗口**里开（本机 Edge WebView2），
+自带 Python，不需要管理员权限。
 
 ### 双击的那个 exe 里跑的是哪一套
 

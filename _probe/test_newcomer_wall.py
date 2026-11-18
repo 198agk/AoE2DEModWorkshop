@@ -184,10 +184,9 @@ def main():
         # match starts.
         #
         # 2026-11-18 the owner cut the "double-click 启动模组工坊.cmd" pitch out
-        # of the README on the grounds that the repository publishes source and
-        # the front door is the release exe.  The launcher itself still exists
-        # and is still checked further down this file -- it is just no longer
-        # what the README sells, so nothing here may pin it any more.
+        # of the README, then asked why the file itself was still in a repository
+        # that publishes source, and had it deleted.  The front door is the
+        # installer; nothing in this file may pin a checkout launcher again.
         check("it points at the release download", "releases/latest" in txt)
         check("it names the build a reader should open", "aoe2-mod-workshop.exe" in txt)
         check("it says the repository is source, not the thing to run",
@@ -222,15 +221,15 @@ def main():
         # now does.
         check("it no longer says a new unit cannot have an icon",
               "新建单位没有自己的图标" not in txt)
-        # And the mirror image of that mistake, which this file made the moment it
-        # was first written: it demanded the README keep saying the icon was never
-        # drawn, so improving the front door failed the suite.  v85 (2026-10-24)
-        # drew it from the product path on an auto-assigned slot.  Assert the true
-        # sentence AND that the stale one is gone, so drift either way is caught.
+        # The mirror-image mistake this file made once: it demanded the README
+        # keep saying the icon was never drawn, so improving the front door
+        # failed the suite.  v85 (2026-10-24) drew it from the product path on an
+        # auto-assigned slot.  Then 2026-11-18 the owner cut the whole paragraph
+        # out as padding -- the evidence lives in RELEASE.md, not in a pitch on
+        # the front page.  So only the stale claim is pinned now: saying it was
+        # never drawn is still wrong, saying it on the README is no longer owed.
         check("it no longer says the icon was never drawn",
               "还没被一局游戏画出来过" not in txt)
-        check("...and it says the icon was drawn in a real game, on a split build",
-              "已经在一局真游戏里画出来过" in txt and "两个 mod" in txt)
         check("it sends the newcomer to the installer, not the launcher",
               "setup.exe" in txt)
         # The line about who wrote the code.  It used to read like a pitch
@@ -242,38 +241,16 @@ def main():
         check("...without the pitch it used to open with",
               "全部由 AI 写" not in txt)
 
-    # The double-click launcher.  Measured 2026-10-24: a .cmd whose own text
-    # contained Chinese, written as UTF-8 and started under "chcp 65001", had
-    # cmd.exe split comment lines in half and try to EXECUTE the fragments --
-    # the launch worked but a brand-new user's first run ended with three lines
-    # of "'--' is not recognized as an internal or external command".  So the
-    # file has to stay ASCII: that property is the whole reason it is safe.
-    launcher = os.path.join(ROOT, "启动模组工坊.cmd")
-    check("a double-click launcher exists at the root", os.path.isfile(launcher))
-    if os.path.isfile(launcher):
-        raw = io.open(launcher, "rb").read()
-        check("the launcher is ASCII only (cmd.exe cannot split it)",
-              all(b < 0x80 for b in raw),
-              "%d non-ascii bytes" % sum(1 for b in raw if b >= 0x80))
-        lt = raw.decode("ascii", "replace")
-        check("it runs the one entry point", "tools\\run_ui.py" in lt)
-        # The store stub is the failure this shim exists for, so the search
-        # order must put a known interpreter first.
-        check("it looks for the known interpreter before PATH",
-              lt.index("dsh-runtimes") < lt.index("where python"))
-        check("and it keeps the window open after a crash", "pause" in lt)
-        # ...but only after a crash.  Measured 2026-10-25: with an unconditional
-        # `pause`, closing the workshop (a clean exit) left a black console saying
-        # "Press any key" behind, which reads as "the program is still running".
-        #
-        # There are legitimately two `pause` lines: one in the "no python found"
-        # block (before anything runs) and one after the run.  The claim is about
-        # the one AFTER: it has to sit inside the failure conditional.
-        _tail = lt[lt.index('set "RC=%ERRORLEVEL%"'):]
-        check("and it does NOT hold the console open after a clean exit",
-              'if not "%RC%"=="0" (' in _tail
-              and _tail.index("pause") > _tail.index('if not "%RC%"=="0" ('),
-              "the pause after the run is not inside the failure branch")
+    # The double-click launcher is gone.  It existed for one reason, measured
+    # 2026-10-24: the python on PATH may be the Microsoft Store stub, and a
+    # newcomer double-clicking was shorter than explaining that.  A shipped exe
+    # with its own runtime answers the same question with no checkout at all,
+    # and on 2026-11-18 the owner asked why the file was still here in a
+    # repository that publishes source -- so it was deleted along with the
+    # sentences that sold it.  Pinned as an absence: re-adding it by habit is
+    # the exact instruction the owner cut.
+    check("there is no double-click launcher at the root",
+          not os.path.isfile(os.path.join(ROOT, "启动模组工坊.cmd")))
 
     # The install section.  2026-10-25 the README promised a native window and
     # spelled out the --window / --browser fallback; 2026-11-18 the owner had

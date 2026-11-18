@@ -95,7 +95,7 @@ def build():
         "schema_version": intents_raw.get("schema_version"),
         "targets_dat_version": intents_raw.get("targets_dat_version"),
         "commands": {
-            "start": "双击 启动模组工坊.cmd（或 python tools/run_ui.py）",
+            "start": "双击安装包装出来的 aoe2-mod-workshop.exe",
             "verify_quick": "python _probe/run_suites.py",
             "verify_long": "python _probe/run_long.py",
             "suites": {"python": _suite_count(), "node": 1},
