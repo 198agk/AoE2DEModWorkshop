@@ -9260,27 +9260,41 @@ async function loadEditor(more, keepPane) {
   }
   let j = null;
   const off = more ? ED_OFFSET : 0;
+  // The page that just arrived, and `EDROWS` = every row ON SCREEN.
+  //
+  // `EDROWS` used to be replaced by each page, so after 「全部显示」 it held the
+  // last 51 rows while the DOM held 1,651.  Shift+click then measured its range
+  // against a 51-row array: rows 5090-5096 were on screen but not in the array,
+  // so the range came back as whatever slice of those 51 rows sat between the
+  // anchor and the click -- the rows the player dragged across stayed white
+  // while one or two turned green (reported 2026-11-18, verbatim:
+  // 「这是我shift选中5090-5096的效果，中间那些为什么还是白的」).  Every reader of
+  // `EDROWS` -- Ctrl+A, Ctrl+C, the range, the pick bar -- means the loaded
+  // list, so it grows with the DOM instead of describing one page of it.
+  let page = [];
   try {
     j = await api("/api/browse?kind=" + EDKIND + "&limit=" + ED_PAGE +
                   "&offset=" + off + "&order=" + EDORDER +
                   "&q=" + encodeURIComponent(q));
     if (gen !== ED_GEN) return;        // a newer load owns the DOM now
-    EDROWS = (j.browse || {}).rows || [];
+    page = (j.browse || {}).rows || [];
+    EDROWS = more ? (EDROWS || []).concat(page) : page.slice();
   edSyncOrder();
   } catch (e) {
     if (gen !== ED_GEN) return;
-    EDROWS = [];
+    page = [];
+    if (!more) EDROWS = [];
     if (!more) box.appendChild(el("div", "empty", "读不到列表：" + e.message));
     return;
   }
   // The count is the route's own total, not the length of the page we asked
   // for -- otherwise "400 / 400" would claim the game has 400 units.
-  ED_TOTAL = (j.browse && j.browse.total != null) ? j.browse.total : EDROWS.length;
-  ED_OFFSET = off + EDROWS.length;
+  ED_TOTAL = (j.browse && j.browse.total != null) ? j.browse.total : page.length;
+  ED_OFFSET = off + page.length;
   // NOT published here.  See the note at the `appendChild` below: the rows land
   // after the icon batch, and a counter that runs ahead of the DOM reads as a
   // list that lost 51 rows.
-  if (!EDROWS.length) {
+  if (!page.length) {
     $("#edcount").textContent = ED_OFFSET + " / " + ED_TOTAL;
     if (!more) edNothing(box, q, j);
     return;
@@ -9290,7 +9304,7 @@ async function loadEditor(more, keepPane) {
   // measurement: 400 separate /api/icon calls took 3.6 s to finish painting.
   let icons = {};
   try {
-    const key = EDROWS.map(r => r.id).join(",");
+    const key = page.map(r => r.id).join(",");
     const ic = await api("/api/icons?kind=" + EDKIND + "&size=26&ids=" +
                          encodeURIComponent(key));
     if (gen !== ED_GEN) return;        // same rule after the second await
@@ -9299,7 +9313,7 @@ async function loadEditor(more, keepPane) {
     if (gen !== ED_GEN) return;
     icons = {};                       // a missing picture is a labelled blank
   }
-  for (const r of EDROWS) box.appendChild(edRow(r, icons));
+  for (const r of page) box.appendChild(edRow(r, icons));
   // Count what is on screen.  Measured 2026-11-03: publishing the count when the
   // browse reply arrived left 「1651 / 1651」 on screen with 1600 rows in the DOM
   // for the length of one icon batch, and the pin that waits for the counter
