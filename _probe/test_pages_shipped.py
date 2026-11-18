@@ -34,7 +34,7 @@ ROOT = os.path.dirname(HERE)
 sys.path.insert(0, ROOT)
 
 BUNDLE = P.BUNDLE
-EXE = os.path.join(BUNDLE, "aoe2-mod-workshop.exe")
+EXE = os.path.join(BUNDLE, "AoE2 DE Mod Workshop.exe")
 PORT = 7809
 
 # Assertion per view: element id -> (minimum children, human name)
@@ -85,7 +85,7 @@ def main():
     if not os.path.isfile(EXE):
         print("REFUSING: no bundle at", BUNDLE)
         return 1
-    subprocess.run(["taskkill", "/IM", "aoe2-mod-workshop.exe", "/F"],
+    subprocess.run(["taskkill", "/IM", "AoE2 DE Mod Workshop.exe", "/F"],
                    capture_output=True)
     time.sleep(1)
     p = subprocess.Popen([EXE, "--port", str(PORT)], cwd=BUNDLE,

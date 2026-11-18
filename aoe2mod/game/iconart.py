@@ -302,7 +302,7 @@ def _open_picture(path):
     to `aoe2mod.game.picture`, which is stdlib-only: the packaged build excludes
     Pillow on purpose, so `from PIL import Image` here meant the SHIPPED program
     could not read any picture at all (measured 2026-10-30 against
-    `aoe2-mod-workshop.exe`, whose `app/aoe2mod/` holds only `schema/` and `ui/`).
+    `AoE2 DE Mod Workshop.exe`, whose `app/aoe2mod/` holds only `schema/` and `ui/`).
     """
     from . import picture as P
 

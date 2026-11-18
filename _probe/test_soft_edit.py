@@ -10,13 +10,13 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import _paths as P
 
 BUNDLE = P.BUNDLE
-EXE = os.path.join(BUNDLE, 'aoe2-mod-workshop.exe')
+EXE = os.path.join(BUNDLE, 'AoE2 DE Mod Workshop.exe')
 PORT = 7813
 UNIT = 74
 
 
 def start():
-    subprocess.run(['taskkill', '/IM', 'aoe2-mod-workshop.exe', '/F'], capture_output=True)
+    subprocess.run(['taskkill', '/IM', 'AoE2 DE Mod Workshop.exe', '/F'], capture_output=True)
     time.sleep(1)
     p = subprocess.Popen([EXE, '--port', str(PORT)], cwd=BUNDLE,
                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -121,7 +121,7 @@ try:
         print('  shot ' + shot)
         b.close()
 finally:
-    subprocess.run(['taskkill', '/IM', 'aoe2-mod-workshop.exe', '/F'], capture_output=True)
+    subprocess.run(['taskkill', '/IM', 'AoE2 DE Mod Workshop.exe', '/F'], capture_output=True)
 
 print()
 print('SOFT EDIT PROBE: ' + ('ALL GREEN' if not FAILED else 'FAILURES: ' + '; '.join(FAILED)))

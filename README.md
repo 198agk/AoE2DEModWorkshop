@@ -21,12 +21,12 @@
 
 从 [Releases](https://github.com/198agk/AoE2ModWorkshop/releases/latest) 下安装包，双击，下一步。
 装到 `%LOCALAPPDATA%\Programs\AoE2ModWorkshop`，自带 Python 3.12，不需要管理员权限，
-卸载在「设置 → 应用」里。不想装就下免安装包，解压后双击目录里的 `aoe2-mod-workshop.exe`。
+卸载在「设置 → 应用」里。不想装就下免安装包，解压后双击目录里的 `AoE2 DE Mod Workshop.exe`。
 
 | 文件 | 怎么用 |
 | --- | --- |
 | `AoE2ModWorkshop-1.0.0-setup.exe`（273 MB） | 双击安装 |
-| `AoE2ModWorkshop.zip`（351 MB） | 解压，双击 `aoe2-mod-workshop.exe` |
+| `AoE2ModWorkshop.zip`（351 MB） | 解压，双击 `AoE2 DE Mod Workshop.exe` |
 
 开局前在「创建游戏」界面的「数据模组：」下拉框里选中它 —— 不是「模组」界面。
 

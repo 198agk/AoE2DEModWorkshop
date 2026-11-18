@@ -7,7 +7,7 @@
     "VER 7.8"
   ],
   "commands": {
-    "start": "双击安装包装出来的 aoe2-mod-workshop.exe",
+    "start": "双击安装包装出来的 AoE2 DE Mod Workshop.exe",
     "verify_quick": "python _probe/run_suites.py",
     "verify_long": "python _probe/run_long.py",
     "suites": {

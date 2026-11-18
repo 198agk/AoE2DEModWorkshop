@@ -70,7 +70,7 @@ def load_picture(path):
     Goes through `aoe2mod.game.picture`, which is stdlib-only, because the
     packaged build excludes Pillow on purpose: calling PIL here meant the
     SHIPPED program refused every picture the player named (measured 2026-10-30
-    against `aoe2-mod-workshop.exe`).  The repo has Pillow, so no suite saw it.
+    against `AoE2 DE Mod Workshop.exe`).  The repo has Pillow, so no suite saw it.
     """
     from ..game import picture as P
     try:

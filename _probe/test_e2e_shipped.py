@@ -18,7 +18,7 @@ import urllib.request
 import _paths as P
 
 OUT = P.BUNDLE
-EXE = os.path.join(OUT, "aoe2-mod-workshop.exe")
+EXE = os.path.join(OUT, "AoE2 DE Mod Workshop.exe")
 SRC = GP.ACCOUNT
 TMP = os.path.join(os.environ["TEMP"], "aoe2mod-e2e-shipped")
 PORT = 7807
@@ -46,7 +46,7 @@ def get(path):
 def kill_engine_child():
     """Kill the shipped runtime python this exe started, if it outlived it.
 
-    `taskkill /IM aoe2-mod-workshop.exe` kills the shell only.  The child python
+    `taskkill /IM AoE2 DE Mod Workshop.exe` kills the shell only.  The child python
     keeps the listening socket for a few more seconds, and because Windows lets a
     second socket bind a port the dying one still accepts on, a request can land
     on the corpse.  The child is identified by executable path, never by image
@@ -96,7 +96,7 @@ def main():
     with open(os.path.join(state, "builds.json"), "w", encoding="utf-8") as fh:
         fh.write('{"builds":{}}')
 
-    subprocess.run(["taskkill", "/IM", "aoe2-mod-workshop.exe", "/F"],
+    subprocess.run(["taskkill", "/IM", "AoE2 DE Mod Workshop.exe", "/F"],
                    capture_output=True)
     kill_engine_child()
     port_free(PORT)

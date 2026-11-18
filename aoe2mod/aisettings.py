@@ -3,7 +3,7 @@
 
 The environment contract in `aoe2mod/ai.py` is the right one for a developer and
 the wrong one for a player: nobody who unzips a workshop and runs
-`aoe2-mod-workshop.exe` is going to set `AOE2MOD_AI_KEY` in a shell first.  So
+`AoE2 DE Mod Workshop.exe` is going to set `AOE2MOD_AI_KEY` in a shell first.  So
 there are two sources and one precedence rule:
 
   1. environment variables -- win unconditionally, so a scripted run or a test

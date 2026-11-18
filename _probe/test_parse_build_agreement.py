@@ -46,7 +46,7 @@ import urllib.request
 import _paths as P
 
 BUNDLE = P.BUNDLE
-EXE = os.path.join(BUNDLE, "aoe2-mod-workshop.exe")
+EXE = os.path.join(BUNDLE, "AoE2 DE Mod Workshop.exe")
 PORT = 7814
 
 # One sentence per intent the reader claims.  Written the way a player would.
@@ -125,7 +125,7 @@ def main():
     if not os.path.isfile(EXE):
         print("no %s" % EXE)
         return 1
-    subprocess.run(["taskkill", "/IM", "aoe2-mod-workshop.exe", "/F"],
+    subprocess.run(["taskkill", "/IM", "AoE2 DE Mod Workshop.exe", "/F"],
                    capture_output=True)
     time.sleep(1)
     proc = subprocess.Popen([EXE, "--port", str(PORT)], cwd=BUNDLE,

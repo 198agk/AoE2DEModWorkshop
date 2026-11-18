@@ -49,8 +49,8 @@ def main():
     fh.write('{"Mods":[],"Unsub":[]}')
     fh.close()
 
-    exe = os.path.join(P.BUNDLE, "aoe2-mod-workshop.exe")
-    subprocess.run(["taskkill", "/IM", "aoe2-mod-workshop.exe", "/F"],
+    exe = os.path.join(P.BUNDLE, "AoE2 DE Mod Workshop.exe")
+    subprocess.run(["taskkill", "/IM", "AoE2 DE Mod Workshop.exe", "/F"],
                    capture_output=True)
     env = dict(os.environ)
     env["AOE2MOD_PROFILE"] = acct

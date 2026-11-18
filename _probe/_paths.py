@@ -41,5 +41,5 @@ BUILD = os.environ.get("AOE2MOD_BUILD") or os.path.join(
     REPO, "_cache", "AGE2", "desktop")
 EXE = os.path.join(BUILD, "src-tauri", "target", "release",
                    "aoe2-mod-workshop.exe")
-BUNDLED_EXE = os.path.join(BUNDLE, "aoe2-mod-workshop.exe")
+BUNDLED_EXE = os.path.join(BUNDLE, "AoE2 DE Mod Workshop.exe")
 RUN_UI = os.path.join(REPO, "tools", "run_ui.py")

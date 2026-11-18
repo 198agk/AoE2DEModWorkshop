@@ -328,7 +328,7 @@ def stage(name, exe, with_app):
     # FileExistsError instead of "still in use".
     d = os.path.join(SANDBOX, "%s_%d" % (name, int(time.time())))
     os.makedirs(d)
-    shutil.copy2(exe, os.path.join(d, "aoe2-mod-workshop.exe"))
+    shutil.copy2(exe, os.path.join(d, "AoE2 DE Mod Workshop.exe"))
     shutil.copy2(DLL, os.path.join(d, "WebView2Loader.dll"))
     if with_app:
         shutil.copytree(os.path.join(BUNDLE, "app"), os.path.join(d, "app"))
@@ -387,7 +387,7 @@ def run_missing_data(port):
     off = log_size()
     env = dict(os.environ)
     env["AOE2MOD_GAME_ROOT"] = empty
-    p = subprocess.Popen([os.path.join(BUNDLE, "aoe2-mod-workshop.exe"),
+    p = subprocess.Popen([os.path.join(BUNDLE, "AoE2 DE Mod Workshop.exe"),
                           "--port", str(port)], cwd=BUNDLE, env=env,
                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     err = None
@@ -455,7 +455,7 @@ def run(name, exe, with_app, port):
     d = stage(name, exe, with_app)
     off = log_size()
     t0 = time.time()
-    p = subprocess.Popen([os.path.join(d, "aoe2-mod-workshop.exe"), "--port", str(port)],
+    p = subprocess.Popen([os.path.join(d, "AoE2 DE Mod Workshop.exe"), "--port", str(port)],
                          cwd=d)
     m_log = m_port = None
     while time.time() - t0 < WAIT:

@@ -123,7 +123,7 @@ def main():
           "ERROR_INVALID_PARAMETER" in ui and "!= 87" in ui)
 
     print("\n=== 4. the shipped folder really contains a Python engine ===")
-    exe = os.path.join(BUNDLE, "aoe2-mod-workshop.exe")
+    exe = os.path.join(BUNDLE, "AoE2 DE Mod Workshop.exe")
     app = os.path.join(BUNDLE, "app")
     if not os.path.isfile(exe):
         print("  --  no shipped bundle at %s, skipping the launch checks" % BUNDLE)

@@ -136,7 +136,7 @@ def tool_root():
     reason (2026-11-02: build output that landed in `app/_mods_out/` grew the
     package from 50.9 MB to 1.7 GB).  A shipped layout is::
 
-        <tool>/aoe2-mod-workshop.exe
+        <tool>/AoE2 DE Mod Workshop.exe
         <tool>/runtime/...
         <tool>/app/aoe2mod/mod/archives.py     <- this file, two levels under app/
 

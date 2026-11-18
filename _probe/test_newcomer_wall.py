@@ -188,7 +188,7 @@ def main():
         # that publishes source, and had it deleted.  The front door is the
         # installer; nothing in this file may pin a checkout launcher again.
         check("it points at the release download", "releases/latest" in txt)
-        check("it names the build a reader should open", "aoe2-mod-workshop.exe" in txt)
+        check("it names the build a reader should open", "AoE2 DE Mod Workshop.exe" in txt)
         check("it says the repository is source, not the thing to run",
               "源码" in txt and "不是给人拿去跑的东西" in txt)
         check("it names the dropdown that actually exists", "创建游戏" in txt)

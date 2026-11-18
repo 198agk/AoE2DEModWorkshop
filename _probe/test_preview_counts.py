@@ -25,7 +25,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(
     os.path.dirname(__file__), "..")))
 
 BUNDLE = P.BUNDLE
-EXE = os.path.join(BUNDLE, "aoe2-mod-workshop.exe")
+EXE = os.path.join(BUNDLE, "AoE2 DE Mod Workshop.exe")
 PORT = 7859
 
 # One sentence per intent: the seven builders plus the stat path with and

@@ -3,7 +3,7 @@
 What it produces
 ----------------
     _out\\AoE2ModWorkshop\\  (the path lives in `_probe/_paths.py`)
-        aoe2-mod-workshop.exe     ~5.5 MB   the Tauri shell
+        AoE2 DE Mod Workshop.exe     ~5.5 MB   the Tauri shell
         runtime\\                  ~35 MB    stripped CPython 3.12.14
         app\\tools\\run_ui.py
         app\\aoe2mod\\             ~3 MB     engine (source only, no test output)
@@ -69,7 +69,7 @@ README = """帝国时代 2 决定版 · 模组工坊
 
 怎么启动
 --------
-双击 aoe2-mod-workshop.exe。没有控制台窗口，也不用装 Python。
+双击 AoE2 DE Mod Workshop.exe。没有控制台窗口，也不用装 Python。
 
 它需要什么
 ----------
@@ -86,7 +86,7 @@ README = """帝国时代 2 决定版 · 模组工坊
 
 文件夹里都是什么
 ----------------
-  aoe2-mod-workshop.exe   外壳（Tauri + WebView2）
+  AoE2 DE Mod Workshop.exe   外壳（Tauri + WebView2）
   runtime\\                自带的 Python 3.12，只需要标准库
   app\\                    引擎与界面（aoe2mod\\ + tools\\）
   dat_archive\\           官方数据档案库（313 MB，见下）
@@ -435,7 +435,7 @@ def main(argv=None):
         _rmtree(out)
     os.makedirs(out, exist_ok=True)
 
-    shutil.copy2(EXE, os.path.join(out, "aoe2-mod-workshop.exe"))
+    shutil.copy2(EXE, os.path.join(out, "AoE2 DE Mod Workshop.exe"))
     # Beside the exe, not inside app\ or runtime\: the Windows loader searches
     # the directory of the image before anywhere else.
     shutil.copy2(dll_src, os.path.join(out, LOADER_DLL))
@@ -460,7 +460,7 @@ def main(argv=None):
                  encoding="utf-8", newline="\r\n") as fh:
         fh.write(README)
 
-    exe_mb = os.path.getsize(os.path.join(out, "aoe2-mod-workshop.exe")) / (1024.0 ** 2)
+    exe_mb = os.path.getsize(os.path.join(out, "AoE2 DE Mod Workshop.exe")) / (1024.0 ** 2)
     total_mb, total_n = size_of(out)
     print("runtime  %7.1f MB  %5d files" % (rt_mb / (1024.0 ** 2), rt_n))
     print("app      %7.1f MB  %5d files" % (app_mb / (1024.0 ** 2), app_n))
@@ -469,7 +469,7 @@ def main(argv=None):
 
     # The DLL is the one file whose absence produces no log line, so check it
     # landed rather than trusting the copy above.
-    for name in ("aoe2-mod-workshop.exe", LOADER_DLL):
+    for name in ("AoE2 DE Mod Workshop.exe", LOADER_DLL):
         if not os.path.isfile(os.path.join(out, name)):
             print("FAILED: %s did not land in %s" % (name, out))
             return 1

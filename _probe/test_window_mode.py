@@ -28,7 +28,7 @@ def windows(pid=None):
 
     ``pid`` filters to the windows one process owns, and that filter is the
     whole point.  An earlier version counted windows by TITLE across the
-    machine, so the packaged ``aoe2-mod-workshop.exe`` -- same title, same
+    machine, so the packaged ``AoE2 DE Mod Workshop.exe`` -- same title, same
     taskbar -- turned "exactly one window" into a red that had nothing to do
     with the code under test.  A nail that asks "did MY process open one
     window" has to ask the OS about that process.

@@ -24,7 +24,7 @@ import _paths as P
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 BUNDLE = P.BUNDLE
-EXE = os.path.join(BUNDLE, 'aoe2-mod-workshop.exe')
+EXE = os.path.join(BUNDLE, 'AoE2 DE Mod Workshop.exe')
 PORT = 7817
 BASE = 'http://127.0.0.1:%d' % PORT
 

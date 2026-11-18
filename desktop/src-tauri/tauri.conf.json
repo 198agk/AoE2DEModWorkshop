@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "AoE2 Mod Workshop",
+  "productName": "AoE2 DE Mod Workshop",
   "version": "1.0.0",
   "identifier": "com.dsh.aoe2modworkshop",
   "build": {

@@ -8,7 +8,7 @@ stripped CPython and 38 `.py` files.  The engine is a Rust library now, linked
 into the exe, so `runtime\\` is gone and `app\\` holds only what is genuinely
 data:
 
-    aoe2-mod-workshop.exe     the shell AND the engine, one image
+    AoE2 DE Mod Workshop.exe     the shell AND the engine, one image
     WebView2Loader.dll        the loader the exe cannot start without
     app\\aoe2mod\\ui\\static\\   index.html -- the screen, editable
     app\\aoe2mod\\schema\\      intents.json etc -- the format description,
@@ -38,7 +38,7 @@ README = """帝国时代 2 决定版 · 模组工坊
 
 怎么启动
 --------
-双击 aoe2-mod-workshop.exe。没有控制台窗口，不用装 Python，也不用装别的东西。
+双击 AoE2 DE Mod Workshop.exe。没有控制台窗口，不用装 Python，也不用装别的东西。
 
 它需要什么
 ----------
@@ -54,7 +54,7 @@ README = """帝国时代 2 决定版 · 模组工坊
 
 文件夹里都是什么
 ----------------
-  aoe2-mod-workshop.exe   外壳 + 引擎（同一个程序，读 .dat 的代码在里面）
+  AoE2 DE Mod Workshop.exe   外壳 + 引擎（同一个程序，读 .dat 的代码在里面）
   WebView2Loader.dll      Windows 的 WebView2 装载器，缺了程序起不来
   app\\aoe2mod\\ui\\static\\  界面（index.html），可以直接改
   app\\aoe2mod\\schema\\     格式说明（JSON），可以直接改
@@ -148,7 +148,7 @@ def main(argv=None):
         shutil.rmtree(out, ignore_errors=True)
     os.makedirs(out, exist_ok=True)
 
-    shutil.copy2(EXE, os.path.join(out, "aoe2-mod-workshop.exe"))
+    shutil.copy2(EXE, os.path.join(out, "AoE2 DE Mod Workshop.exe"))
     shutil.copy2(dll_src, os.path.join(out, LOADER_DLL))
     app_stats = copy_app(os.path.join(out, "app"))
     if app_stats is None:
@@ -157,13 +157,13 @@ def main(argv=None):
                  encoding="utf-8", newline="\r\n") as fh:
         fh.write(README)
 
-    exe_mb = os.path.getsize(os.path.join(out, "aoe2-mod-workshop.exe")) / (1024.0 ** 2)
+    exe_mb = os.path.getsize(os.path.join(out, "AoE2 DE Mod Workshop.exe")) / (1024.0 ** 2)
     total_mb, total_n = size_of(out)
     print("shell    %7.1f MB  (engine linked in)" % exe_mb)
     print("app      %7.1f MB  %5d files" % (app_stats[0] / (1024.0 ** 2), app_stats[1]))
     print("TOTAL    %7.1f MB  %5d files  -> %s" % (total_mb / (1024.0 ** 2), total_n, out))
 
-    for name in ("aoe2-mod-workshop.exe", LOADER_DLL):
+    for name in ("AoE2 DE Mod Workshop.exe", LOADER_DLL):
         if not os.path.isfile(os.path.join(out, name)):
             print("FAILED: %s did not land in %s" % (name, out))
             return 1

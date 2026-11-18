@@ -80,7 +80,7 @@ def check_exe_is_the_built_one(out):
     program instead of the program is the "all green, wrong artefact" failure
     this project has already paid for once.
     """
-    exe = os.path.join(out, "aoe2-mod-workshop.exe")
+    exe = os.path.join(out, "AoE2 DE Mod Workshop.exe")
     if not os.path.isfile(exe):
         print("REFUSING: no exe in the bundle at", exe)
         return None
@@ -477,14 +477,14 @@ def check_routes(port):
 
 
 def kill_exe():
-    subprocess.run(["taskkill", "/IM", "aoe2-mod-workshop.exe", "/F"],
+    subprocess.run(["taskkill", "/IM", "AoE2 DE Mod Workshop.exe", "/F"],
                    capture_output=True)
 
 
 def kill_engine_child():
     """Kill the shipped runtime python this exe started, if it outlived it.
 
-    `taskkill /IM aoe2-mod-workshop.exe` kills the shell; the child python it
+    `taskkill /IM AoE2 DE Mod Workshop.exe` kills the shell; the child python it
     spawned keeps the listening socket for a few more seconds and, because
     Windows lets two sockets share a port without SO_EXCLUSIVEADDRUSE, a new
     child can bind the same port while the dying one still accepts.  Then a

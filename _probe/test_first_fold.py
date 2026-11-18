@@ -66,7 +66,7 @@ def wait_up(host, timeout=180):
     return False
 
 
-subprocess.run(["taskkill", "/IM", "aoe2-mod-workshop.exe", "/F"],
+subprocess.run(["taskkill", "/IM", "AoE2 DE Mod Workshop.exe", "/F"],
                capture_output=True)
 time.sleep(1)
 proc = subprocess.Popen(

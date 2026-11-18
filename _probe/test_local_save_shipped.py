@@ -65,12 +65,12 @@ def call(port, path, payload=None, timeout=60):
 
 
 def main():
-    exe = os.path.join(P.BUNDLE, "aoe2-mod-workshop.exe")
+    exe = os.path.join(P.BUNDLE, "AoE2 DE Mod Workshop.exe")
     if not os.path.isfile(exe):
         print("REFUSING: no exe in the bundle at", exe)
         return 1
     port = free_port()
-    subprocess.run(["taskkill", "/IM", "aoe2-mod-workshop.exe", "/F"],
+    subprocess.run(["taskkill", "/IM", "AoE2 DE Mod Workshop.exe", "/F"],
                    capture_output=True)
     p = subprocess.Popen([exe, "--port", str(port)], cwd=P.BUNDLE,
                          stdout=subprocess.PIPE, stderr=subprocess.STDOUT)

@@ -28,7 +28,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(
     os.path.dirname(__file__), "..")))
 
 BUNDLE = P.BUNDLE
-EXE = os.path.join(BUNDLE, "aoe2-mod-workshop.exe")
+EXE = os.path.join(BUNDLE, "AoE2 DE Mod Workshop.exe")
 PORT = 7847
 GAME = r"d:\games\steam\steamapps\common\AoE2DE"
 DAT = os.path.join(GAME, "resources/_common/dat/empires2_x2_p1.dat")

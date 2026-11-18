@@ -13,17 +13,17 @@
 
 [Setup]
 AppId={{6C1E4B23-7A4D-4F18-9C55-2B7E0D9A3F61}
-AppName=模组工坊
-AppVerName=模组工坊 {#AppVer}
+AppName=AoE2 DE Mod Workshop
+AppVerName=AoE2 DE Mod Workshop {#AppVer}
 AppVersion={#AppVer}
 AppPublisher=RemonBo
 AppPublisherURL=https://github.com/198agk
 AppSupportURL=https://github.com/198agk
 VersionInfoVersion={#AppVer}
-VersionInfoDescription=模组工坊 安装程序
+VersionInfoDescription=AoE2 DE Mod Workshop 安装程序
 VersionInfoCompany=RemonBo
 DefaultDirName={localappdata}\Programs\AoE2ModWorkshop
-DefaultGroupName=模组工坊
+DefaultGroupName=AoE2 DE Mod Workshop
 DisableProgramGroupPage=yes
 PrivilegesRequired=lowest
 ArchitecturesAllowed=x64compatible
@@ -36,8 +36,8 @@ SetupIconFile={#RepoDir}\brand\app-icon.ico
 WizardImageFile={#RepoDir}\_probe\installer\wizard.bmp
 WizardSmallImageFile={#RepoDir}\_probe\installer\wizard-small.bmp
 WizardImageStretch=no
-UninstallDisplayIcon={app}\aoe2-mod-workshop.exe
-UninstallDisplayName=模组工坊 {#AppVer}
+UninstallDisplayIcon={app}\AoE2 DE Mod Workshop.exe
+UninstallDisplayName=AoE2 DE Mod Workshop {#AppVer}
 LicenseFile={#RepoDir}\LICENSE
 InfoBeforeFile={#SrcDir}\README.txt
 Compression=lzma2/max
@@ -59,12 +59,12 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 Source: "{#SrcDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
-Name: "{group}\模组工坊"; Filename: "{app}\aoe2-mod-workshop.exe"; WorkingDir: "{app}"
-Name: "{group}\{cm:UninstallProgram,模组工坊}"; Filename: "{uninstallexe}"
-Name: "{autodesktop}\模组工坊"; Filename: "{app}\aoe2-mod-workshop.exe"; WorkingDir: "{app}"; Tasks: desktopicon
+Name: "{group}\AoE2 DE Mod Workshop"; Filename: "{app}\AoE2 DE Mod Workshop.exe"; WorkingDir: "{app}"
+Name: "{group}\{cm:UninstallProgram,AoE2 DE Mod Workshop}"; Filename: "{uninstallexe}"
+Name: "{autodesktop}\AoE2 DE Mod Workshop"; Filename: "{app}\AoE2 DE Mod Workshop.exe"; WorkingDir: "{app}"; Tasks: desktopicon
 
 [Run]
-Filename: "{app}\aoe2-mod-workshop.exe"; Description: "{cm:LaunchProgram,模组工坊}"; WorkingDir: "{app}"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\AoE2 DE Mod Workshop.exe"; Description: "{cm:LaunchProgram,AoE2 DE Mod Workshop}"; WorkingDir: "{app}"; Flags: nowait postinstall skipifsilent
 
 [UninstallDelete]
 Type: filesandordirs; Name: "{app}\log"
