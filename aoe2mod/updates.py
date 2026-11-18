@@ -51,7 +51,7 @@ import time
 #: live here any more (see GIST below); this is only where a player is sent when
 #: there is something newer, and the last two SOURCES spellings keep working if
 #: the plain repo file ever comes back.
-REPO = "198agk/AoE2ModWorkshop"
+REPO = "198agk/AoE2DEModWorkshop"
 BRANCH = "main"
 
 #: The number now lives in a gist, not in the repository.

@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/198agk/AoE2ModWorkshop/releases/latest"><img src="https://img.shields.io/github/v/release/198agk/AoE2ModWorkshop?style=flat-square&color=2dd4bf&label=%E6%9C%80%E6%96%B0%E7%89%88" alt="最新版"></a>
+  <a href="https://github.com/198agk/AoE2DEModWorkshop/releases/latest"><img src="https://img.shields.io/github/v/release/198agk/AoE2DEModWorkshop?style=flat-square&color=2dd4bf&label=%E6%9C%80%E6%96%B0%E7%89%88" alt="最新版"></a>
   <img src="https://img.shields.io/badge/%E5%B9%B3%E5%8F%B0-Windows%2010%20%2F%2011-0078d4?style=flat-square&logo=windows" alt="平台">
   <img src="https://img.shields.io/badge/Python-3.12%20%E5%86%85%E7%BD%AE-3776ab?style=flat-square&logo=python" alt="Python">
   <img src="https://img.shields.io/badge/%E8%AE%B8%E5%8F%AF-PolyForm%20NC%201.0.0-green?style=flat-square" alt="许可">
@@ -19,7 +19,7 @@
 
 ## 安装
 
-从 [Releases](https://github.com/198agk/AoE2ModWorkshop/releases/latest) 下安装包，双击，下一步。
+从 [Releases](https://github.com/198agk/AoE2DEModWorkshop/releases/latest) 下安装包，双击，下一步。
 装到 `%LOCALAPPDATA%\Programs\AoE2ModWorkshop`，自带 Python 3.12，不需要管理员权限，
 卸载在「设置 → 应用」里。不想装就下免安装包，解压后双击目录里的 `AoE2 DE Mod Workshop.exe`。
 
@@ -113,7 +113,7 @@
 ## 使用须知
 
 - 还在快速迭代，数值、造单位、造科技、生成模组已经实机走通。
-- 有问题开 [issue](https://github.com/198agk/AoE2ModWorkshop/issues)，带截图或录屏，说清在哪个页签。
+- 有问题开 [issue](https://github.com/198agk/AoE2DEModWorkshop/issues)，带截图或录屏，说清在哪个页签。
 - **它不会自己更新**，要新版就下新安装包覆盖，或「关于」页按「检查更新」。
 - 不改游戏本体，改动写在本机 `.dat` 的副本上，卸载 = 删一个文件夹。
 - 完全免费、完全开源。
