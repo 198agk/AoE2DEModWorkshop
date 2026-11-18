@@ -48,10 +48,7 @@ VERSION = "1.0001"
 #: number, so 「检查更新」 can say what is new instead of only that something is:
 #: a version number alone asks the player to download 286 MB blind.
 CHANGES = (
-    "选中的记录可以直接拖到另一个工坊窗口：数值、图形、造价整份照搬，落点不对会说为什么",
-    "拖动期间光标旁有一个提示，告诉你要落在哪个窗口、带了几条",
-    "另一个窗口改了数据文件，这一边的列表会自己重画，不用手动刷新",
-    "版本号从这一版起每次改动加 0.0001，并在这里写清改了什么",
+    "增加了多窗口拖拽功能",
 )
 
 #: The same number with the word in front, so screens do not each spell it.
