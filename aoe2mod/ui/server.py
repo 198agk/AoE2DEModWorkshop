@@ -29,6 +29,7 @@ Design notes that are load-bearing
   can render the message without special-casing fetch failures; a 500 would look
   like a network problem, which is exactly what it is not.
 """
+import atexit
 import contextlib
 import glob
 import io
@@ -49,6 +50,7 @@ from aoe2mod.dat import parser as P
 from aoe2mod.dat import pseudopage as PP
 from aoe2mod.game import linkedtechs as LT
 from aoe2mod.dat import records as REC
+from aoe2mod.dat import newunit as NU
 from aoe2mod.dat import relocate as REL
 from aoe2mod.game import civnames as CN
 from aoe2mod.game import civtechtrees as CT
@@ -57,6 +59,7 @@ from aoe2mod.game import version as GV
 from aoe2mod.mod import emitter as E
 from aoe2mod.mod import strings as S
 from aoe2mod.ui import compose as CP
+from aoe2mod.ui import instances as INS
 from aoe2mod.ui import locale as LO
 from aoe2mod.ui import online as ON
 from aoe2mod.ui.loading import LOADING_PAGE
@@ -122,6 +125,31 @@ def _sentence(exc):
     if name in _QUIET_ERRORS or ("%s.%s" % (kind.__module__, name)) in _QUIET_ERRORS:
         return text
     return "%s: %s" % (name, text)
+
+
+def _record_bytes(x):
+    """One record, as raw bytes, from the shape it arrived in.
+   
+    A record dragged from another workshop window travels as BYTES: the two
+    windows are two processes on two ports, and the record only exists in the
+    other one's session buffer, so there is no id here to name it by.
+    base64 is the shape a page produces cheaply; a list of ints is accepted
+    because that is what `bytes` looks like after a plain JSON round trip.
+    """
+    if isinstance(x, (bytes, bytearray)):
+        return bytes(x)
+    if isinstance(x, str):
+        import base64
+        try:
+            return base64.b64decode(x)
+        except Exception as exc:                       # noqa: BLE001
+            raise REC.RecordError("这条记录的字节解不出来：%s" % (exc,))
+    if isinstance(x, (list, tuple)):
+        try:
+            return bytes(int(b) for b in x)
+        except (TypeError, ValueError) as exc:
+            raise REC.RecordError("这条记录的字节解不出来：%s" % (exc,))
+    raise REC.RecordError("这条记录的字节解不出来：%r" % (type(x).__name__,))
 
 
 class App(object):
@@ -4789,9 +4817,99 @@ class App(object):
             tk._fam = None
         return seen
 
+    def record_drop(self, port, kind="unit", civ="", ids=None, timeout=10.0):
+        """Hand this window's selection to ANOTHER workshop window.
+
+        The gesture starts here and ends there, but the bytes only exist here
+        (this session's buffer), so this side reads them out and posts them to
+        the other process's own `/api/record-add`.  The page cannot do that
+        itself: the two servers are two origins, neither sends a CORS header
+        and neither answers OPTIONS, so a cross-port fetch never leaves the
+        browser.  Server to server is the only path.
+
+        `ids` are THIS window's ids; `port` is the window the gesture landed
+        on.  Nothing is written here -- the target copies the records into its
+        own file, which is what the player asked for by dragging.
+        """
+        import base64
+        from urllib.request import Request, urlopen
+        from urllib import error as _urlerr
+        try:
+            port = int(port)
+        except (TypeError, ValueError):
+            return {"ok": False, "error": "要拖到哪个端口？收到的是 %r" % (port,)}
+        if not 1 <= port <= 65535:
+            return {"ok": False, "error": "端口 %d 不在 1..65535 里" % (port,)}
+        if port == int(getattr(self, "port", 0) or 0):
+            return {"ok": False, "error": "这就是本窗口，拖到这儿不会复制任何东西"}
+        try:
+            want = [int(x) for x in (ids or [])]
+        except (TypeError, ValueError):
+            return {"ok": False, "error": "选中的编号里有不是整数的"}
+        if not want:
+            return {"ok": False, "error": "没选中任何记录"}
+        kind = str(kind or "unit").strip().lower()
+        if kind not in ("unit", "tech"):
+            return {"ok": False, "error": "只能拖单位或科技记录，没有 %r" % (kind,)}
+        tk = self.tk
+        self._tail_ready()
+        buf = self.session_raw()
+        gv = tk._parsed[3]
+        if kind == "tech":
+            # A technology record carries no id of its own -- it is addressed
+            # by position -- so the only thing that can travel is its bytes.
+            try:
+                shots = REC.tech_images(buf, gv, tk._parsed[4], want)
+            except REC.RecordError as exc:
+                return {"ok": False, "error": str(exc)}
+        else:
+            keys = str(civ or "").strip()
+            if keys in ("*", "all", "全部"):
+                keys = ""
+            civ_index = (tk._civ_index(keys) if keys
+                         else (1 if len(tk._civs) > 1 else 0))
+            spans = NU.unit_spans(buf, gv, tk._parsed[2], civ_index)
+            shots = []
+            for uid in want:
+                span = spans.get(uid)
+                if span is None:
+                    return {"ok": False, "error": (
+                        "这个文明里没有编号 %d 的单位，没有东西可以拖过去" % (uid,))}
+                shots.append(bytes(buf[span[0]:span[1]]))
+        body = {
+            "kind": kind,
+            "civ": civ or "",
+            # base64: a JSON round trip of a few hundred record bytes as
+            # decimal digits would be several thousand characters.
+            "images": [base64.b64encode(x).decode("ascii") for x in shots],
+            "picked": want,
+        }
+        req = Request("http://127.0.0.1:%d/api/record-add" % (port,),
+                      data=json.dumps(body).encode("utf-8"),
+                      headers={"Content-Type": "application/json"},
+                      method="POST")
+        try:
+            with urlopen(req, timeout=timeout) as resp:
+                raw = resp.read()
+        except _urlerr.HTTPError as exc:
+            raw = exc.read() or b""
+        except Exception as exc:
+            return {"ok": False, "port": port,
+                    "error": "拖到 %d 号窗口失败：%s" % (port, _sentence(exc))}
+        try:
+            got = json.loads(raw.decode("utf-8")) if raw else {}
+        except ValueError:
+            return {"ok": False, "port": port, "error": "对方窗口回了一段读不懂的东西"}
+        if not isinstance(got, dict):
+            return {"ok": False, "port": port, "error": "对方窗口回了一段读不懂的东西"}
+        got["port"] = port
+        got["sent"] = len(shots)
+        return got
+
+
     def record_edit(self, op, kind="unit", civ="", record=None, donor=None,
                     name=None, hp=None, force=False, count=None, ids=None,
-                    donors=None, blank=False):
+                    donors=None, blank=False, images=None, picked=None):
         """Add, duplicate or remove ONE record of the .dat.
 
         This is the write the editor never had: every other route edits a number
@@ -4836,6 +4954,20 @@ class App(object):
                     note = {"tech": info.get("id"), "field": None, "op": op,
                             "label": label, "was": None, "now": None,
                             "tech_name": info.get("name")}
+                elif images:
+                    # A DROP from another window.  A tech record has no id of
+                    # its own -- it is addressed by its position in the run,
+                    # so the only thing that can travel is the bytes, and the
+                    # new number is simply where it lands.
+                    steps, info = REC.plan_add_tech(
+                        buf, gv, tail, None,
+                        images=[_record_bytes(x) for x in images])
+                    label = "拖入 %d 条科技" % (len(info.get("ids") or []),)
+                    note = {"tech": info.get("id"), "field": None, "op": op,
+                            "label": label, "was": None, "now": info.get("id"),
+                            "tech_name": None, "donor": None, "name": None,
+                            "create": "tech.create",
+                            "ids": info.get("ids"), "picked": picked}
                 else:
                     donor_id = int(donor if donor is not None else record)
                     steps, info = REC.plan_add_tech(buf, gv, tail, donor_id,
@@ -4908,6 +5040,26 @@ class App(object):
                         note = {"unit": uid, "civ": civ_name, "field": None,
                                 "op": op, "label": label, "was": None, "now": None,
                                 "unit_name": uid, "create": None}
+                elif images:
+                    # A DROP from another window.  The records are bytes, not
+                    # ids this file knows, so there is no donor to clone from
+                    # -- see plan_add_units(images=...).  One splice for the
+                    # whole drop, which is also one undo step.
+                    shots = [_record_bytes(x) for x in images]
+                    want_ids = REC.free_unit_ids(tk._stats, len(shots))
+                    steps, info = REC.plan_add_units(
+                        buf, gv, civs_start, civ_index, None,
+                        ids=want_ids, images=shots, stats=tk._stats)
+                    made = info.get("ids") or []
+                    info["picked"] = list(picked or [])
+                    label = "拖入 %d 条记录" % (len(made),)
+                    note = {"unit": made[0] if made else None, "civ": civ_name,
+                            "field": None, "op": op, "label": label,
+                            "was": None, "now": made[-1] if made else None,
+                            "unit_name": None, "donor": None, "name": None,
+                            "hp": None, "create": "unit.create", "ids": made,
+                            "picked": list(picked or [])}
+                    refs = {"effects": 0, "civs": 1}
                 elif donors:
                     # One new record per donor, still ONE gesture: 粘贴 of a
                     # multi-row selection is the obvious way to ask for this, and
@@ -10162,6 +10314,46 @@ def make_handler(app):
                 q = _query(self.path)
                 return self._guard(lambda: app.archive_info(
                     game_root=(q.get("game_root", [None])[0] or None)))
+            if path == "/api/instances":
+                # WHO ELSE IS OPEN.  Two workshops are two processes on two
+                # ports, so a drag has to be told where it could land; the
+                # heartbeat files are the only place both sides already
+                # agree on, and this window is never offered to itself.
+                me = int(getattr(app, "port", 0) or 0)
+                rows = [r for r in INS.live()
+                        if int(r.get("port") or 0) != me]
+                return _json(self, {"ok": True, "me": me, "list": rows})
+            if path == "/api/drop-at":
+                # WHERE THE CURSOR IS, asked by the window being dragged out
+                # of.  The page only ever sees CSS pixels; Win32 reports the
+                # window under a screen point, and it knows which window is
+                # on top, which a rectangle test cannot.  `dpr` is passed
+                # because the two disagree on a scaled display.
+                q = _query(self.path)
+                try:
+                    px = float((q.get("x") or ["0"])[0] or 0)
+                    py = float((q.get("y") or ["0"])[0] or 0)
+                    dpr = float((q.get("dpr") or ["1"])[0] or 1)
+                except (TypeError, ValueError):
+                    px = py = 0.0
+                    dpr = 1.0
+                me = int(getattr(app, "port", 0) or 0)
+                others = [int(r.get("port") or 0) for r in INS.live()
+                          if int(r.get("port") or 0) != me]
+                hit = None
+                # The cursor FIRST.  The page can only send viewport pixels,
+                # and turning those into screen pixels needs the window's own
+                # position and the display scale -- two numbers Win32 already
+                # has.  The page's numbers stay as the fallback for the case
+                # where the gesture is driven by a synthetic pointer event
+                # (the probes do that) and the real cursor is elsewhere.
+                spot = INS.cursor()
+                if spot is not None:
+                    hit = INS.instance_at(spot[0], spot[1], ports=others)
+                if hit is None:
+                    hit = INS.instance_at(px, py, dpr=dpr, ports=others)
+                return _json(self, {"ok": True, "me": me, "hit": hit,
+                                    "cursor": list(spot) if spot else None})
             return _json(self, {"ok": False, "error": "no such route"}, 404)
 
         # ---- actions ----
@@ -10439,6 +10631,11 @@ def make_handler(app):
                     # Missing from the first cut, so Ctrl+V sent a request the
                     # server answered with "编号要填整数" (measured 2026-11-05).
                     donors=payload.get("donors"),
+                    # A cross-window drag lands HERE, as bytes: the records
+                    # come from another process's session buffer, so no donor
+                    # id in this file names them.
+                    images=payload.get("images"),
+                    picked=payload.get("picked"),
                     blank=bool(payload.get("blank"))))
             if path == "/api/record-dup":
                 # Same clone, different sentence: "this one, again".  Kept as its
@@ -10490,6 +10687,16 @@ def make_handler(app):
                     civ=payload.get("civ"),
                     record=payload.get("record", payload.get("id")),
                     name=payload.get("name")))
+            if path == "/api/drop":
+                # THE GESTURE, forwarded.  The page that started the drag
+                # names the window it landed on; this side owns the records,
+                # so this side posts them across.  `App.record_drop` says why
+                # the page cannot do that itself.
+                return self._guard(lambda: app.record_drop(
+                    payload.get("port"),
+                    kind=payload.get("kind") or "unit",
+                    civ=payload.get("civ"),
+                    ids=payload.get("ids")))
             if path == "/api/build":
                 return self._guard(lambda: app.build(
                     (payload.get("intents") or _flat_intent(payload)),
@@ -10959,6 +11166,33 @@ def serve(port=0, game_root=None, host="127.0.0.1", warm=False):
     OPLOG.configure(_tool_root())
     httpd = _quiet_connection_errors()((host, port), make_handler(app))
     url = "http://%s:%d" % (host, httpd.server_address[1])
+    # PUBLISH THIS WINDOW, so a drag out of another workshop window can find
+    # it.  Two windows are two processes on two free ports (the shell picks
+    # one per launch), so neither can name the other from inside its own
+    # memory; a heartbeat file in the state directory is the one place both
+    # already agree on.  This cannot live in App(): with port 0 the real port
+    # only exists once the socket is bound.
+    #
+    # The parent pid is the SHELL's, not this process's -- the window belongs
+    # to the Rust host, and that is the pid Win32 reports for it.
+    try:
+        _parent = int(os.environ.get("AOE2MOD_PARENT_PID") or 0)
+    except ValueError:
+        _parent = 0
+    _real_port = int(httpd.server_address[1])
+    # The routes below that talk about "me" (/api/instances, /api/drop) need
+    # this window's own port: the page cannot know it (it only knows the
+    # origin it was served from), and every instance must not offer itself as
+    # a drop target.
+    app.port = _real_port
+    INS.announce(
+        _real_port,
+        parent=_parent,
+        game_root=game_root,
+        # The .dat is resolved lazily and the player can switch files, so this
+        # is a question the heartbeat asks again, not a value read once.
+        dat_hint=lambda: getattr(app.tk, "dat_path", "") or "")
+    atexit.register(INS.withdraw, _real_port)
     if warm:
         def _warm():
             try:

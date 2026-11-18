@@ -266,12 +266,18 @@ def free_unit_ids(stats, count, low=None, high=32767, avoid=()):
 
 def plan_add_units(buf, gv, civs_start, civ_index, donor_id, count=None,
                    ids=None, hp=None, icon_id=None, stats=None,
-                   name_string_id=None, blank=False):
+                   name_string_id=None, blank=False, images=None):
     """Plan ``count`` new records in ONE splice.
 
     With ``blank=True`` every record is built from nothing (``blank_image``)
     instead of copied from ``donor_id``; a blank batch still needs an id list
     or ``stats`` so the ids can be picked.
+
+    ``images`` carries one RAW RECORD per new id, which is what a drop from
+    another window needs: that record does not live in this buffer, so no
+    ``donor_id`` here can name it and there is nothing to slice out of ``buf``.
+    The bytes cross a process boundary, so they are taken as given and only
+    ``clone_image`` writes the new number into them.
 
     Measured 2026-11-05: one record is 0.175 s including the re-read; a thousand
     is 0.037 s of byte work and ten thousand 0.047 s.  The cost of a batch is the
@@ -281,7 +287,9 @@ def plan_add_units(buf, gv, civs_start, civ_index, donor_id, count=None,
     Returns ``(steps, info)`` with ``info["ids"]`` in the order they were added.
     """
     lay = civ_layout(buf, gv, civs_start, civ_index)
-    if not blank and donor_id not in lay["spans"]:
+    # A dropped batch has no donor in THIS file -- the records arrived as bytes
+    # from another window -- so the donor check only applies to a copy.
+    if images is None and not blank and donor_id not in lay["spans"]:
         raise RecordError(
             "这个文明里没有编号 %s 的单位，所以没有东西可以照着做（可以换一个文明，"
             "或者先在「单位」页签里挑一条）" % (donor_id,))
@@ -298,14 +306,30 @@ def plan_add_units(buf, gv, civs_start, civ_index, donor_id, count=None,
         ids = [int(i) for i in ids]
         if not ids:
             raise RecordError("没说要新增哪些编号")
+    if images is not None:
+        # A drop carries (id, record) pairs from another window.  The pair has to
+        # travel together: `placed` is sorted below and the blob is built in that
+        # order, so a record would otherwise land on the number meant for its
+        # neighbour.
+        images = [bytes(x) for x in images]
+        if len(images) != len(ids):
+            raise RecordError("拖过来 %d 条记录，却给了 %d 个编号"
+                              % (len(images), len(ids)))
+        pairs = sorted(zip(ids, images), key=lambda p: p[0])
+        ids = [p[0] for p in pairs]
+        images = [p[1] for p in pairs]
     for i in ids:
         if not 1 <= i <= 32767:
             raise RecordError("单位编号只有 1..32767 这些格子，%d 放不下" % (i,))
         if i in lay["spans"]:
             raise RecordError("这个文明已经有编号 %d 的单位了" % (i,))
 
-    start, end = (0, 0) if blank else lay["spans"][donor_id]
-    donor = b"" if blank else bytes(buf[start:end])
+    if blank or images is not None:
+        start, end = 0, 0
+        donor = b""
+    else:
+        start, end = lay["spans"][donor_id]
+        donor = bytes(buf[start:end])
     old_m = lay["m"]
     steps = []
     # The flag array grows once, to the highest id in the batch.  A batch below
@@ -336,12 +360,13 @@ def plan_add_units(buf, gv, civs_start, civ_index, donor_id, count=None,
     if placed[0] > max(lay["spans"]):
         # The common case, and the only one a four-step undo entry needs: the
         # whole batch is past every record, so it is one append.
-        for i in placed:
+        for k, i in enumerate(placed):
             if blank:
                 blob += NU.blank_image(gv, i, name_string_id=name_string_id,
                                        hp=hp, icon_id=icon_id)
             else:
-                blob += NU.clone_image(donor, i, name_string_id=name_string_id,
+                src = images[k] if images is not None else donor
+                blob += NU.clone_image(src, i, name_string_id=name_string_id,
                                        hp=hp, icon_id=icon_id)
         at = lay["run_end"]
         steps.append((at, 0, bytes(blob)))
@@ -350,10 +375,12 @@ def plan_add_units(buf, gv, civs_start, civ_index, donor_id, count=None,
         raise RecordError("这批编号里有的比文件里已有的记录还小，"
                           "现在只能往后面加（可以换一个更大的编号）")
     info = {"ids": placed, "civ": civ_index,
-            "donor": None if blank else donor_id,
+            "donor": None if (blank or images is not None) else donor_id,
             "blank": bool(blank),
+            "dropped": images is not None,
             "count": len(placed), "bytes": len(blob), "at": at,
-            "slots": lay["m"], "unit_bytes": len(donor)}
+            "slots": lay["m"],
+            "unit_bytes": (len(images[0]) if images else len(donor))}
     return steps, info
 
 
@@ -629,15 +656,35 @@ def _rename_tech(image, name, name_off):
     return out
 
 
-def plan_add_tech(buf, gv, tail, donor_id, internal_name=None, lang_name=None):
+def plan_add_tech(buf, gv, tail, donor_id=None, internal_name=None,
+                  lang_name=None, images=None):
     """Plan a clone of tech ``donor_id``.
 
     A technology is addressed by its POSITION in the array -- the record carries
     no id field -- so appending is what gives it the next id, which is ``count``
     before the append.  ``internal_name`` becomes the record's own debug_string;
     without it the donor's name is copied verbatim.
+
+    ``images`` is the cross-window door, the same one ``plan_add_units`` has: the
+    records were bytes in another process's buffer, so no position in THIS file
+    names them.  Appending is still what assigns the ids, so the batch lands as
+    ``count .. count + n - 1`` in the order given.
     """
     count_off, count, start, end = tech_section(buf, gv, tail)
+    if images is not None:
+        shots = [bytes(x) for x in images]
+        if not shots:
+            raise RecordError("没说要加哪些科技记录")
+        if count + len(shots) > 32767:
+            raise RecordError("这个文件已经有 %d 条科技，再加 %d 条就超出编号上限了"
+                              % (count, len(shots)))
+        blob = b"".join(shots)
+        ids = list(range(count, count + len(shots)))
+        steps = [(end, 0, blob),
+                 (count_off, 2, struct.pack("<h", count + len(shots)))]
+        return steps, {"id": ids[0], "ids": ids, "donor": None,
+                       "count": len(ids), "bytes": len(blob), "at": end,
+                       "name": None, "dropped": True}
     if not 0 <= donor_id < count:
         raise RecordError("没有第 %s 号科技（这个文件里有 %d 条）"
                           % (donor_id, count))
@@ -648,7 +695,26 @@ def plan_add_tech(buf, gv, tail, donor_id, internal_name=None, lang_name=None):
         image = _rename_tech(image, name, _tech_name_off(image, gv, 0))
     steps = [(end, 0, image), (count_off, 2, struct.pack("<h", count + 1))]
     return steps, {"id": count, "donor": donor_id, "bytes": len(image),
-                   "at": end, "name": name}
+                   "at": end, "name": name, "dropped": False}
+
+
+def tech_images(buf, gv, tail, ids):
+    """Raw bytes of the tech records at positions ``ids``, in the order asked.
+
+    What a cross-window drop needs to carry: a technology has no id inside its
+    own record, so the only honest way to move one is to move its bytes and let
+    the receiving file hand out the positions.
+    """
+    count_off, count, start, end = tech_section(buf, gv, tail)
+    out = []
+    for tid in ids:
+        tid = int(tid)
+        if not 0 <= tid < count:
+            raise RecordError("没有第 %s 号科技（这个文件里有 %d 条）"
+                              % (tid, count))
+        a, b = _tech_at(buf, gv, start, tid)
+        out.append(bytes(buf[a:b]))
+    return out
 
 
 def add_tech(buf, gv, tail, donor_id, internal_name=None, lang_name=None):

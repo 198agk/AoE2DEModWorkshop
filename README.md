@@ -125,7 +125,7 @@
 需要 Python 3.10+。改完这样验：
 
 ```powershell
-python -X utf8 -u '_probe\run_suites.py'    # 234 条快套件，约 100 分钟
+python -X utf8 -u '_probe\run_suites.py'    # 236 条快套件，约 100 分钟
 python -X utf8 -u '_probe\run_long.py'      # 17 条长套件，约 2.8 小时
 ```
 

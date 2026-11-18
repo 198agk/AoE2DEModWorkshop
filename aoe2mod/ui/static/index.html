@@ -2618,6 +2618,23 @@ body.dragging-row, body.dragging-row * { cursor: grabbing !important; user-selec
     display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
   }
   #editor .edpickbar .hint { min-width: 0; }
+  /* Dragging a selection INTO ANOTHER WINDOW.  A picked row is grabbable the
+     same way a mod row is, and the label under the pointer is the only place
+     that can name the target: the drop happens outside this document, so
+     nothing in the page can draw a highlight on it. */
+  #editor .edrow.picked { cursor: grab; touch-action: none; }
+  body.cross-drag, body.cross-drag * {
+    cursor: grabbing !important; user-select: none;
+  }
+  #ed-drophint {
+    position: fixed; z-index: 60; pointer-events: none; display: none;
+    padding: 6px 12px; border-radius: var(--r-control);
+    background: var(--toast-bg); color: var(--on-dark);
+    font-size: var(--fs-micro); line-height: 1.35;
+    border: 1px solid var(--line-strong);
+  }
+  #ed-drophint.on { display: block; }
+  #ed-drophint.hit { background: var(--accent); border-color: var(--accent); }
   #editor .edrow.on {
     background: var(--accent-soft);
     box-shadow: inset 3px 0 0 var(--accent);
@@ -5937,6 +5954,9 @@ async function api(path, body) {
   const r = await fetch(path, opt);
   const j = await r.json();
   if (!j.ok) throw new Error(j.error || "未知错误");
+  // Remember the file generation this answer describes.  See `LIVE_SELF`:
+  // `liveApply` refreshes the editor list only for bumps that are NOT ours.
+  if (typeof j.v === "number") LIVE_SELF = j.v;
   return j;
 }
 
@@ -7412,6 +7432,12 @@ async function boot() {
 // `live_wait`.
 let LIVE_V = -1;
 let LIVE_ON = false;
+// The `v` this page last SAW ITSELF produce.  A write verb answers with the
+// counter it left behind, so anything the long poll reports that is NOT this
+// number came from the other window (or from a keyboard step this page did not
+// route).  That is the only way a page can tell "my own write" from "somebody
+// else wrote the file" -- the counters alone carry no author.
+let LIVE_SELF = -1;
 
 function liveSleep(ms) {
   return new Promise(function (res) { setTimeout(res, ms); });
@@ -7459,6 +7485,16 @@ function liveApply(st) {
   // from memory or from one cheap request -- `/api/pseudo-pages` is 0.012 s.
   const cardOn = $("#view-card") && $("#view-card").classList.contains("on");
   if (CARD_LOADED && (cardOn || CARD_PICKBOX !== null)) cardCyclesRefresh();
+  // SOMEBODY ELSE WROTE THE FILE.  Until now this handler only redrew the
+  // command card, so a record dragged in from the other window landed in the
+  // buffer and the list went on showing the old count until the player pressed
+  // something.  A bump that is not the one this page caused means the list it
+  // is drawing no longer matches the file; rebuild it, keeping the open record
+  // (it did not move -- only new rows appeared at the end).
+  if (typeof st.v === "number" && st.v !== LIVE_SELF
+      && $("#view-editor") && $("#view-editor").classList.contains("on")) {
+    edReloadSoon();
+  }
 }
 
 function liveStart() {
@@ -9243,6 +9279,38 @@ async function showAll() {
   }
 }
 
+// REBUILD THE LIST AFTER SOMEBODY ELSE WROTE THE FILE.  Called from `liveApply`
+// for a bump this page did not cause -- today that is the other workshop window
+// receiving a dragged selection.  Two rules:
+//   * debounce, because a batch of records is one write but a paste of ten is
+//     ten, and rebuilding on each is a list that flickers for a second;
+//   * keep how much was on screen.  `loadEditor(false)` loads one page, so a
+//     player who had pressed 「全部显示」 would silently drop back to 400 rows
+//     the moment a record arrived.  Re-fetch the same number of rows instead,
+//     bounded, and stop when the file runs out.
+let ED_RELOAD_T = 0;
+
+function edReloadSoon() {
+  clearTimeout(ED_RELOAD_T);
+  ED_RELOAD_T = setTimeout(edReloadNow, 260);
+}
+
+async function edReloadNow() {
+  // A drop is still in the air: rebuilding the list under the pointer would
+  // pull the row the gesture started on out of the DOM.
+  if (EDDRAG) return;
+  const want = EDROWS.length;
+  await loadEditor(false, true);
+  for (let i = 0; i < 12 && EDROWS.length < want && ED_OFFSET < ED_TOTAL; i += 1) {
+    await loadEditor(true, true);
+  }
+  // Ids that left the list cannot be "picked" any more; the bar counts what is
+  // really there, so prune before painting.
+  const here = new Set(EDROWS.map(r => r.kind + ":" + r.id));
+  EDPICK = EDPICK.filter(p => here.has(p.kind + ":" + p.id));
+  edPaintPicked();
+}
+
 async function loadEditor(more, keepPane) {
   // A graphic table or a sound table is a PICKER of 20,883 / 930 records, not a
   // list of named entities: there is no icon, no Chinese name, and no
@@ -9551,9 +9619,153 @@ function edRow(r, icons) {
   // top.  Reported 2026-11-03, verbatim: 「随便点一个就会恢复」.  `edPick` is the
   // whole interaction now, and it touches nothing but the two rows involved.
   row.onclick = (ev) => edPick(r, row, ev);
+  // A picked row can be dragged OUT of this window; see `edDragRow` for why
+  // that decision has to be made on pointer events rather than on a click.
+  edDragRow(row, r);
   if (edPicked(r)) row.className += " picked";
   return row;
 }
+
+// ---- dragging a selection into ANOTHER workshop window ------------------
+// THE ASK (2026-11-18, verbatim): 「我想选中后，通过鼠标拖动来导入到另一个端口里，
+// 能做到吗，数值、关联等等都完美复制过去」.  Two workshops are two processes on
+// two ports with two session buffers, so "copy them over there" means: read the
+// records out of THIS buffer as bytes, hand them to the other process, and let
+// it add them to ITS buffer.  The numbers, the graphics and the costs travel
+// inside those bytes, which is what 数值/完美复制 asks for.
+//
+// WHAT DOES NOT TRAVEL: the record's NAME is a string id into the shared
+// language file, and effect commands that point at the old id keep pointing at
+// it.  Both are properties of the file, not of the record's bytes.  The toast
+// says so, because a silent half-copy is the failure this tool refuses
+// elsewhere.
+//
+// WHY POINTER EVENTS AND NOT HTML5 DRAG: see `modDrag` -- the desktop host
+// installs its own drop target on the webview and swallows `dragstart`, so the
+// gesture is built by hand here too.  The extra wrinkle is that the drop lands
+// OUTSIDE this document, so `elementFromPoint` cannot see it: the SERVER is
+// asked which window is under the cursor (`/api/drop-at`), because Win32 knows.
+let EDDRAG = null;
+
+function edDropHint() {
+  let box = $("#ed-drophint");
+  if (!box) {
+    box = el("div");
+    box.id = "ed-drophint";
+    document.body.appendChild(box);
+  }
+  return box;
+}
+
+// Which records the gesture carries: the whole selection when the row it
+// started on is part of it, otherwise just that row -- the same rule a file
+// manager uses, and the only one that does not surprise.
+function edDragIds(r) {
+  if (edPicked(r) && EDPICK.length > 1) return EDPICK.map(p => p.id);
+  return [r.id];
+}
+
+function edDragRow(row, r) {
+  row.draggable = false;
+  row.addEventListener("pointerdown", (e) => {
+    if (e.button !== 0) return;
+    if (e.target && e.target.closest
+        && e.target.closest("button, input, select, .switch")) return;
+    const ids = edDragIds(r);
+    const startX = e.clientX, startY = e.clientY;
+    let armed = false;
+    let last = 0;
+    const hint = edDropHint();
+    const onMove = (ev) => {
+      if (!armed) {
+        if (Math.abs(ev.clientY - startY) < 4 && Math.abs(ev.clientX - startX) < 4) return;
+        armed = true;
+        EDDRAG = {ids: ids, kind: r.kind, at: null, port: 0};
+        document.body.classList.add("cross-drag");
+        row.classList.add("dragging");
+        hint.className = "on";
+        hint.textContent = "拖到另一个工坊窗口 · " + ids.length + " 条";
+      }
+      hint.style.left = Math.round(ev.clientX + 14) + "px";
+      hint.style.top = Math.round(ev.clientY + 16) + "px";
+      // One question per ~140 ms, not one per pointermove: each answer is a
+      // Win32 round trip and the pointer fires dozens of times a second.
+      const now = Date.now();
+      if (now - last < 140) return;
+      last = now;
+      howFar(ev);
+    };
+    const howFar = async (ev) => {
+      if (!EDDRAG) return;
+      let got = null;
+      try {
+        const r2 = await fetch("/api/drop-at?x=" + Math.round(ev.screenX)
+                              + "&y=" + Math.round(ev.screenY)
+                              + "&dpr=" + (window.devicePixelRatio || 1));
+        got = await r2.json();
+      } catch (err) { got = null; }
+      if (!EDDRAG || !got || !got.ok) return;
+      const hit = got.hit || null;
+      EDDRAG.at = hit;
+      EDDRAG.port = hit ? Number(hit.port) || 0 : 0;
+      if (hit) {
+        hint.className = "on hit";
+        hint.textContent = "松手复制到 " + (hit.dat || ("端口 " + hit.port))
+          + " · " + EDDRAG.ids.length + " 条";
+      } else {
+        hint.className = "on";
+        hint.textContent = "拖到另一个工坊窗口 · " + EDDRAG.ids.length + " 条";
+      }
+    };
+    const onUp = async (ev) => {
+      document.removeEventListener("pointermove", onMove, true);
+      document.removeEventListener("pointerup", onUp, true);
+      document.removeEventListener("pointercancel", onUp, true);
+      document.body.classList.remove("cross-drag");
+      row.classList.remove("dragging");
+      hint.className = "";
+      const drag = EDDRAG;
+      EDDRAG = null;
+      if (!armed || !drag) {
+        // Not a drag: it is the click that picks the row.  `edPick` is bound to
+        // `click` and still fires; arming only happens past 4 px, which a click
+        // does not travel.
+        return;
+      }
+      if (!drag.port) return;
+      await edDropSend(drag.ids, drag.port, r.kind);
+    };
+    document.addEventListener("pointermove", onMove, true);
+    document.addEventListener("pointerup", onUp, true);
+    document.addEventListener("pointercancel", onUp, true);
+    if (e.preventDefault) e.preventDefault();
+  });
+}
+
+// The window that RECEIVED the drop does the copying; this side only forwards.
+// `/api/drop` reads the records out of THIS session buffer and posts them to the
+// other process, because the page cannot: two ports are two origins, neither
+// server sends a CORS header and neither answers OPTIONS.
+async function edDropSend(ids, port, kind) {
+  const box = edDropHint();
+  box.className = "on";
+  box.textContent = "正在复制 " + ids.length + " 条到端口 " + port + "…";
+  const want = String(kind || EDKIND);
+  try {
+    const r = await api("/api/drop", {
+      port: port, kind: want, ids: ids,
+      civ: want === EDKIND ? edCiv() : "",
+    });
+    const n = (r.info && (r.info.count || (r.info.ids || []).length)) || ids.length;
+    toast("已把 " + n + " 条记录复制到另一个窗口"
+          + "（数值、图形、造价照搬；名字和效果里的编号不跟着改）");
+  } catch (e) {
+    toast(e.message, "bad");
+  } finally {
+    box.className = "";
+  }
+}
+
 
 // ---- full-field editor -------------------------------------------------
 // The pane used to show 15 hand-picked stats and turn every edit into a
@@ -10744,7 +10956,7 @@ function edSyncPickBar() {
   if (n < 2) { bar.hidden = true; return; }
   bar.hidden = false;
   bar.appendChild(el("span", "hint",
-    "已选 " + n + " 条 · Ctrl+C 复制 · Delete 删除 · Esc 取消选择"));
+    "已选 " + n + " 条 · Ctrl+C 复制 · Delete 删除 · 拖到另一个窗口复制 · Esc 取消选择"));
   const del = el("button", "chip", "删除所选 " + n + " 条");
   del.id = "ed-pick-del";
   del.onclick = () => edDeletePicked(del);
