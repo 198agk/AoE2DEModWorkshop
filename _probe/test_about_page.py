@@ -221,11 +221,26 @@ def main():
     check("the server reports it from one constant",
           'import appversion as AV' in io.open(
               os.path.join(ROOT, "aoe2mod", "ui", "server.py"), encoding="utf-8").read(), "")
+    # 版本号自 2026-11-18 起是「每次改动加 0.0001」（玩家原话），于是它是
+    # `1.0001` 这种四位小数；而 Rust manifest 只认三段。 两边不能各写一遍，
+    # 所以 appversion 里派生出 `SEMVER`（1.0001 -> 1.0.1），这里比对的就是它。
+    _av = __import__("aoe2mod.appversion", fromlist=["VERSION"])
     check("the bundle manifest agrees with that constant",
           __import__("json").load(io.open(
               os.path.join(ROOT, "desktop", "src-tauri", "tauri.conf.json"),
-              encoding="utf-8"))["version"].startswith(
-                  __import__("aoe2mod.appversion", fromlist=["VERSION"]).VERSION), "")
+              encoding="utf-8"))["version"] == _av.SEMVER,
+          "SEMVER is %r" % (_av.SEMVER,))
+    check("...and so does the cargo manifest",
+          ("version = \"%s\"" % (_av.SEMVER,)) in io.open(
+              os.path.join(ROOT, "desktop", "src-tauri", "Cargo.toml"),
+              encoding="utf-8").read(), "")
+    # 安装脚本里那个 `#ifndef AppVer` 只是直接双击 ISCC 时的兜底：打包脚本会
+    # 从 SEMVER 算出来用 /DAppVer= 传进去。 兜底值也必须跟着走，否则有人绕过
+    # 打包脚本敲一次 ISCC，产出的安装包叫一个旧名字。
+    check("...and the installer's fallback number too",
+          ("#define AppVer \"%s\"" % (_av.SEMVER,)) in io.open(
+              os.path.join(ROOT, "_probe", "installer", "aoe2mod.iss"),
+              encoding="utf-8").read(), "")
     # 「截图这个删掉」 (2026-11-08, m18360/m18362): the second line of the
     # version card explained that the number above it was read at run time.  That
     # is a note to the author, printed on the player's screen.

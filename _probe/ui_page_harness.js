@@ -627,15 +627,19 @@ let UPDATE_ANSWER = UPDATE.stale;
 const VERSIONS = {
   behind: { ok: true, reachable: true, cached: false, current: "1.0",
             remote: "1.1", behind: true, same: false,
+            changes: ["远端说这一版多了什么", "第二行"],
+            mine: ["这一份自己写了什么"],
             source: "raw", url: "https://raw.githubusercontent.com/x/appversion.py",
             project_url: "https://github.com/198agk/aoe2-mod-workshop",
             checked_at: "2026-11-17 20:00", notes: [] },
   same: { ok: true, reachable: true, cached: true, current: "1.0",
           remote: "1.0", behind: false, same: true, source: "cache",
+          changes: ["这一份自己写了什么"], mine: ["这一份自己写了什么"],
           url: "", project_url: "https://github.com/198agk/aoe2-mod-workshop",
           checked_at: "2026-11-17 20:00", notes: [] },
   offline: { ok: true, reachable: false, cached: false, current: "1.0",
              remote: "", behind: false, same: false, source: "", url: "",
+             changes: ["这一份自己写了什么"], mine: ["这一份自己写了什么"],
              project_url: "https://github.com/198agk/aoe2-mod-workshop",
              checked_at: "", notes: ["连不上"] },
 };
@@ -1063,6 +1067,8 @@ const sandbox = {
     // when those two are the same file the page can print one label and still
     // be wrong about the other, and nothing would notice.
     return { json: async () => ({ ok: true, version: 54, civs: new Array(63),
+      app_version: "1.0001",
+      app_changes: ["这一份自己写了什么"],
       intents: META_INTENTS, mods: [], manifest: { mod_dir: "/tmp/x", info: {} },
       dat: { path: DATS[2].path, scope: "mod", label: "mod-a", mod: "mod-a",
              head: "VER 8.9", supported: true },
@@ -2566,12 +2572,24 @@ function versionChecks() {
           line.indexOf("1.1") >= 0, line);
     check("...and says where to get it",
           line.indexOf("GitHub") >= 0, line);
+    // 号码只说明有东西变了：286 MB 要不要下是另一回事。 所以「有新版」时必须
+    // 把新版自己写的改动列出来，而且列的是远端的，不是这一份的。
+    const remoteBox = text(ids["about-remote"]);
+    check("...and lists what the new version changed",
+          remoteBox.indexOf("远端说这一版多了什么") >= 0, remoteBox);
+    check("...without borrowing the lines this copy wrote about itself",
+          remoteBox.indexOf("这一份自己写了什么") < 0, remoteBox);
     // same：已经最新时说一句就行，不要留一个「去下载」的按钮引导。
     VERSION_ANSWER = VERSIONS.same;
     return page.versionCheck(false);
   }).then(() => {
     const line = text(ids["about-update"]);
     check("an up-to-date copy says so", line.indexOf("最新") >= 0, line);
+    // 上一次按出来的「新版改了什么」不能留在这一次「已经是最新的」下面：屏幕
+    // 同时说两件事，玩家会以为那个新版他还没装。
+    check("...and the previous answer's change list is taken back",
+          text(ids["about-remote"]).indexOf("远端说这一版多了什么") < 0,
+          text(ids["about-remote"]));
     // offline：连不上就直说不知道，不能静默留白，也不能说成最新。
     VERSION_ANSWER = VERSIONS.offline;
     return page.versionCheck(true);

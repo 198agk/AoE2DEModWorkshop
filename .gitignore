@@ -591,6 +591,7 @@ _probe/_tmp_*
 !/_probe/test_url_coverage.py
 !/_probe/test_v2_semantic_diff.py
 !/_probe/test_v4_reproduces_incas.py
+!/_probe/test_version_check.py
 !/_probe/test_version_display.py
 !/_probe/test_who_can.py
 !/_probe/test_window_mode.py

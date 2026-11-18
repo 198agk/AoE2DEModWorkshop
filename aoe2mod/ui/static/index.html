@@ -3347,6 +3347,13 @@ body.dragging-row, body.dragging-row * { cursor: grabbing !important; user-selec
   }
   /* 作者那一行是这一页唯一一个不是路径的值，别让它读起来像路径。 */
   #about-author { font-weight: 650; }
+  /* 版本卡下半：这一版改了什么 / 新版改了什么。 一个只有号码的版本卡，等于
+     让玩家盲下 286 MB。 两段共用一套行，因为它们是同一种东西，只是来源不
+     同：一段编译在手上这一份里，一段是新版自己写的。 */
+  .abchanges { list-style: disc; margin: 8px 0 0; padding: 0 0 0 20px; }
+  .abchanges li { margin: 0 0 6px; max-width: var(--measure); }
+  .abchanges li:last-child { margin-bottom: 0; }
+  #about-remote { margin: 12px 0 0; }
 
   /* ---- 关于页的卡片行（2026-11-16，玩家「关于页面能不能学一下这个新境盒
      的，它的这些图标可以跳转的」）----------------------------------------
@@ -5407,6 +5414,17 @@ body.dragging-row, body.dragging-row * { cursor: grabbing !important; user-selec
           <button class="chip" id="about-check">检查更新</button>
         </span>
       </div>
+      <!-- 这一版改了什么。 一个只有号码的版本卡，等于让玩家盲下 286 MB：他
+           看不出新版值不值得装。 行文来自 /api/meta 的 app_changes（编译进
+           这一份的那一段），检查更新说「有新版」时下面再接一段远端自己写的。
+           两段分开是因为「我手上这版有什么」和「新版多了什么」是两个问题，
+           合成一张表会被读成「我已经用上了」。 -->
+      <div id="about-changes">
+        <p class="abi">这一版改了什么</p>
+      </div>
+      <div id="about-remote" hidden>
+        <p class="abi" id="about-remote-head">新版本改了什么</p>
+      </div>
     </div>
   </div>
 </section>
@@ -6989,6 +7007,27 @@ async function loadLog() {
   for (const r of rows) list.appendChild(logRow(r));
 }
 
+// 版本卡下半的两张清单。 一段是编译进这一份的改动（`/api/meta` 的
+// `app_changes`），一段是远端为新版写的（`/api/version-check` 的 `changes`）。
+// 同一个画法，因为它们是同一种东西：一行一句，玩家扫一眼就知道这一版值不值得
+// 装。「没有内容」时整段藏起来，而不是留一个空标题：一个空的「改了什么」
+// 比不写更让人以为坏了。
+function drawChanges(box, items, head, headText) {
+  if (!box) return;
+  const old = box.querySelector ? box.querySelector(".abchanges") : null;
+  if (old && old.parentNode) old.parentNode.removeChild(old);
+  const lines = (items || []).filter((x) => x != null && String(x).trim() !== "");
+  if (!lines.length) {
+    box.hidden = true;
+    return;
+  }
+  if (head && headText != null) head.textContent = headText;
+  const ul = el("ul", "abchanges");
+  for (const line of lines) ul.appendChild(el("li", "", String(line)));
+  box.appendChild(ul);
+  box.hidden = false;
+}
+
 function drawAbout(meta) {
   const m = meta || META || {};
   const v = $("#about-version");
@@ -7004,6 +7043,10 @@ function drawAbout(meta) {
       + (m.version != null ? m.version : "未知")
       + "，文明 " + ((m.civs || []).length || 0) + " 个。";
   }
+  // 这一版改了什么，就印在版本号下面：玩家问「版本」时想知道的是这一份里有
+  // 什么，不是一串号码。 远端那一段由 `versionCheck` 在答「有新版」时另写。
+  drawChanges($("#about-changes"), m.app_changes,
+    $("#about-changes .abi"), "这一版改了什么");
 
   const lb = $("#log-open");
   if (lb) {
@@ -7555,6 +7598,9 @@ async function versionCheck(force) {
     got = null;
   }
   if (btn) btn.disabled = false;
+  // 远端那一段先收起来：上一次按出来的「新版改了什么」不能留在这一次没有新版的
+  // 答案下面，否则屏幕会同时说「已经是最新的」和「新版改了这些」。
+  drawChanges($("#about-remote"), [], $("#about-remote-head"), "新版本改了什么");
   // The answer travels back to the caller as well as onto the line: the settings
   // row asks the same question from a screen where this line is not visible, so it
   // has to phrase the answer itself instead of reading a string it cannot see.
@@ -7570,6 +7616,12 @@ async function versionCheck(force) {
     line.textContent = T("update.version_same", {version: remote});
   } else {
     line.textContent = T("update.version_ahead", {version: remote || "?"});
+  }
+  // 「有新版」时把新版自己写的改动列出来：号码只说明有东西变了，286 MB 要不要
+  // 下是另一回事。 `same` / `ahead` 不列：那两种状态下没有「新版」可讲。
+  if (got.behind) {
+    drawChanges($("#about-remote"), got.changes,
+      $("#about-remote-head"), "新版本改了什么（" + (remote || "?") + "）");
   }
   return got;
 }

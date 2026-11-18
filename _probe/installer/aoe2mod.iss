@@ -3,7 +3,12 @@
 ; 装到 %LOCALAPPDATA%\Programs\AoE2ModWorkshop，不要管理员权限 —— 这个工具会往
 ; 自己目录旁边写 log\ 和 _mods_out\，装进 Program Files 之后那些写入会被拦。
 
-#define AppVer "1.0.0"
+; 版本号不在这里手写第二遍：`_probe/_tmp/pack_sel2.sh` 从 `aoe2mod/appversion.py`
+; 的 SEMVER 算出来，用 /DAppVer= 传进来。 下面这个值只是直接双击 ISCC 时的兜底，
+; `_probe/test_about_page.py` 会拿它和 appversion.SEMVER 对一次。
+#ifndef AppVer
+  #define AppVer "1.0.1"
+#endif
 ; 仓库根不写死：这个脚本就住在 <repo>\_probe\installer\，往上两级就是它。
 ; 换机器/换盘符不用改文件；要指到别处就 ISCC.exe /DRepoDir=D:\path\repo aoe2mod.iss
 #ifndef RepoDir

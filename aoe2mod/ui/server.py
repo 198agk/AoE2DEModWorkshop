@@ -479,6 +479,12 @@ class App(object):
             # .dat's FileVersion ordinal, which only answers "which field layout
             # do I parse".
             "app_version": AV.VERSION,
+            # What this build changed, in the order `appversion.CHANGES`
+            # lists it.  The 关于 page prints these under the number so a
+            # player can tell what the download buys without opening
+            # GitHub, and the gist publishes the same lines for the next
+            # build.
+            "app_changes": list(getattr(AV, "CHANGES", ()) or ()),
             "version": tk.version,
             "civs": tk.civ_names,
             # Same 63 names, translated.  The .dat stores `British`; a screen a
