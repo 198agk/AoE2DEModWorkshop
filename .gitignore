@@ -680,3 +680,5 @@ _probe/_tmp_*
 # hand-written info.json pairs are fixtures, the built .dat files are output.
 /aoe2mod/tests/out/*/resources/
 /aoe2mod/tests/out/*.dat
+# notes I keep for myself; never published
+ANTI-REVERSE.md
