@@ -545,7 +545,7 @@ const LOCALE = {ok: true, locale: "zh", strings: {
   // 重建，一个说工具有没有新版。表里少一句，`T()` 就会把键名原样印到屏幕上。
   "update.checking": "正在问 GitHub…",
   "update.version_ahead": "远端只有 {version}，比这一份还旧，不用管",
-  "update.version_behind": "远端有 {version}：去 GitHub 页面下载新版，覆盖掉这一份就是升级",
+  "update.version_behind": "远端有 {version}：按「下载并装好」，它自己会换掉这一份，装完重新打开",
   "update.version_offline": "连不上 GitHub，这一份是不是最新就不知道了；过一会儿再按一次",
   "update.version_same": "{version} 已经是最新的",
   "btn.form": "✎ 填表",
@@ -626,7 +626,7 @@ let UPDATE_ANSWER = UPDATE.stale;
 // behind 是唯一会让人去下载的状态，所以它必须点名远端版本号。
 const VERSIONS = {
   behind: { ok: true, reachable: true, cached: false, current: "1.0",
-            remote: "1.1", behind: true, same: false,
+            remote: "1.1", behind: true, same: false, can_update: true,
             changes: ["远端说这一版多了什么", "第二行"],
             mine: ["这一份自己写了什么"],
             source: "raw", url: "https://raw.githubusercontent.com/x/appversion.py",
@@ -634,6 +634,7 @@ const VERSIONS = {
             checked_at: "2026-11-17 20:00", notes: [] },
   same: { ok: true, reachable: true, cached: true, current: "1.0",
           remote: "1.0", behind: false, same: true, source: "cache",
+          can_update: true,
           changes: ["这一份自己写了什么"], mine: ["这一份自己写了什么"],
           url: "", project_url: "https://github.com/198agk/aoe2-mod-workshop",
           checked_at: "2026-11-17 20:00", notes: [] },
@@ -644,6 +645,14 @@ const VERSIONS = {
              checked_at: "", notes: ["连不上"] },
 };
 let VERSION_ANSWER = VERSIONS.behind;
+// 这一份是不是装好的副本（`/api/meta` 的 `app_can_update`）。 源码目录里跑的那
+// 一份是 false：没有可以替换的 app/，按钮不该出现。
+let CAN_UPDATE = true;
+// 按下「下载并装好」之后服务端的回答，和进度槽里现在这一轮的答案。
+const INSTALL_ANSWER = { ok: true, key: "update", started: true, root: "C:\\x" };
+let JOB_ANSWER = { key: "update", label: "正在下载新版", percent: 0, done: 0,
+  total: 100, elapsed: 0, running: false, error: null, known: false, seq: 0 };
+const installAsked = [];
 const rebuilt = [];
 // The game-running warning, as a switchable state: the same install route must
 // say something when the game is open and NOTHING when it is closed (a warning
@@ -921,6 +930,13 @@ const sandbox = {
         .filter((r) => r.name !== body.name).concat([row]) };
       return { json: async () => ({ ok: true, recipe: row }) };
     }
+    if (url.indexOf("/api/update-install") === 0) {
+      installAsked.push(url);
+      return { json: async () => INSTALL_ANSWER };
+    }
+    if (url.indexOf("/api/job?key=update") === 0) {
+      return { json: async () => ({ ok: true, job: JOB_ANSWER }) };
+    }
     if (url.indexOf("/api/version-check") === 0) {
       // 版本检查问的是这一份工具本身，和 /api/update-check（问磁盘上游戏的
       // .dat 有没有被游戏改过）是两件事。答案形状照抄服务端的扁平结构。
@@ -1069,6 +1085,9 @@ const sandbox = {
     return { json: async () => ({ ok: true, version: 54, civs: new Array(63),
       app_version: "1.0001",
       app_changes: ["这一份自己写了什么"],
+      // 装新版那颗按钮只在「这一份确实是装好的副本」时才有意义。 从源码目录跑
+      // 的那份没有可替换的 app/，服务端因此把这个布尔值报成 false。
+      app_can_update: CAN_UPDATE,
       intents: META_INTENTS, mods: [], manifest: { mod_dir: "/tmp/x", info: {} },
       dat: { path: DATS[2].path, scope: "mod", label: "mod-a", mod: "mod-a",
              head: "VER 8.9", supported: true },
@@ -1091,6 +1110,8 @@ const fn = new Function(
   "dropOnSay: dropOnSay, DRAGGING: () => DRAGGING, " +
   "checkUpdates: checkUpdates, rebuildAll: rebuildAll, " +
   "versionCheck: versionCheck, VERSION_ASKED: () => versionAsked, " +
+  "installUpdate: installUpdate, installTick: installTick, " +
+  "INSTALL_ASKED: () => installAsked, " +
   "VERSION_FIXTURE: () => VERSION_ANSWER, " +
   "checkRepairs: checkRepairs, adaptAll: adaptAll, " +
   "TODO: () => ADAPT_TODO, UPGRADE_FIXTURE: () => UPGRADE_ANSWER, " +
@@ -2570,8 +2591,12 @@ function versionChecks() {
     const line = text(ids["about-update"]);
     check("a newer remote version is named on the line",
           line.indexOf("1.1") >= 0, line);
-    check("...and says where to get it",
-          line.indexOf("GitHub") >= 0, line);
+    // 说法从「去 GitHub 下载覆盖」改成「按那个按钮，它自己换」：玩家要的是
+    // 一键装好，不是被指去网页上手动替换一个正在运行的程序。
+    check("...and names the button that installs it",
+          line.indexOf("下载并装好") >= 0, line);
+    check("...and that button is on the card",
+          ids["about-install"].hidden === false, String(ids["about-install"].hidden));
     // 号码只说明有东西变了：286 MB 要不要下是另一回事。 所以「有新版」时必须
     // 把新版自己写的改动列出来，而且列的是远端的，不是这一份的。
     const remoteBox = text(ids["about-remote"]);
@@ -2585,15 +2610,66 @@ function versionChecks() {
   }).then(() => {
     const line = text(ids["about-update"]);
     check("an up-to-date copy says so", line.indexOf("最新") >= 0, line);
+    // 没有新版时那颗按钮必须收起来：留着它等于在最新的一份上写着「可以装」。
+    check("...and the install button goes away",
+          ids["about-install"].hidden === true,
+          String(ids["about-install"].hidden));
     // 上一次按出来的「新版改了什么」不能留在这一次「已经是最新的」下面：屏幕
     // 同时说两件事，玩家会以为那个新版他还没装。
     check("...and the previous answer's change list is taken back",
           text(ids["about-remote"]).indexOf("远端说这一版多了什么") < 0,
           text(ids["about-remote"]));
-    // offline：连不上就直说不知道，不能静默留白，也不能说成最新。
+    // 按「下载并装好」之后：服务端起了一个 job 槽，条子跟着它走；槽里报
+    // running:false 才算装好，error 有字就必须原样说出来。 这里一拍一拍地
+    // 驱动 installTick，而不是让页面自己连问 —— 测试里没有真的时钟。
+    JOB_ANSWER = { key: "update", label: "正在下载新版", percent: 37, done: 37,
+                   total: 100, elapsed: 1, running: true, error: null,
+                   known: true, seq: 1 };
+    return page.installUpdate();
+  }).then(() => {
+    check("the install button asks the server to start",
+          installAsked.length === 1, JSON.stringify(installAsked));
+    check("...and the bar shows the bytes the server has walked",
+          text(ids["about-install-bar"]).indexOf("37%") >= 0,
+          text(ids["about-install-bar"]));
+    JOB_ANSWER = { key: "update", label: "正在重启以装好", percent: 100,
+                   done: 100, total: 100, elapsed: 9, running: false,
+                   error: null, known: true, seq: 1 };
+    return page.installTick();
+  }).then((next) => {
+    check("...and a finished job says the new version is being opened",
+          next === "done"
+          && text(ids["about-install-bar"]).indexOf("重新打开") >= 0,
+          next + " :: " + text(ids["about-install-bar"]));
+    JOB_ANSWER = { key: "update", label: "正在下载新版", percent: 12, done: 12,
+                   total: 100, elapsed: 2, running: true, error: null,
+                   known: true, seq: 2 };
+    return page.installUpdate();
+  }).then(() => {
+    JOB_ANSWER = { key: "update", label: "正在下载新版", percent: 12, done: 12,
+                   total: 100, elapsed: 2, running: false,
+                   error: "下下来的包和发布页公布的不一样，没有装", known: true,
+                   seq: 2 };
+    return page.installTick();
+  }).then((next) => {
+    check("...and a failed download repeats the reason the server gave",
+          next === "fail" && text(ids["toast"]).indexOf("公布的不一样") >= 0,
+          next + " :: " + text(ids["toast"]));
+    check("...and a failure puts the bar away instead of leaving it at 100%",
+          ids["about-install-bar"].hidden === true,
+          String(ids["about-install-bar"].hidden));
+    // 从源码目录跑的那一份：服务端在答案里带 can_update:false。
+    VERSION_ANSWER = Object.assign({}, VERSIONS.behind, { can_update: false });
+    return page.versionCheck(true);
+  }).then(() => {
+    check("a source checkout cannot replace itself, and says why",
+          ids["about-install"].disabled === true
+          && String(ids["about-install"].title).indexOf("源码") >= 0,
+          String(ids["about-install"].title));
     VERSION_ANSWER = VERSIONS.offline;
     return page.versionCheck(true);
   }).then(() => {
+    // offline：连不上就直说不知道，不能静默留白，也不能说成最新。
     const line = text(ids["about-update"]);
     // 「不知道」这一条不能点名版本号，也不能说成已经最新 —— 文案里允许出现
     // 「是不是最新就不知道了」这种否认句，所以判据是「没有点名 1.1」。

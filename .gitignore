@@ -399,6 +399,7 @@ _probe/_tmp_*
 !/_probe/test_class_hint.py
 !/_probe/test_class_mirror.py
 !/_probe/test_compose_roundtrip.py
+!/_probe/test_cross_drag.py
 !/_probe/test_cost_answer.py
 !/_probe/test_dat_availability_layers.py
 !/_probe/test_dat_baseline.py
@@ -584,6 +585,7 @@ _probe/_tmp_*
 !/_probe/test_unit_sprite_chain.py
 !/_probe/test_uniticons_hires.py
 !/_probe/test_update_guard.py
+!/_probe/test_update_install.py
 !/_probe/test_upgrade.py
 !/_probe/test_upgrade_counts.py
 !/_probe/test_upgrade_guard.py

@@ -415,6 +415,7 @@
       "/api/toggle-group",
       "/api/undo",
       "/api/uninstall",
+      "/api/update-install",
       "/api/upgrade-apply"
     ]
   },

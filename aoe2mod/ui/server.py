@@ -43,6 +43,7 @@ import webbrowser
 import zlib
 
 from aoe2mod import api as A
+from aoe2mod import autoupdate as AU
 from aoe2mod import appversion as AV
 from aoe2mod.dat import fieldwrite as FW
 from aoe2mod.dat import locate as L
@@ -485,6 +486,12 @@ class App(object):
             # GitHub, and the gist publishes the same lines for the next
             # build.
             "app_changes": list(getattr(AV, "CHANGES", ()) or ()),
+            # Whether this copy CAN install a newer build by itself.  A tree
+            # started from `tools/run_ui.py` has no packaged folder to swap, so
+            # the page must offer the download link instead of a button that
+            # can only fail.  Decided here, once, rather than by the page
+            # guessing from a path.
+            "app_can_update": bool(AU.install_root()),
             "version": tk.version,
             "civs": tk.civ_names,
             # Same 63 names, translated.  The .dat stores `British`; a screen a
@@ -10837,6 +10844,12 @@ def make_handler(app):
                 # writes wherever it is told is a file-write primitive.
                 return self._guard(lambda: app.script_write(
                     payload.get("path") or "", payload.get("text") or ""))
+            if path == "/api/update-install":
+                # Downloading and swapping the running program.  Guarded like
+                # every other write: the download reports through the `update`
+                # job slot, so this answers immediately instead of holding the
+                # POST open for the length of a 30 MB transfer.
+                return self._guard(lambda: app.update_install())
             if path == "/api/recipe":
                 return self._guard(lambda: app.save_recipe(
                     payload.get("name") or "", payload.get("sentences") or [],

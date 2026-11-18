@@ -381,7 +381,14 @@ def main():
                      # question and still served, so it stays declared rather
                      # than deleted.
                      "repair-check": "superseded by /api/upgrade-check, kept as "
-                                     "the narrower question"}
+                                     "the narrower question",
+                     # Dragging a selection to another window (2026-11-18)
+                     # asks `/api/drop-at` mid-gesture, because what matters
+                     # is the one window under the cursor right then.  The list
+                     # of every open window is still a fair question to ask,
+                     # and something has to answer it when asked.
+                     "instances": "the gesture asks /api/drop-at; the whole "
+                                  "list has no screen of its own"}
     called = set(ask) | ask_plain
     uncalled = sorted(r for r in qread if r not in called)
     unexplained_get = [r for r in uncalled if r.rsplit("/", 1)[-1] not in no_screen_get]

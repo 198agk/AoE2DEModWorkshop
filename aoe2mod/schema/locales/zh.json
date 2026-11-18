@@ -62,7 +62,7 @@
     "update.rebuilt": "已重建 {n} 个，重开游戏才会生效",
     "update.checking": "正在问 GitHub…",
     "update.version_ahead": "远端只有 {version}，比这一份还旧，不用管",
-    "update.version_behind": "远端有 {version}：去 GitHub 页面下载新版，覆盖掉这一份就是升级",
+    "update.version_behind": "远端有 {version}：按「下载并装好」，它自己会换掉这一份，装完重新打开",
     "update.version_offline": "连不上 GitHub，这一份是不是最新就不知道了；过一会儿再按一次",
     "update.version_same": "{version} 已经是最新的"
   },

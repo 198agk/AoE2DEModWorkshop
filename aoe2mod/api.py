@@ -7427,8 +7427,36 @@ class Toolkit(object):
         ``force`` skips the six-hour cache, because a press of 检查更新 means
         "now".  Never raises and never installs: the answer always carries
         ``reachable``, and a dead network is a sentence, not an exception.
+
+        ``can_update`` rides along so the screen can decide whether to offer the
+        button: a build running from a source checkout has no installed ``app/``
+        to replace, and a button that cannot work must say so by being disabled
+        rather than by failing after the player pressed it.
         """
-        return UPD.check(force=force)
+        got = UPD.check(force=force)
+        from . import autoupdate as AU
+        try:
+            got["can_update"] = bool(AU.install_root())
+        except Exception:
+            got["can_update"] = False
+        return got
+
+    def update_install(self):
+        """Download the newer build and leave a process behind to install it.
+
+        Separate from :meth:`version_check` for the reason the module forces:
+        reading a number off a gist costs nothing and happens on every boot,
+        while this one writes 30 MB to disk and then asks the shell to close.
+        A player pressing 安装更新 has decided; a player opening the 关于 page
+        has not.
+
+        Returns as soon as the background job exists -- the download reports
+        through :mod:`aoe2mod.jobs` under ``update``, because holding a POST
+        open for two minutes is how a proxy somewhere turns a working feature
+        into a timeout.
+        """
+        from . import autoupdate as AU
+        return AU.start()
 
     def mods(self):
         from .game import locations as G

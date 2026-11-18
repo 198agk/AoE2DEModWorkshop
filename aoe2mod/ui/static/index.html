@@ -1776,6 +1776,34 @@
     background: var(--accent-soft);
     border-color: var(--accent-line);
   }
+  /* A chip that opens something.  Reported 2026-11-18 with a screenshot:
+     「还有把这些展开按钮弄明显一点」 -- the three folded lists on 模组 wore the
+     same transparent 26px outline as the sentence beside them, so the one
+     control on the row read as a second label.  A tinted fill and a caret say
+     "there is more behind this" before the words are read, and the caret turns
+     over when the list is open so the closed state is not the only cue. */
+  .chip.fold {
+    gap: 6px;
+    color: var(--accent-ink);
+    background: var(--accent-soft);
+    border-color: var(--accent-line);
+  }
+  .chip.fold:hover {
+    color: var(--on-dark);
+    background: var(--accent);
+    border-color: var(--accent);
+  }
+  .chip.fold.on {
+    color: var(--on-dark);
+    background: var(--accent);
+    border-color: var(--accent);
+  }
+  .chip.fold::before {
+    content: "\25B8";
+    font-size: var(--fs-micro);
+    line-height: 1;
+  }
+  .chip.fold.on::before { content: "\25BE"; }
 
   /* ==========================================================================
      Fields
@@ -5010,7 +5038,7 @@ body.dragging-row, body.dragging-row * { cursor: grabbing !important; user-selec
       <div class="box datpick">
         <div class="row dphead">
           <span class="clab">选择要修改的数据文件</span>
-          <button class="chip" id="dp-toggle">展开</button>
+          <button class="chip fold" id="dp-toggle">展开</button>
           <span class="hint" id="dp-note"></span>
         </div>
         <div id="dp-list" hidden></div>
@@ -5026,7 +5054,7 @@ body.dragging-row, body.dragging-row * { cursor: grabbing !important; user-selec
       <div class="box datpick" id="archive">
         <div class="row dphead">
           <span class="clab">官方数据档案库</span>
-          <button class="chip" id="archive-toggle">展开</button>
+          <button class="chip fold" id="archive-toggle">展开</button>
           <span class="hint" id="archive-note"></span>
         </div>
         <div id="archive-list" hidden><div class="empty">读取中…</div></div>
@@ -5042,7 +5070,7 @@ body.dragging-row, body.dragging-row * { cursor: grabbing !important; user-selec
       <div class="box datpick" id="modinfo">
         <div class="row dphead">
           <span class="clab">改模组的名字和简介</span>
-          <button class="chip" id="modinfo-toggle">展开</button>
+          <button class="chip fold" id="modinfo-toggle">展开</button>
           <span class="hint" id="modinfo-note"></span>
         </div>
         <div id="modinfo-body" hidden>
@@ -5113,7 +5141,7 @@ body.dragging-row, body.dragging-row * { cursor: grabbing !important; user-selec
       <div class="ttcivbody">
         <div class="ttcivname" id="tt-civname"></div>
         <div class="ttcivdesc" id="tt-civdesc"></div>
-        <button class="chip" id="tt-civmore" hidden>展开描述</button>
+        <button class="chip fold" id="tt-civmore" hidden>展开描述</button>
       </div>
     </div>
     <div class="ttlegend" id="tt-legend"></div>
@@ -5411,9 +5439,13 @@ body.dragging-row, body.dragging-row * { cursor: grabbing !important; user-selec
         <span class="abi">更新</span>
         <span class="abv" id="about-update">还没问过 GitHub</span>
         <span class="abact">
+          <button class="chip" id="about-install" hidden>下载并装好</button>
           <button class="chip" id="about-check">检查更新</button>
         </span>
       </div>
+      <!-- 装新版时的进度。 换文件夹那一步在服务端派出的独立进程里做（Windows
+           不许覆盖正在运行的 exe），页面只负责按下按钮和把 job 槽画出来。 -->
+      <div id="about-install-bar" hidden></div>
       <!-- 这一版改了什么。 一个只有号码的版本卡，等于让玩家盲下 286 MB：他
            看不出新版值不值得装。 行文来自 /api/meta 的 app_changes（编译进
            这一份的那一段），检查更新说「有新版」时下面再接一段远端自己写的。
@@ -7067,6 +7099,10 @@ function drawAbout(meta) {
   // the same card and are labelled apart.
   const bu = $("#about-check");
   if (bu) bu.onclick = () => versionCheck(true);
+  // 装新版的那颗按钮只在「有新版」时出现（`drawInstall`），所以它不需要自己
+  // 再判一次状态：能按到它，就说明屏幕上正写着「远端有 X」。
+  const bi = $("#about-install");
+  if (bi) bi.onclick = () => installUpdate();
 }
 
 // A deep link wins over "home", so `#editor` in the Tauri address bar works.
@@ -7576,16 +7612,127 @@ async function checkUpdates() {
   $("#banner").className = "open";
 }
 
-// ---- is there a newer build of the workshop upstream? --------------------
-// A different question from `checkUpdates()` above, with its own route and its
+// ---- 把新版装到这一份上 ------------------------------------------------
+// 干活的全在服务端（`aoe2mod/autoupdate.py`）：下载小包、核对发布页公布的
+// sha256、拆到 _update/，再派一个独立进程等这一份退出后换掉 app/ 并重新打开。
+// 页面不碰文件，它只知道两件事：按钮什么时候该出现，进度从哪个 job 槽读。
+// 「查」和「装」分开也是同一条道理：查版本每次启动都跑，一秒都不能写盘。
+let INSTALL_CAN = false;
+
+function drawInstall(got) {
+  const btn = $("#about-install");
+  if (!btn) return;
+  const behind = !!(got && got.ok === true && got.reachable && got.behind);
+  // 能不能装由服务端说：它比页面更清楚这一次是不是从装好的那一份跑起来的。
+  // `app_can_update`（/api/meta）是同一个判断的开机快照，答案里没带就退回它。
+  const can = (got && typeof got.can_update === "boolean")
+    ? got.can_update
+    : !!(META && META.app_can_update);
+  INSTALL_CAN = can;
+  btn.hidden = !behind;
+  // 从源码目录跑的那一份没有可替换的 app/：按钮照样摆出来（玩家得知道新版
+  // 存在），但按不动，鼠标停上去说明为什么；藏起来会让人以为功能没做。
+  btn.disabled = !can;
+  btn.title = can
+    ? "下载新版并换掉这一份，装好会自己重新打开"
+    : "这一份是从源码目录跑的，没有装好的程序可以替换";
+}
+
+// 进度条读的是 job 槽（`/api/job?key=update`），和读数据文件那根是同一个机制：
+// 数字是后端真的走了多少字节，不是定时器编出来的。 失败时服务端把原因写在
+// job.error 上，这里原样说出来，一句「装失败了」等于让玩家自己猜。
+//
+// 一次问一次，不自己循环：`installPoll` 回答 "again" / "done" / "fail"，由
+// `watchInstall` 决定还问不问。 这样「问一次」是能被单独驱动的一步，而不是
+// 一个只能整段跑完的黑盒。
+function installPoll(state) {
+  const bar = state.bar;
+  const btn = state.btn;
+  const host = state.host;
+  return api("/api/job?key=" + encodeURIComponent("update"))
+    .then((r) => (r && r.job) || null, () => null)
+    .then((j) => {
+      // 服务端把替换交给独立进程、然后这一份会自己退出：从那一刻起 `/api/job`
+      // 就问不到了。 连续问不到不是失败，是正在换文件（换完这个窗口就不在了）。
+      if (!j || !j.known) {
+        state.blind += 1;
+        return state.blind >= 24 ? "done" : "again";
+      }
+      state.blind = 0;
+      const seq = j.seq || 0;
+      // 第一答若是「已结束」，那是上一次运行的 100%，不能画给这一次。
+      if (state.want === null) state.want = j.running ? seq : seq + 1;
+      if (seq < state.want) return "again";
+      const pct = Math.max(0, Math.min(100, j.percent || 0));
+      bar.fill.style.width = pct + "%";
+      bar.label.textContent = (j.label ? j.label + " " : "") + Math.round(pct) + "%";
+      if (j.error) {
+        host.hidden = true;
+        if (btn) btn.disabled = false;
+        toast("没装成：" + j.error, "bad");
+        return "fail";
+      }
+      if (j.running) return "again";
+      // 装好之后这一份会自己关掉再打开：说清楚，别让玩家以为它崩了。
+      bar.fill.style.width = "100%";
+      bar.label.textContent = "装好了，正在重新打开";
+      toast("新版已经装好，这个窗口马上会自己重新打开", "ok");
+      return "done";
+    });
+}
+
+// 正在进行的那一次安装。 提出来放在这里，是为了「问一次」能被单独驱动：
+// 页面自己靠 setTimeout 连问，测试里没有真的时钟，只能一拍一拍地问。
+let INSTALL = null;
+
+function installTick() {
+  if (!INSTALL) return Promise.resolve("idle");
+  return installPoll(INSTALL).then((next) => {
+    if (next === "again") setTimeout(installTick, 250);
+    return next;
+  });
+}
+
+async function installUpdate() {
+  const btn = $("#about-install");
+  const host = $("#about-install-bar");
+  if (!INSTALL_CAN && !(META && META.app_can_update)) {
+    toast("这一份是从源码目录跑的，没有装好的程序可以替换；自动更新只在装好的那一份里能用", "bad");
+    return false;
+  }
+  if (btn) btn.disabled = true;
+  if (host) { host.innerHTML = ""; host.hidden = false; }
+  const bar = jobBar(host, "正在准备");
+  let started = null;
+  try {
+    started = await api("/api/update-install", {});
+  } catch (e) {
+    if (host) host.hidden = true;
+    if (btn) btn.disabled = false;
+    toast(e.message, "bad");
+    return false;
+  }
+  if (!started || started.ok !== true || !started.started) {
+    const why = (started && started.error) || "更新没能开始";
+    if (host) host.hidden = true;
+    if (btn) btn.disabled = false;
+    toast(why, "bad");
+    return false;
+  }
+  INSTALL = { bar: bar, btn: btn, host: host, want: null, blind: 0 };
+  const next = await installTick();
+  return next !== "fail";
+}
+
 // own wording: that one asks whether the GAME's data moved under an installed
 // mod, this one asks whether the TOOL itself has a newer build.  A player can be
 // in either state independently, and printing one number in the other's sentence
 // is the exact bug the two routes exist to make impossible.
 //
-// It never installs and never blocks: `behind` is a sentence with the address to
-// go and get it, because a tool that replaces its own folder is a tool that has
-// to trust that folder.
+// Asking and installing are two functions on purpose.  This one only reads a
+// number and a list of sentences; it runs on every boot and must never touch the
+// disk.  `installUpdate()` below is the one that writes 30 MB, and it only runs
+// when the player presses the button that appears next to 「有新版」.
 async function versionCheck(force) {
   const line = $("#about-update");
   const btn = $("#about-check");
@@ -7598,6 +7745,9 @@ async function versionCheck(force) {
     got = null;
   }
   if (btn) btn.disabled = false;
+  // 装新的那颗按钮只在「有新版」且这一份确实是装好的副本时出现：从源码目录跑
+  // 的那一份没有可以替换的 app/，按下去只会得到一句解释。
+  drawInstall(got);
   // 远端那一段先收起来：上一次按出来的「新版改了什么」不能留在这一次没有新版的
   // 答案下面，否则屏幕会同时说「已经是最新的」和「新版改了这些」。
   drawChanges($("#about-remote"), [], $("#about-remote-head"), "新版本改了什么");
