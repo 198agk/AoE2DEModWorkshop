@@ -2602,12 +2602,17 @@ body.dragging-row, body.dragging-row * { cursor: grabbing !important; user-selec
     user-select: none; -webkit-user-select: none;
   }
   #editor .edrow:hover { background: var(--panel-3); }
-  /* 多选: outlined, not filled, so it can sit next to `.on` without either
-     class erasing the other.  `outline-offset: -1px` keeps the border inside
-     the row, where `overflow: hidden` on the list cannot clip it. */
+  /* 多选: every picked row wears the SAME green the open row does.
+     It used to be a 1 px `--accent-line` outline, which is 6 % of a pixel of
+     contrast against `--panel-2` on a 1264 px window: a Shift+clicked range of
+     six rows looked like one selected row and five plain ones, and the player
+     could not tell whether the range had landed at all (reported 2026-11-18,
+     verbatim: 「多选的不明显，一个全绿色，别的都没有，我都不知道是选中了还是没选中」).
+     The open row keeps a darker left bar so the pane still says which record
+     the field list belongs to. */
   #editor .edrow.picked {
-    outline: 1px solid var(--accent-line);
-    outline-offset: -1px;
+    background: var(--accent-soft);
+    box-shadow: inset 3px 0 0 var(--accent-line);
   }
   #editor .edpickbar {
     display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
@@ -2617,6 +2622,9 @@ body.dragging-row, body.dragging-row * { cursor: grabbing !important; user-selec
     background: var(--accent-soft);
     box-shadow: inset 3px 0 0 var(--accent);
   }
+  /* A hovered row that is also picked must stay green: `:hover` is declared
+     above and would otherwise repaint the fill with `--panel-3`. */
+  #editor .edrow.picked:hover { background: var(--accent-soft); }
   #editor .edrow img { width: 26px; height: 26px; flex: none; image-rendering: pixelated; }
   #editor .edrow .blank {
     width: 26px; height: 26px; flex: none; display: grid; place-items: center;
@@ -9342,6 +9350,14 @@ async function loadEditor(more, keepPane) {
   }
   if (target) {
     EDSEL = { kind: target.kind, id: target.id };
+    // The row the pane opens on is on screen as a selected row, so it is the
+    // anchor a Shift+click measures from.  Without this line that green row was
+    // not part of the selection at all: click it, Shift+click six rows down, and
+    // the range started from the SECOND click and selected one row, while the
+    // screen showed a green row above it that looked like the start of the range
+    // (reported 2026-11-18).  `EDPICK` is deliberately NOT seeded -- an unasked
+    // selection that Delete would act on is worse than an anchor.
+    EDANCHOR = { kind: target.kind, id: target.id };
     for (const row of box.children) {
       if (row.dataset && row.dataset.id === String(target.id)) {
         row.className += " on";
@@ -9412,9 +9428,18 @@ function edPick(r, row, ev) {
   // manager does it.  Without an anchor the range is the one row.
   if (shift) {
     const a = EDANCHOR || { kind: r.kind, id: r.id };
-    const from = EDROWS.findIndex(x => x.kind === a.kind && x.id === a.id);
-    const to = EDROWS.findIndex(x => x.kind === r.kind && x.id === r.id);
-    if (from >= 0 && to >= 0) {
+    // The anchor can be GONE -- a search, a tab switch, or a page of 400 rows
+    // replaced by a different 400 -- and the old code then did nothing at all:
+    // no range, no message, a Shift+click that looks like a broken click.  Fall
+    // back to the last picked row that is still in the list, and to the row
+    // under the pointer if none is: a range always lands somewhere the player
+    // can see.
+    const at = (p) => EDROWS.findIndex(x => x.kind === p.kind && x.id === p.id);
+    let from = at(a);
+    if (from < 0) for (let i = EDPICK.length - 1; i >= 0 && from < 0; i -= 1) from = at(EDPICK[i]);
+    const to = at({ kind: r.kind, id: r.id });
+    if (to >= 0) {
+      if (from < 0) from = to;
       const lo = Math.min(from, to), hi = Math.max(from, to);
       EDPICK = EDROWS.slice(lo, hi + 1).map(x => ({ kind: x.kind, id: x.id }));
       edPaintPicked();
@@ -9797,6 +9822,10 @@ async function loadTable(more) {
   const target = keep ? rows.find(r => r.index === EDSEL.index) : rows[0];
   if (target) {
     EDSEL = { kind: EDKIND, index: target.index };
+    // Same rule as the entity list: the open row is the anchor.  `kind` is the
+    // table's own name here and `id` is its index, which is what `EDROWS` calls
+    // the record in this list.
+    EDANCHOR = { kind: EDKIND, id: target.index };
     for (const row of box.children) {
       if (row.dataset && row.dataset.index === String(target.index)) {
         row.className += " on";
