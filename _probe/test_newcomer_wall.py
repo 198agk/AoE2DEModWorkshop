@@ -178,11 +178,20 @@ def main():
     if os.path.isfile(readme):
         txt = io.open(readme, encoding="utf-8").read()
         check("it is in Chinese", has_cjk(txt))
-        # The four things a newcomer needs before anything else: the absolute
-        # python (PATH holds a Store stub), the entry point, the dropdown, and
-        # the fact that a mod has to be CHOSEN before the match starts.
-        check("it gives the absolute python path", "dependencies\\python\\python.exe" in txt)
-        check("it names the entry point", "tools\\run_ui.py" in txt)
+        # What a newcomer needs before anything else: where the download is,
+        # that this checkout is source rather than the thing to double-click,
+        # the dropdown, and the fact that a mod has to be CHOSEN before the
+        # match starts.
+        #
+        # 2026-11-18 the owner cut the "double-click 启动模组工坊.cmd" pitch out
+        # of the README on the grounds that the repository publishes source and
+        # the front door is the release exe.  The launcher itself still exists
+        # and is still checked further down this file -- it is just no longer
+        # what the README sells, so nothing here may pin it any more.
+        check("it points at the release download", "releases/latest" in txt)
+        check("it names the build a reader should open", "aoe2-mod-workshop.exe" in txt)
+        check("it says the repository is source, not the thing to run",
+              "源码" in txt and "不是给人拿去跑的东西" in txt)
         check("it names the dropdown that actually exists", "创建游戏" in txt)
         check("it warns the mods screen is not that place", "不是「模组」界面" in txt)
         # The count in this name has been wrong for one intent already (13 when the
@@ -222,8 +231,16 @@ def main():
               "还没被一局游戏画出来过" not in txt)
         check("...and it says the icon was drawn in a real game, on a split build",
               "已经在一局真游戏里画出来过" in txt and "两个 mod" in txt)
-        check("it tells the newcomer to double-click the launcher",
-              "启动模组工坊.cmd" in txt)
+        check("it sends the newcomer to the installer, not the launcher",
+              "setup.exe" in txt)
+        # The line about who wrote the code.  It used to read like a pitch
+        # ("全部由 AI 写 ... 人负责定方向"); the owner called that AI-flavoured on
+        # 2026-11-18 and asked for the plain version.  Pin the plain one and pin
+        # the pitch out, so it cannot creep back.
+        check("it says the software was built with AI, and names the model",
+              "借 AI 开发" in txt and "Deepseek-V4.1-Flash" in txt)
+        check("...without the pitch it used to open with",
+              "全部由 AI 写" not in txt)
 
     # The double-click launcher.  Measured 2026-10-24: a .cmd whose own text
     # contained Chinese, written as UTF-8 and started under "chcp 65001", had
@@ -258,15 +275,18 @@ def main():
               and _tail.index("pause") > _tail.index('if not "%RC%"=="0" ('),
               "the pause after the run is not inside the failure branch")
 
-    # The window.  2026-10-25: `tools/run_ui.py` opens a native window when
-    # pywebview is importable, and falls back to a browser tab otherwise.  Two
-    # things must be true of the front door: the README says a window appears,
-    # and it says what happens when one cannot.
+    # The install section.  2026-10-25 the README promised a native window and
+    # spelled out the --window / --browser fallback; 2026-11-18 the owner had
+    # every "run it out of the checkout" instruction cut, so those two
+    # sentences are gone by design and pinning them would pin the deletion
+    # back in.  What a reader still has to be told is where the installer puts
+    # the thing and that it asks for no administrator -- an unexpected UAC
+    # prompt is where people stop.
     if os.path.isfile(readme):
-        check("the README says the workshop opens in a window",
-              "一个窗口里" in txt)
-        check("and it says the fallback out loud",
-              "退回浏览器" in txt and "--window" in txt and "--browser" in txt)
+        check("the README says where the installer puts it",
+              "%LOCALAPPDATA%" in txt)
+        check("and that it asks for no administrator",
+              "不需要管理员权限" in txt)
 
     print()
     print("=== H. the 能做的事 list does not promise what no sentence can ask")
