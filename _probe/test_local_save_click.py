@@ -70,7 +70,13 @@ def main():
         with sync_playwright() as pw:
             b = pw.chromium.launch()
             pg = b.new_page(viewport={"width": 1237, "height": 1000})
-            pg.goto("http://127.0.0.1:%d/" % PORT, wait_until="networkidle")
+            # NOT "networkidle".  The screen parks a long poll on
+            # /api/live?since= so a second window sees a write without a
+            # reload; that request is open for as long as nobody edits, so
+            # network idle never arrives.  Measured 2026-11-18: this goto
+            # timed out at 30 s against a page that was drawing fine, while
+            # the same error is written up in _probe/test_live_panel.py:31-35.
+            pg.goto("http://127.0.0.1:%d/" % PORT, wait_until="domcontentloaded")
             pg.wait_for_timeout(2500)
             pg.click("#nav-lang")
             pg.wait_for_timeout(1200)
