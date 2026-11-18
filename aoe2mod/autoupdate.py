@@ -58,6 +58,14 @@ ROOT_FILES = ("AoE2 DE Mod Workshop.exe", "WebView2Loader.dll", "README.txt")
 CHUNK = 256 * 1024
 JOB_KEY = "update"
 
+#: How many byte ranges at once.  The mirror throttles every connection to about
+#: 70 KB/s no matter how big it is, so one stream means eight minutes for the
+#: 29 MB update and six mean about one (measured 2026-11-18 on gh-proxy.com:
+#: 132 KB/s single, 432 KB/s aggregate with six).  This is only ever an
+#: accelerator: a server that ignores ``Range`` answers 200 and the plain single
+#: stream takes over.
+STREAMS = 6
+
 #: One update at a time.  Two threads writing the same ``_update`` folder is a
 #: state no test can make sense of, and a second press of the button during a
 #: 290 MB download is a thing players do.
@@ -73,6 +81,16 @@ def install_root(start=None):
     dev tree -- where ``run_ui.py`` starts from the repository -- answers
     ``None`` on purpose: there is no packaged copy to replace there, and
     guessing would download 290 MB into the source tree.
+
+    Two shapes count as an install, because both are shipped: the sealed one,
+    whose ``app/runtime/manifest.json`` the licence gate reads on every start,
+    and the plain synced one that ``sync_app_package.py`` leaves in the
+    working bundle (``app/aoe2mod`` plus ``app/tools/run_ui.py``, no
+    ``app/runtime`` at all).  Requiring the manifest alone made every copy of
+    the second shape answer「这一份是从源码目录跑的」, which is a lie: the
+    folder was a real, complete, replaceable one.  What actually tells the two
+    apart is ``app/`` itself -- the repository has never had one at its root,
+    and the engine never runs from a repository that has.
     """
     here = os.path.abspath(start or os.getcwd())
     cands = []
@@ -83,8 +101,11 @@ def install_root(start=None):
     cands.append(os.path.dirname(here))
     for root in cands:
         app = os.path.join(root, "app")
-        if (os.path.isfile(os.path.join(app, "runtime", "manifest.json"))
-                and os.path.isdir(os.path.join(app, "aoe2mod"))):
+        if not os.path.isdir(os.path.join(app, "aoe2mod")):
+            continue
+        sealed = os.path.isfile(os.path.join(app, "runtime", "manifest.json"))
+        synced = os.path.isfile(os.path.join(app, "tools", "run_ui.py"))
+        if sealed or synced:
             return root
     return None
 
@@ -161,14 +182,14 @@ def release(timeout=UPD.TIMEOUT, opener=None):
                       "fallback": PROXY + url}}
 
 
-def _download(url, dest, total=None, key=JOB_KEY):
-    """Stream one URL to ``dest``, reporting bytes as it goes."""
+def _stream(url, dest, size=None, key=JOB_KEY):
+    """One connection, front to back.  Returns how many bytes arrived."""
     import urllib.request
     from . import jobs as J
     req = urllib.request.Request(url, headers={"User-Agent": UPD.UA})
     got = 0
     with urllib.request.urlopen(req, timeout=60) as r:
-        size = int(total or r.headers.get("Content-Length") or 0)
+        size = int(size or r.headers.get("Content-Length") or 0)
         J.begin(key, "正在下载新版", size or 1)
         with open(dest, "wb") as fh:
             while True:
@@ -179,6 +200,91 @@ def _download(url, dest, total=None, key=JOB_KEY):
                 got += len(block)
                 J.update(key, min(got, size) if size else min(99, got // (1024 * 1024)))
     return got
+
+
+def _ranged(url, dest, size, key=JOB_KEY):
+    """Fetch ``size`` bytes into ``dest`` as parallel ranges.
+
+    True only when every range arrived whole.  A server that ignores ``Range``
+    (it answers 200 with the whole file) or a stream that stops early leaves
+    ``dest`` half-written and answers False, and the caller starts over in one
+    piece -- a partial file here would only be caught later by the sha256, and
+    paying eight minutes to learn that is worse than paying one.
+    """
+    import urllib.request
+    from . import jobs as J
+    step = (size + STREAMS - 1) // STREAMS
+    step = (step + 0xFFFF) // 0x10000 * 0x10000
+    spans = []
+    lo = 0
+    while lo < size:
+        hi = min(lo + step, size) - 1
+        spans.append((lo, hi))
+        lo = hi + 1
+    J.begin(key, "正在下载新版", size)
+    done = [0]
+    lock = threading.Lock()
+    trouble = []
+    with open(dest, "wb") as fh:
+        fh.truncate(size)
+
+    def part(lo, hi):
+        try:
+            req = urllib.request.Request(
+                url, headers={"User-Agent": UPD.UA,
+                              "Range": "bytes=%d-%d" % (lo, hi)})
+            with urllib.request.urlopen(req, timeout=60) as r:
+                if int(getattr(r, "status", 0) or 0) != 206:
+                    trouble.append("这个地址不按段给文件")
+                    return
+                at = lo
+                with open(dest, "r+b") as fh:
+                    fh.seek(lo)
+                    while at <= hi:
+                        block = r.read(min(CHUNK, hi - at + 1))
+                        if not block:
+                            break
+                        fh.write(block)
+                        at += len(block)
+                        with lock:
+                            done[0] += len(block)
+                            seen = done[0]
+                        J.update(key, min(seen, size))
+                if at != hi + 1:
+                    trouble.append("有一段没下完")
+        except Exception as exc:
+            trouble.append(str(exc)[:80])
+
+    threads = []
+    for lo, hi in spans:
+        one = threading.Thread(target=part, args=(lo, hi), daemon=True)
+        one.start()
+        threads.append(one)
+    for one in threads:
+        one.join()
+    if trouble or done[0] != size:
+        return False
+    try:
+        return os.path.getsize(dest) == size
+    except OSError:
+        return False
+
+
+def _download(url, dest, total=None, key=JOB_KEY):
+    """Stream one URL to ``dest``, reporting bytes as it goes.
+
+    Ranges in parallel first, because the mirror throttles each connection; the
+    single stream is both the fallback and the only thing a server that does not
+    honour ``Range`` will answer.
+    """
+    size = int(total or 0)
+    if size > 4 * 1024 * 1024 and STREAMS > 1:
+        try:
+            if _ranged(url, dest, size, key):
+                return size
+        except Exception:
+            pass
+    return _stream(url, dest, size, key)
 
 
 def _unpack(archive, into):
@@ -415,6 +521,27 @@ def wait_gone(fh, pids, seconds=WAIT_SECONDS):
     return False
 
 
+def drop(path):
+    """Delete a tree, clearing the read-only bit the zip and the old build set.
+
+    ``shutil.rmtree(..., ignore_errors=True)`` was not enough: a file whose
+    write bit is clear (zipfile does not restore it, and copy2 carries it along)
+    makes ``unlink`` fail with WinError 5, and ignoring the error leaves the old
+    ``app.old-<stamp>`` sitting next to the install forever.  Clearing the bit
+    first is the difference between one leftover folder per update and none.
+    """
+    if not os.path.isdir(path):
+        return
+    for dirpath, _dirnames, filenames in os.walk(path):
+        for n in filenames:
+            one = os.path.join(dirpath, n)
+            try:
+                os.chmod(one, 0o777)
+            except OSError:
+                pass
+    shutil.rmtree(path, ignore_errors=True)
+
+
 def copy_tree(src, dst):
     shutil.copytree(src, dst)
 
@@ -440,7 +567,7 @@ def put_tree(fh, src, dst):
             break
         except OSError as exc:
             say(fh, "复制 %s 失败：%s" % (dst, exc))
-            shutil.rmtree(dst, ignore_errors=True)
+            drop(dst)
             time.sleep(1.0)
     else:
         if moved:
@@ -451,7 +578,7 @@ def put_tree(fh, src, dst):
                 say(fh, "旧的也放不回来了：%s" % exc)
         return False
     if moved:
-        shutil.rmtree(old, ignore_errors=True)
+        drop(old)
     return True
 
 
@@ -526,7 +653,13 @@ def main(argv):
     if ok_app and ok_root:
         say(fh, "换好了")
         launch(fh, root, exe)
-        shutil.rmtree(os.path.dirname(os.path.abspath(logpath)), ignore_errors=True)
+        # 这一份的日志就在 _update 里，先把它关了再删：Windows 上删不掉打开着的文件，
+        # 于是 30 MB 的 stage 会一直留在玩家的安装目录里。
+        try:
+            fh.close()
+        except Exception:
+            pass
+        drop(os.path.dirname(os.path.abspath(logpath)))
         return 0
     say(fh, "没换完，请看上面哪一步卡住")
     shout("自动更新没有装成，日志在：\\n" + logpath +

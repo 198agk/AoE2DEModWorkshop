@@ -256,6 +256,21 @@ check("no leftover .old- copy of app/ is kept once the new one is in",
       not [n for n in os.listdir(INST) if n.startswith("app.old-")],
       [n for n in os.listdir(INST) if n.startswith("app.old-")])
 
+# The first real run left an `app.old-<stamp>` behind every time, because
+# `rmtree(ignore_errors=True)` met a file whose write bit was clear (zipfile
+# does not set one, and copy2 carries whatever it finds) and quietly gave up.
+# A leftover is not cosmetic: it is a whole second copy of the build, and the
+# next update would have had to move a folder that no longer fits.
+RO = tempfile.mkdtemp(prefix="aoe2mod-ro-")
+os.makedirs(os.path.join(RO, "deep", "deeper"))
+ONE = os.path.join(RO, "deep", "deeper", "locked.txt")
+with open(ONE, "w") as fh:
+    fh.write("locked")
+os.chmod(ONE, 0o444)
+NS["drop"](RO)
+check("an old tree is removed even when a file in it is read-only",
+      not os.path.isdir(RO), os.path.isdir(RO))
+
 
 # ---- 6. the applier is a script, not an import ----
 check("the applier is source text, so it survives the folder it replaces",

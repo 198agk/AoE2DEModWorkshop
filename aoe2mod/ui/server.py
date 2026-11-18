@@ -8986,6 +8986,19 @@ class App(object):
         """
         return self.tk.version_check(force=force)
 
+    def update_install(self):
+        """Download the newer build and leave a process behind to install it.
+
+        The write half of the same button, and the reason it is not a flag on
+        `version_check`: that one runs on every boot and must stay free, while
+        this one writes 30 MB to disk and then asks the shell to close and
+        reopen.  Answers at once with the job key -- the transfer reports
+        through `aoe2mod.jobs` under `update`, because a POST held open for
+        the length of a download is how a feature that works becomes one that
+        times out.
+        """
+        return self.tk.update_install()
+
     def repair_check(self, profile_root=None):
         """Which installed mods ship a `.dat` the game has since outgrown.
 

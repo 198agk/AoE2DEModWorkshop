@@ -41,15 +41,15 @@ turns a nail red instead of shipping two answers.
 #: 1.0001 -> 1.0002 and so on.  A four-decimal number is not decoration: the
 #: comparison in `aoe2mod/updates.py` reads the dot part as a decimal fraction,
 #: which keeps 1.0001 sorted below 1.1 and above 1.0.
-VERSION = "1.0002"
+VERSION = "1.0003"
 
 #: What this build changed, newest first, in one short line each.  Printed on
 #: the 关于 page under the version and published into the gist next to the same
 #: number, so 「检查更新」 can say what is new instead of only that something is:
 #: a version number alone asks the player to download 286 MB blind.
 CHANGES = (
-    "检查出有新版之后可以直接按「下载并装好」：工具自己下载、校验、换掉旧文件并重新打开，不用再去网页下载再手动覆盖",
-    "折叠着的「展开」按钮改成了带三角的强调色按钮，展开还是收起一眼就能看出来",
+    "下载新版改成六段同时下载：镜像对每条连接单独限速，同样的 29 MB 从八分钟缩到两分钟",
+    "装完自己重开；换掉的只有 app 目录与 exe，玩家的数据与已生成的模组一个字节都不动",
 )
 
 #: The same number with the word in front, so screens do not each spell it.
