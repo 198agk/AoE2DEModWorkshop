@@ -5114,9 +5114,9 @@ body.dragging-row, body.dragging-row * { cursor: grabbing !important; user-selec
       </div>
       <div class="body" id="mods"><div class="empty" data-i18n="mods.loading">读取中…</div></div>
       <div class="body mods-foot">
-        <div class="hint" data-i18n="mods.note">这些社区模组的旧数据文件，能在今天的数据上重做一遍。</div>
+        <div class="hint" data-i18n="mods.note">社区模组带的旧数据文件，能在今天的数据上重做一遍。</div>
         <div class="row" id="repair-bar">
-          <button id="btn-repair" class="chip" data-i18n="btn.repair">检查自带数据文件的模组</button>
+          <button id="btn-repair" class="chip" data-i18n="btn.repair">自检更新模组</button>
           <button id="btn-repair-all" class="chip hide" data-i18n="btn.repair_all">全部一键适配</button>
         </div>
         <div id="repair"></div>
@@ -8135,9 +8135,8 @@ async function adaptAll() {
 function drawRepairRoster(box, list) {
   box.innerHTML = "";
   box.appendChild(el("div", "hint",
-    "自带数据文件的模组 " + list.length + " 个。检查要把每个模组的数据文件读一遍，"
-    + "全部查完要等很久：先点掉不想等的（或按「全不选」清空再挑几个），"
-    + "再按「检查选中的」。"));
+    "有 " + list.length + " 个模组带着自己的数据文件。每个都要读一遍，慢："
+    + "先点掉不想等的，再按「检查选中的」。"));
   const pick = el("div", "cands");
   const chosen = {};
   for (const c of list) {
@@ -8225,7 +8224,7 @@ async function checkRepairs(only, skipRoster) {
     }
   }
   btn.disabled = true;
-  btn.textContent = "检查中…（每个模组要读一遍数据文件）";
+  btn.textContent = "自检中…";
   box.innerHTML = "";
   // A real bar, fed by the server: upgrade_check weighs every mod's .dat into
   // jobs.begin("upgrade") and the engine reports its own stage boundaries.  No
@@ -8246,7 +8245,7 @@ async function checkRepairs(only, skipRoster) {
     const got = await api("/api/upgrade-check" + onlyQuery);
     const rows = got.mods || [];
     if (!rows.length) {
-      box.appendChild(el("div", "hint", "没有自带数据文件的模组。"));
+      box.appendChild(el("div", "hint", "没有带数据文件的模组。"));
     } else {
       const ready = rows.filter(r => r.verdict === "mergeable"
                                      || r.verdict === "conflicts").length;
@@ -8254,7 +8253,7 @@ async function checkRepairs(only, skipRoster) {
                                    || r.verdict === "identical").length;
       const no = rows.filter(r => r.verdict === "impossible").length;
       const scope = (only && only.length)
-        ? ("查了 " + rows.length + " 个") : ("自带数据文件的模组 " + rows.length + " 个");
+        ? ("查了 " + rows.length + " 个") : ("模组 " + rows.length + " 个");
       box.appendChild(el("div", "hint",
         scope + "：能一键适配 " + ready
         + " 个，本来就是新版 " + now + " 个"
@@ -8286,7 +8285,7 @@ async function checkRepairs(only, skipRoster) {
     // drawn it would sit above them reading 100 % forever.
     if (barHost.remove) barHost.remove();
     btn.disabled = false;
-    btn.textContent = "检查自带数据文件的模组";
+    btn.textContent = "自检更新模组";
   }
 }
 // ---- AI as one more way to WRITE, never a way around the checks ----------

@@ -41,14 +41,14 @@ turns a nail red instead of shipping two answers.
 #: 1.0001 -> 1.0002 and so on.  A four-decimal number is not decoration: the
 #: comparison in `aoe2mod/updates.py` reads the dot part as a decimal fraction,
 #: which keeps 1.0001 sorted below 1.1 and above 1.0.
-VERSION = "1.0004"
+VERSION = "1.0005"
 
 #: What this build changed，一行一件，用玩家看得懂的话写。 印在 关于 页的版本
 #: 下面，也发进 gist 的同号旁边，让「检查更新」能说出新在哪儿，而不是只报一个号码。
 #: 只写改了什么都别写怎么改的：玩家要知道值不值得装，不需要读实现。
 CHANGES = (
-    "关于页加了完整更新日志，以前每一版改了什么都能翻到",
-    "更新内容只写改了什么、加了什么功能",
+    "模组页那颗按钮改叫「自检更新模组」：查你装的旧模组还能不能搬到今天的数据上",
+    "图文教程重写：每一节先给图，再给三五行字，另加了挑 dat 和自检两节",
 )
 
 #: The same number with the word in front, so screens do not each spell it.

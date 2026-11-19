@@ -1,4 +1,4 @@
-﻿; 模组工坊 安装包脚本（Inno Setup 6）
+; 模组工坊 安装包脚本（Inno Setup 6）
 ; 用法：ISCC.exe _probe\installer\aoe2mod.iss
 ; 装到 %LOCALAPPDATA%\Programs\AoE2ModWorkshop，不要管理员权限 —— 这个工具会往
 ; 自己目录旁边写 log\ 和 _mods_out\，装进 Program Files 之后那些写入会被拦。
@@ -10,7 +10,7 @@
 ; 只有 Rust 那两个 manifest 用三段式：cargo 明确拒绝 `1.0001`（invalid leading
 ; zero in minor version number），它们拿的是派生出来的 SEMVER。
 #ifndef AppVer
-  #define AppVer "1.0004"
+  #define AppVer "1.0005"
 #endif
 ; 仓库根不写死：这个脚本就住在 <repo>\_probe\installer\，往上两级就是它。
 ; 换机器/换盘符不用改文件；要指到别处就 ISCC.exe /DRepoDir=D:\path\repo aoe2mod.iss

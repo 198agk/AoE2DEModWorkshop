@@ -976,7 +976,7 @@ const sandbox = {
       return { json: async () => UPGRADE_ANSWER };
     }
     // The roster route: one directory walk, no .dat opened.  It is what the
-    // FIRST press of 检查自带数据文件的模组 asks, so the chip list is drawn
+    // FIRST press of 自检更新模组 asks, so the chip list is drawn
     // before anything is parsed.  Left empty by default, because the other
     // checks drive the check directly and a roster in their way would mean they
     // test the roster instead.
@@ -2336,7 +2336,7 @@ function repairChecks() {
     // The count comes first: twenty rows with no "2 of them can be carried
     // forward here" makes the player read all twenty to find out.
     check("the upgrade box says how many it can carry forward",
-          flat.indexOf("自带数据文件的模组 4 个") >= 0
+          flat.indexOf("模组 4 个") >= 0
             && flat.indexOf("能一键适配 2 个") >= 0, flat);
     // The archive line is the reason the tool can answer at all: without it the
     // only thing it could say is "this file differs from the shipped one".

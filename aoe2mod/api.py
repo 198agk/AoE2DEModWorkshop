@@ -7165,7 +7165,7 @@ class Toolkit(object):
                 weights.append(max(1, int(os.path.getsize(row["dat"]))))
             except OSError:
                 weights.append(1)
-        J.begin("upgrade", "检查自带数据文件的模组", sum(weights) or 1)
+        J.begin("upgrade", "自检更新模组", sum(weights) or 1)
         walked = 0
         rows = []
         for target_no, row in enumerate(targets):
