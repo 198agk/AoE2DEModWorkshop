@@ -1,0 +1,155 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>模组工坊 · 图文介绍与教程</title><style>
+body{margin:0;background:#f5f7f8;color:#1e2528;font:16px/1.85 -apple-system,"Segoe UI","Microsoft YaHei",sans-serif}
+main{max-width:920px;margin:0 auto;padding:48px 28px 96px;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.06)}
+h1{font-size:34px;line-height:1.3;margin:0 0 8px}
+h2{font-size:24px;margin:52px 0 14px;padding-top:18px;border-top:1px solid #e6ebee}
+h3{font-size:19px;margin:32px 0 10px}
+h4{font-size:17px;margin:24px 0 8px}
+p,li{color:#2b3438}
+img{max-width:100%;display:block;margin:18px 0;border:1px solid #e2e8ec;border-radius:8px}
+blockquote{margin:18px 0;padding:10px 18px;border-left:3px solid #2dd4bf;background:#f2fbfa;color:#3a464a}
+code{background:#f0f3f5;padding:2px 6px;border-radius:4px;font:13px/1.6 Consolas,monospace;color:#0f766e}
+pre{background:#0f1720;color:#e6edf3;padding:16px 18px;border-radius:8px;overflow:auto}
+pre code{background:none;color:inherit;padding:0;font-size:13.5px}
+table{width:100%;border-collapse:collapse;margin:16px 0;font-size:15px}
+th,td{border:1px solid #e2e8ec;padding:8px 12px;text-align:left;vertical-align:top}
+th{background:#f6f9fa;font-weight:600}
+hr{border:0;border-top:1px solid #e6ebee;margin:36px 0}
+a{color:#0d9488}
+</style></head><body><main><h1>模组工坊 · 图文介绍与上手教程</h1>
+<blockquote><p>用一句中文，改一份数据，生成一个能装进游戏的模组。<br>本文对着真实界面截图走一遍：从解压到进游戏看到效果，大约二十分钟。</p></blockquote>
+<p><img alt="首页" src="screenshots/home.png"></p>
+<hr>
+<h2>一、这是什么</h2>
+<p>《帝国时代 2 决定版》的数值全靠一个二进制文件撑着：<code>resources/_common/dat/empires2_x2_p1.dat</code>。 单位多少血、走多快、一箭射多远、造一个要几块木头，全在这一个文件里，几万个数字挨在一起，改错一个字节游戏就打不开。</p>
+<p>模组工坊把这个文件变成能看懂的东西：<strong>你写中文，它告诉你这句话对应哪个单位的哪个字段、原来多少、改成多少、动了几个字节，然后再替你写成模组。</strong></p>
+<p>它不碰游戏本体。所有改动都写在这份 .dat 的副本上，装成模组放进游戏的 mods 目录，卸载就是删一个文件夹。</p>
+<table><thead><tr><th>你能做的事</th><th>怎么说</th></tr></thead><tbody><tr><td>改数值</td><td>「村民血量改成 1000」</td></tr><tr><td>改攻击护甲</td><td>「步弓手对骑兵攻击加 2」</td></tr><tr><td>改造价</td><td>「弓箭手木材成本加 10」</td></tr><tr><td>改科技</td><td>「织布机研究时间减 5」</td></tr><tr><td>造新东西</td><td>「照织布机做一个新科技，叫铁匠学徒的手艺」</td></tr><tr><td>换造型</td><td>「把村民的样子换成步弓手」</td></tr><tr><td>管命令卡</td><td>「把民兵挪到第 5 格」</td></tr></tbody></table>
+<p>一共 15 类意图，一句话里可以叠好几件事。先把「能做的事」这一页翻一遍，就知道边界在哪：</p>
+<p><img alt="能做的事" src="screenshots/intents.png"></p>
+<p>每张卡片右下角都有一个「用这句」，点一下句子就填进首页的输入框，改两个数字就能用。第一次不知道怎么说，就从这里抄。</p>
+<hr>
+<h2>二、装好，然后进游戏选一次</h2>
+<p>去 <a href="https://github.com/198agk/AoE2DEModWorkshop/releases/latest">Releases</a> 下最新的包，两个都行：</p>
+<table><thead><tr><th>文件</th><th>怎么用</th></tr></thead><tbody><tr><td><code>AoE2DEModWorkshop-1.0004-setup.exe</code></td><td>双击，下一步。装到 <code>%LOCALAPPDATA%\Programs\AoE2ModWorkshop</code>，不需要管理员权限</td></tr><tr><td><code>AoE2DEModWorkshop.zip</code></td><td>解压到任意位置，双击目录里的 <code>AoE2 DE Mod Workshop.exe</code></td></tr></tbody></table>
+<p>自带 Python 3.12，不用另装环境。卸载在「设置 → 应用」里，或者直接删掉解压出来的那个文件夹。</p>
+<p><strong>装好之后还有一步，很多人卡在这里：</strong> 打开游戏 → 单人游戏 → 创建游戏 → 在设置画面里找到「数据模组：」这一项，从下拉框里挑本软件生成的那个。</p>
+<p>它不是「模组」界面里的开关，在那边找是找不到的。换一个模组要回这里重选一次。</p>
+<hr>
+<h2>三、第一次打开：屏幕上都是什么</h2>
+<p>左边一条竖栏是导航，一共十页，右边是当前这一页。</p>
+<p><img alt="模组列表" src="screenshots/mods.png"></p>
+<p>先看「模组」页，因为它管着「你现在到底在改哪一份数据」。</p>
+<ul><li><strong>选择要修改的数据文件</strong>：点「展开」。这里显示当前吃哪一份 .dat。一个改数据的模组都没启用，游戏读的就是「游戏本体」那一份，也就是游戏安装目录里的原始文件。</li><li><strong>官方数据档案库</strong>：点「展开」。软件自带 54 份官方历史数据，从 2019-10-18 的 6.6 到 2026-10-27 的 8.9，横跨 11 代记录格式。游戏打完补丁、你的模组读不动了，就是靠这里回退和适配。</li><li><strong>改模组的名字和简介</strong>：点「展开」。改的是 <code>info.json</code>，文件夹名不动。</li><li><strong>列表本体</strong>：左边名字，右边开关。<strong>按住一条往上下拖就能换加载顺序</strong>，越靠上越先加载，改同一处数据时上面那个赢。</li></ul>
+<p>开关是绿的就在生效，灰的就是关掉。改数值之前先确认这一页是对的：后面所有「为什么游戏里没变化」，几乎都能在这里找到答案。</p>
+<hr>
+<h2>四、教程一：一句话把村民血量改成 1000</h2>
+<p>这是最短的一条路，走完你就明白整个软件的节奏。</p>
+<h3>第 1 步：写句子</h3>
+<p>回「主页」。输入框里的灰字是例子，直接照着写。规矩只有一条：<strong>一句话一条，用「。」或者换行分开。</strong></p>
+<pre><code>村民血量改成 1000
+射手射程提高 20%
+织布机研究时间减 5</code></pre>
+<p>不知道怎么写可以点「填表」，它问你单位叫什么、改哪一项、改成多少，拼出一句给你；也可以点「看着选」，从列表里挑。</p>
+<h3>第 2 步：点「读一下」</h3>
+<p><strong>这一步不改任何文件。</strong> 它只是把你的话翻译成「哪个表、哪一条、哪个字段、从多少到多少」，然后摆给你看：</p>
+<p><img alt="读一下之后的预览" src="screenshots/parse.png"></p>
+<p>每一条改动都长这样，一行一项信息：</p>
+<ul><li>第一行是你原话，第二行是它读出来的意思（<code>村民 生命值 =1000</code>）</li><li>小标签写着改的是<strong>单位</strong>还是<strong>科技</strong></li><li><code>生命值 25 → 1000</code>：原值和新值</li><li><code>范围 Gaia、不列颠、法兰克、哥特 等 63 个</code>：这条改动会落到 63 份文明拷贝上，因为游戏里每个文明各存一份单位数据</li><li><code>1701 处改动（27 条记录 × 63 个文明）</code>：实际要动的字段数</li><li><code>写入 resources/_common/dat/empires2_x2_p1.dat</code>：写到哪个文件</li></ul>
+<p>如果它读错了，会当场说出来。比如 <code>射手射程提高 20%</code> 这一句：</p>
+<blockquote><p>「射手」不是出厂单位名，按最接近的「骑射手」读；要别的可以换一个名字</p></blockquote>
+<p>它不会猜完了装作没猜。名字对不上、数值超出范围、这句话根本改不了，都会在这一步拦住你，一个字节都不会写进磁盘。</p>
+<h3>第 3 步：确认没问题，点「生成并安装」</h3>
+<p>预览下面有三个框：</p>
+<ul><li><strong>模组名字</strong>：游戏里显示的名字，最多 100 字节</li><li><strong>作者</strong>：模组界面里显示的，留空就写 <code>dsh</code></li><li><strong>简介</strong>：模组界面里那段说明，可以留空</li></ul>
+<p>然后点「生成并安装」。它把这批改动打进<strong>一个</strong>模组，写进 <code>mods/local</code>，再在游戏的开关列表里替你打开。</p>
+<blockquote><p>为什么是「一个」：如果两句话改的是同一条数据，分成两个模组会互相覆盖，只有一个生效。所以一批相关的改动就一起生成。</p></blockquote>
+<h3>第 4 步：进游戏</h3>
+<p>按第二节说的，在「创建游戏 → 数据模组」里选中它。开一局，村民 1000 血。</p>
+<p>不满意就回来改数字、再生成一次；想撤掉就在「模组」页把开关关掉。</p>
+<hr>
+<h2>五、教程二：一句话换一个造型</h2>
+<p>数值在 <code>.dat</code> 里，造型不在。单位长什么样在 <code>resources/_common/drs/graphics/*.sld</code> 里，工坊会把它们做成一堆松散文件放进模组，游戏优先读模组里的那一份。</p>
+<pre><code>把村民的样子换成步弓手</code></pre>
+<p>「读一下」之后你会看到它写的是「松散 .sld」而不是 .dat。生成出来的模组会带上对应的图形文件，装好之后村民站着就是步弓手的动作。</p>
+<p>想用<strong>自己画的图</strong>也行：</p>
+<pre><code>给村民换图片 我的图.png</code></pre>
+<p>路径写你本机的位置。它会按目标图形的帧数、尺寸、锚点检查一遍，尺寸不对会直接告诉你哪一帧对不上，而不是生成一个进游戏变成白块的模组。</p>
+<hr>
+<h2>六、教程三：用编辑器一个字段一个字段地改</h2>
+<p>一句话适合「我知道我要什么」。要翻家底、要看全部数字，用「编辑器」。</p>
+<p><img alt="全字段编辑器" src="screenshots/editor.png"></p>
+<h3>页面结构</h3>
+<ul><li><strong>顶部一排页签</strong>：单位、科技、效果、图形、音效、地形、通行、颜色、单位任务、文明、地图块、全局数值、科技树，13 个。每个页签对应 .dat 里的一个数组。</li><li><strong>左上角下拉</strong>：按文明筛。选「不列颠」就只看不列颠那一份。</li><li><strong>中间那个框</strong>：按名字或编号过滤。右边一组按钮切「按编号 / 最新的在前」，最右边是数据来源（默认「游戏本体」）。</li><li><strong>左边列表</strong>：挑一条。右上角的 <code>400 / 1651</code> 是当前筛出来多少条、一共多少条。</li><li><strong>右边</strong>：这一条的全部字段。</li></ul>
+<h3>怎么改</h3>
+<p>拿民兵举例，右边从上到下是：</p>
+<ol><li><strong>头图 + 名字 + 一段说明</strong>：<code>编号 74 · 按 不列颠 显示 · 改全部 63 个文明 · 类型码 70 · 1001 字节 · 434 个字段</code></li><li><strong>一排快捷按钮</strong>：有关的东西、记录本身、换图标、看动画、哪些科技用它、0 和 -1</li><li><strong>字段分组</strong>：全部 434、基础 19、战斗 54、移动与视野 17、生产与造价 30、任务与行为 224、投射物与蓄力 14、建造 6、尸体与采集物 28、图形与音效 35、其他字段 7</li><li><strong>常改的</strong>：生命值、攻击加成值、护甲值、移动速度、视野、造价数量、训练时间，点一下直接跳到那几个字段</li><li><strong>字段表</strong>：项目、字段名、现在、改成</li></ol>
+<p>改法就是把「改成」那一列的数字改掉。<strong>只读字段</strong>（比如类型码、编号）旁边写着「只读」，点不动，改了会让整条记录解析错位。</p>
+<h3>两个容易踩的地方</h3>
+<p><strong>「全部 63 个文明」还是「只改 不列颠」</strong></p>
+<p>同一份数据在文件里存了 63 份，每个文明一份。右上角有「全部 63 个文明 / 只改 不列颠」这个开关：</p>
+<ul><li>选「全部」：所有文明一起改</li><li>选「只改」：只改当前筛出来的那个文明</li></ul>
+<p>你只想让不列颠的民兵变强，就得切到「只改 不列颠」。</p>
+<p><strong>改完要点「保存全部改动」</strong></p>
+<p>编辑器里的改动先攒在内存里，右上角那个绿按钮才是真正写盘。没保存就关窗口，那些改动就没了。<code>Ctrl+Z</code> 撤回，旁边的「放弃」丢掉这一整轮。</p>
+<p>保存的时候它会：先给原文件留一份备份（在 <code>log</code> 文件夹里），再改，改完校验一遍，再写成模组。救不回来的一律不写。</p>
+<hr>
+<h2>七、教程四：把单位挪到命令卡另一格</h2>
+<p>「命令面板」这一页管的是游戏里那个建造、训练按钮面板。</p>
+<p><img alt="命令面板" src="screenshots/card.png"></p>
+<ul><li>左上角先选<strong>是哪个建筑的面板</strong>，比如「兵营（12）」</li><li>右上角选<strong>改哪个文明</strong>，默认「全部文明（整个 .dat）」</li><li>下面一行告诉你正在改哪个文件，以及它的完整路径</li><li>再下面是<strong>时代筛选</strong>：全部 / 黑暗时代 / 封建时代 / 城堡时代 / 帝王时代</li><li>然后是<strong>面板页</strong>：第 1 页、第 2 页</li></ul>
+<p><strong>游戏只有两页，第 31 格以后写进去也永远不画。</strong> 这句提示就写在页面上，别在第三页上折腾。</p>
+<p>每一格显示：图标、名字、编号、当前是单位还是科技，以及叠在上面的小绿条（「双手剑士」「武士」「还有 7 项科技」这种，是这个格子会随时代或科技变成什么）。</p>
+<p>操作：</p>
+<ul><li><strong>拖动格子换位置</strong>：按住拖到别的格子就是换</li><li><strong>点一下格子</strong>：改它的训练时间，或者直接把它拿掉</li><li>格子上方那两个箭头按钮用来换页</li></ul>
+<p>改完一样要点保存。</p>
+<hr>
+<h2>八、看科技树，以及写 AI 脚本</h2>
+<h3>科技树</h3>
+<p><img alt="科技树" src="screenshots/tree.png"></p>
+<p>选文明（默认不列颠），下面写着这个文明的家底：<code>28 个建筑 · 145 个科技与单位 · 共 62 个文明</code>。</p>
+<ul><li>格子位置按游戏本体的 <code>CivTechTrees/&lt;文明&gt;.json</code> 算，<strong>出新文明会自动多一个</strong></li><li>鼠标停在格子上点亮这条线，点一下看数值</li><li>颜色是分类：建筑、区域建筑、独特建筑、单位、区域单位、独特单位、科技、区域科技、独特科技</li><li>「缩放到全部可见」把整棵树塞进一屏，下面可以按 100% / + / − 调</li></ul>
+<p>这一页是给你<strong>看</strong>的，改数值还是回编辑器。</p>
+<h3>AI 脚本</h3>
+<p><img alt="脚本语言" src="screenshots/lang.png"></p>
+<p>三块：AI 脚本（.per）、XS 脚本（.xs）、整份 AI 脚本。</p>
+<p><strong>.per</strong> 是电脑玩家的行为规则。那个输入框一句一条规则，写「造20个骑士」「建造兵营」「升级到城堡时代」，点「写出来」就变成 <code>defrule</code> 块。下面那排灰标签是现成句式，点一下填进去。</p>
+<p><strong>.xs</strong> 是脚本语言，能直接改数据和 goal，比如「村民血量改成 1000」「把 goal 0 设成 1」。注意 XS 改的是<strong>运行时</strong>的值，不进 .dat，也不进模组文件。</p>
+<p>写完都能按「校验这份脚本」先过一遍语法。</p>
+<p>要把脚本装进游戏，点「放进本地模组」，它写进 <code>mods/local</code> 并自动启用。</p>
+<hr>
+<h2>九、线上工坊：不用开游戏也能找模组</h2>
+<p><img alt="线上工坊" src="screenshots/online.png"></p>
+<p>搜索框输入名字或作者，右边选排序（最近热门 / 最新发布 / 下载最多 / 评分最高），然后「搜索」。</p>
+<p>下面一排是分类：人工智能、战役、数据模组、图像、影片、音乐、随机地图、场景、音效、语音、嘲讽语音、地形、菜单背景、用户界面、文本、其他、罗马复兴。</p>
+<p><strong>要先登录</strong>（Steam 账号或微软账号），它用的是游戏自己的接口，不经过第三方。登录状态只在内存里，不写盘、不上传。</p>
+<p>「译成中文」会把英文模组的简介现场翻一遍，省得你一个个猜。</p>
+<hr>
+<h2>十、设置、关于、更新</h2>
+<p><img alt="设置" src="screenshots/settings.png"></p>
+<p>设置分四栏：通用、外观、高级、模型。</p>
+<ul><li><strong>模组列表的默认视图</strong>：打开「模组」页时先给你看卡片还是清单</li><li><strong>每次启动检查更新</strong>：启动时读一次远端版本号，只提示，不自动升级</li><li><strong>重建前提醒未保存的改动</strong>：编辑器里有改动时，点「重建并重装」先问一句</li><li><strong>角落助手</strong>：窗口右下角那个气泡，哪一页都能点开问它写 AI 与 XS 脚本（可以关）</li></ul>
+<p>「外观」里换界面主题和字号，「高级」里是数据目录、日志这类，「模型」里填 AI 那条口的地址和密钥（只从环境变量读，项目不存 key）。</p>
+<p><img alt="关于" src="screenshots/about.png"></p>
+<p>「关于」页值得看一下：</p>
+<ul><li><strong>防伪声明</strong>：这个软件完全免费、完全开源，作者只有 RemonBo 一个人。<strong>如果你是花钱买的，立刻退款</strong>。收费群、代购、二手转卖、加密压缩包、改个名字再发的，都不是作者本人。</li><li><strong>作者</strong>：爱发电、B 站、GitHub 三个地址，都能一键复制或用浏览器打开。报问题请带截图或录屏。</li><li><strong>免责</strong>：每次保存前都会留一份原文件副本，写入能逐字节撤回。仍然请你<strong>另外备份</strong> <code>resources/_common/dat</code>。作者不对存档损坏、模组冲突、联机不同步、成就失效负责。</li><li><strong>更新日志</strong>：从 GitHub 的发布记录直接读，每一版改了什么都能翻到，不用去网页找。</li></ul>
+<p><strong>关于更新</strong>：检查出有新版之后，「下载并装好」这个按钮是真的自己干活，下载二十多 MB 的小包、校验哈希、替换掉旧文件、重新打开，不用你去网页下载再手动覆盖。只有安装版能用这个按钮，从源码目录跑的那一份会明确告诉你不能。</p>
+<hr>
+<h2>十一、出问题了怎么办</h2>
+<p><strong>改了但游戏里没变化</strong>，按这个顺序查：</p>
+<ol><li>「模组」页那个开关是不是绿的</li><li>「创建游戏 → 数据模组」里是不是选了这一个（不是「模组」界面里的开关）</li><li>有没有别的模组也改了同一处数据，而且排在它上面（越靠上越先加载，上面的赢）</li><li>游戏刚打过补丁？去「官方数据档案库」看看要不要适配</li></ol>
+<p><strong>游戏打不开了</strong>：把 <code>resources/_common/dat</code> 还原成备份，或者关掉模组。每次保存前的原文件副本在 <code>log</code> 文件夹里。</p>
+<p><strong>编辑器里的改动丢了</strong>：没点「保存全部改动」就关了窗口。编辑器里的改动只在内存里。</p>
+<p><strong>模组装上但图标是白块</strong>：图形模组的尺寸或帧数对不上。回「脚本语言」那一页用「换图片」重做一次，它会当场告诉你是哪一帧不对。</p>
+<p><strong>报问题</strong>：开 <a href="https://github.com/198agk/AoE2DEModWorkshop/issues">issue</a>，带上截图或录屏，写清在哪个页签、点了什么、期望什么。</p>
+<hr>
+<h2>十二、它做不到什么</h2>
+<p>这几条是实测过的边界，别在这上面浪费时间：</p>
+<ul><li><strong>做不出「变灰」</strong>。禁一项科技的表现是按钮直接消失，不是变灰。</li><li><strong>新造的科技不进科技树的那个面板</strong>，它出现在研究卡上。</li><li><strong>改不动渲染器</strong>。能换的是磁盘上的图片和布局文件，游戏代码里的东西碰不到。</li><li><strong>同一个文件夹里 <code>.dat</code> 与 <code>widgetui</code> 只有一个生效</strong>。工具会把它拆成两个模组，两个都要勾上。</li><li>还在快速迭代，数值、造单位、造科技、生成模组已经实机走通，其他还在补。</li></ul>
+<hr>
+<h2>附：三条最常用的句子</h2>
+<pre><code>村民血量改成 1000
+把不列颠村民的血量改成 1000
+照织布机做一个新科技，叫铁匠学徒的手艺，研究时间 10，放在第 3 格</code></pre>
+<p>第一句改所有文明，第二句只改不列颠，第三句是从零造一个游戏里没有的东西。</p>
+<p>写错了不要紧，「读一下」不会写盘。放心试。</p></main></body></html>

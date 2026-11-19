@@ -17,6 +17,10 @@
   <a href="#界面预览"><img src="docs/screenshots/home.png" alt="模组工坊首页" width="88%"></a>
 </p>
 
+<p align="center">
+  <a href="docs/教程.md"><b>📖 图文教程：从装好到第一个模组进游戏（十二节，全程截图）</b></a>
+</p>
+
 ## 安装
 
 从 [Releases](https://github.com/198agk/AoE2DEModWorkshop/releases/latest) 下安装包，双击，下一步。
@@ -57,6 +61,10 @@
 | [![命令面板](docs/screenshots/card.png)](docs/screenshots/card.png) | [![科技树](docs/screenshots/tree.png)](docs/screenshots/tree.png) |
 | **界面语言** | **关于** |
 | [![语言](docs/screenshots/lang.png)](docs/screenshots/lang.png) | [![关于](docs/screenshots/about.png)](docs/screenshots/about.png) |
+| **读一下之后的预览** | **线上工坊** |
+| [![预览](docs/screenshots/parse.png)](docs/screenshots/parse.png) | [![线上工坊](docs/screenshots/online.png)](docs/screenshots/online.png) |
+| **设置** | |
+| [![设置](docs/screenshots/settings.png)](docs/screenshots/settings.png) | |
 
 ## 能做什么（15 个意图）
 
@@ -114,7 +122,7 @@
 
 - 还在快速迭代，数值、造单位、造科技、生成模组已经实机走通。
 - 有问题开 [issue](https://github.com/198agk/AoE2DEModWorkshop/issues)，带截图或录屏，说清在哪个页签。
-- **它不会自己更新**，要新版就下新安装包覆盖，或「关于」页按「检查更新」。
+- **能自己更新**：「关于」页按下「检查更新」，有新版会出现「下载并装好」，工具自己下载、校验、换掉旧文件并重新打开。
 - 不改游戏本体，改动写在本机 `.dat` 的副本上，卸载 = 删一个文件夹。
 - 完全免费、完全开源。
 
