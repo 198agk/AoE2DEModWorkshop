@@ -1,7 +1,7 @@
 """Guards the upgrade engine's refusals, and the one case that LOOKS like a
 refusal but must not be one.
 
-Five things must be true, and each is a way this tool could quietly "help"
+Seven things must be true, and each is a way this tool could quietly "help"
 and destroy a mod instead:
 
 1. A generation we never archived has no "before" at all.  Inventing one (going
@@ -282,6 +282,63 @@ def main():
        93272287 in sizes["sizes"], str(list(sizes["sizes"])))
     ok("size_candidates on an unknown generation is empty",
        AR.size_candidates("VER 1.0")["entries"] == 0)
+
+
+    # --- 6. the seven counters are CARRIED, not called "the tech tree" -------
+    #
+    # `_plan_region` used to answer "this is inside the tech tree, this module has
+    # no semantics for it" about a 4-byte integer sitting at a fixed offset before
+    # the tree.  That sentence was false about the file and cost the author the
+    # edit.  The check here is the whole loop: change one counter by hand in the
+    # shipped data, ask the planner what it saw, apply the plan to the base, and
+    # compare the byte.  A test that only asserts "an edit was produced" would
+    # still pass if the edit pointed at a neighbour.
+    tail_raw, _how = UP.P.load_dat(new)
+    at_tail = UP.Frame(tail_raw, "official").tech_tail_end()
+    edited = bytearray(tail_raw)
+    edited[at_tail:at_tail + 2] = b"\x2c\x01"          # TimeSlice 30 -> 300
+    fb = UP.Frame(tail_raw, "base")
+    fm = UP.Frame(bytes(edited), "mod")
+    plan_t = UP._plan(fb, fm, limit=0, new=fb)
+    tail_edits = [e for e in plan_t["edits"] if e["space"] == "tail"]
+    ok("a change to the seven counters is planned as a field, not as the tree",
+       bool(tail_edits) and not [r for r in plan_t["unmapped"]
+                                 if r.get("space") in ("techtree", "tech_tree")],
+       str([(e["field"], e["base"].hex(), e["mod"].hex()) for e in tail_edits]))
+    ok("and it names the counter it belongs to",
+       bool(tail_edits) and tail_edits[0]["field"] == "TimeSlice",
+       str([e["field"] for e in tail_edits]))
+    work = bytearray(tail_raw)
+    _ap, _rf, _cf, _rg = UP._apply_edits(fb, plan_t["edits"], work)
+    ok("and applying it writes the author byte, not a neighbour",
+       bytes(work[at_tail:at_tail + 2]) == b"\x2c\x01",
+       bytes(work[at_tail:at_tail + 4]).hex())
+
+    # --- 7. a table record is fully named, or its edits vanish -------------
+    #
+    # The flat-table byte path asks "which field is this diff inside?" and, when
+    # no field answers, drops the region.  A graphic record's animation frames
+    # and directional-sound trios had no names for years: measured on 310130, 16
+    # graphics lost their edits that way and 408773 lost 18, with nothing in the
+    # report.  The invariant is arithmetic: the last named byte of a record must
+    # BE the last byte of the record.  Checked over every record of the three
+    # variable-length tables in the shipped data.
+    import aoe2mod.dat.tablefields as TB
+    gv = fb.gv
+    for table, limit in (("graphic", 4000), ("sound", 2000)):
+        recs, left = TB.scan(tail_raw, table)
+        worst = None
+        for rec in recs[:limit]:
+            f = TB.fields_at(tail_raw, gv, rec, table=table)
+            end = max(v["offset"] + TB.KINDS[v["kind"]] for v in f.values()
+                      if v["kind"] != "str")
+            if end != rec["end"]:
+                worst = (rec["index"], end, rec["end"])
+                break
+        ok("every named field of a %s record stops at the record's last byte"
+           % table, worst is None and left == 0,
+           "record %s ends %s but fields end %s (leftover %s)"
+           % (worst, worst[2], worst[1], left) if worst else str(left))
 
     print("")
     if FAILS:

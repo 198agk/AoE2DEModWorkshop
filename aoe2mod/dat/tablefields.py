@@ -167,6 +167,42 @@ _GRAPHIC_TAIL = (
 _GRAPHIC_SCALARS = max(off + KINDS[kind] for _n, kind, off in _GRAPHIC_TAIL)
 assert _GRAPHIC_SCALARS == 48, _GRAPHIC_SCALARS
 
+#: The variable tail of a graphic record: one 16-byte GraphicDelta per
+#: animation frame, then -- only when the record carries directional sound --
+#: one 24-byte GraphicAngleSound per angle.  Names and widths come from
+#: `genieutils` (`GraphicDelta`) and from the product's own writer, which has
+#: always emitted these bytes verbatim.
+#:
+#: They used to have NO name at all, and that was not cosmetic: a byte diff that
+#: landed inside them matched no field, so the edit was neither carried nor
+#: reported.  Measured on a real mod (310130) 16 graphics lost their frame edits
+#: in silence, and 408773 lost 18.  A record whose whole tail is unnamed cannot
+#: be ported, and cannot even be described as unportable -- it just goes quiet.
+_GRAPHIC_DELTA_FIELDS = (
+    ("GraphicID", "i16", 0),
+    ("Padding1", "i16", 2),
+    ("SpritePTR", "i32", 4),
+    ("OffsetX", "i16", 8),
+    ("OffsetY", "i16", 10),
+    ("DisplayAngle", "i16", 12),
+    ("Padding2", "i16", 14),
+)
+_GRAPHIC_DELTA_WIDTH = 16
+assert max(off + KINDS[k] for _n, k, off in _GRAPHIC_DELTA_FIELDS) == _GRAPHIC_DELTA_WIDTH
+
+#: Three {FrameNum, SoundID, WwiseSoundID} trios per record, so each field is
+#: reported under its own trio number instead of three fields overwriting each
+#: other.
+_GRAPHIC_ANGLE_FIELDS = tuple(
+    (name + ".%d" % trio, kind, 8 * trio + off)
+    for trio in range(3)
+    for name, kind, off in (("FrameNum", "i16", 0),
+                            ("SoundID", "i16", 2),
+                            ("WwiseSoundID", "u32", 4))
+)
+_GRAPHIC_ANGLE_WIDTH = 24
+assert max(off + KINDS[k] for _n, k, off in _GRAPHIC_ANGLE_FIELDS) == _GRAPHIC_ANGLE_WIDTH
+
 #: What each graphic field means, in words a player can act on, plus the sane
 #: range.  A name is not enough: `SlpID` is "which .slp file this record draws",
 #: and `Layer` decides whether the sprite sits under or over the terrain.
@@ -747,11 +783,75 @@ def _meta(table):
     return {}
 
 
+_GRAPHIC_DELTA_META = {
+    "GraphicID": dict(zh="这一帧画的图形编号", lo=-32768, hi=32767,
+                      hint="这一帧改用哪一条图形记录来画；-1 表示还用本记录自己的图。"
+                           "把一帧换成别的图形，就得到一个混着两套图的动画。"),
+    "Padding1": dict(zh="留空", ro=True,
+                     hint="游戏不读这位，改它没有效果，所以只读。"),
+    "SpritePTR": dict(zh="帧数据指针", ro=True,
+                      hint="游戏运行时用来贴这一帧的地址，写进文件里没有意义，所以只读。"),
+    "OffsetX": dict(zh="这一帧的左右偏移", lo=-32768, hi=32767,
+                    hint="这一帧相对图形锚点向左右挪多少像素，正数向右。"),
+    "OffsetY": dict(zh="这一帧的上下偏移", lo=-32768, hi=32767,
+                    hint="这一帧相对图形锚点向上下挪多少像素，正数是向下。"),
+    "DisplayAngle": dict(zh="这一帧的显示角度", lo=-32768, hi=32767,
+                         hint="这一帧从哪个方向看，0 是正面。多方向的单位靠它区分朝向。"),
+    "Padding2": dict(zh="留空", ro=True,
+                     hint="游戏不读这位，改它没有效果，所以只读。"),
+}
+_GRAPHIC_ANGLE_META = {
+    "FrameNum": dict(zh="第几帧响", lo=-32768, hi=32767,
+                     hint="走到这一帧时放这段带方向的声音。"),
+    "SoundID": dict(zh="音效编号", lo=-32768, hi=32767,
+                    hint="放哪个音效。-1 表示不放。"),
+    "WwiseSoundID": dict(zh="Wwise 音效编号", lo=0, hi=4294967295,
+                         hint="游戏实际播放用的那套音效编号，决定真正听到的是哪段声音。"),
+}
+_SOUND_FILE_META = {
+    "File": dict(zh="音频文件", ro=True,
+                 hint="播放哪个文件。前面带着字节数，改短会留下残字、改长会覆盖下一个字段，"
+                      "所以只读。"),
+    "ResourceID": dict(zh="资源编号", lo=-2147483648, hi=2147483647,
+                       hint="这段声音在资源表里的编号，和文件名指向同一段音频。"),
+    "Probability": dict(zh="这条的概率", lo=-32768, hi=32767,
+                        hint="几条文件按概率抽一条来放。合起来应该等于上面那个总概率。"),
+    "Civilization": dict(zh="限定文明", lo=-32768, hi=32767,
+                         hint="-1 是所有文明共用；填文明编号则只有这个文明放这条。"),
+    "IconSet": dict(zh="图标组", lo=-32768, hi=32767,
+                    hint="这段声音配哪一套界面图标，一般不用改。"),
+}
+
+
 def _meta_for(table, name):
     """Meta for one field name, including the effect `#N.slot` spelling."""
     tbl = _meta(table)
     if name in tbl:
         return tbl[name]
+    # The graphic record's variable tail and a sound record's file entries are
+    # families, not fixed names: `Deltas.7.OffsetX` is frame 7's X offset.  The
+    # family is matched by prefix and the per-index label is built here, for the
+    # same reason the restriction table's 670 slots are.
+    if table == "graphic" and "." in name:
+        head, _dot, rest = name.partition(".")
+        fam, _dot2, field = rest.partition(".")
+        if head == "Deltas" and fam.isdigit() and field in _GRAPHIC_DELTA_META:
+            out = dict(_GRAPHIC_DELTA_META[field])
+            out["zh"] = "第 %s 帧的%s" % (fam, out["zh"])
+            return out
+        if head == "AngleSounds" and fam.isdigit() and field in _GRAPHIC_ANGLE_META:
+            out = dict(_GRAPHIC_ANGLE_META[field])
+            out["zh"] = "第 %s 组方向音效的%s" % (fam, out["zh"])
+            return out
+        return {}
+    if table == "sound" and name.startswith("Files."):
+        head, _dot, rest = name[6:].partition(".")
+        field = rest
+        if field in _SOUND_FILE_META:
+            out = dict(_SOUND_FILE_META[field])
+            out["zh"] = "第 %s 个文件的%s" % (head, out["zh"])
+            return out
+        return {}
     if table == "restriction":
         # 670 fields named `Mult.7` / `Pass.7.Walk` -- one family per terrain
         # slot.  Matching them by suffix would look each one up under "7" and
@@ -1739,6 +1839,27 @@ def fields_at(raw, gv, rec, table="graphic"):
         pos = r.pos
         _marker, text = r.debug_string()
         out[name] = {"offset": pos, "kind": "str", "value": text}
+    # The variable tail.  Without these names the 16-byte frames and the 24-byte
+    # directional-sound trios are a 384-byte hole in the middle of a record that
+    # `parser.read_graphic` and `writer.write_graphic` both model completely, so
+    # an edit landing there matched no field and vanished from every report.
+    _delta_n = struct.unpack_from("<h", raw, base + 18)[0]
+    _angle_used = raw[base + 26]
+    _angle_n = struct.unpack_from("<h", raw, base + 29)[0]
+    at = base + _GRAPHIC_SCALARS
+    for k in range(max(0, _delta_n)):
+        for name, kind, off in _GRAPHIC_DELTA_FIELDS:
+            out["Deltas.%d.%s" % (k, name)] = {
+                "offset": at + off, "kind": kind,
+                "value": struct.unpack_from(FMT[kind], raw, at + off)[0]}
+        at += _GRAPHIC_DELTA_WIDTH
+    if _angle_used:
+        for k in range(max(0, _angle_n)):
+            for name, kind, off in _GRAPHIC_ANGLE_FIELDS:
+                out["AngleSounds.%d.%s" % (k, name)] = {
+                    "offset": at + off, "kind": kind,
+                    "value": struct.unpack_from(FMT[kind], raw, at + off)[0]}
+            at += _GRAPHIC_ANGLE_WIDTH
     return out
 
 
@@ -1916,6 +2037,23 @@ def _sound_fields(raw, rec):
     out["CacheTime"] = {"offset": p, "kind": "i32", "value": r.i32()}
     p = r.pos
     out["TotalProbability"] = {"offset": p, "kind": "i16", "value": r.i16()}
+    # Each file entry: a length-prefixed path, then four numbers.  The path is
+    # reported but not writable (a 2-byte length prefix makes a fixed-width write
+    # meaningless, the same rule the graphic strings follow); the four numbers
+    # are ordinary fields, and leaving them unnamed meant an author's edited
+    # probability or civilization simply fell out of the port.
+    for k in range(max(0, n)):
+        pos = r.pos
+        _marker, fname = r.debug_string()
+        out["Files.%d.File" % k] = {"offset": pos, "kind": "str",
+                                    "value": fname}
+        for name, kind in (("ResourceID", "i32"), ("Probability", "i16"),
+                           ("Civilization", "i16"), ("IconSet", "i16")):
+            pos = r.pos
+            out["Files.%d.%s" % (k, name)] = {
+                "offset": pos, "kind": kind,
+                "value": struct.unpack_from(FMT[kind], raw, pos)[0]}
+            r.pos = pos + KINDS[kind]
     return out
 
 

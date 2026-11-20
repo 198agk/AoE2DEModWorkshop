@@ -41,14 +41,16 @@ turns a nail red instead of shipping two answers.
 #: 1.0001 -> 1.0002 and so on.  A four-decimal number is not decoration: the
 #: comparison in `aoe2mod/updates.py` reads the dot part as a decimal fraction,
 #: which keeps 1.0001 sorted below 1.1 and above 1.0.
-VERSION = "1.0008"
+VERSION = "1.0009"
 
 #: What this build changed，一行一件，用玩家看得懂的话写。 印在 关于 页的版本
 #: 下面，也发进 gist 的同号旁边，让「检查更新」能说出新在哪儿，而不是只报一个号码。
 #: 只写改了什么都别写怎么改的：玩家要知道值不值得装，不需要读实现。
 CHANGES = (
-    "热键编号那一栏补了说明：印出「Q 键」的是游戏热键表里记着的，只印数字是表里没有这个编号",
-    "同一个键挂很多编号，是因为游戏为每个文明各存了一份",
+    "修好了「一键更新模组」漏搬的一部分改动：作者改过的动画帧、单位语音文件、"
+    "末尾那几个全局数值，以前会被悄悄丢掉，现在都跟着搬过去",
+    "碰到工具叫不出名字的字节，那一条记录整条照抄过去，不再只搬一半",
+    "报告里不再出现「0 条科技……（）」这种空括号的句子",
 )
 
 #: The same number with the word in front, so screens do not each spell it.

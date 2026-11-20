@@ -122,10 +122,26 @@ _TABLE_FLAT = ("sound", "graphic", "effect")
 # every number in them has a name that survives a rebuild.
 _TABLE_CARRY = ("task", "restriction")
 
+#: The two tables that live at the very END of the file: the seven i32 counters
+#: and the tech-tree connections.  They are named and walkable (`tablefields`
+#: has carried both for a long time), but they are not in `_TABLES` because
+#: reaching them costs a walk over the whole 89 MB civ block -- measured 12 s
+#: for the counters and 13.7 s for the tree on a 94 MB mod.  Paying that on
+#: every analysis to learn "nothing changed there" is not a measurement, it is
+#: a habit, so the cost is spent only when the end of the file actually differs.
+_TABLES_EXTRA = ("tail", "techtree")
+
+#: How much of the end of a `.dat` the cheap screen compares before it pays for
+#: a tail walk.  The counters are 28 bytes and the tree is tens of kilobytes,
+#: so 64 KiB covers both with room to spare.
+_TAIL_SCREEN = 1 << 16
+
 #: The seven i32 scalars that sit between the last tech record and the tech tree.
-_TAIL_SCALARS = ("time_slice", "unit_kill_rate", "unit_kill_total",
-                 "unit_hit_point_rate", "unit_hit_point_total",
-                 "razing_kill_rate", "razing_kill_total")
+#: The names are `tablefields`' own (`TimeSlice`, `UnitKillRate`, ...), not a
+#: second spelling of them: a field is addressed by the name the reader reports,
+#: and a private lowercase copy addressed every one of these as "no such field"
+#: in the target frame.
+_TAIL_SCALARS = tuple(n for n, _zh, _h in TB._TAIL_FIELDS)
 
 
 def _fmt_widths(widths):
@@ -673,6 +689,33 @@ def _slice_of(ranges, a, b):
     return out
 
 
+def _unclaimed(ranges, a, b):
+    """``[(lo, hi)]`` inside ``[a, b)`` that no field range covers.
+
+    The counterpart to :func:`_slice_of`: that one says what the author changed
+    and this one says what nothing claims.  Both are needed because a table
+    record is not guaranteed to be fully named.  A byte-diff region that no field
+    covers used to be dropped without a note -- the author's edit was real, the
+    bytes were there, and the report said there was nothing to port.  Reporting
+    the gap turns a silent lie into an honest "this part I cannot carry".
+    """
+    holes = []
+    cur = a
+    for off, w, _name in ranges:
+        if w <= 0 or off + w <= cur:
+            continue
+        if off >= b:
+            break
+        if off > cur:
+            holes.append((cur, min(off, b)))
+        cur = max(cur, off + w)
+        if cur >= b:
+            break
+    if cur < b:
+        holes.append((cur, b))
+    return [(lo, hi) for lo, hi in holes if lo < hi]
+
+
 # ---------------------------------------------------------------------------
 # analysis: base vs mod -> symbolic plan
 # ---------------------------------------------------------------------------
@@ -889,14 +932,104 @@ def _plan_region(base, mod, off, n, plan):
                 "mod": mod.raw[foff + rel:foff + rel + w],
             })
         return
+    # The seven counters come BEFORE the tree and used to be reported as part of
+    # it -- "the tech tree, this module has no semantics for it" about a 4-byte
+    # integer at a fixed offset.  They are now carried like any other field.
+    tail_at = base.tech_tail_end()
+    tail_w = 4 * len(_TAIL_SCALARS)
+    if tail_at <= off < tail_at + tail_w:
+        for i in range(len(_TAIL_SCALARS)):
+            foff = tail_at + 4 * i
+            lo, hi = max(off, foff), min(off + n, foff + 4)
+            if lo >= hi:
+                continue
+            plan["edits"].append({
+                "space": "tail", "key": ("index", i),
+                "field": _TAIL_SCALARS[i], "rel": lo - foff, "width": hi - lo,
+                "base": base.raw[lo:hi], "mod": mod.raw[lo:hi],
+            })
+        return
     if off >= base.tech_tail_end():
         plan["unmapped"].append({
-            "off": off, "len": n, "space": "tech_tree",
-            "why": "这一处在科技树（TechTree）里，本模块还没有它的语义"})
+            "off": off, "len": n, "space": "techtree",
+            "why": "这一处在科技树（TechTree）里：%d 条连线按编号对齐会撞车"
+                   "（编号在四个家族之间重复），所以这一层不搬。" % n})
         return
     plan["unmapped"].append({
         "off": off, "len": n, "space": "unknown",
         "why": "这一处不属于任何已知记录（不是单位、文明头、科技、效果或表记录）"})
+
+
+def _plan_tail_tables(base, mod, plan):
+    """Carry the seven counters, and say honestly what the tech tree is."""
+
+    # The seven i32 counters sit between the last technology and the tree, at a
+    # fixed offset with a fixed width, so they are the easiest thing in the file
+    # to carry -- and they were not carried at all: a change there fell into the
+    # "this is inside the tech tree, this module has no semantics for it" bucket,
+    # which is a false statement about the file.  Measured by hand-editing
+    # `TimeSlice` on the shipped data: the plan said `space: tech_tree`.
+    width = 4 * len(_TAIL_SCALARS)
+    # `frame.tail` is where the TECH SECTION begins (its header count), not where
+    # the counters begin: the counters start after the last tech record, which is
+    # what `tech_tail_end()` answers.  Reading them at `tail` would have been the
+    # same class of mistake this module exists to avoid -- a plausible address
+    # holding a neighbour's bytes.
+    b_at, m_at = base.tech_tail_end(), mod.tech_tail_end()
+    if b_at + width <= base.size and m_at + width <= mod.size:
+        for i in range(len(_TAIL_SCALARS)):
+            b = base.raw[b_at + 4 * i:b_at + 4 * i + 4]
+            m = mod.raw[m_at + 4 * i:m_at + 4 * i + 4]
+            if b == m:
+                continue
+            plan["edits"].append({
+                "space": "tail", "key": ("index", i),
+                "field": _TAIL_SCALARS[i], "rel": 0, "width": 4,
+                "base": b, "mod": m,
+            })
+
+    # The tree itself: 475-550 connections in four families.  Its records are
+    # keyed by their own ID, and that id REPEATS across families (measured 53
+    # duplicates on the shipped 8.9 data), so aligning by it would silently pick
+    # one of each pair.  Saying so is the honest answer, and it is a different
+    # sentence from "this module has no semantics" -- which was also false.
+    if base.size != mod.size:
+        return
+    # The screen: the tree starts right after the counters, so comparing the first
+    # 64 KiB below the tail answers "did the author touch the tree" in one slice --
+    # and answers "no" for the overwhelming majority of mods, at which point the
+    # 13.7 s walk would only be able to say what the bytes already said.
+    head_b = base.raw[b_at + width:b_at + width + _TAIL_SCREEN]
+    head_m = mod.raw[m_at + width:m_at + width + _TAIL_SCREEN]
+    if head_b == head_m:
+        return
+    try:
+        recs_b = base.table_spans("techtree")
+        recs_m = mod.table_spans("techtree")
+    except Exception:
+        return
+    changed = [r for r, s in zip(recs_b, recs_m)
+               if base.raw[r["start"]:r["end"]] != mod.raw[s["start"]:s["end"]]]
+    added = len(recs_m) - len(recs_b)
+    if not changed and not added:
+        return
+    names = {"age": "时代", "building": "建筑", "unit": "单位",
+             "research": "科技"}
+    first = (changed or recs_m[len(recs_b):] or recs_b)[0]
+    extra = ""
+    if added > 0:
+        extra = "，另外多了 %d 条" % added
+    elif added < 0:
+        extra = "，另外少了 %d 条" % (-added)
+    plan["unmapped"].append({
+        "space": "techtree", "key": [first.get("kind"), first.get("id")],
+        "why": "作者动了科技树：%d 条连线改过%s（第一条是%s %s，位置 %d）。"
+               "连线的编号在四个家族之间会重复（这份数据里有 %d 个编号被两条"
+               "连线同时用着），按编号对齐会静默丢掉其中一条，所以这一层不搬，"
+               "也不猜。"
+               % (len(changed), extra, names.get(first.get("kind"), "连线"),
+                  first.get("id"), first["start"], len(base.duplicate_keys("techtree"))),
+    })
 
 
 def _civ_covering(frame, off):
@@ -1387,6 +1520,7 @@ def _plan_structural(base, mod, plan, limit, alias=None, new=None,
     # them, so one added record moves every later offset in the section.
     for _ti, table in enumerate(_TABLES):
         _say(0.83 + 0.17 * _ti / max(1, len(_TABLES)))
+        _unnamed = {}
         try:
             bidx = base.table_index(table)
             midx = mod.table_index(table)
@@ -1538,18 +1672,65 @@ def _plan_structural(base, mod, plan, limit, alias=None, new=None,
                     == mod.raw[mr["start"]:mr["end"]]):
                 continue
             ranges = base.table_fields(table, br)
+            # Collect this record's field edits first, because a record is
+            # ported either field by field or as a whole, never half of each.
+            _mine = []
+            _hole = False
             for roff, rn in L.diff_regions(base.raw[br["start"]:br["end"]],
                                            mod.raw[mr["start"]:mr["end"]]):
                 a = br["start"] + roff
                 shift = mr["start"] - br["start"]
                 for name, foff, rel, w in _slice_of(ranges, a, a + rn):
-                    plan["edits"].append({
+                    _mine.append({
                         "space": table, "key": key, "field": name,
                         "rel": rel, "width": w,
                         "base": base.raw[foff + rel:foff + rel + w],
                         "mod": mod.raw[foff + rel + shift:
                                        foff + rel + shift + w],
                     })
+                if _unclaimed(ranges, a, a + rn):
+                    _hole = True
+            if _hole:
+                # Part of what the author changed sits in bytes this record
+                # gives no name to, so no field edit can express it.  A flat
+                # table has an honest escape: copy the record whole, which is
+                # the same answer already used when a record's length changed.
+                #
+                # The old code dropped those bytes without a note: `_slice_of`
+                # came back empty, the `for` had nothing to append, and the
+                # record read as "nothing to port" while the bytes sat there
+                # changed.  Measured on 310130: 16 graphics lost their frame
+                # edits that way, 408773 lost 18, and nothing in the report
+                # mentioned it.
+                #
+                # A table that is not rebuilt in one splice (`terrain`) cannot
+                # use that escape, and saying "carried" about a record nobody
+                # carries is worse than refusing it.
+                if table in _TABLE_FLAT:
+                    plan["replace_table"].append({
+                        "table": table, "key": key,
+                        "base": bytes(base.raw[br["start"]:br["end"]]),
+                        "bytes": bytes(mod.raw[mr["start"]:mr["end"]]),
+                    })
+                    _unnamed[table] = _unnamed.get(table, 0) + 1
+                    continue
+                plan["unmapped"].append({
+                    "space": table, "key": list(key),
+                    "why": "作者改了这一条记录里没有字段名的那几个字节，而「%s」"
+                           "表不能整条重排，所以这一条搬不过去" % table,
+                })
+                continue
+            plan["edits"].extend(_mine)
+        if _unnamed:
+            plan["notes"].append(
+                "「%s」表里有 %d 条记录的改动落在没有字段名的字节上，这些记录整条"
+                "照抄了：字段名没覆盖到那里，逐字段搬会漏掉作者的改动。"
+                % (table, _unnamed[table]))
+
+    # The two tables at the very end of the file.  Reaching them costs a walk over
+    # the whole civ block, so `_plan_tail_tables` screens the bytes first and only
+    # pays when something down there really differs.
+    _plan_tail_tables(base, mod, plan)
     _say(1.0)
 
 
@@ -2103,13 +2284,20 @@ def _relocate_techs(plan, base_f, mod_f, new_f):
                              "base_name": bn, "name": mn, "now_name": nn})
         out["map"][i] = at0 + j
     out["count"] = len(out["moved"])
-    plan["notes"].append(
-        "有 %d 条科技写在了官方新版本已经另作他用的槽位上（%s）：那些位置现在"
-        "是别人的科技，所以作者的那几条整条搬到了科技表末尾（第 %s 条），"
-        "官方新增的科技一条都没被覆盖。"
-        % (out["count"],
-           "、".join("%d「%s」" % (m["index"], m["name"]) for m in out["moved"]),
-           "、".join(str(m["new_index"]) for m in out["moved"])))
+    if out["moved"]:
+        # Only when something actually moved.  A plan that merely appended
+        # author technologies -- out["map"] non-empty, hits empty -- used to
+        # print this sentence with two empty parentheses: "0 technologies sit
+        # in slots the official file reused (): ... (record )".  A report that
+        # announces an event and leaves the list of what happened blank
+        # teaches the reader to distrust every other line in it.
+        plan["notes"].append(
+            "有 %d 条科技写在了官方新版本已经另作他用的槽位上（%s）：那些位置现在"
+            "是别人的科技，所以作者的那几条整条搬到了科技表末尾（第 %s 条），"
+            "官方新增的科技一条都没被覆盖。"
+            % (out["count"],
+               "、".join("%d「%s」" % (m["index"], m["name"]) for m in out["moved"]),
+               "、".join(str(m["new_index"]) for m in out["moved"])))
     return out
 
 
