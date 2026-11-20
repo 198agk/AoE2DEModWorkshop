@@ -350,7 +350,11 @@ FIELD_META = {
                                                 lo=0, hi=24,
                                                 hint="在建筑命令面板上排第几格。"),
     "Creatable.TrainLocations.0.HotKeyID": dict(zh="热键编号", group="produce",
-                                                lo=-1, hi=32767, hint="在哪个建筑里生产它时用的热键位置，决定按钮排在建筑面板的第几格。"),
+                                                lo=-1, hi=32767,
+                                                hint="在哪个建筑里生产它时用的热键位置，决定按钮排在建筑面板的第几格。"
+                                                     "后面能印出键位的（Q 键、S 键）是游戏自带热键表里记着的；"
+                                                     "只印数字的是那张表里没有这个编号，不是本工具没读到。"
+                                                     "同一个键会挂很多编号，因为游戏为每个文明各存了一份。"),
     "Creatable.ResourceCosts.0.Type": dict(zh="造价类型 1", group="produce",
                                            enum=RES_SLOT_ZH,
                                            hint="指向资源表：0 食物 1 木材 2 石头 3 黄金，"

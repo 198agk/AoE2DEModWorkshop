@@ -144,7 +144,8 @@ FIELD_META = {
     "ResearchLocations.0.ButtonID": dict(zh="按钮位置", group="location", lo=0, hi=255,
                                          hint="在这栋建筑的按钮网格里排第几格。"),
     "ResearchLocations.0.HotKeyID": dict(zh="热键编号", group="location", lo=-1,
-                                         hi=32767),
+                                         hi=32767,
+                                         hint="研究它时用的热键位置。" + "印出键位的是游戏热键表里记着的，只印数字是那张表里没有这个编号。"),
 
     # ---- 效果与前置 -------------------------------------------------------
     "EffectID": dict(zh="挂的效果", group="effect", lo=-1, hi=32767,
@@ -171,7 +172,8 @@ FIELD_META = {
                                 hint="指向科技树面板里那一格显示的文字。"),
 
     # ---- 其他 -------------------------------------------------------------
-    "HotKeyID": dict(zh="热键编号", group="misc", lo=-1, hi=32767),
+    "HotKeyID": dict(zh="热键编号", group="misc", lo=-1, hi=32767,
+                     hint="印出键位的是游戏热键表里记着的，只印数字是那张表里没有这个编号。"),
 }
 
 
