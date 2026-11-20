@@ -821,6 +821,13 @@ SUITES = [
     # machine ship more than info.json + .dat).  Both are asserted, and the
     # strong claim is byte identity: same intents, same base data, same stream.
     r"_probe\test_repair_apply.py",
+    # The refusals that keep a "helpful" merge from destroying a mod, plus the
+    # contract the byte walk owes its caller.  `diff_regions` grew an
+    # `on_progress` parameter in the research file and the vendored copy did
+    # not follow, so `209785_Civilization Alliance` came back as "cannot be
+    # read" with a TypeError -- a missing keyword is invisible until somebody
+    # passes it, so the call itself is the assertion.
+    r"_probe\test_upgrade_guard.py",
     # The AI entry, and the one thing it must never do.  A model is asked for
     # sentences and answers with sentences; those go into the box and the
     # ordinary reader judges them.  If a model's answer ever came back as an

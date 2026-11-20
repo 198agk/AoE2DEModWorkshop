@@ -1,7 +1,7 @@
 """Guards the upgrade engine's refusals, and the one case that LOOKS like a
 refusal but must not be one.
 
-Four things must be true, and each is a way this tool could quietly "help"
+Five things must be true, and each is a way this tool could quietly "help"
 and destroy a mod instead:
 
 1. A generation we never archived has no "before" at all.  Inventing one (going
@@ -23,6 +23,10 @@ and destroy a mod instead:
 4. A run with rows it cannot carry must refuse to write unless forced, and the
    refusal must name them.  Silence here is the failure mode the whole module
    exists to prevent.
+5. The byte walk must be able to say how far it has got.  `diff_regions` is
+   called on two 93 MB streams and takes seconds; a caller that passes
+   ``on_progress`` and gets a TypeError instead is a mod that cannot even be
+   looked at, which is exactly what `209785_Civilization Alliance` reported.
 
 Run: python -X utf8 -u _probe/test_upgrade_guard.py
 """
@@ -36,6 +40,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import aoe2mod.game.locations as GL
 import aoe2mod.mod.archives as AR
+from aoe2mod.dat import locate as L
 from aoe2mod.mod import upgrade as UP
 
 FAILS = []
@@ -248,6 +253,29 @@ def main():
         finally:
             os.environ.pop(AR.ARCHIVE_DIR_ENV, None)
 
+    # --- 5. the byte walk reports progress, and still works without it -----
+    #
+    # `upgrade._plan` walks two 93 MB streams and hands `diff_regions` a
+    # callback to fill the 8% slice of its progress bar.  The vendored copy of
+    # `locate.py` was generated from a research file whose signature had no
+    # such parameter, so the call raised
+    # `TypeError: diff_regions() got an unexpected keyword argument
+    # 'on_progress'` and the whole mod came back as "cannot be read".  A
+    # missing keyword is invisible until someone passes it, so the guard is the
+    # call itself: two streams, one callback, and the fraction must climb.
+    a = bytes(200000)
+    b = bytearray(a)
+    b[5000] = 1
+    b[150000] = 1
+    seen = []
+    got = L.diff_regions(a, bytes(b), on_progress=seen.append)
+    ok("diff_regions accepts a progress callback and finds both edits",
+       got == [(5000, 1), (150000, 1)], str(got))
+    ok("and the callback is called, ending at a full fraction",
+       bool(seen) and abs(seen[-1] - 1.0) < 1e-9, str(seen[-3:]))
+    ok("and the same walk without a callback still answers",
+       L.diff_regions(b"ab", b"ac") == [(1, 1)],
+       str(L.diff_regions(b"ab", b"ac")))
     # --- registry of sizes is cheap and honest ------------------------------
     sizes = AR.size_candidates("VER 8.9")
     ok("size_candidates lists the shipped length",

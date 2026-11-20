@@ -41,13 +41,13 @@ turns a nail red instead of shipping two answers.
 #: 1.0001 -> 1.0002 and so on.  A four-decimal number is not decoration: the
 #: comparison in `aoe2mod/updates.py` reads the dot part as a decimal fraction,
 #: which keeps 1.0001 sorted below 1.1 and above 1.0.
-VERSION = "1.0006"
+VERSION = "1.0007"
 
 #: What this build changed，一行一件，用玩家看得懂的话写。 印在 关于 页的版本
 #: 下面，也发进 gist 的同号旁边，让「检查更新」能说出新在哪儿，而不是只报一个号码。
 #: 只写改了什么都别写怎么改的：玩家要知道值不值得装，不需要读实现。
 CHANGES = (
-    "编辑器里那个「训练出的单位」改叫「生产建筑」：它填的其实是城堡、兵营、靶场这类建筑的编号",
+    "修好了「自检更新模组」读社区模组时报错、只显示读不了这个模组的问题",
 )
 
 #: The same number with the word in front, so screens do not each spell it.

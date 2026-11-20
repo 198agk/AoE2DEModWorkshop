@@ -12,8 +12,8 @@
     },
     "locator": {
       "path": "_probe/datparse/intent_patch.py",
-      "sha256": "8061e432d328d2ed44950e4090f95ea84c8983001e2c0b989a6b5e2a8bffcb35",
-      "bytes": 32670
+      "sha256": "10169b35a1610f39f5139c22dc53551c309d94addaf70d87fa4c3388b5f4f3ee",
+      "bytes": 33136
     },
     "sldlib": {
       "path": "_probe/sldlib.py",
@@ -38,8 +38,8 @@
   },
   "vendored_locator": {
     "path": "aoe2mod/dat/locate.py",
-    "sha256": "a8e1890ecec2cdc8ebc9d59abc42f93e0eda0990598f34bf39af80abbc9cfff2",
-    "bytes": 25452
+    "sha256": "a3799daa917b68a8eb5e72a4228cfc41d889f774d536f42a7ffeb8fa9375a8fa",
+    "bytes": 25918
   },
   "vendored_sldlib": {
     "path": "aoe2mod/game/sld.py",
