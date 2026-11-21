@@ -122,6 +122,19 @@ _TABLE_FLAT = ("sound", "graphic", "effect")
 # every number in them has a name that survives a rebuild.
 _TABLE_CARRY = ("task", "restriction")
 
+#: Tables whose records can be REPLACED whole but whose section cannot be
+#: rebuilt from pieces: nothing here appends or deletes, and there is no count
+#: word this module can write for them.  ``terrain`` records are 417..479 bytes
+#: of nested tile frames and their stage continues with a block tail and the
+#: random maps, so the splice has to end at the last record; ``colour`` is 16
+#: records of 36 bytes that close stage 1 exactly.
+#:
+#: Measured on 310130: three terrain records grew (417 -> 431, 455, 444) and
+#: every one of them was dropped here without a word, because this function
+#: only ever walked ``_TABLE_FLAT``.  A record the planner decided to copy is
+#: a promise; a table this function silently skips is that promise broken.
+_TABLE_REPLACE = ("terrain", "colour")
+
 #: The two tables that live at the very END of the file: the seven i32 counters
 #: and the tech-tree connections.  They are named and walkable (`tablefields`
 #: has carried both for a long time), but they are not in `_TABLES` because
@@ -1608,7 +1621,11 @@ def _plan_structural(base, mod, plan, limit, alias=None, new=None,
                        "%d 个不同编号）。"
                        % (table, len(b_recs), _fmt_widths(b_w), len(bidx),
                           len(m_recs), _fmt_widths(m_w), len(midx)))
-                if b_w != m_w:
+                if table in _TABLE_REPLACE:
+                    why += ("这张表按编号整条替换可以，但记录条数不一样，而它的"
+                            "记录区后面紧跟本模块不重新序列化的块，多一条少一条"
+                            "都说不清位置，所以这一层不动。")
+                elif b_w != m_w:
                     why += ("记录长度都不一样，说明这两份文件不是同一套表结构，"
                             "按编号或按位置对齐都会张冠李戴，所以这一层不动。")
                 else:
@@ -1706,7 +1723,11 @@ def _plan_structural(base, mod, plan, limit, alias=None, new=None,
                 # A table that is not rebuilt in one splice (`terrain`) cannot
                 # use that escape, and saying "carried" about a record nobody
                 # carries is worse than refusing it.
-                if table in _TABLE_FLAT:
+                # ``_TABLE_REPLACE`` tables take the same escape: a record can
+                # be copied whole there even though the section around it
+                # cannot be rebuilt from pieces.  Measured on 167396: 15
+                # terrain records changed 29 bytes that no field name covers.
+                if table in _TABLE_FLAT or table in _TABLE_REPLACE:
                     plan["replace_table"].append({
                         "table": table, "key": key,
                         "base": bytes(base.raw[br["start"]:br["end"]]),
@@ -3369,12 +3390,27 @@ def _apply_tables(target, plan, raw):
     rules = done["rules"]
     marks = done["marks"]
 
-    for table in _TABLE_FLAT:
+    for table in _TABLE_FLAT + _TABLE_REPLACE:
         tadds = [r for r in adds if r["table"] == table]
         tdels = [r for r in dels if r["table"] == table]
         trepl = {r["key"]: r for r in repls if r["table"] == table}
         if not tadds and not tdels and not trepl:
             continue
+        if table in _TABLE_REPLACE and (tadds or tdels):
+            # Appending a terrain or colour record means moving the block that
+            # follows the record area -- a terrain block tail plus the random
+            # maps, or the end of stage 1 -- and this module does not
+            # re-serialise either.  Replacing a record in place is the one
+            # operation whose answer is still the file itself.
+            done["refused"].append({
+                "space": table,
+                "why": "作者在「%s」表里加了 %d 条、删了 %d 条记录。这张表的记录区"
+                       "后面紧跟着本模块不重新序列化的块，只有整条替换说不清"
+                       "位置，所以这一层不动。"
+                       % (table, len(tadds), len(tdels))})
+            tadds, tdels = [], []
+            if not trepl:
+                continue
         if table == "graphic" and tdels:
             done["refused"].append({
                 "space": table,
@@ -3384,7 +3420,6 @@ def _apply_tables(target, plan, raw):
                        "答案，所以这一层不猜。" % len(tdels)})
             tdels = []
 
-        geo = _table_geometry(raw, table)
         recs, leftover = TB.scan(raw, table)
         if leftover:
             done["refused"].append({
@@ -3392,6 +3427,23 @@ def _apply_tables(target, plan, raw):
                 "why": "「%s」表扫到最后一字节还剩 %d 字节没走完，偏移不可信"
                        % (table, leftover)})
             continue
+        if table in _TABLE_REPLACE:
+            # No count word to write and no flag array: the section this table
+            # owns is exactly its records, so the splice is bounded by the
+            # records themselves.  Measured on the shipped file, stage 4 holds
+            # ``terrain`` 3,502,159..3,588,524 and then 71 more bytes of block
+            # tail plus the random maps, and stage 1 ends exactly on the last
+            # colour record (145,742).
+            if not recs:
+                done["refused"].append({
+                    "space": table,
+                    "why": "「%s」表里一条记录都没扫到，这一层不动。" % table})
+                continue
+            geo = {"count_off": None, "count_kind": None, "count": len(recs),
+                   "flags_start": None, "flags_count": 0,
+                   "records_start": recs[0]["start"], "end": recs[-1]["end"]}
+        else:
+            geo = _table_geometry(raw, table)
 
         del_keys = set(r["key"] for r in tdels)
         parts, removed, rewritten = [], [], []
@@ -3432,12 +3484,15 @@ def _apply_tables(target, plan, raw):
         rules.append((geo["records_start"], grew))
         delta += grew
 
-        new_count = geo["count"] + len(tadds) - len(removed)
-        width = 4 if geo["count_kind"] == "i32" else 2
-        raw = (raw[:geo["count_off"]]
-               + _pack_count(geo["count_kind"], new_count)
-               + raw[geo["count_off"] + width:])
-        marks.append((geo["count_off"], width))
+        if geo["count_off"] is not None:
+            # A replace-only table has no count word to correct: its record
+            # count is the file's own and nothing here added or removed one.
+            new_count = geo["count"] + len(tadds) - len(removed)
+            width = 4 if geo["count_kind"] == "i32" else 2
+            raw = (raw[:geo["count_off"]]
+                   + _pack_count(geo["count_kind"], new_count)
+                   + raw[geo["count_off"] + width:])
+            marks.append((geo["count_off"], width))
 
         row = {"table": table, "bytes_added": sum(len(r["bytes"]) for r in tadds),
                "bytes_freed": None, "added": [list(r["key"]) for r in tadds],
@@ -3536,8 +3591,11 @@ def _verify(raw, new_raw, ranges, expect=None, tables=None):
     out["tail_ok"] = bool(civs) and civs[-1]["_end"] == tail
     if not out["contiguous"] or not out["tail_ok"]:
         out["ok"] = False
+    # ``colour`` is here because ``_apply_tables`` can now rewrite one of its
+    # records; a walk left out of this list is a section nobody proves still
+    # ends where its own records say it does.
     all_tables = ("graphic", "sound", "effect", "terrain", "task",
-                  "restriction")
+                  "restriction", "colour")
     want = all_tables if tables is None else tuple(
         t for t in all_tables if t in tables)
     out["tables_skipped"] = [t for t in all_tables if t not in want]
@@ -4287,7 +4345,8 @@ def upgrade(mod_dat=None, out_dir=None, title=None, base_dat=None,
     t = time.time()
     # Which table walks are proof here and which are ceremony: a range that
     # does not reach a table's bytes cannot have broken that table's walk.
-    reached = [t for t in ("graphic", "sound", "effect", "terrain", "task")
+    reached = [t for t in ("graphic", "sound", "effect", "terrain", "task",
+                           "colour")
                if _regions_touch_table(new_f, t, ranges)]
     # A table this run rebuilt has to be re-walked no matter what the edit
     # ranges say: the point of the walk is "the section still ends exactly where
@@ -4537,6 +4596,14 @@ def describe(rep):
         # table (positions), so this one would only restate the number.
         lines.append("音效/图形/效果表：新增 %d 条、删除 %d 条"
                      % (c.get("tables_added") or 0, c.get("tables_removed") or 0))
+    if c.get("tables_replaced"):
+        # A record copied whole is a promise the author can check: those bytes
+        # are in the output, unedited by this tool.  It used to be counted and
+        # never printed, so "tables_replaced: 99" in the JSON had no sentence in
+        # the panel -- and a replacement the writer skipped (terrain, colour)
+        # looked exactly like one it wrote.
+        lines.append("整条照抄的表记录：%d 条（作者把它们改长了，或改动落在没有字段名"
+                     "的字节上）" % c["tables_replaced"])
     if eff.get("out"):
         # An effect record has no id at all -- the technology's EffectID field
         # is what points at it. So "how many effects came over" is not the

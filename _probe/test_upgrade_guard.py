@@ -1,7 +1,7 @@
 """Guards the upgrade engine's refusals, and the one case that LOOKS like a
 refusal but must not be one.
 
-Seven things must be true, and each is a way this tool could quietly "help"
+Eight things must be true, and each is a way this tool could quietly "help"
 and destroy a mod instead:
 
 1. A generation we never archived has no "before" at all.  Inventing one (going
@@ -339,6 +339,43 @@ def main():
            % table, worst is None and left == 0,
            "record %s ends %s but fields end %s (leftover %s)"
            % (worst, worst[2], worst[1], left) if worst else str(left))
+
+
+    # --- 8. a replacement decided for terrain/colour lands in the output ----
+    #
+    # `_apply_tables` walked `_TABLE_FLAT` only, so a `replace_table` row naming
+    # `terrain` or `colour` was dropped on the floor: the planner had promised
+    # "this record gets copied whole" and the writer never looked.  Measured on
+    # 310130, three terrain records grew (417 -> 431 / 455 / 444) and vanished
+    # that way.  Two halves are checked: a replacement is written exactly where
+    # the record was, and an append is refused with a sentence instead of being
+    # skipped silently -- terrain continues into a block tail this module does
+    # not re-serialise, so "append" has no honest answer there.
+    fnew = UP.Frame(tail_raw, "new")
+    for table, pick in (("colour", 10), ("terrain", 1)):
+        recs, _left = TB.scan(tail_raw, table)
+        rec = recs[pick]
+        whole = bytes(tail_raw[rec["start"]:rec["end"]])
+        key = fnew.table_key_of(table, rec, raw=tail_raw)
+        bumped = bytearray(whole)
+        bumped[0] ^= 0xFF
+        plan_r = {"add_table": [], "del_table": [],
+                  "replace_table": [{"table": table, "key": key,
+                                     "base": whole, "bytes": bytes(bumped)}]}
+        out_r, done_r, _d = UP._apply_tables(fnew, plan_r, tail_raw)
+        ok("a replaced %s record is written where the plan said" % table,
+           bytes(out_r[rec["start"]:rec["end"]]) == bytes(bumped)
+           and len(out_r) == len(tail_raw),
+           "%d -> %d bytes, rewritten %r"
+           % (len(tail_raw), len(out_r), done_r["tables"]))
+        plan_a = {"add_table": [{"table": table, "key": ("index", 99),
+                                 "bytes": whole}],
+                  "del_table": [], "replace_table": []}
+        out_a, done_a, _d2 = UP._apply_tables(fnew, plan_a, tail_raw)
+        ok("and an appended %s record is refused in words, not skipped" % table,
+           out_a == tail_raw and bool(done_a["refused"])
+           and done_a["refused"][0].get("space") == table,
+           str(done_a["refused"])[:120])
 
     print("")
     if FAILS:

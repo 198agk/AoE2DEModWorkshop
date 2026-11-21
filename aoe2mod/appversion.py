@@ -41,16 +41,17 @@ turns a nail red instead of shipping two answers.
 #: 1.0001 -> 1.0002 and so on.  A four-decimal number is not decoration: the
 #: comparison in `aoe2mod/updates.py` reads the dot part as a decimal fraction,
 #: which keeps 1.0001 sorted below 1.1 and above 1.0.
-VERSION = "1.0009"
+VERSION = "1.0010"
 
 #: What this build changed，一行一件，用玩家看得懂的话写。 印在 关于 页的版本
 #: 下面，也发进 gist 的同号旁边，让「检查更新」能说出新在哪儿，而不是只报一个号码。
 #: 只写改了什么都别写怎么改的：玩家要知道值不值得装，不需要读实现。
 CHANGES = (
-    "修好了「一键更新模组」漏搬的一部分改动：作者改过的动画帧、单位语音文件、"
-    "末尾那几个全局数值，以前会被悄悄丢掉，现在都跟着搬过去",
-    "碰到工具叫不出名字的字节，那一条记录整条照抄过去，不再只搬一半",
-    "报告里不再出现「0 条科技……（）」这种空括号的句子",
+    "修好了「一键更新模组」里地形和玩家颜色这两张表：作者改过的内容，报告说会搬，"
+    "写出时却没动，现在真的搬过去了",
+    "这两张表里如果作者加了或删了记录，工具说不清该插在哪，会直说这一层不动，"
+    "不再当作已经搬好",
+    "报告里多一行「整条照抄的表记录」，说清有几条是被整条搬的",
 )
 
 #: The same number with the word in front, so screens do not each spell it.
