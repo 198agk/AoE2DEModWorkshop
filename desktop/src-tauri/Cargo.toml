@@ -1,6 +1,6 @@
 [package]
 name = "aoe2-mod-workshop"
-version = "1.0.11"
+version = "1.0.13"
 edition = "2021"
 description = "AoE2 DE local mod workshop"
 

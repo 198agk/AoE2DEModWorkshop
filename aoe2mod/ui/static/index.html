@@ -2281,7 +2281,7 @@ body.dragging-row, body.dragging-row * { cursor: grabbing !important; user-selec
   /* The verdict badge had ONE colour.  `.stat` is the success pill and `.dim`
      -- the class the row added for every non-mergeable verdict -- is only
      defined for `.detailtext`, so it did nothing here: 「这一版搬不过去」 drew in
-     the same green as 「能一键适配」.  Colour carries the verdict on a panel where
+     the same green as 「可以更新」.  Colour carries the verdict on a panel where
      the player scans nineteen rows, so a refusal must not look like a pass
      (measured in the shipped build 2026-11-10, same screenshot). */
   #repair .stat.warn { background: var(--warn-soft); color: var(--warn-ink); }
@@ -5129,6 +5129,22 @@ body.dragging-row, body.dragging-row * { cursor: grabbing !important; user-selec
             <button id="modinfo-save" class="chip">存进 info.json</button>
             <span class="hint" id="modinfo-msg"></span>
           </div>
+          <!-- 另存为 (2026-11-21): renaming above edits the ONE info.json in
+               place, so a player who wanted their own name on a shipped mod
+               lost the shipped name.  This row writes a SECOND folder instead,
+               which is why it needs a name of its own -- and why it does not
+               reuse the 名字 field above: typing there is a rename, and the
+               same box cannot mean both. -->
+          <div class="row">
+            <div class="field">
+              <label class="hint" for="modinfo-copy-name">另存为一个新模组（原来那份不动，名字要不一样）</label>
+              <input type="text" id="modinfo-copy-name">
+            </div>
+          </div>
+          <div class="row">
+            <button id="modinfo-copy" class="chip">另存为</button>
+            <span class="hint" id="modinfo-copy-msg"></span>
+          </div>
         </div>
       </div>
       <div class="body" id="mods"><div class="empty" data-i18n="mods.loading">读取中…</div></div>
@@ -7931,8 +7947,8 @@ async function rebuildAll(rows) {
 // load.  The list says how many mods need work before it lists them: twenty rows
 // with no summary is a wall, not information.
 const UPGRADE_VERDICT_ZH = {
-  mergeable: "能一键适配",
-  conflicts: "能适配，但官方也改了同一处",
+  mergeable: "可以更新",
+  conflicts: "可以更新，但官方也改了同一处",
   up_to_date: "本来就是新版",
   identical: "不用动",
   impossible: "这一版搬不过去",
@@ -7942,7 +7958,15 @@ function upgradeRow(r) {
   const row = el("div", "mod");
   const left = el("div", "");
   left.appendChild(el("div", "nm", r.title || r.name));
-  const v = UPGRADE_VERDICT_ZH[r.verdict] || r.verdict || "读不出来";
+  // "Up to date" is two different stories and the badge must not tell them the
+  // same way.  One row was built on the current official data long ago; the
+  // other is a file THIS TOOL rebuilt when the player pressed 更新 a minute
+  // ago.  Printing 「本来就是新版」 on the second one answers a button press
+  // with "there was never anything to do", which reads as "the button failed".
+  // The engine marks which one it is (`upgraded`, from the build record) and
+  // the wording follows that flag, not the verdict.
+  const done = r.verdict === "up_to_date" && r.upgraded;
+  const v = done ? "已完成更新" : (UPGRADE_VERDICT_ZH[r.verdict] || r.verdict || "读不出来");
   // Four verdicts, four colours: a row the button cannot fix must not wear the
   // same green as one it can.  `warn` = fixable but the official patch touched
   // the same field; `plain` = nothing to do; `bad` = this generation is not in
@@ -8055,7 +8079,7 @@ function upgradeRow(r) {
 
   const can = r.verdict === "mergeable" || r.verdict === "conflicts";
   if (can) {
-    const b = el("button", "chip", "适配新版本");
+    const b = el("button", "chip", "更新");
     b.onclick = async (ev) => {
       const btn = ev.target;
       // A conflict row means the official patch moved the same field the author
@@ -8069,13 +8093,13 @@ function upgradeRow(r) {
           + "。\n\n确定 = 用作者的改法（推荐）\n取消 = 用官方的值，放弃作者那一处");
       }
       btn.disabled = true;
-      btn.textContent = "适配中…（要重写数据文件）";
+      btn.textContent = "更新中…（要重写数据文件）";
       try {
         const got = await api("/api/upgrade-apply", {
           name: r.name, official_wins: officialWins, install: true,
         });
         const n = (got.counts || {}).edits || 0;
-        toast("已适配并装回：" + (r.title || r.name) + "（搬了 " + n + " 处改动）", "ok");
+        toast("已更新并装回：" + (r.title || r.name) + "（搬了 " + n + " 处改动）", "ok");
         if (got.installed && got.installed.running_warning)
           toast(got.installed.running_warning, "warn");
         // A rebuild always lands in local/, and the copy it came from stays in
@@ -8102,8 +8126,8 @@ function upgradeRow(r) {
         await checkRepairs([r.name], true);
       } catch (e) {
         btn.disabled = false;
-        btn.textContent = "适配新版本";
-        toast("没适配成：" + e.message, "bad");
+        btn.textContent = "更新";
+        toast("没更新成：" + e.message, "bad");
       }
     };
     row.appendChild(b);
@@ -8133,7 +8157,7 @@ async function adaptAll() {
   const handed = [];
   let warned = null;
   for (const r of rows) {
-    btn.textContent = "适配中… (" + (done.length + failed.length + 1)
+    btn.textContent = "更新中… (" + (done.length + failed.length + 1)
                     + "/" + rows.length + ")";
     try {
       const got = await api("/api/upgrade-apply", {
@@ -8153,14 +8177,14 @@ async function adaptAll() {
     }
   }
   btn.disabled = false;
-  btn.textContent = "全部一键适配";
+  btn.textContent = "全部更新";
   // One toast, not four.  `toast()` writes one element, so a chain of four
   // messages shows only the last -- and the last would be the failure list,
   // which is the one sentence the player must not miss.  The detail goes into
   // a block under the rows instead, where it is still readable after the toast
   // has faded.
   toast(done.length
-        ? "已适配并装回 " + done.length + " 个"
+        ? "已更新并装回 " + done.length + " 个"
           + (failed.length ? "，" + failed.length + " 个没成" : "")
         : failed.length + " 个都没成",
         failed.length ? "bad" : touched.length ? "warn" : "ok");
@@ -8172,7 +8196,7 @@ async function adaptAll() {
   if (!box) return;
   const lines = [];
   if (done.length)
-    lines.push("已适配并装回 " + done.length + " 个，重开游戏才会生效。");
+    lines.push("已更新并装回 " + done.length + " 个，重开游戏才会生效。");
   if (touched.length)
     lines.push("其中 " + touched.length + " 个官方也改过同一处，"
                + "按作者的改法搬的：" + touched.join("、") + "。");
@@ -8314,14 +8338,19 @@ async function checkRepairs(only, skipRoster) {
     } else {
       const ready = rows.filter(r => r.verdict === "mergeable"
                                      || r.verdict === "conflicts").length;
-      const now = rows.filter(r => r.verdict === "up_to_date"
+      // Three different "nothing to do" rows, and lumping them together was the
+      // whole complaint: a mod this tool rebuilt a minute ago counted as
+      // 「本来就是新版」, so the button press left no trace on the screen.
+      const updated = rows.filter(r => r.verdict === "up_to_date" && r.upgraded).length;
+      const now = rows.filter(r => (r.verdict === "up_to_date" && !r.upgraded)
                                    || r.verdict === "identical").length;
       const no = rows.filter(r => r.verdict === "impossible").length;
       const scope = (only && only.length)
         ? ("查了 " + rows.length + " 个") : ("模组 " + rows.length + " 个");
       box.appendChild(el("div", "hint",
-        scope + "：能一键适配 " + ready
-        + " 个，本来就是新版 " + now + " 个"
+        scope + "：可以更新 " + ready
+        + (updated ? " 个，已完成更新 " + updated + " 个" : " 个")
+        + "，本来就是新版 " + now + " 个"
         + (no ? "，这一版搬不过去 " + no + " 个" : "") + "。"));
       if (got.official && got.official.ok)
         box.appendChild(el("div", "hint",
@@ -8683,12 +8712,24 @@ async function loadDatPicker(force) {
   const note = $("#dp-note");
   if (note) {
     const n = (loads.competing || 0);
-    // Four states, and the second one used to print nothing: a player editing
-    // the winning file saw an empty note and could not tell that apart from
-    // "the answer is unknown".  "Which file am I in" and "is it in effect" are
-    // two questions, and the note has to answer both.
-    note.textContent = loads.reads === "game"
-      ? "没有启用任何改数据的模组，游戏读的就是「游戏本体」那一份。"
+    // "Which file am I in" and "is it in effect" are two questions, and the
+    // note has to answer both.  The second one used to print nothing when the
+    // player was editing the winning file, which reads the same as "unknown".
+    // Which file the picker sits on.  This note used to answer only the GAME's
+    // side -- "the game reads the base copy" -- and never said which file the
+    // player had selected, so a player editing a mod's own .dat read a sentence
+    // about the base game and concluded the tool had lost their choice.
+    // Reported 2026-11-21: 「应该改成目前已选的 dat」.  Both questions get an
+    // answer now, and the one about the selection comes first.
+    const cur = DP_SOURCES.filter((it) => it.current)[0] || null;
+    const mine = cur
+      ? "目前改的是「" + (cur.label || "?") + "」"
+        + (cur.scope === "game" ? "（游戏本体那一份）"
+           : cur.scope === "mode" ? "（模式用的那一份）" : "（模组带的那一份）")
+        + "。"
+      : "";
+    note.textContent = mine + (loads.reads === "game"
+      ? "没有启用任何改数据的模组，游戏读的是它自己那份。"
       : loads.reads === "mod"
         ? "启用了 " + n + " 个改数据的模组，你改的这一份排在最前，游戏读的就是它。"
         : loads.reads === "other"
@@ -8696,7 +8737,7 @@ async function loadDatPicker(force) {
             + ((loads.winner || {}).title || "?") + "」。改别的份游戏看不到。"
           : loads.reads === "none"
             ? "这一份不在游戏会读的那几个目录里，改它不会进游戏。"
-            : "";
+            : "");
     // Measuring one file is a capped 8 MB inflate plus a walk to stage 7:
     // 0.17-0.35 s each, 4.7 s for the machine, and it holds the parser lock, so
     // it runs on a worker.  Come back for the answer rather than printing
@@ -13880,6 +13921,15 @@ function fillModInfo(m) {
       : "这个列表里没有能改的模组";
   }
   $("#modinfo-msg").textContent = "";
+  // Prefilled, never empty: the backend appends 「 副本」 to the current Title when
+  // the name is blank, and a field that looks empty reads as "you must think of
+  // something" when the honest answer is "this default is fine".
+  const copyName = $("#modinfo-copy-name");
+  if (copyName) {
+    copyName.value = m ? (String(m.title || m.name || "") + " 副本") : "";
+  }
+  const copyMsg = $("#modinfo-copy-msg");
+  if (copyMsg) copyMsg.textContent = "";
 }
 
 $("#modinfo-pick").onchange = () => {
@@ -13913,6 +13963,39 @@ $("#modinfo-save").onclick = async () => {
   } catch (e) {
     $("#modinfo-msg").textContent = e.message;
     toast("没改成：" + e.message, "bad");
+  } finally {
+    btn.disabled = false;
+  }
+};
+
+// 另存为: a SECOND folder under a new name, original untouched.  It cannot be
+// the same action as the save above -- that one edits the source `info.json` in
+// place, and a player who wanted their own name on a shipped mod used to lose
+// the shipped name.  Author and description are NOT sent: a copy starts from the
+// source file, so anything typed above but not yet saved stays a rename.
+$("#modinfo-copy").onclick = async () => {
+  const name = MODINFO_NAME || $("#modinfo-pick").value || "";
+  if (!name) { toast("先选一个模组", "bad"); return; }
+  const btn = $("#modinfo-copy");
+  const want = $("#modinfo-copy-name").value.trim();
+  btn.disabled = true;
+  $("#modinfo-copy-msg").textContent = "";
+  try {
+    const got = await api("/api/mod-copy", {name, new_name: want, title: want});
+    const made = (got.copy || {}).new_name || want;
+    // Select the copy rather than the source: the player just made it, and the
+    // panel is where they would go next to adjust its description.
+    MODINFO_NAME = made;
+    // Redraw BEFORE saying anything: `renderMods` re-runs `fillModInfo`, which
+    // clears both message lines, so a message written first is wiped by the very
+    // redraw that is supposed to reveal the new row.
+    renderMods(got.mods || []);
+    $("#modinfo-copy-msg").textContent = "已另存为：「" + made + "」";
+    toast("已另存为：" + made, "ok");
+    if (got.running_warning) toast(got.running_warning, "bad");
+  } catch (e) {
+    $("#modinfo-copy-msg").textContent = e.message;
+    toast("没存成：" + e.message, "bad");
   } finally {
     btn.disabled = false;
   }

@@ -11,7 +11,7 @@
     "verify_quick": "python _probe/run_suites.py",
     "verify_long": "python _probe/run_long.py",
     "suites": {
-      "python": 234,
+      "python": 239,
       "node": 1
     },
     "python": "python"
@@ -325,12 +325,14 @@
       "/api/dat-sources",
       "/api/describe",
       "/api/diag",
+      "/api/drop-at",
       "/api/emblem",
       "/api/fields",
       "/api/film",
       "/api/forms",
       "/api/icon",
       "/api/icons",
+      "/api/instances",
       "/api/job",
       "/api/live",
       "/api/locale",
@@ -359,8 +361,8 @@
       "/api/update-check",
       "/api/upgrade-candidates",
       "/api/upgrade-check",
-      "/api/version-check",
-  "/api/version-changelog"
+      "/api/version-changelog",
+      "/api/version-check"
     ],
     "post": [
       "/api/ai-script-build",
@@ -378,12 +380,14 @@
       "/api/card-take",
       "/api/card-time",
       "/api/dat-set",
+      "/api/drop",
       "/api/effect-set",
       "/api/field-set",
       "/api/icon-set",
       "/api/install",
       "/api/log-open",
       "/api/mod",
+      "/api/mod-copy",
       "/api/mod-info",
       "/api/mod-move",
       "/api/mod-move-to",

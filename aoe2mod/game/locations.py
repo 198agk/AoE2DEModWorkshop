@@ -1238,6 +1238,138 @@ def set_mod_info(profile_root, name, title=None, author=None,
             "running_warning": _running["running_warning"]}
 
 
+def copy_mod(profile_root, name, new_name=None, title=None, author=None,
+             description=None, kind="local", account=None, enabled=True,
+             position=0, backup=True):
+    """Duplicate an installed mod into a SECOND folder, leaving the first alone.
+
+    「改模组名字和简介没有另存为」 -- the panel could only rewrite the one
+    `info.json` it found, so a player who liked a shipped mod's data but wanted
+    their own name on it had no way to keep both: typing a new name overwrote
+    the original.  This is the missing half, and it is a COPY, not a rename:
+
+    * the source folder is read, never written -- not one byte of it changes,
+      so the original stays in the list exactly as it was;
+    * the copy gets its own folder in the same `mods/<kind>/` tree, and the
+      folder name IS the new Title, because the engine derives the storage path
+      from the folder and lists the mod by it;
+    * `mod-status.json` gains an entry for the copy at ``position`` (0 = top of
+      the list = highest priority), enabled like the original, so the game
+      actually loads it;
+    * a `<folder>_ui` sibling is copied beside it and retitled `<title>（界面）`,
+      because `ui/server._pair_rows` matches the two halves by Title and a
+      renamed data half would otherwise unpair from its interface half.
+
+    The `.dat` comes along with the copy: duplicating a 30 MB data folder is the
+    point of the feature, and a "copy" that pointed at the original's bytes
+    would make editing one silently edit both.
+    """
+    import shutil
+    from ..mod import emitter as E
+
+    if account:
+        acc = account
+    elif os.path.isdir(os.path.join(profile_root, "mods")):
+        acc = profile_root
+    else:
+        acc = pick_account(profile_root)
+    folder, kind, _ = resolve_mod_any(profile_root, name, kind=kind,
+                                      account=acc)
+    src = os.path.join(account_mods_dir(acc, kind), folder)
+    if not os.path.isdir(src):
+        raise FileNotFoundError(
+            "没找到叫「%s」的模组：模组列表里没有它，模组文件夹里也没有这个文件夹。"
+            "它可能已经被删掉或者改名了，刷新一下列表再试。" % (name,))
+
+    old = E.read_info_soft(os.path.join(src, "info.json"))
+    want_title = (title or "").strip() or (new_name or "").strip()
+    if not want_title:
+        # 「副本」 rather than a timestamp: the player is going to rename this
+        # anyway, and a name carrying a clock reads like a backup file.
+        want_title = str(old.get("Title") or folder) + " 副本"
+    bad = sorted(set(E.BANNED_TITLE_CHARS) & set(want_title))
+    if bad:
+        raise ValueError(
+            "新名字里有引擎不允许的字符：%s。这个名字会被当作文件夹名，所以这些"
+            "字符不能出现。把「%s」里去掉它们就行。"
+            % (" ".join(bad), want_title))
+    want_title = E._fit_title(want_title)
+    target_name = want_title
+    if target_name == folder:
+        raise ValueError(
+            "新名字和原来一样（%s），这样只是原地改名，用「存进 info.json」就行；"
+            "另存为要的是一个不一样的名字，原来那份才不会被动。" % (folder,))
+    target = os.path.join(account_mods_dir(acc, kind), target_name)
+    if os.path.exists(target):
+        raise FileExistsError(
+            "这个位置已经有一个叫「%s」的模组了：%s。换一个名字再存，或者先在"
+            "列表里把它删掉。" % (target_name, target))
+
+    os.makedirs(os.path.dirname(target), exist_ok=True)
+    shutil.copytree(src, target)
+
+    info = dict((k, v) for k, v in old.items() if isinstance(k, str))
+    info["Title"] = want_title
+    info["Author"] = (str(old.get("Author") or "aoe2mod")
+                      if author is None else (author.strip() or
+                                              str(old.get("Author") or "aoe2mod")))
+    info["Description"] = (str(old.get("Description") or "")
+                           if description is None else description)
+    if "CacheStatus" not in info:
+        info["CacheStatus"] = 0
+    problems = E.validate_info(info)
+    if problems:
+        shutil.rmtree(target, ignore_errors=True)
+        raise ValueError(" ".join(problems))
+    info_path = E.write_info_json(target, info)
+
+    # A split build is two folders and ONE decision.  Copying only the data half
+    # would leave the player with a new mod drawing the old icons -- and the pair
+    # would be gone, because pairing reads the Title suffix.
+    ui_src = src.rstrip("\\/") + E.UI_FOLDER_SUFFIX
+    ui_name = None
+    ui_target = None
+    if os.path.isdir(ui_src):
+        ui_title = E._fit_title_stem(want_title, "\uff08\u754c\u9762\uff09")
+        ui_target = os.path.join(account_mods_dir(acc, kind), ui_title)
+        if os.path.exists(ui_target):
+            shutil.rmtree(target, ignore_errors=True)
+            raise FileExistsError(
+                "这个位置已经有一个叫「%s」的模组了：%s。换一个名字再存。"
+                % (ui_title, ui_target))
+        shutil.copytree(ui_src, ui_target)
+        ui_old = E.read_info_soft(os.path.join(ui_src, "info.json"))
+        ui_info = dict((k, v) for k, v in ui_old.items() if isinstance(k, str))
+        ui_info["Title"] = ui_title
+        ui_info["Author"] = info["Author"]
+        if "CacheStatus" not in ui_info:
+            ui_info["CacheStatus"] = 0
+        E.write_info_json(ui_target, ui_info)
+        ui_name = ui_title
+
+    doc, acc, _ = read_status_doc(profile_root, account=acc)
+    entry = upsert_mod_entry(doc, target_name, kind=kind, title=want_title,
+                             enabled=enabled, position=position, move=True)
+    if ui_name:
+        upsert_mod_entry(doc, ui_name, kind=kind, title=ui_name,
+                         enabled=enabled, position=position + 1, move=True)
+    bak = write_status_doc(acc, doc, backup=backup)
+
+    dat = os.path.join(target, DAT_REL)
+    _running = running_note()
+    return {"account": acc, "name": name, "folder": folder, "kind": kind,
+            "new_name": target_name, "title": want_title,
+            "mod_dir": target, "info_path": info_path,
+            "path_field": entry["Path"], "priority": entry["Priority"],
+            "status_file": status_path(acc), "status_backup": bak,
+            "status_entries": len(doc.get("Mods", [])),
+            "dat": dat if os.path.exists(dat) else None,
+            "ui_name": ui_name, "ui_dir": ui_target,
+            "copied": True,
+            "game_running": _running["game_running"],
+            "running_warning": _running["running_warning"]}
+
+
 def sha256_file(path):
     import hashlib
     h = hashlib.sha256()

@@ -179,6 +179,10 @@ SUITES = [
     r"_probe\test_tech_effect.py",
     r"_probe\test_install.py",
     r"_probe\test_install_e2e.py",
+    # 「另存为」.  A copy that shares the source folder looks right in the list and
+    # silently edits both mods at once, so the suite diffs the source byte for
+    # byte rather than trusting the answer dict.
+    r"_probe\test_mod_copy.py",
     # The UI shell.  These two are product assertions in the strictest sense:
     # the sentence parser is the only thing standing between a Chinese sentence
     # and a wrong edit, and the server test is the only thing that exercises the

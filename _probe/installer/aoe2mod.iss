@@ -10,7 +10,7 @@
 ; 只有 Rust 那两个 manifest 用三段式：cargo 明确拒绝 `1.0001`（invalid leading
 ; zero in minor version number），它们拿的是派生出来的 SEMVER。
 #ifndef AppVer
-  #define AppVer "1.0011"
+  #define AppVer "1.0013"
 #endif
 ; 仓库根不写死：这个脚本就住在 <repo>\_probe\installer\，往上两级就是它。
 ; 换机器/换盘符不用改文件；要指到别处就 ISCC.exe /DRepoDir=D:\path\repo aoe2mod.iss

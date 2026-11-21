@@ -204,6 +204,7 @@ _DETAIL_KEYS = {
     "/api/uninstall": ("name", "kind", "removed"),
     "/api/mod": ("name", "enabled", "position"),
     "/api/mod-info": ("name", "title", "author", "description"),
+    "/api/mod-copy": ("name", "new_name", "title", "author", "description"),
     "/api/mod-move": ("name", "delta"),
     "/api/mod-move-to": ("name", "position"),
     "/api/dat-set": ("path", "dat", "scope"),
@@ -254,6 +255,7 @@ _VERBS = {
     "/api/uninstall": "删除已装 mod",
     "/api/mod": "开关模组",
     "/api/mod-info": "改模组介绍",
+    "/api/mod-copy": "另存为模组",
     "/api/mod-move": "移动模组",
     "/api/mod-move-to": "模组排序",
     "/api/dat-set": "切换数据文件",
@@ -365,6 +367,13 @@ def summary_of(route, payload, result):
         got = r.get("info") or {}
         was = _pick(p.get("name"), "?")
         return "%s：%s → %s" % (verb, was, _pick(got.get("title"), p.get("title"), "?"))
+
+    if route == "/api/mod-copy":
+        got = r.get("copy") or {}
+        was = _pick(p.get("name"), "?")
+        return "%s：%s → %s" % (verb, was,
+                                _pick(got.get("new_name"),
+                                      p.get("new_name"), p.get("title"), "?"))
 
     if route == "/api/card-move":
         moved = r.get("moved") or []

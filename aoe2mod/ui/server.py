@@ -8785,6 +8785,22 @@ class App(object):
                 "running_warning": r.get("running_warning"),
                 "game_running": r.get("game_running")}
 
+    def copy_mod(self, name, new_name=None, title=None, author=None,
+                 description=None):
+        """另存为: write a second copy of an installed mod under a new name.
+
+        Separate from `set_mod_info` for the same reason that one is separate
+        from `install`: a rename edits one file in place and must never copy
+        30 MB, while this one must copy and must never touch the original.  The
+        answer carries the whole mods list because the copy is a NEW row the
+        page has to draw.
+        """
+        r = self.tk.copy_mod(name, new_name=new_name, title=title,
+                             author=author, description=description)
+        return {"ok": True, "copy": r, "mods": _mods_brief(self.tk),
+                "running_warning": r.get("running_warning"),
+                "game_running": r.get("game_running")}
+
     def mods(self):
         return {"ok": True, "mods": _mods_brief(self.tk)}
 
@@ -10769,6 +10785,15 @@ def make_handler(app):
                 # recopy a 100 MB `.dat`.
                 return self._guard(lambda: app.set_mod_info(
                     payload["name"], title=payload.get("title"),
+                    author=payload.get("author"),
+                    description=payload.get("description")))
+            if path == "/api/mod-copy":
+                # 另存为: a second folder under a new name, original untouched.
+                # Not folded into /api/mod-info on purpose -- that route edits
+                # one file in place and a rename must never copy 30 MB.
+                return self._guard(lambda: app.copy_mod(
+                    payload["name"], new_name=payload.get("new_name"),
+                    title=payload.get("title"),
                     author=payload.get("author"),
                     description=payload.get("description")))
             if path == "/api/mod-move-to":

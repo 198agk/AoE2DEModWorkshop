@@ -1,7 +1,7 @@
 """Guards the upgrade engine's refusals, and the one case that LOOKS like a
 refusal but must not be one.
 
-Nine things must be true, and each is a way this tool could quietly "help"
+Ten things must be true, and each is a way this tool could quietly "help"
 and destroy a mod instead:
 
 1. A generation we never archived has no "before" at all.  Inventing one (going
@@ -23,7 +23,11 @@ and destroy a mod instead:
 4. A run with rows it cannot carry must refuse to write unless forced, and the
    refusal must name them.  Silence here is the failure mode the whole module
    exists to prevent.
-5. The byte walk must be able to say how far it has got.  `diff_regions` is
+5. A file this tool WROTE must read as done.  The build record holds the raw sha
+   of what we wrote and of the official data we wrote it on; equal means nothing
+   has moved, and the row has to say 已完成更新 rather than offering the button
+   again -- a press that leaves the screen unchanged reads as "it did nothing".
+6. The byte walk must be able to say how far it has got.  `diff_regions` is
    called on two 93 MB streams and takes seconds; a caller that passes
    ``on_progress`` and gets a TypeError instead is a mod that cannot even be
    looked at, which is exactly what `209785_Civilization Alliance` reported.
@@ -424,6 +428,95 @@ def main():
        and UP._decode_value(None, b"\x2c\x01") == 300,
        repr([UP._decode_value("not-a-kind", b"\x05"),
              UP._decode_value(None, b"\x2c\x01")]))
+    # --- 10. a file WE wrote is called done, not "mergeable" again -----------
+    #
+    # The row that made someone file this: press 更新, the file is written, the
+    # panel comes back and says 可以更新 again -- so the button press leaves no
+    # trace and reads as "it did nothing".  The cause is structural: `_load_pair`
+    # takes the base off the archive shelf, which keeps the OLDEST build of a
+    # generation, so the file we just wrote is diffed against a year-old official
+    # stream.  Every edit the author ever made is a real difference again and the
+    # verdict is honestly "mergeable" about two files that are not the question.
+    #
+    # What must hold: when the build record says "we wrote THIS file on top of
+    # THIS official data", the verdict is done -- and because the record also
+    # distinguishes an upgrade from a fresh build, the page can say 已完成更新
+    # instead of 本来就是新版.  Both are checked, plus the two ways the record
+    # must NOT be believed: a record about a different file, and a record whose
+    # generation does not match (which would otherwise let a stale entry hide a
+    # genuine cross-generation job).
+    mod_fx = fx("mod_touches_a", "mod")
+    base_fx = fx("mod_touches_a", "base")
+    new_fx = fx("mod_touches_a", "new")
+    if os.path.isfile(mod_fx) and os.path.isfile(base_fx) and os.path.isfile(new_fx):
+        mod_raw10 = UP._inflate(mod_fx)
+        new_raw10 = UP._inflate(new_fx)
+        mod_sha10 = UP._sha(mod_raw10)
+        new_sha10 = UP._sha(new_raw10)
+        rep10 = {"mod": {"sha256": mod_sha10, "ver": UP._head_ver(mod_raw10)},
+                 "new": {"sha256": new_sha10, "ver": UP._head_ver(new_raw10)}}
+        real_load = UP.PV.load
+
+        def _record(dat_sha, base_sha, stamp="2026-11-21T15:08:34"):
+            return {"version": 1, "builds": {"村民血量一组": {
+                "title": "村民血量一组",
+                "dat_raw_sha256": dat_sha, "base_raw_sha256": base_sha,
+                "upgraded_at": stamp, "target_version": "VER 8.9"}}}
+
+        try:
+            UP.PV.load = lambda path=None: _record(mod_sha10, new_sha10)
+            hit10 = UP._rebuilt_by_us(rep10)
+            ok("a file we wrote against today's data is recognised from the record",
+               isinstance(hit10, dict) and hit10.get("upgraded") is True,
+               repr(hit10))
+            ok("and the record tells an upgrade apart from a fresh build",
+               isinstance(hit10, dict) and hit10.get("at") == "2026-11-21T15:08:34",
+               repr(hit10 and hit10.get("at")))
+            # A record about somebody else's file must not answer for this one.
+            UP.PV.load = lambda path=None: _record(mod_sha10, "0" * 64)
+            ok("a record about a different official build does not answer",
+               UP._rebuilt_by_us(rep10) is None,
+               repr(UP._rebuilt_by_us(rep10)))
+            # Cross-generation: same two shas cannot happen, but a stale entry
+            # must not be able to hide a 7.8 -> 8.9 job even if it did.
+            UP.PV.load = lambda path=None: _record(mod_sha10, new_sha10)
+            cross10 = {"mod": dict(rep10["mod"], ver="VER 7.8"),
+                       "new": dict(rep10["new"])}
+            ok("a record cannot hide a cross-generation job",
+               UP._rebuilt_by_us(cross10) is None,
+               repr(UP._rebuilt_by_us(cross10)))
+
+            # End to end: the same question the panel asks.
+            rep10_done = UP.analyze(mod_dat=mod_fx, base_dat=base_fx,
+                                   new_dat=new_fx)
+            ok("analyze calls a file we just wrote done, not mergeable",
+               rep10_done["verdict"] == UP.UP_TO_DATE
+               and isinstance(rep10_done.get("upgraded"), dict),
+               "%s %r" % (rep10_done["verdict"], rep10_done.get("upgraded")))
+            # `describe` returns the whole block as ONE string, so it joins as-is:
+            # iterating it would splice the characters together and make every
+            # sentence below look absent.
+            said10 = " ".join([str(rep10_done.get("summary") or "")]
+                              + [str(x) for x in (rep10_done.get("notes") or [])]
+                              + [UP.describe(rep10_done)])
+            ok("and it says in words that this tool moved it here",
+               "一键更新" in said10 and "不用再更新" in said10, said10[:80])
+            ok("and the report dates the update instead of hiding it",
+               "上次更新：2026-11-21 15:08" in said10, said10[:120])
+            # With no record at all the old behaviour must be intact: the mod is
+            # diffed in full.  Otherwise "done" would be the answer to everything.
+            UP.PV.load = lambda path=None: {"version": 1, "builds": {}}
+            rep10_none = UP.analyze(mod_dat=mod_fx, base_dat=base_fx,
+                                    new_dat=new_fx)
+            ok("with no record the mod is still diffed in full",
+               rep10_none["verdict"] in (UP.MERGEABLE, UP.CONFLICTS)
+               and rep10_none.get("upgraded") is None,
+               str(rep10_none["verdict"]))
+        finally:
+            UP.PV.load = real_load
+    else:
+        print("  SKIP section 10 needs the mod_touches_a fixtures")
+
     print("")
     if FAILS:
         print("GUARD: %d FAILED -> %s" % (len(FAILS), FAILS))

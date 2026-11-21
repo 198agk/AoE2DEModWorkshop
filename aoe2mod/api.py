@@ -7340,6 +7340,14 @@ class Toolkit(object):
                 # diffing the file; the page reads these.
                 "conflict_rows": _kinds[:8],
                 "conflict_kinds": len(_kinds),
+                # "up to date" has two histories and the row must not print the
+                # same sentence for both: a mod that was already made on this
+                # official data, and one THIS TOOL rebuilt a minute ago.  The
+                # second one just answered a button press, so telling its owner
+                # "本来就是新版" reads as "the button did nothing".  The flag
+                # comes from the build record, not from the verdict, because
+                # the verdict alone cannot tell the two apart.
+                "upgraded": rep.get("upgraded") or None,
             })
             J.update("upgrade", walked)
             rows.append(rec)
@@ -7790,6 +7798,36 @@ class Toolkit(object):
         got = G.set_mod_info(prof, name, title=title, author=author,
                              description=description, kind=kind,
                              account=account)
+        return got
+
+    def copy_mod(self, name, new_name=None, title=None, author=None,
+                 description=None, kind="local", profile_root=None,
+                 account=None, enabled=True, position=0):
+        """Save an installed mod under a SECOND name, leaving the original alone.
+
+        The other half of 「改模组名字和简介」: renaming edits the one
+        `info.json` in place, so a player who wanted their own name on a
+        shipped mod lost the original name.  This copies the folder, retitles
+        the copy and registers it -- `locations.copy_mod` does the work and
+        keeps every byte of the source untouched.
+
+        `position=0` puts the copy at the TOP of the load order, which is the
+        highest priority.  A copy that landed below the original would lose to
+        it on every file the two share, and the player would see the old data
+        while the list said their new mod was enabled.
+        """
+        from .game import locations as G
+        prof = profile_root or G.find_profile_root()
+        got = G.copy_mod(prof, name, new_name=new_name, title=title,
+                         author=author, description=description, kind=kind,
+                         account=account, enabled=enabled, position=position)
+        try:
+            # The install record is what a later 「一键更新」 reads to tell "the
+            # game was patched" from "somebody replaced MY mod"; a copy is a new
+            # mod the same way an install is, so it gets the same note.
+            PV.note_installed(got)
+        except Exception as exc:                       # noqa: BLE001
+            got["provenance"] = {"why_not": "%s: %s" % (type(exc).__name__, exc)}
         return got
 
 

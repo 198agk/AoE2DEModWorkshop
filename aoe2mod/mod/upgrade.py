@@ -80,6 +80,7 @@ import aoe2mod.dat.techfields as TF
 import aoe2mod.dat.unitfields as UF
 import aoe2mod.mod.portgen as PG
 from . import archives as AR
+from . import provenance as PV
 from ..game import locations as GL
 
 __all__ = ["UpgradeError", "analyze", "upgrade", "describe", "VERDICTS",
@@ -3967,6 +3968,50 @@ def _frames(base_raw, mod_raw, new_raw):
     return base, mod, new
 
 
+def _rebuilt_by_us(rep):
+    """Did we write this exact file, against this exact official data?
+
+    ``_load_pair`` picks the base off the archive shelf, which keeps the
+    OLDEST build of a generation.  So a file the updater wrote ten seconds ago
+    is diffed against a year-old official stream, every one of the author's
+    edits shows up as a difference, and the verdict is "mergeable" -- true
+    about those two files, useless to the person who just pressed the button.
+    The build record already answers the question directly: it holds the raw
+    sha of what we wrote and the raw sha of the official data we wrote it on
+    top of.  Both matching means nothing has moved since.
+
+    Returns the record (truthy) on a match, else ``None``.  Never raises:
+    a state file we cannot read only means "no answer", and no answer is the
+    full diff this function existed without.
+    """
+    try:
+        mod_sha = (rep.get("mod") or {}).get("sha256")
+        new_sha = (rep.get("new") or {}).get("sha256")
+        if not mod_sha or not new_sha:
+            return None
+        # A rebuild always stamps the target generation into the header.  If the
+        # mod still says VER 7.8 while the official data says 8.9, no record of
+        # ours can be about this file -- and without this check a stale record
+        # could hide a real cross-generation job.
+        if (rep.get("mod") or {}).get("ver") != (rep.get("new") or {}).get("ver"):
+            return None
+        for title, entry in (PV.load().get("builds") or {}).items():
+            if not isinstance(entry, dict):
+                continue
+            if entry.get("dat_raw_sha256") != mod_sha:
+                continue
+            if entry.get("base_raw_sha256") != new_sha:
+                continue
+            out = {"title": entry.get("title") or title,
+                   "at": entry.get("upgraded_at") or entry.get("built_at"),
+                   "upgraded": bool(entry.get("upgraded_at")),
+                   "target_version": entry.get("target_version")}
+            return out
+    except Exception:                    # noqa: BLE001
+        return None
+    return None
+
+
 def _empty_counts():
     return {"edits": 0, "conflicts": 0, "units_added": 0, "units_removed": 0,
             "units_replaced": 0, "techs_added": 0, "techs_removed": 0,
@@ -4056,6 +4101,42 @@ def _analyze_core(mod_dat=None, base_dat=None, new_dat=None, game_root=None,
         rep["counts"] = _empty_counts()
         rep["notes"] = ["这个模组本来就是按现在这版官方数据做的，"
                         "官方没有变过，不用更新"]
+        rep["seconds"] = round(time.time() - t0, 2)
+        return rep, None
+    # Was this file produced by our own updater, against the very official data
+    # the game ships today?  Without this the answer is always "mergeable":
+    # _load_pair picks the base out of the archive shelf (the OLDEST build of
+    # that generation it kept), so a file we just rebuilt -- today's official
+    # bytes plus the author's edits -- gets diffed against last year's official
+    # bytes.  The diff is real, the verdict is technically true, and to a player
+    # who pressed the button ten seconds ago it reads as "it did nothing".
+    #
+    # The build record already holds the two answers needed: the raw sha of the
+    # file we wrote, and the raw sha of the official data we diffed against.
+    # Equal shas mean nothing has moved since, so the honest verdict is "already
+    # up to date" -- and because the record also says it was an upgrade, the row
+    # can read "已完成更新" instead of "本来就是新版".
+    #
+    # Reading the shelf may fail (a corrupt builds.json, a state dir the sandbox
+    # will not let us open).  That must never take the check down: no answer from
+    # the records just means we fall through to the full diff, which is what this
+    # function did before this branch existed.
+    rebuilt = _rebuilt_by_us(rep)
+    if rebuilt:
+        rep["verdict"] = UP_TO_DATE
+        rep["upgraded"] = rebuilt
+        rep["counts"] = _empty_counts()
+        # Two different histories reach this branch and they must not read the
+        # same: a file this tool rebuilt from an older mod (upgraded_at is set)
+        # already carries somebody else's edits, while a fresh build (only
+        # built_at) is just the author's own work stamped with our manifest.
+        # Saying "更新过" about the second one would invent an event.
+        if rebuilt.get("upgraded"):
+            rep["notes"] = ["这份模组上一次是「一键更新」搬过来的，"
+                            "自那以后官方数据没有再变，不用再更新"]
+        else:
+            rep["notes"] = ["这份模组是按现在这版官方数据建的，"
+                            "官方数据自此没有变过，不用更新"]
         rep["seconds"] = round(time.time() - t0, 2)
         return rep, None
     if rep["mod"]["ver"] != rep["base"]["ver"]:
@@ -4486,7 +4567,7 @@ def _author_text(src_mod_dir, fallback_title):
     Rebuilding a mod used to overwrite all three with this tool's own sentence,
     so a player who adapted someone else's mod lost the description that told
     them what they had just installed (reported 2026-11-14: `209785` came back
-    with "由「一键适配新版本」重建：..." as its 简介).  The rebuild changes the
+    with "由「一键更新」重建：..." as its 简介).  The rebuild changes the
     `.dat`; it has no business renaming the author's work.
 
     Two of the values in shipped `info.json` files are the ENGINE's placeholders
@@ -4525,7 +4606,7 @@ def _emit(out_dir, raw_out, title, rep, src_mod_dir, _again=None):
     keep = _author_text(src_mod_dir, title)
     desc = keep["Description"]
     if not desc:
-        desc = ("由「一键适配新版本」重建：搬了 %d 处字段改动，"
+        desc = ("由「一键更新」重建：搬了 %d 处字段改动，"
                 "新增记录 %d 条，基准来自 %s"
                 % (rep["counts"]["edits"], rep["counts"]["units_added"],
                    os.path.basename(rep["base"]["path"] or "?")))
@@ -4645,6 +4726,20 @@ def _verify_why(ver):
     return "、".join(bits) or "自检失败"
 
 
+def _short_time(stamp):
+    """``2026-11-21T15:08:34`` -> ``2026-11-21 15:08``, or ``""`` if unreadable.
+
+    The record keeps local time in ISO form with a ``T`` in the middle, which is
+    right for a file and wrong for a sentence a player reads.  Anything we
+    cannot parse comes back empty so the caller can say 时间不详 instead of
+    printing a raw field name at somebody.
+    """
+    s = str(stamp or "").strip()
+    if len(s) >= 16 and s[10:11] in ("T", " "):
+        return s[:10] + " " + s[11:16]
+    return ""
+
+
 def _conflict_groups(conflicts):
     """How many distinct DECISIONS a list of conflict rows is.
     A row is a byte range that has to be written, and the game keeps one copy of
@@ -4672,6 +4767,13 @@ def describe(rep):
     lines = []
     c = rep.get("counts") or {}
     lines.append("判定：%s" % (rep.get("verdict") or "?"))
+    up = rep.get("upgraded")
+    if isinstance(up, dict):
+        # A row that reads "已完成更新" has to say WHEN, or it is a claim with no
+        # evidence behind it.  The build record carries the timestamp; when it
+        # is missing we still say who did it, which is the part that matters.
+        when = _short_time(up.get("at"))
+        lines.append("上次更新：%s（本工具「一键更新」搬过来的）" % (when or "时间不详"))
     lines.append("要搬的改动：%d 处字段" % (c.get("edits") or 0))
     if c.get("units_added") or c.get("units_removed") or c.get("units_replaced"):
         lines.append("记录：新增 %d、删除 %d、整条替换 %d"

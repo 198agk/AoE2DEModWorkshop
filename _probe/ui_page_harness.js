@@ -1023,13 +1023,20 @@ const sandbox = {
       // An upgrade reinstalls, so it carries the same game-running answer as
       // install/rebuild.  After a successful upgrade the row must read as
       // nothing-left-to-do, because the whole claim is "same edits, same base
-      // data, same bytes" -- if the page kept showing 能一键适配, the user would
+      // data, same bytes" -- if the page kept showing 可以更新, the user would
       // click again.
+      //
+      // `upgraded` is what the engine sets when its own build record says this
+      // file was written by the updater against the official data the game
+      // ships today; the row prints 已完成更新 for that and 本来就是新版 for a mod
+      // that was simply built on this data long ago.  The fixture carries it or
+      // the page could not tell the two apart at all.
       UPGRADE_ANSWER = {
         ok: true, count: 1, official: { ok: true, count: 12 }, mods: [
           { name: "dsh test v46", title: "村民血量一组", verdict: "up_to_date",
             enabled: true, counts: { edits: 0 }, conflict_count: 0,
-            unmapped_count: 0, summary: "这份 .dat 已经是新版了，不用动。",
+            unmapped_count: 0, upgraded: { title: "村民血量一组", at: "2026-11-21T15:08:34" },
+            summary: "这份模组上一次是「一键更新」搬过来的，自那以后官方数据没有再变，不用再更新。",
             notes: [] },
         ],
       };
@@ -1093,6 +1100,22 @@ const sandbox = {
       }
       return { json: async () => ({ ok: true, mods: MODS,
         game_running: RUNNING,
+        running_warning: RUNNING ? RUNNING_TEXT : null }) };
+    }
+    // 另存为.  A copy is a NEW row, so the stub has to add one -- a stub that
+    // answered with the old list would let the page "succeed" while the row the
+    // player just made never appears, which is the bug this route fixes.
+    if (url.indexOf("/api/mod-copy") === 0) {
+      const body = posted[posted.length - 1].body || {};
+      const src = MODS.filter((m) => m.name === body.name)[0] || {};
+      const made = body.new_name || (String(src.title || src.name) + " 副本");
+      MODS = MODS.concat([{ name: made, title: made, enabled: true,
+        kind: "local", priority: MODS.length + 1, ships_dat: true,
+        author: src.author || "aoe2mod", description: src.description || "",
+        thumb: null, exists: true, workshop_id: 0, role: "data" }]);
+      return { json: async () => ({ ok: true,
+        copy: { name: body.name, new_name: made, title: made },
+        mods: MODS, game_running: RUNNING,
         running_warning: RUNNING ? RUNNING_TEXT : null }) };
     }
     if (url.indexOf("/api/mod") === 0) {
@@ -1754,6 +1777,13 @@ function datPickerChecks() {
     const note = text(ids["dp-note"]);
     check("the header says which file wins when several mods are enabled",
           note.indexOf("优先级最高的是") >= 0, note);
+    // Asked for on 2026-11-21: 「应该改成目前已选的 dat」.  The note used to answer
+    // only the game's side, so a player editing `mod-a` read a sentence about the
+    // base copy.  The selection must come first, and by name.
+    check("...and names the file being edited, before it says what the game reads",
+          note.indexOf("目前改的是「mod-a」") === 0, note);
+    check("...with the scope of that file spelled out",
+          note.indexOf("（模组带的那一份）") >= 0, note);
     const before = posted.filter((p) => p.url.indexOf("/api/dat-set") === 0)
                          .length;
     const go = rows.filter((r) => (r.children || []).some(
@@ -1776,11 +1806,73 @@ function datPickerChecks() {
             now.filter((r) => text(r).indexOf("正在改") >= 0).length === 1
             && text(now[0]).indexOf("正在改") >= 0,
             now.map((r) => text(r)).join(" | "));
-      return dragDownChecks();
+      // The switch moved the selection to the base game, and the note has to
+      // follow it: a note that kept naming `mod-a` would be answering a stale
+      // question, which is the same class of bug as answering the wrong one.
+      check("the header follows the switch instead of keeping the old answer",
+            text(ids["dp-note"]).indexOf("目前改的是「游戏本体」") === 0,
+            text(ids["dp-note"]));
+      check("...and still says the game reads the other file",
+            text(ids["dp-note"]).indexOf("优先级最高的是") >= 0,
+            text(ids["dp-note"]));
+      return modInfoChecks();
     });
   }).catch((e) => {
     fails.push("the data-file picker threw: " + e.message);
     console.log("FAIL the data-file picker threw :: " + e.stack);
+    return modInfoChecks();
+  });
+}
+
+// 另存为, on the mods screen.  Reported 2026-11-21: 「这个改模组名字和简介没有另存为
+// 功能」.  The save above rewrites the ONE `info.json` in place, so a player who
+// wanted their own name on a shipped mod had no way to keep the shipped name.
+// Two things have to hold and neither is visible from the source: the copy is a
+// NEW ROW the page draws from the route's answer, and the SOURCE row survives.
+function modInfoChecks() {
+  const keep = MODS.slice();
+  page.renderMods(MODS);
+  const field = ids["modinfo-copy-name"];
+  check("the copy-as box is prefilled with the current name, not left empty",
+        String(field.value) === "dsh 我的数据模组 副本", String(field.value));
+  check("...and the note still says the save above only edits info.json",
+        text(ids["modinfo-note"]).indexOf("info.json") >= 0,
+        text(ids["modinfo-note"]));
+  const before = posted.length;
+  return Promise.resolve(ids["modinfo-copy"].onclick()).then(() => {
+    const sent = posted[posted.length - 1] || {};
+    check("另存为 posts to its own route, not to the in-place save",
+          String(sent.url || "").indexOf("/api/mod-copy") === 0
+          && posted.length === before + 1, JSON.stringify(sent));
+    check("...naming the source mod and the new name",
+          (sent.body || {}).name === "dsh mine"
+          && (sent.body || {}).new_name === "dsh 我的数据模组 副本",
+          JSON.stringify(sent.body));
+    const rows = (ids.mods.children || []).filter((n) => n.className === "mod");
+    check("the copy appears as a row of its own",
+          rows.length === 4 && rows.some((n) => text(n).indexOf("副本") >= 0),
+          rows.map((n) => text(n).slice(0, 10)).join(" | "));
+    check("...and the mod it came from is still there",
+          rows.some((n) => text(n).indexOf("dsh 我的数据模组") === 0),
+          rows.map((n) => text(n).slice(0, 10)).join(" | "));
+    check("the panel says what it wrote",
+          text(ids["modinfo-copy-msg"]).indexOf("已另存为") >= 0,
+          text(ids["modinfo-copy-msg"]));
+    // The player just made the copy; the panel should be pointed at it, so the
+    // next thing they do (write its description) lands on the right mod.
+    check("...and moves the selection onto the copy",
+          String(ids["modinfo-title"].value) === "dsh 我的数据模组 副本",
+          String(ids["modinfo-title"].value));
+    // Put the fixture back: later sections count mods and the copy would be a
+    // phantom fourth row in all of them.
+    MODS = keep;
+    page.renderMods(MODS);
+    return dragDownChecks();
+  }).catch((e) => {
+    fails.push("另存为 threw: " + e.message);
+    console.log("FAIL 另存为 threw :: " + e.stack);
+    MODS = keep;
+    page.renderMods(MODS);
     return dragDownChecks();
   });
 }
@@ -2354,7 +2446,7 @@ function repairChecks() {
     // forward here" makes the player read all twenty to find out.
     check("the upgrade box says how many it can carry forward",
           flat.indexOf("模组 4 个") >= 0
-            && flat.indexOf("能一键适配 2 个") >= 0, flat);
+            && flat.indexOf("可以更新 2 个") >= 0, flat);
     // The archive line is the reason the tool can answer at all: without it the
     // only thing it could say is "this file differs from the shipped one".
     check("and says where the baseline came from",
@@ -2365,16 +2457,16 @@ function repairChecks() {
     // the mods the official patch happened to touch.
     check("both actionable rows offer the button",
           walk(box, []).filter((n) => n.className === "chip"
-            && text(n) === "适配新版本").length === 2,
+            && text(n) === "更新").length === 2,
           JSON.stringify(walk(box, []).map((n) => text(n)).slice(0, 14)));
     // A cross-generation mod cannot be carried forward, and an attempt would
     // produce a mod that silently is not the author's.  No button on that row.
     check("a row that cannot be carried forward offers no button",
           walk(box, []).filter((n) => text(n).indexOf("10 倍资源文明联盟3倍科技") >= 0
-            && n.children.some((c) => text(c) === "适配新版本")).length === 0,
+            && n.children.some((c) => text(c) === "更新")).length === 0,
           flat);
     check("the verdict is printed in Chinese, not as the file's spelling",
-          flat.indexOf("能一键适配") >= 0 && flat.indexOf("这一版搬不过去") >= 0
+          flat.indexOf("可以更新") >= 0 && flat.indexOf("这一版搬不过去") >= 0
             && flat.indexOf("impossible") < 0 && flat.indexOf("mergeable") < 0,
           flat);
     // The engine writes `summary` as the panel's OWN lines (判定 / 要搬的改动 /
@@ -2447,7 +2539,7 @@ function repairChecks() {
           !!conflictBox && conflictBox.hidden === true,
           JSON.stringify(conflictBox ? conflictBox.hidden : "no .conflict"));
     const btn = walk(box, []).find((n) => n.className === "chip"
-      && text(n) === "适配新版本");
+      && text(n) === "更新");
     RUNNING = true;
     const mark = posted.length;
     return btn ? btn.onclick({ target: btn }).then(() => mark) : null;
@@ -2467,15 +2559,30 @@ function repairChecks() {
           JSON.stringify(repairedNow));
     check("a upgrade says the game is open too",
           text(ids.toast).indexOf("游戏正开着") >= 0, text(ids.toast));
-    // Re-asked, not assumed: the row has to read 本来就是新版 afterwards.
+    // Re-asked, not assumed: the row has to read as DONE afterwards.
     // Asserting the toast would pass even if the merge produced a different
     // .dat -- the toast is a claim about the request, the row is a claim about
     // the answer.
-    check("the row reads as nothing-left-to-do after the upgrade",
-          text(ids.repair).indexOf("本来就是新版") >= 0, text(ids.repair));
+    //
+    // And the wording is not 「本来就是新版」: that sentence belongs to a mod
+    // that was built on this data long ago.  A row whose file exists BECAUSE
+    // the player just pressed 更新 has to say so, or the button press leaves no
+    // trace on the screen and reads as "it did nothing" (reported 2026-11-21).
+    // The engine marks the difference (`upgraded`, from the build record) and
+    // the fixture carries it, so what is checked here is the page using it.
+    check("the row reads as completed after the upgrade",
+          text(ids.repair).indexOf("已完成更新") >= 0, text(ids.repair));
+    // The count row legitimately prints 「本来就是新版 0 个」, so the claim to
+    // forbid is a BADGE saying it, not the string anywhere on the panel.
+    check("and no badge claims the mod was always current",
+          walk(ids.repair, []).filter((n) => n.className === "stat plain"
+            && text(n) === "本来就是新版").length === 0,
+          JSON.stringify(walk(ids.repair, [])
+            .filter((n) => n.className === "stat plain")
+            .map((n) => text(n))));
     check("and no button is left on it",
           walk(ids.repair, []).filter((n) => n.className === "chip"
-            && text(n) === "适配新版本").length === 0, text(ids.repair));
+            && text(n) === "更新").length === 0, text(ids.repair));
     RUNNING = false;
     return adaptAllChecks();
   }).catch((e) => { fails.push("the repair box threw: " + e.message);
@@ -2518,7 +2625,7 @@ function adaptAllChecks() {
     // wording, so a batch button sharing it would be counted as a third
     // row button and the screen would offer the same action twice.
     check("and it does not wear the row button's wording",
-          all && text(all) !== "适配新版本",
+          all && text(all) !== "更新",
           all ? JSON.stringify(text(all)) : "");
     // The queue is the answer the rows were drawn from, not a second query:
     // two sources for "what needs work" is how a batch and a list disagree.
@@ -2563,7 +2670,7 @@ function adaptAllChecks() {
     // and then nothing.
     check("the batch reports its result in one toast",
           text(ids.toast).indexOf("2 个") >= 0
-            && (text(ids.toast).match(/已适配/g) || []).length === 1,
+            && (text(ids.toast).match(/已更新/g) || []).length === 1,
           JSON.stringify(text(ids.toast)));
     // Re-asked, not assumed: the stub answers the second query with one
     // already-current row, so the button must have withdrawn itself.
@@ -2571,7 +2678,12 @@ function adaptAllChecks() {
           ids["btn-repair-all"].classList.contains("hide"),
           ids["btn-repair-all"].className);
     check("and the rows were re-read from the route, not assumed",
-          text(ids.repair).indexOf("本来就是新版") >= 0,
+          text(ids.repair).indexOf("已完成更新") >= 0,
+          text(ids.repair));
+    // The count line has to separate the two kinds of "nothing to do" too, or
+    // the row says 已完成更新 under a summary that counted it as 本来就是新版.
+    check("the summary counts completed updates apart from always-current mods",
+          text(ids.repair).indexOf("已完成更新 1 个") >= 0,
           text(ids.repair));
     return intentListChecks();
   }).catch((e) => { fails.push("the batch button threw: " + e.message);
