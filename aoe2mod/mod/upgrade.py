@@ -2946,6 +2946,74 @@ def _found(ranges, field, edit):
     return None
 
 
+def _kind_of(target, edit):
+    """The field kind ("u8", "i16", "f32"…) this edit writes into, or None.
+
+    Needed only so a reported conflict can print 「官方 5，你 4」 instead of three
+    hex strings.  Every lookup is best-effort: a conflict whose field cannot be
+    re-read is still a conflict, and losing the number must not lose the row.
+    """
+    space = edit.get("space")
+    try:
+        if space == "unit":
+            span = target.unit_span(edit.get("civ"), edit.get("unit"))
+            if not span:
+                return None
+            fields = UF.fields_at(target.raw, target.gv, span[0])
+        elif space == "tech":
+            spans = target.build_tech_spans()
+            index = edit.get("index")
+            if index is None or index >= len(spans):
+                return None
+            fields = TF.fields_at(target.raw, target.gv, spans[index][0])
+        elif space in ("civ", None):
+            return None
+        else:
+            rec = target.table_index(space).get(edit.get("key"))
+            if rec is None:
+                return None
+            fields = TB.fields_at(target.raw, target.gv, rec, table=space)
+    except Exception:
+        return None
+    meta = fields.get(edit.get("field"))
+    return meta.get("kind") if meta else None
+
+
+def _decode_value(kind, raw):
+    """One stored value as a number, or None when the bytes do not fit a kind.
+
+    A conflict is a disagreement about a value, and a disagreement is only
+    readable as values.  Falls back to the field WIDTH when the kind is unknown,
+    which is right for every integer field; a four-byte float whose kind was
+    lost prints as an integer rather than as a guess at a float.
+    """
+    if not raw:
+        return None
+    raw = bytes(raw)
+    try:
+        if kind == "f32" and len(raw) == 4:
+            return struct.unpack_from("<f", raw)[0]
+        if kind == "u8" and len(raw) == 1:
+            return raw[0]
+        if kind == "i16" and len(raw) == 2:
+            return struct.unpack_from("<h", raw)[0]
+        if kind == "u16" and len(raw) == 2:
+            return struct.unpack_from("<H", raw)[0]
+        if kind == "i32" and len(raw) == 4:
+            return struct.unpack_from("<i", raw)[0]
+        if kind == "u32" and len(raw) == 4:
+            return struct.unpack_from("<I", raw)[0]
+        if len(raw) == 1:
+            return raw[0]
+        if len(raw) == 2:
+            return struct.unpack_from("<h", raw)[0]
+        if len(raw) == 4:
+            return struct.unpack_from("<i", raw)[0]
+    except Exception:
+        return None
+    return None
+
+
 def _apply_edits(target, edits, work, official_wins=False):
     """Write every carryable edit into ``work`` (a bytearray of ``target.raw``).
 
@@ -2976,13 +3044,29 @@ def _apply_edits(target, edits, work, official_wins=False):
         # 63 agreement rows read as 63 alarms.
         conflict = now != was and now != e["mod"]
         if conflict:
+            # Three hex strings are the honest record, but they are not what a
+            # player reads a conflict as.  「官方 5，你的 4」 is the decision;
+            # `05` vs `04` is the same thing written where only a person who
+            # already knows this field is a u8 can see it.  Both travel: the
+            # hex stays for anyone diffing the file, the numbers are for the
+            # sentence.
+            _kind = _kind_of(target, e)
             conflicts.append({
                 "space": e["space"], "civ": e.get("civ"),
                 "unit": e.get("unit"), "index": e.get("index"),
                 "key": list(e["key"]) if e.get("key") else None,
                 "field": e["field"],
+                # The width is what turns the three hex strings into numbers
+                # a player can compare: `05` vs `04` on a one-byte field is
+                # 「官方 5，你 4」, and without the width the reader has to
+                # know this particular field is a u8 to see that.
+                "width": w,
+                "kind": _kind,
                 "base_was": was.hex(), "official_now": now.hex(),
                 "mod_wants": e["mod"].hex(),
+                "base_val": _decode_value(_kind, was),
+                "official_val": _decode_value(_kind, now),
+                "mod_val": _decode_value(_kind, e["mod"]),
                 "won": "official" if official_wins else "mod"})
             if official_wins:
                 continue
@@ -4561,6 +4645,28 @@ def _verify_why(ver):
     return "、".join(bits) or "自检失败"
 
 
+def _conflict_groups(conflicts):
+    """How many distinct DECISIONS a list of conflict rows is.
+    A row is a byte range that has to be written, and the game keeps one copy of
+    a unit record per civilization -- so editing one field on one unit in 54
+    civilizations produces 54 rows about one decision.  Reporting the row count
+    alone ("57 处") reads as 57 disagreements and buries the real ones; measured
+    on 209785, 57 rows were 4 decisions.  The civilization is left out of the
+    key on purpose: two civilizations holding the same field at the same pair of
+    values is the same question asked twice.
+    """
+    seen = []
+    for c in conflicts or []:
+        if not isinstance(c, dict):
+            seen.append(("raw", id(c)))
+            continue
+        k = (c.get("space"), c.get("unit"), c.get("index"),
+             tuple(c.get("key") or ()), c.get("field"),
+             c.get("official_now"), c.get("mod_wants"))
+        if k not in seen:
+            seen.append(k)
+    return len(seen)
+
 def describe(rep):
     """A few Chinese lines a panel can print without knowing the report shape."""
     lines = []
@@ -4628,8 +4734,14 @@ def describe(rep):
         # as a complete inventory of a smaller change.
         lines.append("这次只数到这里（上限到了，实际改动只会更多）")
     if c.get("conflicts"):
-        lines.append("官方也改过同一处：%d 处（%s）"
+        # Two numbers, because they answer two questions: 「几处」 is how many
+        # byte ranges this tool has to decide about, 「几个字段」 is how many
+        # things the author actually disagrees with the patch about.  The
+        # measured mod had 57 of the first for 4 of the second.
+        _groups = _conflict_groups(rep.get("conflicts"))
+        lines.append("官方也改过同一处：%d 处%s（%s）"
                      % (c["conflicts"],
+                        ("，也就是 %d 个字段" % _groups) if _groups < c["conflicts"] else "",
                         "按官方" if rep.get("official_wins") else "按你的改法"))
     if c.get("unmapped"):
         lines.append("搬不过去：%d 处（已在报告里逐条列出）" % c["unmapped"])

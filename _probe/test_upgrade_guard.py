@@ -1,7 +1,7 @@
 """Guards the upgrade engine's refusals, and the one case that LOOKS like a
 refusal but must not be one.
 
-Eight things must be true, and each is a way this tool could quietly "help"
+Nine things must be true, and each is a way this tool could quietly "help"
 and destroy a mod instead:
 
 1. A generation we never archived has no "before" at all.  Inventing one (going
@@ -377,6 +377,53 @@ def main():
            and done_a["refused"][0].get("space") == table,
            str(done_a["refused"])[:120])
 
+    # --- 9. a conflict says WHICH field and both VALUES --------------------
+    #
+    # 「有 57 处官方和作者改的是同一个字段」 is a number the author cannot act
+    # on.  The rows behind it exist in the report, but for years they carried
+    # three hex strings and no field name a person could read -- and on a
+    # measured mod 54 of the 57 were ONE field stored once per civilization, so
+    # even printing them all would have read as 54 disagreements.  What the row
+    # must now carry: the field, and both values as numbers, because 「官方 5，
+    # 你的 4」 is the decision while `05` vs `04` is the same thing written
+    # where only someone who already knows the field is a u8 can see it.
+    import struct as _struct
+    recs_c, _lc = TB.scan(tail_raw, "colour")
+    rec_c = recs_c[10]
+    key_c = fnew.table_key_of("colour", rec_c, raw=tail_raw)
+    fmeta = TB.fields_at(tail_raw, fnew.gv, rec_c, table="colour")["MinimapColour"]
+    f_off, f_w = fmeta["offset"], TB.KINDS[fmeta["kind"]]
+    base_b = bytes(tail_raw[f_off:f_off + f_w])
+    mod_b = bytes([base_b[0] ^ 0x01]) + base_b[1:]
+    off_b = bytes([base_b[0] ^ 0x03]) + base_b[1:]
+    work_c = bytearray(tail_raw)
+    work_c[f_off:f_off + f_w] = off_b
+    edit_c = {"space": "colour", "civ": None, "unit": None, "index": None,
+              "key": key_c, "field": "MinimapColour", "rel": 0,
+              "width": f_w, "base": base_b, "mod": mod_b}
+    _ac, _rc, confs, _gc = UP._apply_edits(fnew, [edit_c], work_c)
+    ok("a conflict is reported as a field, not as three hex strings",
+       len(confs) == 1 and confs[0].get("field") == "MinimapColour",
+       str([(c.get("field"), c.get("kind")) for c in confs]))
+    want = dict(
+        base=_struct.unpack("<i", base_b)[0],
+        official=_struct.unpack("<i", off_b)[0],
+        mod=_struct.unpack("<i", mod_b)[0])
+    got_v = dict(base=confs[0].get("base_val") if confs else None,
+                 official=confs[0].get("official_val") if confs else None,
+                 mod=confs[0].get("mod_val") if confs else None)
+    ok("and both sides arrive as the numbers the author would compare",
+       bool(confs) and got_v == want,
+       "want %r got %r (kind %r)" % (want, got_v,
+                                     confs[0].get("kind") if confs else None))
+    # A kind that cannot be resolved must not cost the row: the fallback
+    # decodes by WIDTH, which is right for every integer field, and the hex
+    # strings stay as the record of what was actually in the file.
+    ok("an unknown field kind is decoded by width, not dropped",
+       UP._decode_value("not-a-kind", b"\x05") == 5
+       and UP._decode_value(None, b"\x2c\x01") == 300,
+       repr([UP._decode_value("not-a-kind", b"\x05"),
+             UP._decode_value(None, b"\x2c\x01")]))
     print("")
     if FAILS:
         print("GUARD: %d FAILED -> %s" % (len(FAILS), FAILS))

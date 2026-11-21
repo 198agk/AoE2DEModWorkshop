@@ -2286,6 +2286,25 @@ body.dragging-row, body.dragging-row * { cursor: grabbing !important; user-selec
      (measured in the shipped build 2026-11-10, same screenshot). */
   #repair .stat.warn { background: var(--warn-soft); color: var(--warn-ink); }
   #repair .stat.plain { background: var(--panel-3); color: var(--text-2); }
+  /* The conflict list, opened from a row.  One line per DECISION, because the
+     number is not the answer the author needs: 「有 57 处」 says that something
+     was touched, and on a measured mod 54 of those 57 were the same field once
+     per civilization.  Numbers are tabular so two lines of them line up. */
+  #repair .conflict {
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px solid var(--line);
+  }
+  #repair .conflict .cf {
+    display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px;
+    padding: 2px 0;
+    font-size: var(--fs-body);
+  }
+  #repair .conflict .who { color: var(--text-2); }
+  #repair .conflict .val {
+    color: var(--warn-ink);
+    font-variant-numeric: tabular-nums;
+  }
 
   /* The switch.  Track is a pill, the knob is a square-ish block; the hit area
      extends 4px on every side without changing the drawn size. */
@@ -7959,12 +7978,57 @@ function upgradeRow(r) {
   if (c.tables_removed) bits.push("表里删 " + c.tables_removed + " 条");
   if (c.tables_replaced) bits.push("表里整条照抄 " + c.tables_replaced + " 条");
   if (bits.length) line.appendChild(el("span", "hint", " " + bits.join("，")));
-  if (r.conflict_count) line.appendChild(el("span", "hint", "，冲突 " + r.conflict_count + " 处"));
+  // 处 and 个 are different counts and used to be the same one: 57 rows were 4
+  // decisions, because the game keeps one copy of a unit per civilization.
+  if (r.conflict_count) {
+    const many = r.conflict_kinds || 0;
+    line.appendChild(el("span", "hint", "，冲突 " + r.conflict_count + " 处"
+      + (many && many < r.conflict_count ? "（" + many + " 个字段）" : "")));
+  }
   if (r.unmapped_count) line.appendChild(el("span", "hint", "，搬不过去 " + r.unmapped_count + " 处"));
   // A capped count is a floor, not a total.  Saying nothing would let "2 处"
   // read as the whole change when the check simply stopped counting.
   if (r.capped) line.appendChild(el("span", "hint", "，这次只数到这里（实际更多）"));
   left.appendChild(line);
+  // 「有 57 处」 is a number, not an answer.  The rows behind it are grouped by
+  // the engine (same record, same field, same pair of values) because the game
+  // stores one copy per civilization: on a measured mod 54 of those 57 were one
+  // field on one unit, and printing 54 identical lines would read as 54
+  // decisions when there is one.  Folded by default, because nineteen rows each
+  // opening into four lines is a wall, and the label says how many there are so
+  // the closed state is not a mystery.  The verdict above already says the
+  // official patch touched the same field; this one says WHICH field and with
+  // what two values, which is the pair the player actually decides about.
+  const kinds = r.conflict_rows || [];
+  if (kinds.length) {
+    const fold = el("button", "chip fold", "是哪几处（" + (r.conflict_kinds || kinds.length) + "）");
+    const list = el("div", "conflict");
+    list.hidden = true;
+    // A value the engine could not decode comes back null; the hex is the
+    // honest fallback and still says more than "some bytes changed".
+    const show = (v, hex) => (v === null || v === undefined)
+      ? ("0x" + (hex || "?")) : String(v);
+    for (const k of kinds) {
+      const cf = el("div", "cf");
+      cf.appendChild(el("span", "who", k.where + (k.civ ? "（" + k.civ + "）" : "")));
+      cf.appendChild(el("span", "", k.field_zh || k.field || ""));
+      cf.appendChild(el("span", "val",
+        "官方 " + show(k.official, k.official_hex)
+        + " → 你的 " + show(k.mod, k.mod_hex)));
+      list.appendChild(cf);
+    }
+    if ((r.conflict_kinds || 0) > kinds.length) {
+      list.appendChild(el("div", "hint",
+        "还有 " + (r.conflict_kinds - kinds.length) + " 处没列出来。"));
+    }
+    fold.onclick = () => {
+      const open = !fold.classList.contains("on");
+      fold.classList.toggle("on", open);
+      list.hidden = !open;
+    };
+    left.appendChild(fold);
+    left.appendChild(list);
+  }
   // The engine's own sentences, one per line and still verbatim -- but its first
   // three lines are 判定 / 要搬的改动 / 耗时, and the first two are already the
   // badge and the count row above.  Printing them again made every row a
@@ -8000,8 +8064,9 @@ function upgradeRow(r) {
       let officialWins = false;
       if (r.verdict === "conflicts") {
         officialWins = confirm(
-          "有 " + r.conflict_count + " 处官方和作者改的是同一个字段。\n\n"
-          + "确定 = 用作者的改法（推荐）\n取消 = 用官方的值，放弃作者那一处");
+          "有 " + r.conflict_count + " 处官方和作者改的是同一个字段"
+          + (r.conflict_kinds ? "（" + r.conflict_kinds + " 个字段，行里点开能看到是哪几处）" : "")
+          + "。\n\n确定 = 用作者的改法（推荐）\n取消 = 用官方的值，放弃作者那一处");
       }
       btn.disabled = true;
       btn.textContent = "适配中…（要重写数据文件）";

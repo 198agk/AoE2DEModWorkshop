@@ -7119,6 +7119,93 @@ class Toolkit(object):
         return {"ok": True, "profile_root": prof, "mods": rows,
                 "count": len(rows)}
 
+    # -- what the conflicts actually are ------------------------------------
+    def _conflict_rows(self, rep, limit=8):
+        """One readable line per disagreement, grouped, for the panel to list.
+
+        The count alone ("57 处") is a number the player cannot act on: the
+        question behind the button is "which of my edits is at stake", and 57 is
+        not an answer to it.  Worse, the raw list is not readable EITHER -- on a
+        measured mod the 57 rows were 54 copies of one field (`Type50.
+        DisplayedAttack` on unit 1971) because the game stores one record per
+        civilization, plus 3 copies of one tech prerequisite.  Printing 54
+        identical rows would read as 54 disagreements when there is one.
+
+        So: group by what the author would call "one edit" (same record, same
+        field, same pair of values) and say how many civilizations it covers.
+        Ordered by how many places each one touches, so the ten-civision edit is
+        not buried under three single-civ ones.
+        """
+        from .game import fieldlabels as FL
+        from .game import techlabels as TL
+        groups = {}
+        order = []
+        for c in rep.get("conflicts") or []:
+            # The civilization is deliberately NOT part of the key: that is
+            # the whole point of grouping.  Same record, same field, same
+            # pair of values = one decision, however many civilizations the
+            # game happened to store it in.
+            key = (c.get("space"), c.get("unit"), c.get("index"),
+                   tuple(c.get("key") or ()), c.get("field"),
+                   c.get("official_now"), c.get("mod_wants"))
+            if key not in groups:
+                groups[key] = {"row": c, "civs": []}
+                order.append(key)
+            civ = c.get("civ")
+            if civ and civ not in groups[key]["civs"]:
+                groups[key]["civs"].append(civ)
+        out = []
+        for key in order:
+            g = groups[key]
+            c = g["row"]
+            space = c.get("space")
+            where, field_zh = "", ""
+            try:
+                if space == "unit":
+                    uid = c.get("unit")
+                    name = self._unit_names().get(uid) or ""
+                    where = ("单位 %s %s" % (uid, name)).strip()
+                    field_zh = FL.label_of(c.get("field") or "")
+                elif space == "tech":
+                    idx = c.get("index")
+                    ent = None
+                    try:
+                        ent = self.index().get("tech", idx)
+                    except Exception:
+                        ent = None
+                    where = ("第 %s 号科技 %s" % (idx, getattr(ent, "display", "") or "")).strip()
+                    field_zh = TL.label_of(c.get("field") or "")
+                else:
+                    where = "「%s」表里的一条记录" % space
+                    field_zh = (TF.meta_for(space, c.get("field") or "").get("zh")
+                                or (c.get("field") or ""))
+            except Exception:
+                where = where or (space or "")
+                field_zh = field_zh or (c.get("field") or "")
+            civs = g["civs"]
+            civ_txt = ""
+            if civs:
+                try:
+                    civ_txt = CN.chinese(civs[0])
+                except Exception:
+                    civ_txt = civs[0]
+                if len(civs) > 1:
+                    civ_txt = "%d 个文明（%s 等）" % (len(civs), civ_txt)
+            out.append({
+                "space": space,
+                "where": where,
+                "civ": civ_txt,
+                "civs": len(civs),
+                "field": c.get("field"),
+                "field_zh": field_zh or (c.get("field") or ""),
+                "official": c.get("official_val"),
+                "mod": c.get("mod_val"),
+                "base": c.get("base_val"),
+                "official_hex": c.get("official_now"),
+                "mod_hex": c.get("mod_wants"),
+                "won": c.get("won")})
+        out.sort(key=lambda r: (-r["civs"], r["where"]))
+        return out[:limit]
     def upgrade_check(self, name=None, profile_root=None, limit=40,
                       base_dat=None, new_dat=None, names=None):
         """Can each installed data mod be carried onto today's official `.dat`?
@@ -7222,6 +7309,10 @@ class Toolkit(object):
                 J.update("upgrade", walked)
                 rows.append(rec)
                 continue
+            # Grouped once, at two lengths: the dialog prints the first few and
+            # still has to say how many distinct decisions there were, and
+            # grouping twice would walk the same 57 rows twice per mod.
+            _kinds = self._conflict_rows(rep, limit=999)
             rec.update({
                 "ok": True,
                 "verdict": rep["verdict"],
@@ -7243,6 +7334,12 @@ class Toolkit(object):
                 "capped": bool(rep.get("capped")),
                 "conflicts": rep["conflicts"][:8],
                 "unmapped": rep["unmapped"][:8],
+                # The same disagreements, grouped and translated: the
+                # dialog lists these so "57 处" stops being the only thing
+                # the player is told.  The raw rows above stay for anyone
+                # diffing the file; the page reads these.
+                "conflict_rows": _kinds[:8],
+                "conflict_kinds": len(_kinds),
             })
             J.update("upgrade", walked)
             rows.append(rec)

@@ -733,10 +733,27 @@ let UPGRADE_ANSWER = {
       enabled: true, counts: { edits: 5 }, conflict_count: 0, unmapped_count: 0,
       summary: "判定：mergeable\n要搬的改动：5 处字段\n作者的 5 处改动都能搬到新版上。\n耗时：0.62 秒",
       notes: [] },
+    // The conflict rows are grouped and translated by the route ('aoe2mod/
+    // api.py' _conflict_rows): one line per DECISION, not per record.  The
+    // measured case is 57 rows in 4 groups -- 54 civilizations holding one
+    // field, plus three copies of one tech prerequisite -- so the fixture keeps
+    // that shape, including a group whose civilization count is larger than one.
+    // A stub of two identical rows would let a page that prints 54 lines pass.
     { name: "167396_Red Alert 2 MOD", title: "Red Alert 2", verdict: "conflicts",
-      enabled: true, counts: { edits: 555 }, conflict_count: 2,
+      enabled: true, counts: { edits: 555 }, conflict_count: 57,
       unmapped_count: 0,
-      summary: "判定：conflicts\n要搬的改动：555 处字段\n官方也改过同一处：2 处（按你的改法）\n耗时：1.24 秒",
+      conflict_kinds: 2,
+      conflict_rows: [
+        { space: "unit", where: "单位 1971 火焰弓箭手", civ: "54 个文明（不列颠 等）",
+          civs: 54, field: "Type50.DisplayedAttack", field_zh: "显示攻击力",
+          official: 5, mod: 4, base: 0,
+          official_hex: "05", mod_hex: "04", won: "mod" },
+        { space: "tech", where: "第 216 号科技 Farms (make avail)", civ: "",
+          civs: 0, field: "RequiredTechs.2", field_zh: "前置科技 3",
+          official: 1357, mod: 1770, base: -1,
+          official_hex: "4d05", mod_hex: "ea06", won: "mod" },
+      ],
+      summary: "判定：conflicts\n要搬的改动：555 处字段\n官方也改过同一处：57 处，也就是 2 个字段（按你的改法）\n耗时：1.24 秒",
       notes: [] },
     { name: "10 倍资源", title: "10 倍资源文明联盟3倍科技", verdict: "impossible",
       enabled: true, counts: { edits: 0 }, conflict_count: 0,
@@ -2395,6 +2412,40 @@ function repairChecks() {
     check("a row with nothing to do is drawn quietly, not as a pass",
           badgesOf("up_to_date").every((n) => n.className === "stat plain"),
           JSON.stringify(badgesOf("up_to_date").map((n) => n.className)));
+    // 「有 57 处」 is a count of RECORDS, and the game keeps one record per
+    // civilization: the measured mod had 57 of them for 4 decisions.  The row
+    // therefore has to say how many DECISIONS there are, and the fold has to
+    // open into one line each.  Both halves are checked, because a label that
+    // says 2 while the list prints 54 lines is the defect this list exists for.
+    const conflictBox = walk(box, []).filter((n) => n.className === "conflict")[0];
+    const foldBtn = walk(box, []).filter((n) => n.className === "chip fold")[0];
+    check("a conflicts row offers a fold naming how many decisions there are",
+          !!foldBtn && text(foldBtn).indexOf("2") >= 0,
+          JSON.stringify(foldBtn ? text(foldBtn) : walk(box, []).map((n) => text(n)).slice(0, 12)));
+    check("and the fold starts closed",
+          !!conflictBox && conflictBox.hidden === true,
+          JSON.stringify(conflictBox ? conflictBox.hidden : "no .conflict"));
+    check("the count line says records AND fields, not just records",
+          flat.indexOf("冲突 57 处（2 个字段）") >= 0, flat);
+    if (foldBtn) foldBtn.onclick({ target: foldBtn });
+    check("opening it lists the field, both values and who they belong to",
+          !!conflictBox && conflictBox.hidden === false
+            && text(conflictBox).indexOf("显示攻击力") >= 0
+            && text(conflictBox).indexOf("官方 5") >= 0
+            && text(conflictBox).indexOf("你的 4") >= 0,
+          conflictBox ? text(conflictBox) : "no .conflict");
+    check("one line per decision, not one per civilization",
+          !!conflictBox && conflictBox.children.filter((n) => n.className === "cf").length === 2,
+          conflictBox ? JSON.stringify(conflictBox.children.map((n) => n.className)) : "");
+    // A group spanning civilizations must say how many: a line reading just
+    // 「不列颠」 would look like one civilization was affected.
+    check("a group spanning civilizations says how many",
+          !!conflictBox && text(conflictBox).indexOf("54 个文明") >= 0,
+          conflictBox ? text(conflictBox) : "");
+    if (foldBtn) foldBtn.onclick({ target: foldBtn });
+    check("and closing it folds the lines away again",
+          !!conflictBox && conflictBox.hidden === true,
+          JSON.stringify(conflictBox ? conflictBox.hidden : "no .conflict"));
     const btn = walk(box, []).find((n) => n.className === "chip"
       && text(n) === "适配新版本");
     RUNNING = true;
