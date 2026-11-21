@@ -32,6 +32,7 @@ mod would break without it:
 import hashlib
 import json
 import os
+import re
 import shutil
 import zlib
 
@@ -223,6 +224,58 @@ def read_info_json(path):
         return json.loads(text, strict=False)
 
 
+#: The four keys every shipped `info.json` carries, in the order the game
+#: writes them.  `read_info_lenient` walks them in this order so that each
+#: value can be cut at the NEXT key marker -- an embedded quote cannot fake a
+#: `"Key":` marker, so the cut points stay right even when the value is broken.
+INFO_KEY_ORDER = ("Author", "CacheStatus", "Description", "Title")
+
+
+def read_info_lenient(path):
+    """Salvage the four keys from an `info.json` that `json.loads` refuses.
+
+    Measured 2026-11-21 on `subscribed/209785_Civilization Alliance/info.json`:
+    the author typed a FULL-WIDTH opening quote and an ASCII closing one --
+    `请订阅“Civilization Alliance description"获取详细描述。` -- so the file is
+    not JSON at all (`Expecting ',' delimiter: line 1 column 174`) and
+    `strict=False` does not help, because the damage is not a control byte.
+    The game itself reads the file fine, so refusing it means dropping the
+    author's real description and writing our own sentence over it, which is
+    exactly the 2026-11-14 complaint this project already fixed once.
+
+    The rule here is deliberately dumb and stays honest: a value runs from its
+    opening quote to the character just before the next key marker (or the
+    closing brace).  Nothing is repaired, nothing is invented -- an embedded
+    quote simply stays inside the value, which is what the author meant.
+    """
+    with open(path, "rb") as fh:
+        text = fh.read().decode("utf-8-sig", "replace")
+    marks = [(m.group(1), m.start(), m.end())
+             for m in re.finditer(r'"([A-Za-z]+)"\s*:', text)]
+    out = {}
+    for n, (key, start, value_start) in enumerate(marks):
+        if key not in INFO_KEY_ORDER:
+            continue
+        end = marks[n + 1][1] if n + 1 < len(marks) else len(text)
+        chunk = text[value_start:end].strip()
+        if n + 1 < len(marks):
+            # The separator and the next key's opening quote are not the value.
+            if chunk.endswith(","):
+                chunk = chunk[:-1].rstrip()
+        else:
+            if chunk.endswith("}"):
+                chunk = chunk[:-1].rstrip()
+        if chunk.startswith('"'):
+            chunk = chunk[1:]
+        if chunk.endswith('"'):
+            chunk = chunk[:-1]
+        if key == "CacheStatus":
+            out[key] = int(chunk) if chunk.strip().isdigit() else 0
+        else:
+            out[key] = chunk
+    return out
+
+
 def read_info_soft(path):
     """`read_info_json`, but a file that will not parse reads as an empty dict.
 
@@ -240,7 +293,13 @@ def read_info_soft(path):
     try:
         got = read_info_json(path)
     except (OSError, ValueError, UnicodeDecodeError):
-        return {}
+        # Not `{}` yet: the broken file usually still holds the author's own
+        # Title / Author / Description, and dropping those is what turned a
+        # rebuilt mod's detail panel into this tool's own sentence.
+        try:
+            got = read_info_lenient(path)
+        except OSError:
+            return {}
     return got if isinstance(got, dict) else {}
 
 

@@ -8109,6 +8109,15 @@ function upgradeRow(r) {
         const prev = got.installed && got.installed.previous;
         if (prev && prev.disabled)
           toast("原来订阅目录里那份还在，已经关掉了", "warn");
+        // The game rescans `mods/local` while it runs and registers whatever
+        // appears there with `Enabled: false`, overwriting the entry the install
+        // had just written as on.  Measured 2026-11-21 on 209785: the rebuild was
+        // on disk, off in the list, and every session logged `data = 0` -- so the
+        // player was right that "the button did nothing".  The server re-reads the
+        // file and turns the mod back on; say that it had to.
+        const back = got.installed && got.installed.reopened;
+        if (back && !back.why_not)
+          toast("装着的时候游戏把这份记成了「没启用」，已经替你重新打开", "warn");
         if (got.provenance && got.provenance.why_not)
           toast("这次重建没能留下记录：" + got.provenance.why_not, "warn");
         // Re-ask rather than assume: if the row does not now read 「本来就是新版」,
@@ -8155,6 +8164,7 @@ async function adaptAll() {
   const failed = [];
   const touched = [];
   const handed = [];
+  const reopened = [];
   let warned = null;
   for (const r of rows) {
     btn.textContent = "更新中… (" + (done.length + failed.length + 1)
@@ -8167,6 +8177,8 @@ async function adaptAll() {
         warned = got.installed.running_warning;
       const prev = got.installed && got.installed.previous;
       if (prev && prev.disabled) handed.push(r.title || r.name);
+      const back = got.installed && got.installed.reopened;
+      if (back && !back.why_not) reopened.push(r.title || r.name);
       if (r.verdict === "conflicts") touched.push(r.title || r.name);
       done.push(r.name);
     } catch (e) {
@@ -8204,6 +8216,10 @@ async function adaptAll() {
     lines.push("其中 " + handed.length + " 个原来装在订阅目录：新版装成本地模组，"
                + "订阅里那份还在、已经关掉了（Steam 会校验那个目录，写进去会被换回旧版）。"
                + "不想留的话可以在列表里手动删掉：" + handed.join("、") + "。");
+  if (reopened.length)
+    lines.push("其中 " + reopened.length + " 个装着的时候被游戏记成「没启用」，"
+               + "已经替你重新打开：" + reopened.join("、") + "。"
+               + "不打开的话游戏不会读它的数据，看起来就像更新没生效。");
   if (failed.length)
     lines.push("没成的 " + failed.length + " 个：" + failed.join("；") + "。");
   if (warned) lines.push(warned);

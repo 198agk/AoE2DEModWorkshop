@@ -191,6 +191,59 @@ def main():
     finally:
         shutil.rmtree(root2, ignore_errors=True)
 
+    # -- the game's own write must not leave the rebuild switched off --------
+    #
+    # Measured 2026-11-21 on the real profile: `_upgrade_install` asked for
+    # `enabled=True`, and the status file ended up with `"Enabled": false` for
+    # the rebuilt copy.  A running game rescans `mods/local`, registers what it
+    # finds and writes the entry itself -- off.  Whichever write lands second
+    # wins, and the player then reports exactly what happened: "the update did
+    # nothing", with `data = 0` in every session log.
+    #
+    # The fake game here is the only way to exercise the window: patch install so
+    # that, right after the folder lands, the entry is written off the way the
+    # engine writes it.
+    print("-- the rebuild is on even when the game writes its own entry off")
+    root3 = tempfile.mkdtemp(prefix="upg_hand3_")
+    real_install = A.Toolkit.install
+
+    def install_then_engine_writes(root, mod_dir, name=None, title=None,
+                                   kind="local", enabled=True, position=0,
+                                   profile_root=None, account=None,
+                                   overwrite=False):
+        man = real_install(root, mod_dir, name=name, title=title, kind=kind,
+                           enabled=enabled, position=position,
+                           profile_root=profile_root, account=account,
+                           overwrite=overwrite)
+        G.set_mod_enabled(profile_root, man["name"], False, kind="local")
+        return man
+
+    try:
+        os.makedirs(os.path.join(root3, ACC, "mods"))
+        make_mod(root3, "subscribed", "MINE")
+        write_status(root3, [("subscribed", "MINE", True)])
+        rows = A.Toolkit._upgrade_targets(None, root3, limit=0)
+        mine = [r for r in rows if r["name"] == "MINE"][0]
+        build3 = make_build(root3, "MINE")
+        notes3 = []
+        A.Toolkit.install = install_then_engine_writes
+        try:
+            man3 = A.Toolkit._upgrade_install(tk, build3, mine, "MINE 标题",
+                                              root3, notes3)
+        finally:
+            A.Toolkit.install = real_install
+        after3 = status_of(root3)
+        new3 = [e for e in after3 if e[0] == "local" and e[1] == "MINE"]
+        check("新装的那份最后是开着的",
+              new3 and new3[0][2] is True, str(after3))
+        check("manifest 如实记了「重新打开过」",
+              (man3.get("reopened") or {}).get("enabled") is True,
+              str(man3.get("reopened")))
+        check("报告里有一句话说明这件事",
+              any("没启用" in n for n in notes3), str(notes3))
+    finally:
+        shutil.rmtree(root3, ignore_errors=True)
+
     print()
     if FAILS:
         print("HANDOVER: %d CHECK(S) FAILED" % len(FAILS))

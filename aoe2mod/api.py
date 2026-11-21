@@ -7414,6 +7414,36 @@ class Toolkit(object):
         man = self.install(mod_dir, name=name, title=title, kind="local",
                            enabled=True, position=max(0, pri - 1),
                            profile_root=profile_root, overwrite=True)
+        # The freshly installed folder must be ON, and asking once is not enough
+        # to know that it is.  A running game rescans `mods/local` and registers
+        # what it finds -- writing the new entry itself, with `Enabled: false` --
+        # and whichever write lands second wins.  Measured 2026-11-21 on `209785`:
+        # `_upgrade_install` passed `enabled=True`, the status file ended up
+        # `"Enabled":false`, and the player's "the update did nothing" report was
+        # exactly right, because the rebuilt `.dat` was never mounted
+        # (`Setting version info: ... data = 0` in every session).
+        #
+        # So: read the file back and say whether the mod is actually on.  Only
+        # the local entry is touched -- the point is the rebuild, not the user's
+        # other mods.
+        reopened = None
+        try:
+            doc, acc, _ = G.read_status_doc(profile_root)
+            for entry in doc.get("Mods") or []:
+                if str(entry.get("Path") or "") != "local//%s" % man.get("name", name):
+                    continue
+                if not entry.get("Enabled"):
+                    reopened = G.set_mod_enabled(profile_root, name, True,
+                                                 kind="local")
+                break
+        except Exception as exc:                           # noqa: BLE001
+            reopened = {"why_not": "%s: %s" % (type(exc).__name__, exc)}
+        if reopened:
+            man["reopened"] = reopened
+            if notes is not None and not reopened.get("why_not"):
+                notes.append("重新把它打开了：安装时游戏自己把这个新文件夹"
+                             "注册成了「没启用」，那样进游戏等于没装。")
+
         prev = None
         if old.get("kind") and old["kind"] != "local":
             prev = {"name": name, "kind": old["kind"],

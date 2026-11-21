@@ -1181,6 +1181,14 @@ SUITES = [
     # parses.  The module has claimed this file existed since it was written.
     # ~35 s, four parses of a 93 MB build.
     r"_probe\test_portgen.py",
+    # A rebuild changes the .dat and has no business touching the author's own
+    # words or picture -- and it did both, measured 2026-11-21 on 209785: the
+    # rebuilt copy showed this tool's sentence as its 简介 and a blank tile where
+    # the artwork was, while the subscribed copy next door still had both.  The
+    # two causes were independent (a broken-but-readable info.json read as {},
+    # and a thumbnail the caller never handed to `emit_data_mod`), so both are
+    # pinned here against the real broken byte shape.  Under a second, no .dat.
+    r"_probe\test_upgrade_author_files.py",
 ]
 
 # Suites that are not Python.  The screen's script is JavaScript and no Python

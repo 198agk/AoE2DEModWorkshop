@@ -4592,6 +4592,27 @@ def _author_text(src_mod_dir, fallback_title):
     return {"Title": title, "Author": author, "Description": desc}
 
 
+def _author_thumbnail(src_mod_dir):
+    """The author's own `thumbnail.png/jpg/jpeg` inside the mod root, or None.
+
+    Looked up rather than guessed: the shipped mods use all three spellings, and
+    `emit_data_mod` renames it to the `.jpg`/`.png` pair on the way in.
+    """
+    if not src_mod_dir:
+        return None
+    try:
+        names = sorted(os.listdir(src_mod_dir))
+    except OSError:
+        return None
+    for name in names:
+        low = name.lower()
+        if low in ("thumbnail.png", "thumbnail.jpg", "thumbnail.jpeg"):
+            path = os.path.join(src_mod_dir, name)
+            if os.path.isfile(path):
+                return path
+    return None
+
+
 def _emit(out_dir, raw_out, title, rep, src_mod_dir, _again=None):
     """Write the mod folder, carrying the author's non-.dat files across.
 
@@ -4614,7 +4635,14 @@ def _emit(out_dir, raw_out, title, rep, src_mod_dir, _again=None):
     rep["info"] = {"Title": keep["Title"], "Author": keep["Author"],
                    "Description": desc,
                    "description_kept": bool(keep["Description"])}
-    man = E.emit_data_mod(mod_dir, raw_out, info, overwrite=True)
+    # The author's picture has to be handed to `emit_data_mod` here: `carry_over`
+    # skips `thumbnail*` on the stated assumption that "the new folder has its
+    # own", which was only true when the caller passed one.  Measured 2026-11-21:
+    # `209785` came back as 7 files against the author's 8, and the mod list showed
+    # a placeholder where the artwork used to be.
+    man = E.emit_data_mod(mod_dir, raw_out, info,
+                          thumbnail=_author_thumbnail(src_mod_dir),
+                          overwrite=True)
     mod_dir = man.get("mod_dir") or mod_dir
     notes = []
     if src_mod_dir and os.path.isdir(src_mod_dir):
