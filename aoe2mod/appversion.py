@@ -55,7 +55,7 @@ unless it is named with `--force`.
 """
 
 #: What the player sees, and what a bug report quotes.  Three parts, always.
-VERSION = "1.7.0"
+VERSION = "1.7.1"
 
 #: What this build changed，一行一件，用玩家看得懂的话写。 印在 关于 页的版本
 #: 下面，也发进 gist 的同号旁边，让「检查更新」能说出新在哪儿，而不是只报一个号码。
@@ -66,8 +66,7 @@ VERSION = "1.7.0"
 #: are still in the git history and in docs/CHANGELOG.md; what a player reads on
 #: the 关于 page is this.
 CHANGES = (
-    "更新了更换模型功能",
-    "文联 AI 最优解教程",
+    "加入了文本编辑功能",
 )
 
 #: The same number with the word in front, so screens do not each spell it.

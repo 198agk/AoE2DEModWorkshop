@@ -192,6 +192,9 @@ _DETAIL_KEYS = {
     "/api/record-del": ("kind", "record", "civ", "applied", "pending"),
     "/api/record-dup": ("kind", "record", "donor", "civ", "applied", "pending"),
     "/api/record-rename": ("kind", "record", "name", "civ", "applied", "pending"),
+    "/api/record-text": ("kind", "record", "field", "text", "string_id", "civ",
+                         "was_text", "copies", "copies_changing", "applied",
+                         "pending"),
     "/api/card-put": ("unit", "building", "box", "seconds", "civ", "applied"),
     "/api/card-move": ("unit", "building", "box", "from", "to", "moved",
                        "swapped", "applied", "pending"),
@@ -240,6 +243,7 @@ _VERBS = {
     "/api/record-del": "删除记录",
     "/api/record-dup": "复制记录",
     "/api/record-rename": "重命名记录",
+    "/api/record-text": "改显示文字",
     "/api/card-put": "命令面板放入",
     "/api/card-move": "命令面板挪动",
     "/api/card-take": "命令面板取出",
@@ -341,6 +345,18 @@ def summary_of(route, payload, result):
             return "%s：%s 的 %s 没改成" % (verb, who, label)
         return "%s：%s 的 %s %s → %s" % (
             verb, who, label, _pick(r.get("before"), "?"), _pick(r.get("value"), "?"))
+
+    if route == "/api/record-text":
+        # The words are the whole point of this route, so the sentence quotes
+        # them; the id is what the file stores and the player never types.
+        who = ("科技 %s" % p.get("record")) if p.get("kind") == "tech" \
+            else ("单位 %s" % (p.get("record"),))
+        if r.get("ok") is False:
+            return "%s：%s 的 %s 没改成" % (verb, who, _pick(r.get("label"),
+                                                            p.get("field"), "?"))
+        return "%s：%s 的 %s → 「%s」" % (
+            verb, who, _pick(r.get("label"), p.get("field"), "?"),
+            _clip(_pick(r.get("text"), p.get("text"), "?"), 40))
 
     if route == "/api/session-save":
         title = _pick((r.get("info") or {}).get("Title"), (r.get("installed") or {}).get("title"),

@@ -6708,6 +6708,12 @@ class App(object):
                 # whole table when it is small (classes are 59, bools are 2).
                 row["enum"] = {str(k): v for k, v in meta["enum"].items()}
                 row["enum_text"] = meta["enum"].get(f["value"])
+            if fname.startswith("LanguageDLL"):
+                # The words this id stands for, so the pane can print
+                # 「名称文本编号 30030001 = 织布机」 instead of a bare number and
+                # leave the player to guess what to type.  Empty when the
+                # install has no string tables.
+                row["text"] = self._text_of(f["value"])
             if meta.get("ro"):
                 row["ro"] = True
             elif meta.get("soft"):
@@ -7382,6 +7388,10 @@ class App(object):
                 # The pointer column: this is the shape AGE never sends.
                 row["ref"] = ref
                 row["ref_text"] = ref["name"]
+            if fname.startswith("LanguageDLL"):
+                # Same as the unit side: the id is what the file stores, the
+                # words are what the player is actually trying to change.
+                row["text"] = self._text_of(f["value"])
             if meta.get("ro") or f["kind"] == "str":
                 # A string is length-prefixed; `set_tech_field` refuses it.  Mark
                 # it read-only HERE so the page draws no input box for it -- a
@@ -7957,6 +7967,189 @@ class App(object):
         out["hint"] = "已记在内存里，改完点「保存成 mod」一次写盘"
         if soft_note:
             out["warn"] = soft_note
+        return out
+
+    # ---- display text ----------------------------------------------------
+    #
+    # WHY THIS IS NOT `/api/field-set` WITH A DIGIT IN IT: `LanguageDLLName` and
+    # its three siblings are ordinary i32 columns -- each holds an OFFSET into a
+    # string table that lives beside the `.dat`.  Writing 30030002 into one is
+    # legal and points at nothing, which is exactly what the editor used to make
+    # the player do (「名称文本编号」 and a bare input box).  This route takes the
+    # WORDS instead: it allocates (or reuses) a string id carrying them and
+    # points the record at that id, so 「显示的名字」 and 「这段文字」 stop being
+    # two separate jobs.
+    TEXT_FIELDS = {
+        "unit": ("LanguageDLLName", "LanguageDLLCreation",
+                 "LanguageDLLHelp", "LanguageDLLHotKeyText"),
+        "tech": ("LanguageDLLName", "LanguageDLLDescription",
+                 "LanguageDLLHelp", "LanguageDLLTechTree"),
+    }
+
+    def _text_of(self, sid):
+        """The words a string id stands for, as this session currently sees them.
+
+        Two layers, in this order: rows this session created (`tk._new_text`,
+        which is not on disk until 保存成 mod) and then the installed tables.
+        Reading only the tables would show an empty box right after the player
+        wrote a line, which reads as "it did not take".
+        """
+        try:
+            sid = int(sid)
+        except (TypeError, ValueError):
+            return ""
+        new = getattr(self.tk, "_new_text", None) or {}
+        if sid in new:
+            return new[sid]
+        return (self._strings() or {}).get(sid, "") or ""
+
+    def set_record_text(self, kind, record, field, text, civ="", dry=True):
+        """Write WORDS into one of a record's string columns.
+
+        Same in-memory contract as every other field write: the bytes land in
+        the session buffer and one 保存成 mod writes the `.dat` plus the string
+        table row this session allocated.
+
+        `dry` says which copies would move and what they say today, and it does
+        NOT allocate: a preview that burned a string id would leave an orphan
+        row in the shipped table every time the player just looked.
+        """
+        import struct
+        from aoe2mod.dat import unitfields as UF
+        from aoe2mod.game import fieldlabels as FL
+        from aoe2mod.game import techlabels as TL
+        tk = self.tk
+        tk._ensure()
+        civs = tk._civs
+        kind = str(kind or "unit").strip().lower()
+        if kind not in ("unit", "tech"):
+            return {"ok": False, "error": "kind 只能写 unit 或 tech"}
+        field = str(field or "").strip()
+        allowed = self.TEXT_FIELDS[kind]
+        if field not in allowed:
+            # A whitelist, not a naming rule: 「改文字」 must not be a side door
+            # that writes into a sound id or a tooltip counter just because the
+            # column happens to hold an integer.
+            return {"ok": False,
+                    "error": "「%s」不是文字栏；能写文字的是 %s" % (
+                        field, "、".join(allowed))}
+        text = str(text or "").strip()
+        if not text:
+            return {"ok": False, "error": "要填一段文字"}
+        if len(text) > 512:
+            return {"ok": False,
+                    "error": "一段文字最多 512 个字，收到 %d 个" % (len(text),)}
+        meta = (TL if kind == "tech" else FL).meta_for(field)
+        label = meta.get("zh") or field
+        base = self.session_raw()
+        targets = []
+        if kind == "tech":
+            try:
+                tid = int(record)
+            except (TypeError, ValueError):
+                return {"ok": False, "error": "科技编号要是数字，收到的是 %r" % (record,)}
+            rec = self._tech_index().get(tid)
+            if rec is None:
+                return {"ok": False, "error": "没有第 %d 号科技" % (tid,)}
+            fr = self._tech_fields_of(rec).get(field)
+            if fr is None:
+                return {"ok": False, "error": "这条科技里没有叫 %s 的字段" % (field,)}
+            _e = self._semantic().techs.get(tid)
+            name = ((_e.zh or _e.en) if _e is not None else "") or ""
+            targets = [{"civ": "", "civ_index": 0, "offset": fr["offset"],
+                        "old": int(fr["value"])}]
+            rec_id = tid
+        else:
+            try:
+                uid = int(record)
+            except (TypeError, ValueError):
+                return {"ok": False, "error": "单位编号要是数字，收到的是 %r" % (record,)}
+            civ_all, civ_index, ref, _fell = self._unit_read_ref(
+                tk, civs, uid, civ)
+            if ref is None:
+                return self._unit_missing(tk, civs, uid, civ)
+            want_all = bool(civ_all and len(civs) > 1)
+            stage = tk._parsed[3]
+            # Resolved by NAME per copy, never by reusing one copy's offset --
+            # two civilisations lay the same unit out differently (British's
+            # 民兵 is 2166 records, Gaia's 2693), so an offset that is right in
+            # one copy points into the middle of another.
+            for (ci, u), r in self._unit_index().items():
+                if u != uid:
+                    continue
+                if not want_all and ci != civ_index:
+                    continue
+                fr = UF.fields_at(base, stage, r["start"]).get(field)
+                if fr is None:
+                    continue
+                targets.append({"civ": (civs[ci].get("name")
+                                        if 0 <= ci < len(civs) else str(ci)),
+                                "civ_index": ci, "offset": fr["offset"],
+                                "old": int(fr["value"])})
+            targets.sort(key=lambda t: t["civ_index"])
+            name = (self._fields_of(ref).get("Name") or {}).get("value") or ""
+            rec_id = uid
+        if not targets:
+            return {"ok": False,
+                    "error": "这条记录的「%s」找不到落点" % (label,)}
+        # Reuse an id this session already made for the same words (renaming the
+        # same record twice must not ship two rows).  `dry` must not allocate.
+        sid = next((k for k, v in self._new_strings.items() if v == text), None)
+        reuse = sid is not None
+        stale = ([t for t in targets if t["old"] != sid] if sid is not None
+                 else [t for t in targets if self._text_of(t["old"]) != text])
+        if not stale:
+            return {"ok": False, "error": "这段文字已经在这条记录上了"}
+        out = {"ok": True, "kind": kind, "record": rec_id, "name": name,
+               "field": field, "label": label,
+               "civ": ("全部 %d 个文明" % (len(targets),) if len(targets) > 1
+                       else (targets[0]["civ"] or "")),
+               "civ_all": len(targets) > 1, "copies": len(targets),
+               "copies_changing": len(stale),
+               "string_id": sid, "reuse": bool(reuse),
+               "was_text": self._text_of(targets[0]["old"]), "text": text,
+               "changes_dat": True}
+        if dry:
+            out["dry"] = True
+            out["hint"] = ("会新造一个文字编号" if sid is None
+                           else "复用本会话已经造过的编号 %d" % (sid,))
+            out["session_dirty"] = self.session_dirty
+            out["pending"] = len(self.pending_edits())
+            return out
+        if sid is None:
+            try:
+                sid = self.new_string_id(text)
+            except Exception as exc:                       # noqa: BLE001
+                return {"ok": False, "error": "造不了新的文字编号：%s: %s" % (
+                    type(exc).__name__, exc)}
+            out["string_id"] = sid
+            out["reuse"] = False
+        packed = struct.pack("<i", sid)
+        # `op == "rename"` on purpose: `_hist_apply` re-reads the display ids
+        # only for a step that carries it, and without that an 撤回 leaves the
+        # model showing the name the file no longer contains.
+        note = {"civ": ("*" if len(targets) > 1 else (targets[0]["civ"] or "")),
+                "civ_all": len(targets) > 1, "copies": len(targets),
+                "field": field, "label": label, "op": "rename",
+                "was": targets[0]["old"], "now": sid,
+                "kind": "text", "text": text, "offset": stale[0]["offset"]}
+        note["unit" if kind == "unit" else "tech"] = rec_id
+        note["unit_name" if kind == "unit" else "tech_name"] = name
+        self._hist_begin()
+        first = True
+        for t in stale:
+            self._session_edit(t["offset"], packed,
+                               note=note if first else None, hold=True)
+            first = False
+        self._hist_commit()
+        if kind == "unit":
+            self._drop_unit_decode(rec_id)
+        # The name index is built from the ids in the buffer; one flat pass here
+        # (0.14 s over 136,861 records) is what makes the list print the new
+        # words before 保存成 mod.
+        self._resync_display_ids()
+        self._stamp_write(out)
+        out["hint"] = "已记在内存里，改完点「保存成 mod」一次写盘"
         return out
 
     # ---- the effect list of one technology ------------------------------
@@ -10049,6 +10242,30 @@ class App(object):
         buf = bytearray(base)
         civs, _cs, gv, _tail = L.locate(bytes(buf), parser=None)
         applied, refused = [], []
+        # A TEXT intent carries the words AND the id it wrote, but only the
+        # words survive a restart: the id was allocated in the session that made
+        # the edit and points at a row that shipped nowhere.  So the replay
+        # allocates a fresh id against the game it is running on and rewrites
+        # `value`, which is the number the field replay below writes.  The row
+        # itself rides along via `self._new_strings` in `_emit_replay`.
+        prepared = []
+        for e in edits:
+            if not e.get("text"):
+                prepared.append(e)
+                continue
+            try:
+                sid = self.new_string_id(str(e["text"]))
+            except Exception as exc:                       # noqa: BLE001
+                # No string table to write into is a real refusal, not a crash:
+                # the .dat would point at words that are nowhere.
+                refused.append({"intent": e,
+                                "error": "这条文字重建时写不进字符串表：%s: %s"
+                                         % (type(exc).__name__, exc)})
+                continue
+            e = dict(e)
+            e["value"] = sid
+            prepared.append(e)
+        edits = prepared
         # One scan per (kind) for the whole batch.  Each scan walks 93 MB and
         # takes ~7 s, so re-scanning per edit would turn nine edits into a
         # minute of waiting; and the scan must be redone after a write only if
@@ -10168,8 +10385,23 @@ class App(object):
         tk = self.tk
         info = E.make_info(title or "rebuild", author=author or AV.AUTHOR,
                            description=description or "")
+        # The string table, or the ids this rebuild just allocated resolve to
+        # nothing and every renamed record prints as a bare number in game.
+        # `emit_data_mod` takes these as `json_files` even though the content is
+        # a `.txt`: the parameter is "extra files beside the .dat", and passing
+        # them here is what keeps the table and the bytes that point into it
+        # from ever shipping apart.
+        extra = {}
+        if self._new_strings:
+            try:
+                extra = S.build_files(tk.game_root,
+                                      sorted(self._new_strings.items())) or {}
+            except Exception as exc:                       # noqa: BLE001
+                return {"ok": False,
+                        "error": "重建时读不到字符串表，改了字的记录会显示成编号："
+                                 "%s: %s" % (type(exc).__name__, exc)}
         man = E.emit_data_mod(out_dir, buf, info, base_dir=tk.game_root,
-                              overwrite=True)
+                              overwrite=True, json_files=extra or None)
         # Read the file back.  A rebuild's whole promise is that the result opens
         # in the game, and the only cheap proof is that the engine's own parser
         # walks it to the last byte.
@@ -11828,6 +12060,17 @@ def make_handler(app):
                     civ=payload.get("civ"),
                     record=payload.get("record", payload.get("id")),
                     name=payload.get("name")))
+            if path == "/api/record-text":
+                # 「名称文本编号」 is an ordinary integer column, and typing a new
+                # number into it points the record at nothing.  This route takes
+                # the words and allocates the id itself.
+                return self._guard(lambda: app.set_record_text(
+                    kind=payload.get("kind") or "unit",
+                    record=payload.get("record", payload.get("id")),
+                    field=payload.get("field"),
+                    text=payload.get("text"),
+                    civ=payload.get("civ") or "",
+                    dry=bool(payload.get("dry", True))))
             if path == "/api/drop":
                 # THE GESTURE, forwarded.  The page that started the drag
                 # names the window it landed on; this side owns the records,
@@ -12219,11 +12462,20 @@ def _intent_of(edit):
                 "record": edit.get("record"), "field": edit.get("field"),
                 "value": edit.get("now")}
     if edit.get("tech") is not None:
-        return {"intent": "tech.field", "tech": edit.get("tech"),
-                "field": edit.get("field"), "value": edit.get("now")}
+        out = {"intent": "tech.field", "tech": edit.get("tech"),
+               "field": edit.get("field"), "value": edit.get("now")}
+        # The WORDS, not only the id.  An id allocated in this session is a
+        # number with nothing behind it as soon as the process ends, so a
+        # rebuild that replayed only `value` shipped a .dat pointing at a row
+        # that does not exist -- the name printed as 30030002 in game.
+        if edit.get("text"):
+            out["text"] = edit.get("text")
+        return out
     out = {"intent": "unit.field", "unit": edit.get("unit"),
            "field": edit.get("field"), "value": edit.get("now"),
            "civ": edit.get("civ")}
+    if edit.get("text"):
+        out["text"] = edit.get("text")
     if edit.get("civ_all"):
         out["civ_all"] = True
     return out

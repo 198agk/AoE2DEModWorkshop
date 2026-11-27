@@ -35,7 +35,7 @@
 
 | 文件 | 怎么用 |
 | --- | --- |
-| `AoE2DEModWorkshop-1.7.0-setup.exe`（273 MB） | 双击安装 |
+| `AoE2DEModWorkshop-1.7.1-setup.exe`（273 MB） | 双击安装 |
 | `AoE2DEModWorkshop.zip`（351 MB） | 解压，双击 `AoE2 DE Mod Workshop.exe` |
 
 装好之后还要在游戏里自己选一次，否则改动不生效：进「**单人游戏 → 创建游戏**」，在设置画面里找到「数据模组：」那一项，从下拉框里挑本软件生成的那个。**它不是「模组」界面里的开关**，别在那里找，翻穿了也没有。
@@ -153,7 +153,7 @@
 需要 Python 3.10+。改完这样验：
 
 ```powershell
-python -X utf8 -u '_probe\run_suites.py'    # 251 条快套件，约 100 分钟
+python -X utf8 -u '_probe\run_suites.py'    # 252 条快套件，约 100 分钟
 python -X utf8 -u '_probe\run_long.py'      # 17 条长套件，约 2.8 小时
 ```
 

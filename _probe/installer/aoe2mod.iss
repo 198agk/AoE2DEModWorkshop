@@ -10,7 +10,7 @@
 ; 2026-11-26 起工坊的号码就是三段式（「以后都这样0.0.0写」），所以这里、tauri.conf.json
 ; 和 Cargo.toml 三处写的是同一个字符串，不再有两段/三段的翻译。
 #ifndef AppVer
-  #define AppVer "1.7.0"
+  #define AppVer "1.7.1"
 #endif
 ; 仓库根不写死：这个脚本就住在 <repo>\_probe\installer\，往上两级就是它。
 ; 换机器/换盘符不用改文件；要指到别处就 ISCC.exe /DRepoDir=D:\path\repo aoe2mod.iss

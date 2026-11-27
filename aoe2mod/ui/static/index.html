@@ -12656,6 +12656,95 @@ let ED_ICON = null;          // {data, filename, plan}
 // the contents.  The slot line stays a real line inside the body instead of a
 // summary subtitle: the summary belongs to the strip, and a slot number that
 // changes after a write must not end up hidden behind a shut box.
+// 「改文字」 -- the columns that hold a string id, said in words.
+//
+// WHY A SECOND EDITOR FOR COLUMNS THAT ALREADY HAVE INPUT BOXES: those boxes
+// take the ID (30030001) and nothing else, so a player who wants the game to
+// print 「皇家卫队」 has to first find an unused id, know that the string table
+// lives beside the .dat, and write a line into it by hand. The server owns all
+// three steps now (`/api/record-text` allocates the id and writes the table row),
+// and this panel is only the words.
+const ED_TEXT_FIELDS = {
+  unit: [
+    ["LanguageDLLName", "名字"],
+    ["LanguageDLLCreation", "创建时说的那句"],
+    ["LanguageDLLHelp", "帮助条"],
+    ["LanguageDLLHotKeyText", "热键文字"],
+  ],
+  tech: [
+    ["LanguageDLLName", "名字"],
+    ["LanguageDLLDescription", "说明"],
+    ["LanguageDLLHelp", "帮助条"],
+    ["LanguageDLLTechTree", "科技树上的字"],
+  ],
+};
+
+function drawTextBox(body, d) {
+  const kind = edKindOf(d);
+  const id = edIdOf(d);
+  const fields = ED_TEXT_FIELDS[kind] || ED_TEXT_FIELDS.unit;
+  const rows = (ED_FIELDS && ED_FIELDS.fields) || [];
+  body.appendChild(el("div", "icl1",
+    "写的是游戏里显示的文字，不是编号。工具会新造一条字符串表行，"
+    + "把这条记录的编号指过去；保存成 mod 时表和 .dat 一起落盘。"));
+  for (const [name, zh] of fields) {
+    const f = rows.find((x) => x.name === name);
+    const line = el("div", "icrow");
+    const words = el("div", "icwords");
+    const now = f ? (f.text || "") : "";
+    words.appendChild(el("div", "icl1", zh + "（" + name + "）"));
+    words.appendChild(el("div", "icl2", f
+      ? ("现在是：" + (now ? "「" + now + "」" : "空")
+        + "  编号 " + f.value)
+      : "这条记录没有这一栏"));
+    const inp = el("input");
+    inp.type = "text";
+    inp.maxLength = 512;
+    inp.placeholder = now || "写一段新文字";
+    inp.setAttribute("aria-label", name + " 的新文字");
+    inp.dataset.field = name;
+    inp.disabled = !f;
+    const go = el("button", "chip", "写这段文字");
+    go.disabled = !f;
+    go.onclick = async () => {
+      const text = String(inp.value || "").trim();
+      if (!text) { toast("先在框里写一段文字", "bad"); inp.focus(); return; }
+      go.disabled = true;
+      const was = go.textContent;
+      go.textContent = "写着…";
+      try {
+        // Literal URL on purpose: `_probe/test_page_route_contract.py` reads
+        // this file as text, and a composed route is invisible to it.
+        const w = await api("/api/record-text", {
+          kind: kind, record: id, field: name, text: text,
+          civ: kind === "tech" ? undefined : edScopeCiv(), dry: false,
+        });
+        toast("已记下：" + (w.label || zh) + " → 「" + text + "」", "ok");
+        // Not `edAfterRename`: that one overwrites the row's label, which is
+        // right for 名字 and wrong for 帮助条 -- the list would start calling a
+        // unit by its help text.  Re-open the pane instead; the row that
+        // carries the id is re-read and the field table shows the new words.
+        try {
+          const st = await api("/api/session-info");
+          edSyncPending(st.pending, st.edits, st);
+        } catch (e) { /* the header is a nicety; the write already happened */ }
+        await openEditor({id: id, kind: kind});
+      } catch (e) {
+        toast(e.message, "bad");
+      } finally {
+        go.disabled = false;
+        go.textContent = was;
+      }
+    };
+    const cell = el("div", "icrow");
+    cell.appendChild(inp);
+    cell.appendChild(go);
+    words.appendChild(cell);
+    line.appendChild(words);
+    body.appendChild(line);
+  }
+}
+
 function drawIconBox(body, d) {
   const kind = edKindOf(d);
   const id = edIdOf(d);
@@ -12974,6 +13063,12 @@ function drawFields(pane, d) {
   edTool(tools, "edrecbox", "记录本身", "",
     "复制成新记录 / 删除这一条 / 改名字 / 一次新增很多条",
     (t) => { t.body.appendChild(edRecordActions(d)); });
+  // 改文字 sits right after 记录本身: both answer "change what this record
+  // says", and the column that holds the words is the one the player has been
+  // staring at as a bare number (`名称文本编号 50701`).
+  edTool(tools, "edtext", "改文字", "",
+    "直接写游戏里显示的名字、说明、帮助和科技树上的字，不用管编号",
+    (t) => { drawTextBox(t.body, d); });
   edTool(tools, "edicn", "换图标", "",
     "改成别的图标编号，游戏照着新编号画",
     (t) => { drawIconBox(t.body, d); });
@@ -14052,6 +14147,15 @@ function fieldRow(d, f) {
     sp.title = (f.seen_space_zh ? f.seen_space_zh + "：" : "")
       + String(f.value) + " = " + spelled;
     tdV.appendChild(sp);
+  }
+  // A TEXT COLUMN STORES AN ID, NOT A WORD.  `名称文本编号 30030001` is what the
+  // file says and `= 织布机` is what the game prints -- without the second half
+  // the player has no way to tell a working row from one pointing at nothing.
+  if (f.text) {
+    const words = el("span", "vname", "= " + f.text);
+    words.title = "编号 " + f.value + " 在字符串表里是「" + f.text + "」。"
+      + "要改这段文字用上面「改文字」，它会把新文字写成一条新的编号。";
+    tdV.appendChild(words);
   }
   if (!f.ro && f.hi !== undefined) tdV.title = "范围 " + (f.lo === undefined ? "?" : f.lo) + " .. " + f.hi;
   // The two sentinels, spelled out where they appear.  A `-1` in IconID means

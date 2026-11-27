@@ -621,6 +621,20 @@ SUITES = [
     # new name before the save, that undo restores the bytes AND the model, and
     # that a rename which changes nothing writes nothing.
     r"_probe\test_rename.py",
+    # 改显示文字 (2026-11-27).  `LanguageDLLName` is an i32 meaning "row N of a
+    # string table beside the .dat"; the column editor always offered the
+    # integer, which is legal to write and points at nothing, so the game
+    # printed the bare number.  A rename was the only path that allocated a
+    # row, and only for the NAME -- description, help, hotkey and tech-tree
+    # text stayed unreachable. This pin holds four things that each fail
+    # silently on their own: a PREVIEW allocates no id (a dry run that burned
+    # one would leave an orphan in the shipped table every time someone
+    # looked), a real write lands in the buffer AND in `_new_strings` so the
+    # pane reads the words back before saving, 保存 ships the table beside the
+    # .dat (an id alone is a number the game prints), and a REBUILD
+    # re-allocates against the current game because the first build's id was
+    # minted in a process that is gone.
+    r"_probe\test_record_text.py",
     # 2026-11-06, two nails from the user's own 125 MB mod:
     # `test_stage_stop` because the tech tab said `_Stop: 没有说明` whenever two
     # scans overlapped (a per-call exception class plus `orig` read outside the
