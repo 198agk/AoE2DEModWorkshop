@@ -208,29 +208,40 @@ def spawn_server():
     import time
     import urllib.request
 
-    port = free_port()
-    proc = subprocess.Popen(
-        [sys.executable, "-X", "utf8", "-u",
-         os.path.join(ROOT, "tools", "run_ui.py"),
-         "--serve-only", "--port", str(port)],
-        cwd=ROOT, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    url = "http://127.0.0.1:%d/" % port
-    deadline = time.time() + 180
-    while time.time() < deadline:
-        if proc.poll() is not None:
-            break
+    # free_port() only PROVES a port was free a moment ago -- it closes the
+    # socket before the engine binds it, and in a 250-suite sweep another
+    # process can take that number in between.  When that happened the engine
+    # exited at once and this gate reported "the page answered at :7960" as a
+    # layout failure, which is the one thing it must never get wrong: a red here
+    # means the editor does not fit.  So try a few ports before believing it.
+    start = 7960
+    url = "http://127.0.0.1:%d/" % start
+    for attempt in range(4):
+        port = free_port(start)
+        url = "http://127.0.0.1:%d/" % port
+        proc = subprocess.Popen(
+            [sys.executable, "-X", "utf8", "-u",
+             os.path.join(ROOT, "tools", "run_ui.py"),
+             "--serve-only", "--port", str(port)],
+            cwd=ROOT, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        deadline = time.time() + (180 if attempt == 0 else 60)
+        while time.time() < deadline:
+            if proc.poll() is not None:
+                break
+            try:
+                with urllib.request.urlopen(url + "api/meta", timeout=3) as r:
+                    if b'"ok"' in r.read():
+                        return proc, url
+            except Exception:                            # noqa: BLE001
+                pass
+            time.sleep(0.5)
         try:
-            with urllib.request.urlopen(url + "api/meta", timeout=3) as r:
-                if b'"ok"' in r.read():
-                    return proc, url
+            proc.kill()
+            proc.wait(timeout=20)
         except Exception:                                # noqa: BLE001
             pass
-        time.sleep(0.5)
-    try:
-        proc.kill()
-        proc.wait(timeout=20)
-    except Exception:                                    # noqa: BLE001
-        pass
+        # 7960 is taken by something else; look further up the range next time.
+        start = port + 1
     return None, url
 
 

@@ -41,6 +41,11 @@ from .mod import strings as S
 from .semantic import pinyin as PZ
 from .mod import provenance as PV
 from . import updates as UPD
+# NOT "as AV": line 37 already binds AV to intent.availability, and this import
+# used to rebind the same name -- every AV.describe/plan/apply/space_of call in
+# this module then hit the version constants and raised AttributeError.  Found on
+# the 1.20 shipped build (/api/describe?kind=unit&id=1810 answered FAIL).
+from . import appversion as APPV
 from .semantic import index as semantic
 from .semantic import prose as PR
 
@@ -6889,7 +6894,7 @@ class Toolkit(object):
             out_dir = os.path.join(_tempfile.mkdtemp(prefix="dsh_repair_"),
                                    row["name"])
         man = self.build_bundle(plan["intents"], out_dir, title=title,
-                                author=author or info.get("Author") or "dsh",
+                                author=author or info.get("Author") or APPV.AUTHOR,
                                 description=info.get("Description") or "",
                                 overwrite=True)
         carried = R.carry_over(old_dir, man["mod_dir"], log=notes)
@@ -7391,6 +7396,53 @@ class Toolkit(object):
             return {"title": None, "state_file": None,
                     "why_not": "%s: %s" % (type(exc).__name__, exc)}
 
+    def _dataset_pick_of(self, profile_root, account=None):
+        """Which installed mod the profile's dataset pick points at, hashing nothing.
+
+        A cheap cousin of `dataset_audit`: that one recomputes the picked folder's
+        checksum (12 MB) because its job is to answer "will the engine accept this
+        file".  This one only needs to know WHICH mod the pick names, so it matches
+        the record against the status entries by checksum and then by title and
+        stops there.  Used before and after a rebuild, where the question is
+        "did the file the player was reading just move under him", not "is it valid".
+
+        Returns ``None`` when nothing is picked (or the profile cannot be read),
+        because "no pick" and "a pick that is not this mod" lead to two different
+        sentences on screen.
+        """
+        from .game import dataset as DS
+        from .game import locations as G
+        try:
+            doc, acc, _raw = G.read_status_doc(profile_root, account=account)
+            sel = DS.read_selection(acc)
+        except Exception:                                  # noqa: BLE001
+            return None
+        entries = []
+        for e in (doc.get("Mods") or []):
+            kind, _, folder = str(e.get("Path") or "").partition("//")
+            entries.append({"kind": kind, "name": folder,
+                            "title": e.get("Title") or folder,
+                            "checksum": str(e.get("CheckSum") or "")})
+        picks = (sel or {}).get("picks") or []
+        for pick in picks:
+            want = str(pick.get("checksum") or "")
+            if not want or want == "0":
+                continue
+            for e in entries:
+                if e["checksum"] == want:
+                    return {"name": e["name"], "kind": e["kind"],
+                            "title": e["title"], "pick_title": pick.get("title"),
+                            "checksum": pick.get("checksum"), "how": "checksum"}
+        for pick in picks:
+            text = str(pick.get("title") or "")
+            if not text:
+                continue
+            for e in entries:
+                if text in (e["name"], e["title"]):
+                    return {"name": e["name"], "kind": e["kind"],
+                            "title": e["title"], "pick_title": text,
+                            "checksum": pick.get("checksum"), "how": "title"}
+        return None
     def _upgrade_install(self, mod_dir, row, title, profile_root, notes):
         """Put a rebuilt mod in place of the copy it was carried forward from.
 
@@ -7411,6 +7463,11 @@ class Toolkit(object):
         old = row or {}
         name = old.get("name") or os.path.basename(mod_dir.rstrip("\\/"))
         pri = int(old.get("priority") or 0)
+        # Which dataset the game is reading RIGHT NOW, before the folder is
+        # replaced.  Taken here and not after the install, because the install
+        # rewrites the folder the pick's checksum points at, and the answer after
+        # the fact no longer says what the player was reading a second ago.
+        was_pick = self._dataset_pick_of(profile_root)
         man = self.install(mod_dir, name=name, title=title, kind="local",
                            enabled=True, position=max(0, pri - 1),
                            profile_root=profile_root, overwrite=True)
@@ -7444,6 +7501,67 @@ class Toolkit(object):
                 notes.append("重新把它打开了：安装时游戏自己把这个新文件夹"
                              "注册成了「没启用」，那样进游戏等于没装。")
 
+        # Carry the dataset pick forward.  This is the step that made a correct
+        # rebuild look like a no-op: the engine reads ONE selected dataset and
+        # verifies its CheckSum, and a rebuild replaces the folder the pick points
+        # at -- so the stored number stops matching the moment the new bytes land.
+        # Measured 2026-11-21 on `209785`: 5,333 of 5,387 field changes carried,
+        # folder renamed in place, and the create-game screen still silently fell
+        # back to the base `.dat` because the pick's checksum no longer agreed.
+        #
+        # Only the player's OWN choice is carried: if the pick names this mod
+        # before the update, it names the rebuilt copy after it.  When the pick
+        # was somewhere else (or absent) nothing is written -- silently switching
+        # the dataset a player is mid-campaign on would be a worse surprise than
+        # the one being fixed, and the screen says which mod is still being read.
+        # Every branch below says its piece in words, not just in the manifest.
+        # The manifest is for the next run; a player reads the report, and the
+        # one thing they need to know is what the game will read when they press
+        # 开始游戏.  Measured 2026-11-24 in a 250-suite sweep: the carried-forward
+        # branch was the only one that spoke, so a report that landed in any
+        # other branch (a pick pointing at a different mod, no pick at all, or a
+        # write that raised) said nothing a player could act on -- the run looked
+        # like a silent no-op even though the manifest was correct.
+        man["pick"] = None
+        try:
+            if was_pick and was_pick.get("name") == man.get("name"):
+                got = self.set_dataset_pick(man.get("name"),
+                                            profile_root=profile_root)
+                man["pick"] = {"carried": True,
+                               "title": (got.get("pick") or {}).get("title"),
+                               "checksum": (got.get("pick") or {}).get("checksum"),
+                               "reads": ((got.get("dataset") or {}).get("reads"))}
+                if notes is not None:
+                    notes.append(
+                        "游戏本来就是读这一份数据的，装完顺手把「选中的数据模组」"
+                        "改指到新装的这份上——不这么做，校验和对不上，进游戏会退回"
+                        "本体那份数据，看起来就跟没更新一样。")
+            elif was_pick:
+                # Deliberately silent: nothing was handed over, and naming the
+                # mod the game still reads in the same breath is how a report
+                # starts claiming a swap that did not happen.  The manifest
+                # records it under "still" for whoever needs it.
+                man["pick"] = {"carried": False,
+                               "still": was_pick,
+                               "title": was_pick.get("title")}
+            else:
+                # Nothing to carry, and nothing for the player to do: a local
+                # rebuild in a profile that never picked a dataset is the normal
+                # case.  The manifest still records why (a report line here would
+                # be noise on every plain rebuild).
+                man["pick"] = {"carried": False, "still": None,
+                               "why_not": "profile 里没有「选中的数据模组」这一条，"
+                                           "游戏读的还是本体数据。"}
+        except Exception as exc:                           # noqa: BLE001
+            man["pick"] = {"carried": False,
+                           "why_not": "%s: %s" % (type(exc).__name__, exc)}
+            if notes is not None:
+                notes.append(
+                    "没能把「选中的数据模组」改指到新装的这份上（%s: %s）。"
+                    "文件都装好了，但进游戏可能还读着本体那份数据——到「数据」页"
+                    "重新选一下这个模组就好。"
+                    % (type(exc).__name__, exc))
+
         prev = None
         if old.get("kind") and old["kind"] != "local":
             prev = {"name": name, "kind": old["kind"],
@@ -7474,7 +7592,7 @@ class Toolkit(object):
 
     def upgrade_apply(self, name=None, mod_dat=None, out_dir=None, title=None,
                       base_dat=None, new_dat=None, install=True,
-                      profile_root=None, official_wins=False, force=False,
+                      profile_root=None, official_wins=True, force=False,
                       limit=20000):
         """Carry one mod's edits onto today's official `.dat`, then reinstall it.
 
@@ -7609,6 +7727,86 @@ class Toolkit(object):
         from .game import locations as G
         prof = G.find_profile_root()
         return G.list_mods(prof)
+
+    def set_dataset_pick(self, name, profile_root=None, account=None):
+        """Make the game load ``name``'s ``.dat`` on the next launch.
+
+        The one thing the mods screen could not do: after installing a rebuilt data
+        mod, the player had to start the game, enter a lobby, open the 数据模组
+        dropdown and pick it -- and until then every "更新" looked like it did
+        nothing (measured 2026-11-21: 13 installed data mods, none selected,
+        ``data = 0`` in every log).
+
+        It writes the same record the game writes when that dropdown is used, and
+        reports the resulting ``audit`` so the caller can show "the game will read
+        this file now" instead of asking the player to check.
+
+        Refused when the game is running: the engine rewrites ``Player.nfp`` from
+        its own memory at exit, so a write into a live session is lost and looks
+        like the tool failed.
+        """
+        from .game import dataset as DS
+        from .game import locations as G
+        prof = profile_root or G.find_profile_root()
+        note = G.running_note()
+        if note.get("game_running"):
+            raise ValueError(note.get("running_warning")
+                             or "游戏正在运行，它退出时会用自己的那份覆盖掉这个设置。先关掉游戏再改。")
+        doc, acc, _raw = G.read_status_doc(prof, account=account)
+        target = None
+        for m in G.list_mods(acc):
+            if m.get("name") == name:
+                target = m
+                break
+        if target is None:
+            raise ValueError("模组列表里没有叫「%s」的那一份。" % name)
+        if not target.get("exists"):
+            raise ValueError("「%s」的文件夹已经不在磁盘上了。" % name)
+        dat = os.path.join(target.get("path") or "", G.DAT_REL)
+        if not os.path.isfile(dat):
+            raise ValueError("「%s」里没有 .dat，它改的不是数据，选它不会改变游戏读的数据。" % name)
+        doc_status = {str(e.get("Path") or ""): e for e in (doc.get("Mods") or [])}
+        entry = doc_status.get("%s//%s" % (target.get("kind"), name)) or {}
+        said = str(entry.get("CheckSum") or "")
+        want = int(said) if said.isdigit() and said != "0" else None
+        if want is None:
+            # `install_mod` used to register every mod it copied with
+            # `CheckSum: "0"`, so a freshly built data mod had no number to write
+            # and `write_selection` refused it.  Hash the folder instead of
+            # refusing: the number only has to be the one the folder produces.
+            want = DS._folder_checksum(target.get("path") or "")
+        pick = DS.write_selection(
+            acc, target.get("path") or "", target.get("title") or name,
+            workshop_id=target.get("workshop_id") or 0,
+            checksum=want)
+        pick["name"] = name
+        pick["kind"] = target.get("kind")
+        return {"ok": True, "pick": pick, "dataset": DS.audit(profile_root=prof, account=acc),
+                "game_running": note.get("game_running"),
+                "running_warning": note.get("running_warning")}
+
+    def dataset_audit(self, profile_root=None, account=None):
+        """Which ``.dat`` the game will read on the next launch, and why.
+
+        Answers the question a fidelity report cannot: 2026-11-21 a rebuild carried
+        5,333 of the author's 5,387 field changes and the player still saw nothing,
+        because none of the 13 installed mods that ship a ``.dat`` was enabled and
+        every launch log said ``data = 0``.  Numbers about a file the engine never
+        opened read as "the update did nothing".
+
+        This one only reads.  The report is the answer to "why did nothing
+        happen", and it is also what the screen shows next to the button that
+        fixes it: `set_dataset_pick` above writes the record, this one says which
+        mod the record names now.
+
+        It parses ``mod-status.json`` plus the two compressed profile files
+        (``Player.nfp`` holds the dataset pick, ``AdditionalOptions.aop`` the
+        dropdown position).  Neither is written here -- re-compressing a modified
+        ``Player.nfp`` cannot reproduce the original bytes, so the write path
+        patches the deflate stream in place and verifies the read-back instead.
+        """
+        from .game import dataset as DS
+        return DS.audit(profile_root=profile_root, account=account)
 
     def install(self, mod_dir, name=None, title=None, kind="local",
                 enabled=True, position=0, profile_root=None, account=None,

@@ -294,6 +294,12 @@ dat_archive/
 # ignored -- and a committed copy would be a diff after every save.
 log/
 
+# The blank sheets the two 领空表 buttons hand out, saved beside `log/` so the
+# player can find and re-open one tomorrow.  Repainted sheets come back
+# through the page, not from here; these are the empty canvases, and they
+# describe one game install's pixel grids, not this project.
+sheets/
+
 
 # ── 2026-11-17 发布前的收尾：不进公开仓库的东西 ─────────────────────────
 # 逆向产物与游戏数据副本：体积大、且是发行方的数据，不进仓库。

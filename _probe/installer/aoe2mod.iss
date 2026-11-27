@@ -3,14 +3,14 @@
 ; 装到 %LOCALAPPDATA%\Programs\AoE2ModWorkshop，不要管理员权限 —— 这个工具会往
 ; 自己目录旁边写 log\ 和 _mods_out\，装进 Program Files 之后那些写入会被拦。
 
-; 版本号不在这里手写第二遍：`_probe/_tmp/pack_sel2.sh` 从 `aoe2mod/appversion.py`
-; 的 VERSION 算出来，用 /DAppVer= 传进来 —— 就是玩家在关于页看到的那个四位
-; 小数（1.0001），不是三段式。 下面这个值只是直接双击 ISCC 时的兜底，
-; `_probe/test_about_page.py` 会拿它和 appversion.VERSION 对一次。
-; 只有 Rust 那两个 manifest 用三段式：cargo 明确拒绝 `1.0001`（invalid leading
-; zero in minor version number），它们拿的是派生出来的 SEMVER。
+; 版本号不在这里手写第二遍：打包脚本从 `aoe2mod/appversion.py` 的 VERSION 算出来，
+; 用 /DAppVer= 传进来 —— 就是玩家在关于页看到的那个三段式号码（1.7.0）。 下面这个值
+; 只是直接双击 ISCC 时的兜底，`_probe/test_about_page.py` 会拿它和
+; appversion.VERSION 对一次。
+; 2026-11-26 起工坊的号码就是三段式（「以后都这样0.0.0写」），所以这里、tauri.conf.json
+; 和 Cargo.toml 三处写的是同一个字符串，不再有两段/三段的翻译。
 #ifndef AppVer
-  #define AppVer "1.0014"
+  #define AppVer "1.7.0"
 #endif
 ; 仓库根不写死：这个脚本就住在 <repo>\_probe\installer\，往上两级就是它。
 ; 换机器/换盘符不用改文件；要指到别处就 ISCC.exe /DRepoDir=D:\path\repo aoe2mod.iss

@@ -30,6 +30,16 @@ URL = "http://127.0.0.1:7811/"
 GAME = "empires2_x2_p1.dat"
 SHOW_MS = 600     # must match DATVEIL_SHOW_MS in index.html
 
+# How long `POST /api/dat-set` must take before this switch counts as "the file
+# was parsed".  The panel staying up cannot answer that on its own: measured
+# 2026-11-22, `15373_Multiple Buffs Mod v1` answered `dat-set` in 230 ms and then
+# spent 3.7 s inside the redraw requests, so the panel stayed up for 4 s and the
+# probe called it a cold file -- then asserted that the bar showed intermediate
+# percentages, which such a switch correctly does not have (there is nothing to
+# parse).  One full parse measured 20.8 s on this machine; the warmest cold file
+# seen took 2.9 s.  1.5 s sits in the empty gap between them.
+COLD_MS = 1500
+
 FAILED = []
 
 
@@ -89,7 +99,7 @@ STATE = """() => {
 # because there are no samples: every painted change is an event.
 REC_ON = """(reset) => {
   const clear = () => {
-    window.__FR = []; window.__OP = []; window.__FETCH = [];
+    window.__FR = []; window.__OP = []; window.__FETCH = []; window.__ALL = [];
     window.__T0 = performance.now();
   };
   if (window.__REC) {
@@ -114,14 +124,20 @@ REC_ON = """(reset) => {
   };
   new MutationObserver(push).observe(document.body,
     {subtree: true, attributes: true, childList: true, characterData: true});
+  // EVERY fetch is timed, not only `/api/progress`.  `POST /api/dat-set` is the
+  // request that parses, so its own duration is the one measurement that can
+  // tell a cold file from a cached one without sampling the clock from outside
+  // the renderer (which measures the connection queue, not the parse).
   const realFetch = window.fetch;
   window.fetch = function (u) {
     const t = now();
+    const box = {url: String(u), at: t, done: null, status: null};
+    window.__ALL.push(box);
     const p = realFetch.apply(this, arguments);
+    p.then(function (res) { box.done = now(); box.status = res.status; },
+           function () { box.done = -1; });
     if (String(u).indexOf('/api/progress') >= 0) {
-      const box = {at: t, done: null};
       window.__FETCH.push(box);
-      p.then(function () { box.done = now(); }, function () { box.done = -1; });
     }
     return p;
   };
@@ -138,7 +154,8 @@ def rec_start(pg):
 def rec_read(pg):
     return pg.evaluate("() => ({fr: (window.__FR || []).slice(),"
                        " op: (window.__OP || []).slice(),"
-                       " fetch: (window.__FETCH || []).slice()})")
+                       " fetch: (window.__FETCH || []).slice(),"
+                       " all: (window.__ALL || []).slice()})")
 
 
 def wait_ready(pg, timeout=180000):
@@ -167,6 +184,28 @@ def click_chip(pg, label):
              chip.click();
              return {ok: true, scope: (row.querySelector('.dpscope') || {}).textContent || ''};
            }""", label)
+
+
+def dat_set_ms(rec):
+    """How long the switch's own `POST /api/dat-set` took, in milliseconds.
+
+    This is the number that says whether the file had to be parsed.  Reading the
+    wall clock from the probe cannot answer it: the panel only appears after
+    `DATVEIL_SHOW_MS`, so a 0.3 s cached switch and a 4 s parse look the same
+    from outside until the parse outlives the delay.  Measured 2026-11-21 on this
+    machine: the same probe hunted "the slowest cold candidate" and found one
+    that answered in 118 ms, because an earlier run had already left
+    `19968_Eternal Civilization` open in the server process.  Its frames were
+    0% / 100% -- correctly, because there was nothing to report.
+    """
+    best = None
+    for box in (rec.get("all") or []):
+        if "/api/dat-set" not in str(box.get("url") or ""):
+            continue
+        if not box.get("done") or box.get("done") < 0:
+            continue
+        best = int(box["done"] - box["at"])
+    return best
 
 
 def track(pg, limit_s=300.0):
@@ -281,6 +320,7 @@ def main():
         pg.wait_for_timeout(200)
 
         tgt = None
+        keep_ms = None
         warm = []
         for cand in cands[:8]:
             # Armed BEFORE the click: the frames of this switch are events the
@@ -295,6 +335,14 @@ def main():
             # Poll instead of wait_for_function so the moment the panel appears is
             # measured, not merely waited for.  Either it shows up, or the lock
             # drops without one (that is the warm file).
+            #
+            # The panel is the right test, and it is the ONLY test that does not
+            # need the switch to be over: the fast path (0.3 s) closes before the
+            # 600 ms delay, and a switch that outlives the delay is by definition
+            # not that path.  `POST /api/dat-set` alone cannot answer it -- measured
+            # 2026-11-21, `15373_Multiple Buffs Mod v1` came back from `dat-set` in
+            # 118 ms and then spent 5 s inside the redraw requests, because the
+            # walk happens wherever `_ensure()` is first reached.
             t_open = None
             while time.time() - t_click < SHOW_MS / 1000.0 + 8.0:
                 st_p = pg.evaluate(STATE)
@@ -308,6 +356,18 @@ def main():
             if not st_now["open"]:
                 st_w, _s, took_w, _e, _o = track(pg, limit_s=180.0)
                 warm.append((cand["label"], "%s s" % took_w))
+                continue
+            # The panel is up; now ask the one question it cannot answer.  If
+            # `dat-set` is still in flight the parse is still running -- that is
+            # the cold file.  If it already came back and took under `COLD_MS`,
+            # the bytes were read from the parse cache and the seconds the panel
+            # stays up belong to the redraw requests; that switch has no
+            # intermediate percentage to show and must not be judged as if it did.
+            keep_ms = dat_set_ms(rec_read(pg))
+            if keep_ms is not None and keep_ms < COLD_MS:
+                st_w, _s, took_w, _e, _o = track(pg, limit_s=180.0)
+                warm.append((cand["label"], "%d ms dat-set, %s s redraw"
+                             % (keep_ms, took_w)))
                 continue
             tgt = cand
             keep = (r, st0, t_click, t_open)
@@ -326,6 +386,16 @@ def main():
         section("1. 慢路径：第一次打开这一份")
         check(tgt["path"].lower().endswith(GAME), "它也有一份 .dat", tgt["path"])
         print("     试过但已经是热的：%r" % (warm[-4:],))
+        print("     这一份的 POST /api/dat-set %s" %
+              ("当时还没回来（正在解析）" if keep_ms is None
+               else "用了 %d ms" % keep_ms))
+        # The hunt only accepts a file whose own `dat-set` was slow enough to
+        # have parsed (or was still running when the panel appeared).  Say it, so
+        # the percentage assertions below are known to be about a run that had
+        # something to report -- 2026-11-22 the probe asserted them about a
+        # 230 ms cached switch and reported the page for a lie it never told.
+        check(keep_ms is None or keep_ms >= COLD_MS,
+              "这一份是真要解析的（不是缓存读回来的）", keep_ms)
         print("     遮罩在点击后 %s ms 出现"
               % ("-" if t_open_click is None else int(t_open_click * 1000)))
         check(r.get("ok"), "点到了那一行上的「改这一份」", r)

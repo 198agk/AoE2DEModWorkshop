@@ -22,13 +22,16 @@ less than the HTTP round trip that carries it.
 
 THE GRID IS A CLAIM, THE FILE IS THE TRUTH
 
-A graphics record says `frame_count x angle_count` and the engine indexes
-`frame * angle_count + angle`.  That holds for 7,602 of 7,618 shipped files; 16
-files are claimed by records that DISAGREE (the ibex's idle art is claimed as
-both 30x16 and 60x16).  Most files also carry one trailing frame past
-`frame_count * angle_count` (961 = 60*16 + 1), but some carry none (a house's
-3-state art is exactly 3).  So the pose count is decided by trying the
-divisibility that fits, in this order:
+A graphics record says `frame_count x angle_count`, and a file lays its frames
+out ANGLE BY ANGLE: all the poses of direction 0, then all the poses of
+direction 1, so the index of pose `p` of angle `a` is `a * frame_count + p`.
+(The shipped notes say `frame * angle_count + angle`, which is the transposed
+formula; measuring the art contradicts it -- see `strip` below.)  The counts
+hold for 7,602 of 7,618 shipped files; 16 files are claimed by records that
+DISAGREE (the ibex's idle art is claimed as both 30x16 and 60x16).  Most files
+also carry one trailing frame past `frame_count * angle_count` (961 = 60*16 + 1),
+but some carry none (a house's 3-state art is exactly 3).  So the pose count is
+decided by trying the divisibility that fits, in this order:
 
     n % ac == 0        -> n / ac          (no trailing frame)
     (n - 1) % ac == 0  -> (n - 1) / ac    (the usual trailing frame)
@@ -203,7 +206,15 @@ def _bbox(frames, w, h):
     return (x1, y1, x2 + 1, y2 + 1) if x2 >= 0 else None
 
 
-def _lay(frames, w, h, box, gap=2, bg=(24, 24, 28, 255)):
+#: The seam between two poses.  It has to be TRANSPARENT, not a dark stripe:
+#: a strip is drawn on the editor's dark panel AND on the 模型 page's light one,
+#: and an opaque gap that blends into the dark background reads as a torn black
+#: bar on the light one.  The player's words for that were 「图片是损坏缺失的」
+#: (2026-11-24), and the gap was the whole of it -- every frame drew fine.
+GAP = 6
+
+
+def _lay(frames, w, h, box, gap=GAP, bg=(0, 0, 0, 0)):
     x1, y1, x2, y2 = box
     cw, ch = x2 - x1, y2 - y1
     n = len(frames)
@@ -239,7 +250,12 @@ def _shadow_silhouette(info, w, h, rgba):
     if not got or not rect:
         return rgba
     plane, PW, _PH = got
-    x1, y1, _rw, _rh, _bw, _bh = S.grid_of(rect)
+    if info.get("shadow_absolute"):
+        # A replayed shadow plane is already canvas-sized: adding the rect
+        # origin again would shift the blob by half the frame.
+        x1, y1 = 0, 0
+    else:
+        x1, y1, _rw, _rh, _bw, _bh = S.grid_of(rect)
     out = bytearray(rgba)
     for gy in range(len(plane) // max(PW, 1)):
         for gx in range(PW):
@@ -255,13 +271,26 @@ def _shadow_silhouette(info, w, h, rgba):
 
 
 def strip(game_root, file_name, frames=20, start=0, angles=0, angle=0,
-          team=(220, 60, 60), with_shadow=False, max_width=1200):
+          team=(220, 60, 60), with_shadow=False, max_width=1200, data=None):
     """Render a run of poses of one .sld into a single PNG.
 
-    `frames` counts POSES, not file records: with 16 angles, pose 5 is file index
-    `5*16 + angle`, which is the engine's own indexing and the only one a player
-    can reason about.  `angles` is the record's `angle_count`; pass 0 when the
-    caller does not know and the file is read as one angle.
+    `frames` counts POSES, not file records: with 16 angles and 60 poses, pose 5
+    of angle 3 is file index `3*60 + 5`.  `angles` is the record's `angle_count`;
+    pass 0 when the caller does not know and the file is read as one angle.
+
+    WHY THE INDEX IS NOT "pose * angles + angle" (measured 2026-11-27)
+
+    That transposed formula is what the shipped notes carried, and it is wrong.
+    Rendering a file and comparing every frame against frame 0 shows the
+    boundary at the POSE count, not at the angle count: the villager idle's 960
+    frames hold an alpha IoU of 0.85 to frame 0 across frames 1..59 and drop to
+    0.55 at frame 60; the archer idle holds 0.61 across 1..59 and drops to 0.30
+    at 60.  Sixty near-identical pictures in a row are one character standing in
+    one direction, so a file stores all 60 poses of angle 0, then all 60 of angle
+    1, and so on.  Read the other way round, "16 angles" would be sixteen
+    consecutive frames of one pose, i.e. sixteen different directions, which no
+    shipped art looks like.  Stepping by 60 walks around the character; stepping
+    by 1 walks through the animation.
 
     Poses with no pixels are skipped and counted in `blank` rather than drawn as
     empty cells -- 360 of `b_dark_wall_palisade_flag_x1`'s 450 frames are
@@ -279,9 +308,29 @@ def strip(game_root, file_name, frames=20, start=0, angles=0, angle=0,
     `FilmError` -- it never returns a blank picture.
     """
     path = os.path.join(SP.graphics_dir(game_root), file_name + ".sld")
-    if not os.path.isfile(path):
-        raise FilmError("这个游戏目录里没有这张图：%s.sld" % file_name)
-    s = S.read_sld(path)
+    # `data` is the picture a player just dropped on the page: it is not on
+    # disk yet, so the existence check and the read both step aside and the
+    # bytes are parsed in place.  Same parser either way, so a preview of a
+    # pending repaint cannot disagree with the file it will become.
+    # A ZERO-BYTE FILE IS A FILE THIS GAME SHIPS, NOT A BUG IN THE READER.
+    # `u_shp_merchant_ship_x1.sld` and `_x2` are 0 bytes on disk; `struct` raises
+    # with a byte offset and the page shows a stack trace, which reads like the
+    # workshop broke.  Every way a file can fail to parse becomes one sentence.
+    if data is None:
+        if not os.path.isfile(path):
+            raise FilmError("这个游戏目录里没有这张图：%s.sld" % file_name)
+        size = os.path.getsize(path)
+        if size == 0:
+            raise FilmError("这张图是空文件（0 字节），游戏里本来就没有画面：%s.sld" % file_name)
+        try:
+            s = S.read_sld(path)
+        except Exception as exc:
+            raise FilmError("这张图读不出来：%s.sld（%s）" % (file_name, exc))
+    else:
+        try:
+            s = S.Sld(path, data)
+        except Exception as exc:
+            raise FilmError("这张图读不出来：%s" % (exc,))
     n = int(s.num_frames or 0)
     if n <= 0:
         raise FilmError("这张图里一帧都没有：%s.sld" % file_name)
@@ -295,17 +344,42 @@ def strip(game_root, file_name, frames=20, start=0, angles=0, angle=0,
     capped = asked > MAX_FRAMES
     want = min(asked, MAX_FRAMES)
 
+    # THE FRAMES BETWEEN HERE AND THE ONE YOU ASKED FOR ARE NOT OPTIONAL.
+    # 903 of the archer idle file's 961 frames are patches: they resend only the
+    # cells whose colour changed, and the picture exists only in a player that
+    # has applied every frame before them.  Rendering frame k on its own shows
+    # the handful of cells k happened to resend -- the body is gone and the bow
+    # is a row of black dashes.  The player saw exactly that on 2026-11-27 and
+    # said so twice.  So the walk always starts at frame 0 and steps through
+    # every frame up to the last one asked for, keeping the cells; only the
+    # wanted frames are turned into an image.  Stepping is cheap (a dict write
+    # per drawn cell), decoding is not (bc1 + bc4 per layer), and this way the
+    # expensive half happens exactly as often as it did before.
     def draw(shadow):
         got, blank, main, biggest = [], 0, False, (0, 0)
+        wants = []
         for i in range(want):
             pose = start + i
             if pose >= poses:
                 break
-            idx = pose * ac + angle
+            # ANGLE-MAJOR: a file stores every pose of angle 0, then every pose
+            # of angle 1.  The pose count is the stride, not the angle count --
+            # see the note in this function's docstring for the measurement.
+            idx = angle * poses + pose
             if idx >= n:
                 break
-            rgba, w, h, info = S.render_frame(s.frames[idx], team=team,
-                                              with_shadow=shadow, with_pc=True)
+            wants.append(idx)
+        if not wants:
+            return got, blank, main, biggest
+        pending = set(wants)
+        walk = S.Walk()
+        for k in range(wants[-1] + 1):
+            walk.take(s.frames[k])
+            if k not in pending:
+                continue
+            rgba, w, h, info = S.render_frame(s.frames[k], team=team,
+                                              with_shadow=shadow, with_pc=True,
+                                              walk=walk)
             if shadow and not main and "main_rect" not in info:
                 rgba = _shadow_silhouette(info, w, h, rgba)
             if "main_rect" in info:
@@ -336,7 +410,7 @@ def strip(game_root, file_name, frames=20, start=0, angles=0, angle=0,
     trimmed = 0
     cw = box[2] - box[0]
     if max_width and cw > 0:
-        room = max(1, (int(max_width) + 2) // (cw + 2))
+        room = max(1, (int(max_width) + GAP) // (cw + GAP))
         if len(flat) > room:
             trimmed = len(flat) - room
             flat = flat[:room]

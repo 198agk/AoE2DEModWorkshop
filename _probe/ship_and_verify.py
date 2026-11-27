@@ -26,6 +26,7 @@ loader walks up from there. `stat_offsets.json` is 19 MB; shipping it keeps the
 program correct without a Python step at first run, which is the point of this
 whole exercise.
 """
+import base64
 import io
 import json
 import os
@@ -381,6 +382,114 @@ def check_routes(port):
          " %s 条（计划也答应 %s 条），dry=%s"
          % (sp.get("records"), sp_promise, sp.get("dry")))
 
+    # THE SPRITE PAGE'S OWN ROUTES.  The 模型 view lists one row per .sld and
+    # repaints the file the player picked, so three things have to answer from
+    # the shipped copy or the page is an empty box: the record list, the
+    # thumbnail/film render, and the repaint itself.  A plan-shaped assertion
+    # (idle row exists for 民兵, film is a PNG, dry repaint covers every frame)
+    # rather than a row count typed here.
+    ar = json.loads(get("/api/art-records?unit=74"))
+    ar_rows = ar.get("records") or []
+    ar_idle = [r for r in ar_rows if r.get("key") == "idle"]
+    note("/api/art-records", ar.get("ok") is True and ar_idle
+         and ar_idle[0].get("file") == "u_inf_militia_idleA_x1"
+         and ar_idle[0].get("poses", 0) > 1,
+         " 民兵 %s 张图，idle=%s 帧"
+         % (len(ar_rows), (ar_idle[0].get("poses") if ar_idle else "?")))
+    film = get("/api/slide-film?file=u_inf_militia_idleA_x1&frame=0&count=1"
+                "&angles=1")
+    note("/api/slide-film", film[:8] == b"\x89PNG\r\n\x1a\n",
+         " %d bytes" % len(film))
+    # The same 8x8 square the icon checks use: the point is that the shipped
+    # server decodes a picture and rewrites BC1 blocks, not that this script
+    # can draw.
+    ss = post("/api/slide-set", {"unit": 74,
+                                 "file": "u_inf_militia_idleA_x1",
+                                 "data_b64": _TINY_PNG_B64, "dry": True})
+    ss_files = ss.get("files") or []
+    note("/api/slide-set", ss.get("ok") is True and ss.get("dry") is True
+         and len(ss_files) == 2
+         and all(f.get("frames_painted") == f.get("frames") for f in ss_files)
+         and ss.get("stored") == 0,
+         " %s 张，%s 帧全画"
+         % (len(ss_files), (ss_files[0].get("frames") if ss_files else "?")))
+    # THE DIRECTION SHEET, END TO END IN THE SHIPPED BUILD.  A route that exists
+    # in the repository and not in the package is the exact failure this script
+    # is for, and the sheet answers two reports at once: a square drawing came
+    # back as grain, and sixteen directions were all the same picture.  Checked
+    # by ROUND TRIP, not by existence: download the blank sheet, upload it back,
+    # and the shipped server must say it took a sheet.
+    sh = get("/api/slide-sheet?file=u_inf_militia_idleA_x1&angles=16")
+    note("/api/slide-sheet", sh[:8] == b"\x89PNG\r\n\x1a\n" and len(sh) > 1000,
+         " %d bytes" % len(sh))
+    note("/api/art-records sheet size", bool(ar_idle and ar_idle[0].get("sheet")),
+         " idle 空表 %s" % ((ar_idle[0].get("sheet") if ar_idle else None),))
+    # A blank sheet is REFUSED on purpose now (nothing painted, nothing to
+    # paste), so one cell is filled in before the round trip.  That also proves
+    # the newer half: the fifteen directions nobody painted keep the game's own
+    # bytes instead of being overwritten with the stencil.
+    from PIL import Image as _Im
+    _si = _Im.open(io.BytesIO(sh)).convert("RGBA")
+    _sp = _si.load()
+    for _y in range(16, 54):
+        for _x in range(16, 40):
+            _sp[_x, _y] = (30, 90, 210, 255)
+    _sbuf = io.BytesIO()
+    _si.save(_sbuf, "PNG")
+    shb64 = "data:image/png;base64," + base64.b64encode(_sbuf.getvalue()).decode("ascii")
+    ss2 = post("/api/slide-set", {"unit": 74,
+                                 "file": "u_inf_militia_idleA_x1",
+                                 "data_b64": shb64, "angles": 16, "dry": True})
+    # ONE CELL PER FRAME, THE OTHER HALF OF THE SAME REPORT.  A walk is not
+    # one drawing repeated: the player said the sixteen directions all came
+    # out the same picture and then that the frames of one direction are each
+    # a different drawing.  The pose sheet is that second half, and it is
+    # proven by ROUND TRIP for the same reason: download a frame sheet, send
+    # it straight back, and the shipped server must recognise it and report
+    # the direction it painted.  Nothing is painted in it, so the frames must
+    # come back byte-identical -- that is the "leave the rest alone" promise.
+    psh = get("/api/slide-pose-sheet?file=u_inf_legionary_walkA_x1&angle=0&angles=16")
+    note("/api/slide-pose-sheet", psh[:8] == b"\x89PNG\r\n\x1a\n" and len(psh) > 1000,
+         " %d bytes" % len(psh))
+    # A blank sheet is REFUSED on purpose (nothing painted, nothing to paste),
+    # so the round trip has to paint one cell first.  Painting it here also
+    # proves the other half: the frames nobody painted keep the game bytes.
+    from PIL import Image as _Im
+    _im = _Im.open(io.BytesIO(psh)).convert("RGBA")
+    _px = _im.load()
+    for _y in range(16, 70):
+        for _x in range(16, 70):
+            _px[_x, _y] = (30, 90, 210, 255)
+    _buf = io.BytesIO()
+    _im.save(_buf, "PNG")
+    pshb64 = "data:image/png;base64," + base64.b64encode(_buf.getvalue()).decode("ascii")
+    ps2 = post("/api/slide-set", {"unit": 1,
+                                 "file": "u_inf_legionary_walkA_x1",
+                                 "data_b64": pshb64, "angles": 16,
+                                 "angle": 0, "pose": True, "dry": True})
+    pgeo = ps2.get("sheet") or {}
+    note("/api/slide-set pose", ps2.get("ok") is True
+         and (pgeo.get("angle") == 0) and bool(pgeo.get("cell")),
+         " 逐帧空表传回去认成 %sx%s 格，朝向 %s"
+         % (((pgeo.get("cell") or ["?"])[0]),
+            ((pgeo.get("cell") or ["?", "?"])[-1]),
+            (pgeo.get("angle") + 1) if pgeo.get("angle") is not None else "?"))
+    ss2_files = ss2.get("files") or []
+    # THE REPLY MUST NAME THE GRID THE PLAYER PAINTED ON.  The two twins
+    # are separate drawings at separate grids (`_x1` cells are half of
+    # `_x2` cells), and the sheet is downloaded from the file the page
+    # shows -- so quoting the first painted file told the player their
+    # 92x96 sheet was 48x52.  Top-level `sheet` is the twin that matched.
+    sgeo = ss2.get("sheet") or {}
+    note("/api/slide-set sheet", ss2.get("ok") is True
+         and bool(ss2_files) and ss2_files[0].get("sheet", {}).get("cols") == 4
+         and sgeo.get("cols") == 4
+         and (sgeo.get("cell") or []) != (
+             (ss2_files[0].get("sheet") or {}).get("cell") or []),
+         " 空表传回去认成 %s 格，回的是画的那张格 %sx%s"
+         % (sgeo.get("cols") or "?", (sgeo.get("cell") or ["?"])[0],
+            (sgeo.get("cell") or ["?", "?"])[-1]))
+
     # A dry run, and asserted on `moved`, which is the shape the route actually
     # answers.  `before`/`after` were never keys here, so the detail printed
     # "None->None" and the line told a reader nothing about where the unit went.
@@ -466,6 +575,30 @@ def check_routes(port):
     # 是两回事。 判据故意用 `behind is not None` 而不是 reachable：门禁可能
     # 跑在没有外网的机器上，那时答案必须是「不知道」而不是一条不存在的错误；
     # 有网时它才去读 raw.githubusercontent 上的 appversion.py。
+    # 文联表：十五本流派书扁平化后的 JSON，随包发布。数的是「包里那份数据能
+    # 走完一条完整路径」，不是「路由没 500」：流派顺序、每本的张数、以及
+    # 火焰骆驼那本的 9 张表（这张是玩家上个月逐格校过的那本），都对才算通。
+    # 另钉住前两张：第 1 张「主选文明推荐」（先选底座文明）、第 2 张「研究总顺序」
+    # 62 行（玩家拿着这一张就能边打边点）。这两张的顺序是玩家指定过的，谁挪到
+    # 后面，张数照样对得上而整页等于失效，所以分别断言，不靠下标糊过去。
+    ln = json.loads(get("/api/lian"))
+    ln_schools = {s.get("key"): s for s in (ln.get("schools") or [])}
+    ln_fc = ln_schools.get("flame_camel") or {}
+    ln_sheets = ln_fc.get("sheets") or [{}]
+    ln_first = ln_sheets[0] if ln_sheets else {}
+    ln_second = ln_sheets[1] if len(ln_sheets) > 1 else {}
+    note("/api/lian", ln.get("ok") is True
+         and len(ln.get("order") or []) == 15
+         and len(ln_schools) == 15
+         and len(ln_sheets) == 9
+         and ln_first.get("kind") == "picks"
+         and ln_second.get("kind") == "total"
+         and len(ln_second.get("rows") or []) == 62,
+         " schools=%d order=%d 火焰骆驼=%d 张表 第1张=%s/%d 行 第2张=%s/%d 行"
+         % (len(ln_schools), len(ln.get("order") or []), len(ln_sheets),
+            ln_first.get("title"), len(ln_first.get("rows") or []),
+            ln_second.get("title"), len(ln_second.get("rows") or [])))
+
     vc = json.loads(get("/api/version-check?force=1"))
     note("/api/version-check", vc.get("ok") is True
          and "behind" in vc and "current" in vc,

@@ -548,10 +548,23 @@ const LOCALE = {ok: true, locale: "zh", strings: {
   "update.version_behind": "远端有 {version}：按「下载并装好」，它自己会换掉这一份，装完重新打开",
   "update.version_offline": "连不上 GitHub，这一份是不是最新就不知道了；过一会儿再按一次",
   "update.version_same": "{version} 已经是最新的",
+  // 新版提示搬到首页那条 banner 上之后新加的四句（m25536）。 表里少一句，T()
+  // 就会把键名原样印到屏幕上 —— 而这几句正好是玩家唯一会看到的那行字。
+  "update.app_new": "工具有新版本 {version}",
+  "update.app_note": "现在这一份还能用；按「下载并装好」会只下改动的那部分，装完自己重新打开。",
+  "update.app_install": "下载并装好",
+  "update.app_look": "去看看",
   "btn.form": "✎ 填表",
   "pick.unit": "单位",
   "pick.search": "在这个列表里找…"
 }};
+
+// /api/ai-lang-meta 的答案。 这条路由只读包内那张表（不碰游戏、不碰网络），
+// 但开机时会问一次；m25536 报的「每次打开都冒红框」就是这一次失败被当成了
+// 功能坏掉。 所以夹具要能给出「成功」和「失败」两副面孔。
+const LANG_OK = { ok: true, counts: { ai_commands: 324, xs_syscalls: 232 },
+  examples: { ai: ["(defrule", "(defconst"], xs: ["xsEffectAmount", "xsGetTime"] } };
+let LANG_ANSWER = LANG_OK;
 
 const FORMS = {
   ok: true,
@@ -772,6 +785,25 @@ let UPGRADE_ANSWER = {
 // the time the batch checks run the live fixture holds a single `up_to_date`
 // row. Rerunning from that would prove nothing about a batch of two.
 const UPGRADE_PRISTINE = JSON.parse(JSON.stringify(UPGRADE_ANSWER));
+// What the engine answers about the dataset pick after an upgrade.  Three shapes,
+// and the page has to tell all three apart, because they are three different
+// things happening in the player's game:
+//
+//   carried  -- the mod being rebuilt WAS the selected dataset, and the record
+//               now points at the new bytes.  This is the case that made a
+//               correct rebuild look broken on 2026-11-21: 5,333 of 5,387 field
+//               changes carried and nothing changed in game, because the engine
+//               verified the dataset by checksum and the checksum did not move.
+//   still    -- the player is reading a DIFFERENT mod.  Saying "updated" here
+//               with no further word is the original bug wearing a success toast.
+//   why_not  -- there is no pick in the profile at all, so nothing could be
+//               carried and the tool must not pretend otherwise.
+//
+// A stub without `pick` makes all three untestable: the page reads `undefined`
+// and says the same happy sentence every time.
+let PICK_ANSWER = { carried: true, title: "村民血量一组", checksum: "3412236901",
+                    reads: { kind: "mod", mod: "dsh test v46" } };
+const PICK_PRISTINE = JSON.parse(JSON.stringify(PICK_ANSWER));
 const repairedNow = [];
 // What the page actually POSTed, not just WHICH mod: a batch that silently
 // flipped `official_wins` to true would keep the names right and carry the
@@ -853,6 +885,68 @@ const DATS = [
     label: "游戏本体", format: 54, supported: true, current: false, head: "VER 8.9" },
 ];
 
+// What /api/dataset answers: the state of the "which data mod will the ENGINE
+// read" question.  Two data mods installed and NEITHER picked is the state that
+// made a correct rebuild look broken on 2026-11-21, so it is the fixture: a page
+// that promises "in effect" from the enable switch alone would look right here
+// and be wrong on the player's machine.  The stub has to really move the pick,
+// because a page that posted the right name but drew a stale header is exactly
+// the failure being fixed.
+let GW_SELECTED = null;
+const GWMODS = [
+  { name: "dsh 我的数据模组", title: "dsh 我的数据模组", kind: "local",
+    enabled: true, priority: 11, dat_bytes: 12738168, checksum: "3412236901",
+    checksum_agrees: null, selected: false, will_be_read: false },
+  { name: "别人做的数据模组", title: "别人做的数据模组", kind: "subscribed",
+    enabled: false, priority: 12, dat_bytes: 10582373, checksum: "2642241002",
+    checksum_agrees: null, selected: false, will_be_read: false },
+];
+
+function gwAudit() {
+  const rows = GWMODS.map((m) => ({
+    name: m.name, title: m.title, kind: m.kind, priority: m.priority,
+    enabled: m.enabled, checksum: m.checksum,
+    checksum_now: m.selected ? m.checksum : null,
+    checksum_agrees: m.selected ? true : null,
+    dat: "C:/x/mods/" + m.name + "/resources/_common/dat/empires2_x2_p1.dat",
+    dat_bytes: m.dat_bytes, selected: m.selected, will_be_read: m.will_be_read,
+  }));
+  const read = rows.filter((r) => r.will_be_read)[0] || null;
+  const problems = [];
+  if (!read) {
+    problems.push({ code: "no-dataset", text:
+      "装了 2 个带 .dat 的模组，但 profile 里没有「选中的数据模组」这一条 —— "
+      + "开局前要在「创建游戏」界面的「数据模组：」下拉框里选一次，游戏才会读它。" });
+    problems.push({ code: "shadowed", text:
+      "另外 2 个带 .dat 的模组不会被读：数据模组是单选，不是叠加，只有选中的那一份进游戏。" });
+  } else {
+    problems.push({ code: "shadowed", text:
+      "另外 1 个带 .dat 的模组不会被读：数据模组是单选，不是叠加，只有选中的那一份进游戏。" });
+  }
+  return {
+    ok: true, profile_root: "C:/x", account: "C:/x/765",
+    status_file: "C:/x/765/mods/mod-status.json", status_bytes: 6144,
+    counts: { mods: 3, enabled: 2, data_mods: rows.length, picked: read ? 1 : 0 },
+    reads: read
+      ? { kind: "mod", mod: read.name, title: read.title, dat: read.dat,
+          why: "profile 里选中的数据模组就是它，文件夹也在，校验和对得上。" }
+      : { kind: "game", mod: null, title: "游戏本体",
+          dat: "C:/games/AoE2DE/dat/empires2_x2_p1.dat",
+          why: "profile 里没有一个能挂上的选中数据模组。" },
+    selected: read ? { title: read.title, workshop_id: 0, checksum: read.checksum,
+      how: "checksum", mod: read.name, kind: read.kind, installed: true,
+      enabled: read.enabled, offset: 31378 } : null,
+    picks: read ? [{ title: read.title, workshop_id: 0, checksum: read.checksum,
+      how: "checksum", mod: read.name, kind: read.kind, installed: true,
+      enabled: read.enabled, offset: 31378, dat: read.dat, has_dat: true }] : [],
+    data_mods: rows, problems: problems,
+    flags: { DatasetIM: 1, DatasetMM: 1 },
+    nfp: { file: "C:/x/profile/Player.nfp", bytes: 4379, raw_bytes: 38481,
+      records_seen: 22, matched: read ? 1 : 0, ignored: read ? 21 : 22 },
+    note: "这一页读的是 mod-status.json 和 profile 里的 Player.nfp，不启动游戏。",
+  };
+}
+
 // What the parse route answers.  Most sections want the two-edit answer; the
 // new-unit section swaps in a creating sentence, because whether the box picker
 // appears is decided by the PLAN, and only a real creating sentence has one.
@@ -861,6 +955,9 @@ let PARSE_ANSWER = FIXTURES.mixed;
 // ---- run the real script -------------------------------------------------
 const posted = [];
 const versionAsked = [];
+// /api/ai-lang-meta 问过几次。 开机就会问一次，所以这条记录也是「开机流程
+// 有没有把一次失败当成功能坏掉」的证据。
+const langAsked = [];
 let RECIPE_ANSWER = RECIPES;
 let RECIPES_FAIL = false;
 const savedNow = [];
@@ -1004,6 +1101,15 @@ const sandbox = {
     // The AI entry.  Note the answer carries no intent, no plan and no bytes --
     // only the sentences a model would have written.  If a future page tried to
     // build straight from this, there would be nothing here to build from.
+    if (url.indexOf("/api/ai-lang-meta") === 0) {
+      // 失败那一副面孔：服务端答 ok:false，页面的 api() 就会抛出一个
+      // Error("Failed to fetch") —— 和用户截图里那句话同一个形状。
+      langAsked.push(url);
+      if (LANG_ANSWER === "fail") {
+        return { json: async () => ({ ok: false, error: "Failed to fetch" }) };
+      }
+      return { json: async () => LANG_ANSWER };
+    }
     if (url.indexOf("/api/ai-meta") === 0) {
       return { json: async () => AI_ANSWER };
     }
@@ -1043,6 +1149,7 @@ const sandbox = {
       return { json: async () => ({ ok: true, manifest: {}, installed: {
         installed: true, game_running: RUNNING,
         running_warning: RUNNING ? RUNNING_TEXT : null,
+        pick: PICK_ANSWER,
       } }) };
     }
     if (url.indexOf("/api/rebuild") === 0) {
@@ -1054,6 +1161,7 @@ const sandbox = {
       return { json: async () => ({ ok: true, manifest: {}, installed: {
         installed: true, game_running: RUNNING,
         running_warning: RUNNING ? RUNNING_TEXT : null,
+        pick: PICK_ANSWER,
       } }) };
     }
     // The install route answers with the game-running answer inside
@@ -1090,6 +1198,28 @@ const sandbox = {
     // the answer is the whole reordered list, which is what the page redraws.
     // The stub has to really reorder: a page that posted the right body but
     // drew a stale list would look correct here and be wrong on screen.
+    // Which data mod the ENGINE will read.  Deliberately NOT the enable switch:
+    // the engine writes `Enabled` back to false for data mods within seconds,
+    // and the real pick is a record inside `Player.nfp` that until now only the
+    // create-game dropdown could write.  The stub moves the pick for real so a
+    // page that posted the right name but kept the old header cannot pass.
+    if (url.indexOf("/api/dataset-pick") === 0) {
+      const body = posted[posted.length - 1].body || {};
+      const hit = GWMODS.filter((m) => m.name === body.name)[0];
+      if (!hit) throw new Error("no such mod: " + body.name);
+      for (const m of GWMODS) {
+        m.selected = (m === hit);
+        m.will_be_read = (m === hit);
+      }
+      return { json: async () => ({ ok: true,
+        pick: { title: hit.title, checksum: Number(hit.checksum), workshop_id: 0,
+                name: hit.name, kind: hit.kind, replaced: [] },
+        dataset: gwAudit(), game_running: RUNNING,
+        running_warning: RUNNING ? RUNNING_TEXT : null }) };
+    }
+    if (url.indexOf("/api/dataset") === 0) {
+      return { json: async () => gwAudit() };
+    }
     if (url.indexOf("/api/mod-move-to") === 0) {
       const body = posted[posted.length - 1].body || {};
       const at = MODS.findIndex((m) => m.name === body.name);
@@ -1180,12 +1310,14 @@ const fn = new Function(
   "UPGRADE_VERDICT_ZH: UPGRADE_VERDICT_ZH, " +
   "aiBoot: aiBoot, doAI: doAI, " +
   "renderMods: renderMods, setModsView: setModsView, MODSVIEW: () => MODSVIEW, " +
-  "loadDatPicker: loadDatPicker, " +
+  "loadDatPicker: loadDatPicker, loadGameWill: loadGameWill, setGameWill: setGameWill, " +
   "renderIntentList: renderIntentList, " +
   "loadForms: loadForms, renderShapes: renderShapes, " +
   "formValues: formValues, renderFormPreview: renderFormPreview, " +
   "FSHAPE: () => FSHAPE, FORM_NODES: () => FSLOT_NODES, " +
-  "boot: boot, " +
+  "boot: boot, loadLang: loadLang, langNote: langNote, " +
+  "LANG_ASKED: () => langAsked, LANG_FIXTURE: (v) => { LANG_ANSWER = v; }, " +
+  "BANNER: () => BANNER_ASKS, " +
   "loadLocale: loadLocale, applyLocale: applyLocale, T: T, STR: () => STR, " +
   "loadRecipes: loadRecipes, renderRecipes: renderRecipes, RECIPES: () => RECIPES, " +
   "setLast: (v) => { LAST = v; }};");
@@ -1392,6 +1524,7 @@ try {
 }
 
 function buildChecks() {
+  let markBuild = 0;
   page.doBuild().then(() => {
     const call = posted.filter((p) => p.url === "/api/build")[0];
     check("build was called", !!call, JSON.stringify(posted.map((p) => p.url)));
@@ -1490,6 +1623,7 @@ function buildChecks() {
     // and the page printed none of them -- the same shape as the preview-side
     // `plan.warnings` gap fixed just before, one layer further along the same
     // pipeline.  The stub echoes the two shapes a real manifest carries.
+    markBuild = posted.length;
     BUILD_WARNINGS = [
       "「名字」是从捐赠方那一行照抄下来的，不是为这个文明写的",
       "有 1 个 JSON 覆盖文件和本机那份逐字节相同，这等于把这个文件钉在今天的内容上",
@@ -1507,6 +1641,14 @@ function buildChecks() {
     check("...and they are warnings, not failures",
           !walk(ids.buildnote, []).some((n) => n.className === "err"),
           JSON.stringify(walk(ids.buildnote, []).map((n) => n.className)));
+    // A build that ships a .dat is a new candidate for "which file will the
+    // engine open": the block above was drawn before this folder existed, so
+    // the player could not point the game at the mod they just made.
+    const reread = posted.slice(markBuild).filter(
+      (p) => p.url.indexOf("/api/dataset") === 0
+             && p.url.indexOf("-pick") < 0);
+    check("a build re-reads which file the game will open",
+          reread.length === 1, JSON.stringify(posted.slice(markBuild).map((p) => p.url)));
     BUILD_WARNINGS = [];
     return pickChecks();
     return null;
@@ -1815,15 +1957,88 @@ function datPickerChecks() {
       check("...and still says the game reads the other file",
             text(ids["dp-note"]).indexOf("优先级最高的是") >= 0,
             text(ids["dp-note"]));
-      return modInfoChecks();
+      return gameWillChecks();
     });
   }).catch((e) => {
     fails.push("the data-file picker threw: " + e.message);
     console.log("FAIL the data-file picker threw :: " + e.stack);
-    return modInfoChecks();
+    return gameWillChecks();
   });
 }
 
+// Will the ENGINE read the mod you just installed?  This is the block that
+// answers the 2026-11-21 report 「更新模组依旧失败……按钮是有，但是效果全无」: a
+// rebuild carried 5,333 of 5,387 field changes onto the new patch and still did
+// nothing in game, because the engine reads a SELECTED DATASET and thirteen
+// installed data mods were competing with none of them selected.  The enable
+// switch is not that dataset -- the engine writes `Enabled` back to false for
+// data mods within seconds -- so a page that read the switch would say
+// 「已启用」and be exactly as wrong as before.
+function gameWillChecks() {
+  return Promise.resolve(page.loadGameWill(true)).then(() => {
+    const rows = (ids["gw-body"].children || [])
+      .filter((n) => String(n.className).indexOf("dprow") >= 0);
+    check("the block lists every mod that ships a .dat, picked or not",
+          rows.length === 2, String(rows.length));
+    // The fixture: two data mods installed, one of them with the enable switch
+    // ON, and nothing selected.  Saying "in effect" here is the whole bug.
+    check("it says the game reads its own copy when nothing is picked",
+          text(ids["gw-note"]).indexOf("游戏读的是它自己那份") === 0,
+          text(ids["gw-note"]));
+    check("...and it counts the mods that lose, instead of going silent",
+          text(ids["gw-note"]).indexOf("2 个改数据的模组") > 0,
+          text(ids["gw-note"]));
+    check("no row claims the game reads it while nothing is picked",
+          rows.every((r) => text(r).indexOf("游戏读的是它") < 0),
+          rows.map((r) => text(r)).join(" | "));
+    // "Installed but not selected" is the state that looked like a broken
+    // update, so the block has to SAY it: rows alone leave the player to infer
+    // it from an absence, and an absence reads as "fine".
+    const body = (ids["gw-body"].children || []).map((n) => text(n)).join(" | ");
+    check("it spells out that the pick is single, not layered",
+          body.indexOf("数据模组是单选") >= 0, body);
+    check("...and how to pick one for someone who wants the dropdown",
+          body.indexOf("创建游戏") >= 0, body);
+    const btns = rows.map((r) => (r.children || []).filter(
+      (c) => String(c.className).indexOf("chip") >= 0)[0]);
+    check("every unpicked row offers to become the one the game reads",
+          btns.every((b) => b && text(b).indexOf("游戏读这一份") >= 0),
+          btns.map((b) => (b ? text(b) : "no button")).join(" | "));
+    const before = posted.filter((p) => p.url.indexOf("/api/dataset-pick") === 0)
+                           .length;
+    return Promise.resolve(btns[0].onclick()).then(() => {
+      const sent = posted.filter((p) => p.url.indexOf("/api/dataset-pick") === 0);
+      check("the button writes the pick instead of sending the player to a lobby",
+            sent.length === before + 1, String(sent.length - before));
+      check("...naming the mod, not a path or an index",
+            (sent[sent.length - 1].body || {}).name === "dsh 我的数据模组",
+            JSON.stringify(sent[sent.length - 1].body));
+      check("...and the header turns into the answer, by name",
+            text(ids["gw-note"]).indexOf("游戏读的是「dsh 我的数据模组」") === 0,
+            text(ids["gw-note"]));
+      const after = (ids["gw-body"].children || [])
+        .filter((n) => String(n.className).indexOf("dprow") >= 0);
+      check("the picked row is marked as the one the game will open",
+            after.filter((r) => text(r).indexOf("游戏读的是它") >= 0).length === 1,
+            after.map((r) => text(r)).join(" | "));
+      // A row that offers to switch to the file it is already on is furniture,
+      // and it is also how "clicked twice" silently rewrites the record.
+      check("...and it no longer offers to pick itself",
+            !(after[0].children || []).some(
+              (c) => String(c.className).indexOf("chip") >= 0),
+            after[0].children.map((c) => c.className).join(" / "));
+      check("the pick is reported as written, not as hoped",
+            (ids["gw-body"].children || []).some(
+              (n) => text(n).indexOf("引擎会打开") === 0),
+            (ids["gw-body"].children || []).map((n) => text(n)).join(" | "));
+      return modInfoChecks();
+    });
+  }).catch((e) => {
+    fails.push("the game-will-read block threw: " + e.message);
+    console.log("FAIL the game-will-read block threw :: " + e.stack);
+    return modInfoChecks();
+  });
+}
 // 另存为, on the mods screen.  Reported 2026-11-21: 「这个改模组名字和简介没有另存为
 // 功能」.  The save above rewrites the ONE `info.json` in place, so a player who
 // wanted their own name on a shipped mod had no way to keep the shipped name.
@@ -2350,7 +2565,18 @@ function updateChecks() {
     UPDATE_ANSWER = UPDATE.quiet;
     return page.checkUpdates();
   }).then(() => {
-    check("the banner disappears once nothing is stale",
+    // 两个来源共用首页那一条（要重建 / 工具有新版）。 开机时 if 远端比这一份新，
+    // 那条就同时在报「有新版」；重建做完之后它要退回報新版，而不是拿「有 N 个
+    // 模组要重建」继续挂着。 所以判据是「重建这件事从条上撤掉了」，不是「条空了」。
+    check("the rebuild ask comes off the banner once nothing is stale",
+          text(ids["banner-msg"]).indexOf("村民血量测试") < 0
+          && ids["btn-rebuild"].hidden === true,
+          ids["btn-rebuild"].hidden + " :: " + text(ids["banner-msg"]));
+    // 远端也说没有新版时，那一条才该整个收起来。
+    VERSION_ANSWER = VERSIONS.same;
+    return page.versionCheck(false);
+  }).then(() => {
+    check("the banner disappears once nothing is stale and nothing is newer",
           ids.banner.className.indexOf("open") < 0, ids.banner.className);
     return rosterChecks();
   }).catch((e) => { fails.push("the update banner threw: " + e.message);
@@ -2559,6 +2785,16 @@ function repairChecks() {
           JSON.stringify(repairedNow));
     check("a upgrade says the game is open too",
           text(ids.toast).indexOf("游戏正开着") >= 0, text(ids.toast));
+    // The one sentence that decides whether the player sees a change in game.
+    // The row can say 已完成更新 and the .dat can hold every edit and the engine
+    // can still open somebody else's bytes -- measured 2026-11-21.  So the
+    // result line has to say the pick followed, in the SAME toast: `toast()`
+    // overwrites, so a second call would erase the sentence above it.
+    check("the result says the dataset pick was pointed at the new build",
+          text(ids.toast).indexOf("游戏本来读的就是这一份") >= 0,
+          text(ids.toast));
+    check("...without losing the count of what was carried",
+          text(ids.toast).indexOf("搬了") >= 0, text(ids.toast));
     // Re-asked, not assumed: the row has to read as DONE afterwards.
     // Asserting the toast would pass even if the merge produced a different
     // .dat -- the toast is a claim about the request, the row is a claim about
@@ -2611,6 +2847,12 @@ function adaptAllChecks() {
   // it: an assignment made from inside the page creates a page-scope variable
   // and leaves the stub answering from the spent fixture.
   UPGRADE_ANSWER = JSON.parse(JSON.stringify(UPGRADE_PRISTINE));
+  // The batch rebuilds two mods and the player is reading a THIRD one.  That is
+  // the ordinary case on a real machine (fourteen data mods, one picked), and it
+  // is where "updated" and "in effect" come apart: the batch must say so, or the
+  // player presses the button, reads 已更新, and sees nothing in game.
+  PICK_ANSWER = { carried: false,
+                  still: { name: "dsh 我的数据模组", title: "dsh 我的数据模组" } };
   repairedNow.length = 0;
   appliedBodies.length = 0;
   ids.toast.textContent = "";
@@ -2654,16 +2896,22 @@ function adaptAllChecks() {
             && repairedNow[0] === "dsh test v46"
             && repairedNow[1] === "167396_Red Alert 2 MOD",
           JSON.stringify(repairedNow));
-    check("each press keeps the author's edit (official_wins false)",
+    // The engine's default flipped on 2026-11-22 (m23827: 「统一以官方的为主」):
+    // a batch no longer asks the conflict question and every press sends
+    // official_wins true.  The check keeps its subject -- what the buttons
+    // actually send -- and only moves the expected value.
+    check("each press keeps the official value where both touched the same field (official_wins true)",
           appliedBodies.length === 2
-            && appliedBodies.every((b) => b.official_wins === false
+            && appliedBodies.every((b) => b.official_wins === true
                                  && b.install === true),
           JSON.stringify(appliedBodies));
-    // Said out loud, because the player did not answer the conflict question
-    // for these rows: they answered it for one, or for none.
+    // Said out loud, because there is no dialog any more: the player never
+    // answered the conflict question for these rows, so the summary has to say
+    // which mods the official patch also touched and that those cells went
+    // the official way.
     check("the batch says which mods the official patch also touched",
           text(ids.repair).indexOf("Red Alert 2") >= 0
-            && text(ids.repair).indexOf("按作者的改法") >= 0,
+            && text(ids.repair).indexOf("按官方的值算") >= 0,
           text(ids.repair));
     // One toast, and it must be the summary -- `toast()` overwrites, so four
     // calls in a row would leave the failure list on screen for four seconds
@@ -2672,6 +2920,27 @@ function adaptAllChecks() {
           text(ids.toast).indexOf("2 个") >= 0
             && (text(ids.toast).match(/已更新/g) || []).length === 1,
           JSON.stringify(text(ids.toast)));
+    // "Two mods updated" and "two mods in effect" are different sentences, and
+    // the summary has to spend a line on the difference.  Measured on this
+    // machine: fourteen data mods with .dat, one of them picked -- a batch that
+    // reports only the count leaves thirteen updated-but-unread mods as a
+    // silent surprise in the create-game screen.
+    check("the summary names the mods the game will not read",
+          text(ids.repair).indexOf("游戏现在读的不是这 2 个") >= 0,
+          text(ids.repair));
+    check("...and points at the block that fixes it",
+          text(ids.repair).indexOf("游戏会读哪一份数据") >= 0, text(ids.repair));
+    // The block that answers "which file will the engine open" is now stale:
+    // the batch carried the pick forward for none of these two, so the header
+    // still names the old mod.  A builder that left it alone would show a toast
+    // saying "not read" under a header saying "the game reads it".
+    // Once, not once per mod: the pick names ONE mod, so ten presses produce
+    // one answer and nine identical re-reads.
+    const reread = posted.slice(mark).filter(
+      (p) => p.url.indexOf("/api/dataset") === 0
+             && p.url.indexOf("-pick") < 0);
+    check("the batch re-reads which file the game will open, exactly once",
+          reread.length === 1, JSON.stringify(reread.map((p) => p.url)));
     // Re-asked, not assumed: the stub answers the second query with one
     // already-current row, so the button must have withdrawn itself.
     check("the button withdraws once the work is done",
@@ -2755,6 +3024,46 @@ function localeChecks() {
 
 
 // ---- 检查更新：问的是这一份工具自己 ------------------------------------
+// ---- 语言表：开机那一次失败不许顶成红框 --------------------------------
+// m25536 报的是「每次打开都会有个红框 / 语言表读不出来：Failed to fetch」。
+// 那条请求挂在开机流程上，请求本身没坏（冷启动第一次 0.78 秒，之后毫秒级），
+// 坏的是「把开机时的一次失败说成功能坏掉」。 所以这条检查钉两件事：失败时红
+// 条不许出现，而同一句原因要落在语言页自己的判词位上；等它下一次读到了，那行
+// 灰字要自己撤掉，不能把一次已经好了的失败留在屏幕上。
+function langChecks() {
+  LANG_ANSWER = "fail";
+  ids.toast.textContent = "";
+  ids.toast.className = "toast";
+  return page.loadLang(true).then(() => {
+    check("a failed vocabulary load does not throw a red bar over the front page",
+          text(ids.toast).indexOf("语言表读不出来") < 0
+          && ids.toast.className.indexOf("bad") < 0,
+          ids.toast.className + " :: " + text(ids.toast));
+    check("...the reason lands on the language page's own line instead",
+          text(ids["lang-ai-verdict"]).indexOf("没读到") >= 0,
+          text(ids["lang-ai-verdict"]));
+    check("...and the same line says the panel still works",
+          text(ids["lang-ai-verdict"]).indexOf("照样能写") >= 0,
+          text(ids["lang-ai-verdict"]));
+    check("...on the XS side too, not just the AI one",
+          text(ids["lang-xs-verdict"]).indexOf("没读到") >= 0,
+          text(ids["lang-xs-verdict"]));
+    LANG_ANSWER = LANG_OK;
+    return page.loadLang(true);
+  }).then(() => {
+    check("a later successful load takes that line back down",
+          text(ids["lang-ai-verdict"]).indexOf("没读到") < 0,
+          text(ids["lang-ai-verdict"]));
+    check("...and the examples it fetched are on screen",
+          text(ids["lang-ai-examples"]).indexOf("defrule") >= 0,
+          text(ids["lang-ai-examples"]));
+    check("...and no red bar was left behind either",
+          ids.toast.className.indexOf("bad") < 0, ids.toast.className);
+  }).catch((e) => { fails.push("the language table threw: " + e.message);
+                    console.log("FAIL the language table threw :: " + e.stack);
+                    finish(); });
+}
+
 // 和上面的 update banner 是两条不同的消息，所以分两次检查。 banner 说的是
 // 「游戏的 .dat 在你装模组之后被游戏改过，模组要重建」；这条说的是「远端仓库
 // 里这一份工具有没有新版」。两条混成一条，玩家会在数据没变的时候被叫去下载
@@ -2780,6 +3089,19 @@ function versionChecks() {
           line.indexOf("下载并装好") >= 0, line);
     check("...and that button is on the card",
           ids["about-install"].hidden === false, String(ids["about-install"].hidden));
+    // m25536：新版提示以前只写在「关于」页那一行上，玩家不点进去就永远不知道
+    // 有新版。 首页那条 banner 现在也要报这件事，而且报的必须是版本号 ——
+    // 「有新版」而不说哪一版，等于什么都没说。
+    check("a newer build is announced on the front page, not only in 关于",
+          ids.banner.className.indexOf("open") >= 0, ids.banner.className);
+    check("...and the banner names the version the repository carries",
+          text(ids["banner-msg"]).indexOf("1.1") >= 0, text(ids["banner-msg"]));
+    check("...and offers the install button the card would have offered",
+          ids["btn-getnew"].hidden === false,
+          String(ids["btn-getnew"].hidden));
+    check("...with the same wording as that button",
+          text(ids["btn-getnew"]).indexOf("下载并装好") >= 0,
+          text(ids["btn-getnew"]));
     // 号码只说明有东西变了：286 MB 要不要下是另一回事。 所以「有新版」时必须
     // 把新版自己写的改动列出来，而且列的是远端的，不是这一份的。
     const remoteBox = text(ids["about-remote"]);
@@ -2797,6 +3119,10 @@ function versionChecks() {
     check("...and the install button goes away",
           ids["about-install"].hidden === true,
           String(ids["about-install"].hidden));
+    // 已经是最新的时候，首页那条提示也必须收起来：留着它在最上面写着「工具有
+    // 新版本」，就等于每次开机都把人叫去下载一个不存在的东西。
+    check("...and the front-page announcement goes away too",
+          ids.banner.className.indexOf("open") < 0, ids.banner.className);
     // 上一次按出来的「新版改了什么」不能留在这一次「已经是最新的」下面：屏幕
     // 同时说两件事，玩家会以为那个新版他还没装。
     check("...and the previous answer's change list is taken back",
@@ -2937,7 +3263,7 @@ function intentListChecks() {
           String((ids.intents.children || []).map((n) => n.title).join(" "))
             .indexOf("/api/plan") >= 0,
           JSON.stringify(walk(ids.intents, []).map((n) => n.title)));
-    return localeChecks().then(() => versionChecks());
+    return localeChecks().then(() => langChecks()).then(() => versionChecks());
   }).catch((e) => { fails.push("the capability list threw: " + e.message);
                     console.log("FAIL the capability list threw :: " + e.stack);
                     finish(); });

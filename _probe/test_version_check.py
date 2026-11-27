@@ -77,6 +77,34 @@ check("every source is https",
       all(u.startswith("https://") for n, u in U.SOURCES),
       [u for n, u in U.SOURCES if not u.startswith("https://")])
 
+# ---- 1b. GitHub pins its answers for five minutes, so ask a different URL ----
+# The gist went to 1.10 while `check()` still answered 1.0014 from the edge copy
+# (2026-11-21; `Cache-Control: max-age=300`, `X-Cache: HIT`).  A player pressing
+# 检查更新 right after a release was told there was nothing new, and pressing it
+# again did not help, because the URL was the same URL.  One unique query string
+# per ask makes the edge miss and reach the file.
+check("the gist URL gets a query string of its own",
+      U._bust(first_url, 7).startswith(first_url) and U._bust(first_url, 7).endswith("?cb=7"),
+      U._bust(first_url, 7))
+check("...a different one every time, so the second press is not the first press",
+      U._bust(first_url, 1) != U._bust(first_url, 2),
+      (U._bust(first_url, 1), U._bust(first_url, 2)))
+check("...and it stays a query string, not a second path segment",
+      U._bust(proxy_url, 7).count("?") == 1 and "gh-proxy.com/https://" in U._bust(proxy_url, 7),
+      U._bust(proxy_url, 7))
+check("a URL that already carries a query keeps it intact",
+      U._bust("https://cdn.jsdelivr.net/gh/a/b@main/x.py?v=1", 7)
+      == "https://cdn.jsdelivr.net/gh/a/b@main/x.py?v=1&cb=7",
+      U._bust("https://cdn.jsdelivr.net/gh/a/b@main/x.py?v=1", 7))
+check("hosts that do not pin are left exactly as written",
+      U._bust("https://api.github.com/repos/a/b/releases", 7)
+      == "https://api.github.com/repos/a/b/releases",
+      U._bust("https://api.github.com/repos/a/b/releases", 7))
+check("...and the fetch itself is the thing that asks for it",
+      "_bust(url)" in open(os.path.join(HERE, "aoe2mod", "updates.py"),
+                           encoding="utf-8").read(), "")
+
+
 # ---- 2. the two shapes the parser has to read ----
 check("the gist JSON shape parses",
       U.parse_version('{"version": "1.2", "url": "x"}') == "1.2",
@@ -159,9 +187,11 @@ check("the cache honours the state-dir override, so a test cannot touch the real
       U.cache_path().startswith(CACHE), U.cache_path())
 
 # ---- 5. the player's numbering is decimal, so the compare must be too ----
-# 「我每产生新改动，版本号就增加0.0001」 (2026-11-18).  The old `ver_tuple` kept
-# two integers and threw the rest away, so 1.0001 and 1.0002 were the same
-# number and a freshly published build read as 「已经是最新的」 on every machine.
+# Two decimals, steps of 0.10 (2026-11-21).  The old `ver_tuple` kept two integers
+# and threw the rest away, so 1.0001 and 1.0002 were the same number and a freshly
+# published build read as 「已经是最新的」 on every machine.  The four-decimal cases
+# below stay because an installed copy still carries one and must not be told it is
+# newest forever.
 check("a 0.0001 step compares GREATER than the build before it",
       U.ver_tuple("1.0002") > U.ver_tuple("1.0001"),
       (U.ver_tuple("1.0001"), U.ver_tuple("1.0002")))
@@ -178,7 +208,7 @@ check("1.0 and 1.0000 are the same build",
       U.ver_tuple("1.0") == U.ver_tuple("1.0000"),
       (U.ver_tuple("1.0"), U.ver_tuple("1.0000")))
 check("junk sorts last instead of raising",
-      U.ver_tuple("") == (-1, -1) and U.ver_tuple("x") == (-1, -1),
+      U.ver_tuple("") == (-1, -1, -1) and U.ver_tuple("x") == (-1, -1, -1),
       (U.ver_tuple(""), U.ver_tuple("x")))
 check("one decimal step past this build reads as behind",
       U.check(current="1.0001", force=True,
@@ -261,12 +291,17 @@ check("garbage is not a changelog",
 
 fetch, seen = opener_for(RELEASES)
 got = U.changelog(force=True, opener=fetch, sources=U.RELEASES_SOURCES)
+# Three rows, not two: the running build puts its OWN release on top of the
+# fetched list (m24190 -- on the day 1.20 shipped the six-hour cache still held
+# 1.10, so 关于 showed a changelog that did not mention the build in front of it).
 check("a reachable release list comes back as the whole log",
-      got["ok"] and got["reachable"] and len(got["rows"]) == 2, len(got.get("rows") or []))
+      got["ok"] and got["reachable"] and len(got["rows"]) == 3, len(got.get("rows") or []))
+check("...and the running build's own release rides on top of it",
+      got["rows"][0]["version"] == AV.VERSION, got["rows"][0]["version"])
 check("...and it names which address answered",
       got["source"] == U.RELEASES_SOURCES[0][0], got["source"])
 check("...with the changes already split into lines",
-      got["rows"][0]["notes"][0] == "下载新版快多了", got["rows"][0]["notes"])
+      got["rows"][1]["notes"][0] == "下载新版快多了", got["rows"][1]["notes"])
 got = U.changelog(force=True, opener=opener_for(OSError("down"))[0],
                   sources=U.RELEASES_SOURCES)
 check("nothing answering is said out loud, not faked into a list",
@@ -277,13 +312,36 @@ check("and the fallback is what this copy says about itself",
       and U.local_changelog()[0]["notes"] == U.local_changes(),
       U.local_changelog())
 
-# ---- 7. the three-part spelling the manifests need, derived not typed ----
-check("SEMVER is a three-part version a manifest accepts",
-      AV._semver("1.0001") == "1.0.1" and AV._semver("1.0") == "1.0.0"
-      and AV._semver("1.1") == "1.0.1000",
-      (AV._semver("1.0001"), AV._semver("1.0"), AV._semver("1.1")))
+# ---- 7. the number the player reads is three parts, and the manifests take it as is ----
+# 「以后都这样0.0.0写」 (2026-11-26).  A legacy two-decimal number still has to come
+# out three-parted, because the already-shipped builds carry one in their changelog.
+check("the number this build carries is major.minor.patch",
+      AV.VERSION.count(".") == 2 and AV.SEMVER == AV.VERSION,
+      (AV.VERSION, AV.SEMVER))
+check("...a legacy two-decimal number gains a zero patch",
+      AV._semver("1.10") == "1.10.0" and AV._semver("1.5") == "1.5.0"
+      and AV._semver("1.0") == "1.0.0",
+      (AV._semver("1.10"), AV._semver("1.5"), AV._semver("1.0")))
 check("...and it agrees with the number this build carries",
       AV.SEMVER == AV._semver(AV.VERSION), (AV.SEMVER, AV.VERSION))
+
+# ---- 8. an installed 1.61 must be told that 1.7.0 is newer ----
+# The player is on 1.61 today.  Two grammars now meet in one comparison, and if the
+# old one were read as an integer ("61" beats "7") every installed copy would answer
+# 「已经是最新的」 to the release he asked for.
+check("1.7.0 outranks 1.61 across the two grammars",
+      U.ver_tuple("1.7.0") > U.ver_tuple("1.61"),
+      (U.ver_tuple("1.7.0"), U.ver_tuple("1.61")))
+check("...1.61 still outranks 1.60 inside the old grammar",
+      U.ver_tuple("1.61") > U.ver_tuple("1.60"),
+      (U.ver_tuple("1.61"), U.ver_tuple("1.60")))
+check("...and a patch build sorts above its own release",
+      U.ver_tuple("1.7.3") > U.ver_tuple("1.7.0"),
+      (U.ver_tuple("1.7.3"), U.ver_tuple("1.7.0")))
+check("a 1.61 copy reading the 1.7.0 gist is told to update",
+      U.check(current="1.61", force=True,
+              opener=opener_for('{"version": "1.7.0"}')[0],
+              sources=U.SOURCES)["behind"] is True, "")
 
 
 print("FAILED: %s" % FAIL if FAIL

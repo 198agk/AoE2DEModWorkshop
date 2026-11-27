@@ -51,8 +51,8 @@ def main():
     if fails:
         print("REPAINT: %d PROBLEM(S) -> %s" % (len(fails), fails))
         return 1
-    print("REPAINT: a picture goes in at canvas coordinates and comes out as "
-          "playable .sld files, with no unknown byte invented.")
+    print("REPAINT: a picture goes in once, comes out fitted into every frame "
+          "of every angle as playable .sld files, with no unknown byte invented.")
     return 0
 
 
@@ -93,47 +93,103 @@ def part_a():
     if not pairs_ok:
         fails.append("an x1 file has no x2 twin")
 
-    # same length, and the art really changed
-    changed, same_len = 0, True
+    # THE FILE GETS LONGER, AND THAT IS THE FIX.  A shipped frame stores only the
+    # cells its art reaches (villager idle frame 0: 35 of 55), so an in-place
+    # repaint kept a hole wherever the OLD art was empty -- the picture came out
+    # 「缺损」.  The main layer is now written as full cells, so what has to hold is
+    # STRUCTURE, not length: same frames, same rects, every other layer verbatim.
+    changed, structural = 0, True
     for rel, data in rep["files"].items():
         src = os.path.join(GAME, *rel.split("/"))
         orig = open(src, "rb").read()
-        if len(data) != len(orig):
-            same_len = False
+        try:
+            E.verify_repaint(S.Sld(rel, orig), S.Sld(rel, data))
+        except ValueError as exc:
+            structural = False
+            print("     %s: %s" % (os.path.basename(rel), exc))
         if data != orig:
             changed += 1
-    print("   every file keeps its length: %s   files whose bytes changed: "
-          "%d of %d" % (same_len, changed, len(rep["files"])))
-    if not same_len:
-        fails.append("a repainted file changed length")
+    print("   every file still parses to the same frames and rects: %s   "
+          "files whose bytes changed: %d of %d"
+          % (structural, changed, len(rep["files"])))
+    if not structural:
+        fails.append("a repainted file no longer matches its original structure")
     if changed != len(rep["files"]):
         fails.append("some files were written back unchanged")
 
-    # non-main layers untouched, for one file
+    # Every other layer is untouched, with one deliberate exception: the
+    # playercolor and damage masks are STENCILS cut to the shipped silhouette.
+    # Left alone they would tint the player's picture along the old cloak outline
+    # (a blue blotch on a red circle), so they are rewritten as the same full grid
+    # of zero blocks -- a stencil that says nothing.  Shadow and unknown2 stay
+    # verbatim.
     rel = sorted(rep["files"])[0]
     orig = S.Sld(rel, open(os.path.join(GAME, *rel.split("/")), "rb").read())
     new = S.Sld(rel, rep["files"][rel])
-    others = all(new.frames[i].layers[k].data == orig.frames[i].layers[k].data
-                 for i in range(len(orig.frames))
-                 for k in orig.frames[i].layers if k != "main")
-    print("   non-main layers byte-identical in %s: %s"
+    others = True
+    for i in range(len(orig.frames)):
+        ga = E.frame_grid(orig.frames[i])
+        for k, lay in orig.frames[i].layers.items():
+            if k == "main":
+                continue
+            if new.frames[i].layers[k].data == lay.data:
+                continue
+            if k in ("playercolor", "damage") and ga is not None and \
+                    E._mask_is_cleared(new.frames[i].layers[k], ga[1], ga[2]):
+                continue
+            others = False
+    print("   non-main layers byte-identical in %s: %s  (playercolor and damage "
+          "cleared to a blank stencil)"
           % (os.path.basename(rel), others))
     if not others:
         fails.append("a repaint disturbed a non-main layer")
 
-    # a picture with the wrong aspect ratio still lands inside the canvas
+    # A picture with the wrong aspect ratio goes into every frame of every file
+    # at ONE scale for the file, read off a low percentile of the fit factors, so
+    # no frame clips and the tail of smaller windows draws it a little smaller
+    # instead.  The invariant is therefore two claims, and the report carries
+    # both: the drawn size fits the window the scale came from, and no frame
+    # clipped it -- with the shrinking tail kept to a few percent of frames.
     wide = bytearray(400 * 60 * 4)
     for i in range(400 * 60):
         wide[i * 4:i * 4 + 4] = bytes((10, 200, 10, 255))
     rep2 = RP.paint_unit(GAME, tk._stats["graphics"], tk._parsed[1], 83,
                          wide, 400, 60, animations=None)
-    inside = all(r["drawn_size"][0] <= r["bbox"][2] - r["bbox"][0] and
-                 r["drawn_size"][1] <= r["bbox"][3] - r["bbox"][1]
+    inside = all(r["drawn_size"][0] <= r["window"][0] and
+                 r["drawn_size"][1] <= r["window"][1]
                  for r in rep2["per_file"])
-    print("   a 400x60 picture keeps its aspect and stays inside the union "
-          "bbox: %s" % inside)
+    unclipped = all(r["frames_clipped"] == 0 for r in rep2["per_file"])
+    # The scale comes from the KEEP-th percentile window, so a few percent of
+    # frames draw the picture up to a notch smaller; more than that many would
+    # mean the scale is being set by a tail nobody looks at.
+    small_share = max(
+        (len(r["frames_smaller"]) / float(len(r["frames_smaller"]) + r["frames_painted"]))
+        for r in rep2["per_file"])
+    # Aspect kept means the drawn size is the picture scaled by ONE factor: the
+    # fit factor is min(win/picture) on both axes, and the drawn size must match
+    # that to within the one pixel rounding can move it.
+    def _fitted(r):
+        w, h = r["window"]
+        sc = min(w / 400.0, h / 60.0)
+        return (abs(r["drawn_size"][0] - 400 * sc) <= 1.0 and
+                abs(r["drawn_size"][1] - 60 * sc) <= 1.0)
+
+    aspect = all(_fitted(r) for r in rep2["per_file"])
+    sizes = sorted({tuple(r["drawn_size"]) for r in rep2["per_file"]})
+    print("   a 400x60 picture stays inside every frame window: %s   same "
+          "scale on both axes: %s" % (inside, aspect))
+    print("   nothing clipped, and at most %.0f%% of a file's frames had to "
+          "draw it smaller: %s   distinct drawn sizes over %d files: %s"
+          % (100.0 * small_share, unclipped and small_share <= 0.10,
+             len(rep2["per_file"]), sizes[:4]))
     if not inside:
-        fails.append("a wide picture overflowed the union bbox")
+        fails.append("a wide picture overflowed the smallest frame window")
+    if not unclipped:
+        fails.append("a frame clipped the picture it was given")
+    if small_share > 0.10:
+        fails.append("more than a tenth of a file's frames had to shrink the picture")
+    if not aspect:
+        fails.append("a wide picture was stretched unevenly inside a frame")
 
     # a unit with no loose art
     try:

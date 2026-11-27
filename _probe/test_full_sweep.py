@@ -301,8 +301,9 @@ _VERIFIED_ELSEWHERE = {
         # wrong pointer survives: the prose was right about the label and wrong
         # about the file.
         ("_probe/test_repaint.py", "aoe2mod.intent import repaint",
-         "repaint_sld: a user picture goes in at canvas coordinates and comes out "
-         "as encoded .sld blocks in a mod folder; B proves the repainted art "
+         "repaint_sld: a user picture goes in and comes out drawn into every "
+         "frame's own crop at one scale per file, as encoded .sld blocks in a "
+         "mod folder; B proves the repainted art "
          "differs, E proves the emitter accepts a graphics path -- still verified "
          "for the byte chain only, since no running game has drawn a "
          "hand-encoded block"),

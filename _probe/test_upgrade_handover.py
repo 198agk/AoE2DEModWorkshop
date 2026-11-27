@@ -244,6 +244,82 @@ def main():
     finally:
         shutil.rmtree(root3, ignore_errors=True)
 
+    # -- the dataset pick must follow the folder it pointed at --------------
+    #
+    # Measured 2026-11-21 on 209785: 5,333 of 5,387 field changes carried, the
+    # folder replaced in place, and the create-game screen still fell back to the
+    # base `.dat` -- because the engine keeps ONE selected dataset, verifies its
+    # CheckSum against the folder, and the rebuild changes those bytes.  The old
+    # number is now stale, and a stale pick is a silent fallback: the player sees
+    # the mod installed, listed, and doing nothing.
+    #
+    # Runs only when this machine has a real `Player.nfp` to copy, because the
+    # point is the record layout, not a fixture of it.
+    print("-- the dataset pick follows the rebuilt folder")
+    nfp = os.path.join(GP.ACCOUNT, "profile", "Player.nfp")
+    if not os.path.isfile(nfp):
+        print("   skip: no Player.nfp on this machine to copy")
+    else:
+        from aoe2mod.game import dataset as DS
+        root4 = tempfile.mkdtemp(prefix="upg_pick_")
+        try:
+            os.makedirs(os.path.join(root4, ACC, "profile"))
+            os.makedirs(os.path.join(root4, ACC, "mods"))
+            shutil.copy2(nfp, os.path.join(root4, ACC, "profile", "Player.nfp"))
+            mod = make_mod(root4, "local", "MINE")
+            acc4 = os.path.join(root4, ACC)
+            # The machine's own status entries have to come along: a record only
+            # counts as a dataset pick when its trailing checksum equals one the
+            # ENGINE wrote for an installed mod, and those numbers name folders on
+            # this disk.  MINE is appended with its own folder checksum, so the
+            # write below has one more record to land on -- which is exactly the
+            # case under test: a pick that already pointed at a mod.
+            shutil.copy2(G.status_path(GP.ACCOUNT), G.status_path(acc4))
+            with open(G.status_path(acc4), encoding="utf-8-sig") as fh:
+                doc = json.load(fh)
+            doc["Mods"].append({"CheckSum": str(DS._folder_checksum(mod)),
+                                 "Enabled": True, "LastUpdate": "1",
+                                 "Path": "local//MINE", "Priority": 1,
+                                 "PublishID": 0, "Title": "MINE",
+                                 "WorkshopID": 0})
+            with open(G.status_path(acc4), "w", encoding="utf-8") as fh:
+                json.dump(doc, fh, ensure_ascii=False)
+            old_crc = DS._folder_checksum(mod)
+            DS.write_selection(acc4, mod, "MINE", workshop_id=0,
+                               checksum=old_crc)
+            tk4 = A.Toolkit.__new__(A.Toolkit)
+            before_pick = A.Toolkit._dataset_pick_of(tk4, root4)
+            check("the pick names this mod before the rebuild",
+                  (before_pick or {}).get("name") == "MINE", str(before_pick))
+            rows4 = A.Toolkit._upgrade_targets(None, root4, limit=0)
+            mine4 = [r for r in rows4 if r["name"] == "MINE"][0]
+            build4 = make_build(root4, "MINE")
+            notes4 = []
+            man4 = A.Toolkit._upgrade_install(tk4, build4, mine4, "MINE",
+                                              root4, notes4)
+            new_crc = DS._folder_checksum(os.path.join(root4, ACC, "mods",
+                                                       "local", "MINE"))
+            check("the rebuilt bytes hash differently, so the old pick is stale",
+                  new_crc != old_crc, "%s vs %s" % (old_crc, new_crc))
+            pick4 = man4.get("pick") or {}
+            check("the manifest says the pick was carried forward",
+                  pick4.get("carried") is True, str(pick4))
+            check("...and it carries the NEW checksum, not the old one",
+                  str(pick4.get("checksum")) == str(new_crc),
+                  "%s vs %s" % (pick4.get("checksum"), new_crc))
+            audit4 = DS.audit(profile_root=root4)
+            check("the engine will read the rebuilt copy, not the base .dat",
+                  (audit4["reads"] or {}).get("kind") == "mod",
+                  str(audit4["reads"]))
+            check("...with no stale-checksum complaint left",
+                  not [p for p in audit4["problems"]
+                       if p["code"] in ("dataset-stale", "no-dataset")],
+                  str(audit4["problems"]))
+            check("and the report says so in words the player can act on",
+                  any("选中的数据模组" in n for n in notes4), str(notes4))
+        finally:
+            shutil.rmtree(root4, ignore_errors=True)
+
     print()
     if FAILS:
         print("HANDOVER: %d CHECK(S) FAILED" % len(FAILS))

@@ -29,9 +29,17 @@ LAYER RECORD
                     [66,620 / 66,620 verified, 0 bad]
                     It is a BC4 MASK and indexes MAIN's grid: for all
                     66,620/66,620 layers sum(skip+draw) == main's bw*bh.
-                    fmt tells which command array it carries:
-                      0x0100 -> same run-list as main (23,835 / 23,870)
-                      0x0180 -> its OWN run-list over the same grid (42,750)
+                    fmt tells whether the layer is a WHOLE frame or a PATCH:
+                      0x0100 -> whole: same run-list as main (23,835 / 23,870)
+                      0x0180 -> PATCH: its own run-list over the same grid, and
+                                it names only the cells that changed since the
+                                previous frame (42,750).  A patch drawn on its
+                                own is missing everything it did not resend;
+                                Cells must be keyed by their CANVAS position,
+                                not by their index in this frame's grid: the
+                                rect moves (mangudai idle: 110 times over 961
+                                frames, 95 of them on patch frames).
+                                see aoe2mod/game/sld.py class Walk.
                     Placement: placed_blocks(damage_cmds, bw, bh) on main's grid.
                     (damage.span == main.span only when fmt==0x0100.)
     unknown2      : not a block layer at all (size parity varies) -- not decoded

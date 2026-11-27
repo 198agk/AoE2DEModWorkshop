@@ -426,8 +426,16 @@ def main():
     # whole path.  A winner sentence is NOT required any more.
     check("names the mod being edited",
           "cfwho" in page and "带的那一份" in page)
+    # The verdict row is gone from the header, but the phrase 「游戏读的是」 still
+    # exists elsewhere on the page (the 数据模组 picker block and the upgrade
+    # toast both say it).  A whole-file substring search answered "the page still
+    # prints it" for text that was never in this header, so the check reads the
+    # header function's own body instead.
+    _head = page.split("function drawCardFile(", 1)
+    _head = _head[1].split("async function loadCard(", 1)[0] if len(_head) > 1 else ""
     check("and no longer prints the second verdict row",
-          "游戏读的是" not in page)
+          bool(_head) and "游戏读的是" not in _head,
+          "" if _head else "drawCardFile is gone from the page")
 
     # --- 14. the panel shows its own changes -----------------------------
     # 「还有这个也完全没用」 was one complaint with two halves: nothing could be

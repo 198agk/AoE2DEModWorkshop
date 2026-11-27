@@ -249,6 +249,17 @@ class SpriteIndex(object):
             have = sorted(set(n for n in names if n in self.files))
             if have:
                 self._groups[s] = have
+        # file -> every graphics record id that names it.  The model page prints
+        # the number the game itself uses beside each picture, and one repaint
+        # writes ONE file, so 'which records point at this file' is the join that
+        # page needs.  Built beside self._file_labels rather than on demand: both
+        # walk the same 20,883 records, and a screen listing ten files would
+        # otherwise pay that walk ten times.
+        self._file_ids = collections.defaultdict(set)
+        for g in self.graphics:
+            f = _text(g, 'file')
+            if f and g.get('id') is not None:
+                self._file_ids[f].add(g['id'])
 
     # -- single records ------------------------------------------------------
     def record(self, gid):
@@ -282,6 +293,23 @@ class SpriteIndex(object):
         """
         return set(g for g in self._file_grids.get(file_name, ())
                    if g[0] is not None and g[1] is not None)
+
+    def ids_of(self, file_name):
+        '''Every graphics record id that names this .sld basename, sorted.
+
+        Sorted because the page prints these numbers: a set's iteration order
+        would show the same file as 1102 on one request and 1099 on the next.
+        Empty list means no shipped record names the file (orphan art).
+        '''
+        return sorted(self._file_ids.get(file_name, ()))
+
+    def labels_of(self, stem, file_name):
+        '''The engine's own record names for one file, sorted.
+
+        A file can carry SEVERAL names (the sheep's idle art is also its
+        attack), so the answer is a list and not a string.
+        '''
+        return sorted(self._file_labels.get((stem, file_name), ()))
 
     def resource_variants(self, stem):
         """Orphan art stems that draw the SAME entity while it carries something else.
@@ -517,8 +545,11 @@ def _grid_fits(target_grid, donor_grid):
 
     Returns ``"exact"``, ``"truncated"`` or ``None``.
 
-    The engine indexes a sprite as ``frame * angle_count + angle``, where the
-    counts come from the graphics RECORD, not from the file.  So a donor with the
+    A file lays its frames out angle by angle, so the engine reaches pose ``p`` of
+    angle ``a`` at ``a * frame_count + p``; the counts come from the graphics
+    RECORD, not from the file.  (The shipped notes state this the other way round;
+    the art itself does not agree with them -- see `game/filmstrip.strip`.)  So a
+    donor with the
     same angle count and at least as many frames is structurally safe: the extra
     frames are simply never asked for, and the animation reads as a shorter
     version of the donor's.  A donor with FEWER frames is not safe, because the

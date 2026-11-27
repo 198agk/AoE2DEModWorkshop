@@ -164,6 +164,10 @@ class App(object):
         # use and dropped by `set_dat`, because a mod renumbers units.
         self._task_name_cache = {}
         self._ailang = None
+        # 文联表（`aoe2mod/data/lian.json`，由 `_probe/build_lian_json.py` 从十五本
+        # 流派 xlsx 生成）。它随安装包发布、进程内不变，读一次就够：648 KB 的 JSON
+        # 每开一次页重解析一遍是白花的等待，而这两百多张表在一次会话里不会变。
+        self._lian = None
         # `{(path, mtime_ns, size): {(space, node): {age: votes}}}` -- the build
         # panel's `RequiredAge` vote, the only source that answers 「这个单位是
         # 哪个时代的」 for the command panel.  Kept per file version instead of
@@ -287,6 +291,15 @@ class App(object):
         # The pictures themselves, one entry per slot.  `self._icons` is DERIVED
         # from this list -- see `set_icon` for why it cannot be accumulated.
         self._icon_items = []
+        # {mod relative path: bytes} for .sld files this session REPAINTED.
+        #
+        # A repainted sprite is not a field edit and not an icon: it is a loose
+        # .sld the mod ships in place of the game's own copy, so it rides to disk
+        # through the same `json_files` map as the strings and the icons -- see
+        # `save_session`.  Kept apart from `_icons` because those are texture,
+        # material and key rows merged into two tables, while these are whole
+        # picture files written one for one.
+        self._slides = {}
 
     def _gen_bump(self):
         """Declare every offset-based index stale.  See `self._gen`."""
@@ -3512,6 +3525,42 @@ class App(object):
                 # so the page does not have to re-derive `(age-1)*2`.
                 "rows_per_age": 2}
 
+    def lian(self):
+        """The alliance tables ("文联"), verbatim, for the page that browses them.
+
+        WHY THIS ROUTE EXISTS: the sixteen workbooks under _probe/_tmp/civguide
+        are the research, but a player does not run Excel beside the game.
+        _probe/build_lian_json.py flattens all of them (fifteen school books
+        plus the whole-civ bonus sheet) into one JSON: 648 KB, 15 schools,
+        200-odd sheets.  This route hands it over as-is.
+        `slots` maps a sheet kind to its index inside `sheets`, so the page never
+        guesses which table is the free picks and which is the skip list.
+
+        NO RESHAPING HERE.  The page renders the columns the workbook actually
+        has, because the fifteen books do not share a column order: the tower
+        book puts "来源" before "条目原文" and carries a seventh column in its
+        pick tables.  A server that normalised that away would be inventing a
+        schema the source of truth does not have.
+
+        Read once and kept: the file ships with the install, nothing rewrites it
+        while the process runs, and re-parsing 648 KB on every tab switch is a
+        visible pause for tables that cannot have changed.
+        """
+        if self._lian is None:
+            path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                "..", "data", "lian.json")
+            try:
+                with open(path, "r", encoding="utf-8") as fh:
+                    self._lian = json.load(fh)
+            except (IOError, OSError, ValueError) as exc:
+                return {"ok": False,
+                        "error": "读不到文联表：%s" % (exc,),
+                        "path": os.path.abspath(path),
+                        "title": "文明联盟 · 文联",
+                        "note": "", "order": [], "units": [],
+                        "buildings": [], "schools": []}
+        return self._lian
+
     def _icons_for(self, mode=""):
         """The IconBook for one mode, cached.
 
@@ -3763,6 +3812,569 @@ class App(object):
         }
         return got
 
+    def art_records(self, unit, civ=""):
+        """Every picture this record is drawn from, one row per .sld.
+
+        THE PAGE ASKED THE WRONG QUESTION FOR A YEAR.  It listed the seventeen
+        `StandingGraphic`/`AttackGraphic`/... fields and made the player read
+        numbers; what a player sees on screen is a SET OF PICTURES, and the name
+        beside each one is the only handle they have.  This route answers the
+        second question: which files does unit 74 actually draw, what does each
+        one look like, and which graphics records point at it.
+
+        `graphic_ids` come from `SpriteIndex.ids_of`, the same join the repaint
+        plan uses, so the number printed here is the number a .dat edit would
+        have to name.  `x2` says whether a UHD twin exists, because a repaint
+        writes both and the page should not promise a file that is not there.
+        """
+        from aoe2mod.game import filmstrip as F
+        from aoe2mod.game import sprites as SP
+        tk = self.tk
+        tk._ensure()
+        try:
+            uid = int(unit)
+        except (TypeError, ValueError):
+            return {"ok": False,
+                    "error": "单位编号要是数字，收到的是 %r" % (unit,)}
+        # TWO RECORDS, TWO JOBS, AND MIXING THEM IS WHAT BROKE THIS ROUTE.
+        # `SpriteIndex.art` reads `standing_graphic`, which only the parsed
+        # civilization dicts carry; `_unit_index` carries `start`/`end`, which is
+        # what the field blob is decoded from.  The first version passed the
+        # index record into `art()` (no `standing_graphic` -> art is empty -> 「没有
+        # 散图」 for every unit) and the one before it asked the bare civ dict for
+        # the NAME (no `start` -> KeyError).  So: `_unit_record` decides the art,
+        # `_unit_read_ref` decides which civilization the header names, and the
+        # name itself comes from the semantic table, exactly like `unit_fields`.
+        civs = tk._civs or []
+        raw = self._unit_record(uid, civ)
+        if raw is None:
+            return self._unit_missing(tk, civs, uid, civ)
+        civ_all, civ_index, _rec, fell_back = self._unit_read_ref(
+            tk, civs, uid, civ)
+        e = self._semantic().units.get(uid)
+        name = (e.zh or e.en or e.display) if e is not None else ""
+        idx = tk._reskin_art()
+        art = idx.art(raw) or {}
+        stem = art.get("stem")
+        if art.get("kind") != "loose":
+            # No .sld to repaint: a legacy .slp, a sprite this install lacks, or
+            # nothing at all.  Say WHICH, because 「换不了」 alone reads like a
+            # bug in the page rather than a fact about the record.
+            return {"ok": False, "unit": uid, "name": name,
+                    "kind": art.get("kind"), "stem": stem,
+                    "error": art.get("reason") or "这条记录没有散图，换不了样子"}
+        gdir = SP.graphics_dir(tk.game_root)
+        rows = []
+        for row in F.animations(art):
+            base = row["file"]
+            if not base.endswith("_x1"):
+                continue
+            twin = base[:-3] + "_x2"
+            has_twin = os.path.isfile(os.path.join(gdir, twin + ".sld"))
+            poses, angles = self._poses_hint(base, row["claimed"])
+            rows.append({
+                "key": row["key"],
+                "zh": row["zh"],
+                "label": "、".join(idx.labels_of(stem, base)) or row["zh"],
+                "file": base,
+                # SHOW THE FILE THE PLAYER ACTUALLY SEES.  _x1 and _x2 are two
+                # separate drawings, not one scaled: militia idle frame 1 is a
+                # 6x12 grid of coarse blocks in x1 and 40x84 of detail in x2,
+                # and the engine picks x2 whenever the hires pack is installed.
+                # The page previewed x1, so the player compared it against the
+                # game and said 「你这读取出来的图像完全是不正常的」(2026-11-25) --
+                # they were looking at a picture the game never shows.  "file"
+                # stays x1 because that is the handle a repaint is addressed by
+                # (both twins are written); "best" is only what gets drawn here.
+                "best": twin if has_twin else base,
+                "x2": has_twin,
+                "graphic_ids": idx.ids_of(base),
+                "poses": poses,
+                "angles": angles,
+                "sheet": list(self._sheet_size(base, angles)),
+                # The per-frame sheet is a DIFFERENT picture: one cell per
+                # frame of one direction (a walk cycle is thirty different
+                # drawings), so its size is its own number and the page
+                # prints it beside the direction sheet's.
+                "pose_sheet": list(self._pose_sheet_size(base, 0, angles)),
+                "painted": bool(self._slides.get(_slide_rel(base))),
+            })
+        return {"ok": True,
+                "unit": uid,
+                "name": name,
+                "kind": art.get("kind"),
+                "stem": stem,
+                "civ_all": civ_all,
+                "civ_index": civ_index,
+                "civ_name": ((civs[civ_index] or {}).get("name")
+                             if 0 <= civ_index < len(civs) else ""),
+                "fell_back": bool(fell_back),
+                "files": sorted(art.get("files") or ()),
+                "count": len(rows),
+                "records": rows}
+
+    def slide_film(self, file, frame=0, count=1, angle=0, angles=0,
+                   pending=False):
+        """One repaintable picture as PNG -- `/api/slide-film`.
+
+        Image, not JSON, for the same reason `/api/film` is: a 30-pose row is
+        1.2 MB of PNG and would be 1.6 MB of base64 wrapped in braces.
+
+        `pending` draws THE BYTES THIS SESSION HAS NOT SAVED YET, which is what
+        the page shows right after a swap: the player must see their own picture
+        without a trip through the mod folder.  Reading them needs no temp file
+        because `filmstrip.strip` takes the bytes directly.
+        """
+        from aoe2mod.game import filmstrip as F
+        tk = self.tk
+        tk._ensure()
+        name = str(file or "").strip()
+        if not name:
+            return {"ok": False, "error": "要给出是哪一张图"}
+        if name.endswith(".sld"):
+            name = name[:-4]
+        data = (self._slides or {}).get(_slide_rel(name)) if pending else None
+        if pending and data is None:
+            return {"ok": False, "error": "这张图还没有换过，没有待保存的样子可看"}
+        idx = tk._reskin_art()
+        ac = int(angles or 0)
+        if ac <= 0:
+            grid = idx.grid(name)
+            if grid:
+                ac = sorted(grid)[0][1] or 1
+        asked = int(count or 1)
+        got = F.strip(tk.game_root, name, frames=asked, start=frame,
+                      angles=ac, angle=angle, data=data)
+        got["ok"] = True
+        got["file"] = name
+        got["pending"] = bool(pending)
+        got["headers"] = {
+            "X-Film-Poses": got.get("poses") or 0,
+            "X-Film-Frames": got.get("frames") or 0,
+            "X-Film-Start": got.get("start") or 0,
+            "X-Film-Angles": got.get("angles") or 1,
+            "X-Slide-Pending": 1 if pending else 0,
+        }
+        # 这张图可能刚被换过（pending=1 回的是会话里还没保存的字节），缓存一天
+        # 就会让玩家盯着旧画面问「怎么没变」。见 _guard_icon 里那一行。
+        got["cache"] = "no-store"
+        return got
+
+    def _sheet_size(self, base, angles):
+        """(w, h) of the direction sheet for one picture, (0, 0) on failure.
+
+        In the records so the page can print "the sheet is 438x454" instead of
+        making the player download one to find out, and so `looks_like_sheet`
+        and the page cannot disagree: both end up at `sheet_template_size`.
+        """
+        import os
+        from aoe2mod.game import sld as S
+        from aoe2mod.game import sprites as SP
+        from aoe2mod.intent import repaint as RP
+        gdir = SP.graphics_dir(self.tk.game_root)
+        for cand in (base[:-3] + "_x2" if base.endswith("_x1") else base,
+                     base):
+            path = os.path.join(gdir, cand + ".sld")
+            if os.path.isfile(path):
+                try:
+                    sld = S.read_sld(path)
+                    return RP.sheet_template_size(sld, max(int(angles or 1), 1))
+                except Exception:                          # noqa: BLE001
+                    return (0, 0)
+        return (0, 0)
+
+    def slide_sheet(self, file, angles=0):
+        """The blank direction sheet for one picture -- `/api/slide-sheet`.
+
+        WHY A DOWNLOAD AND NOT JUST A SIZE.  "Upload a 4x4 grid of 32x88 cells"
+        is an instruction nobody can act on without a ruler; a picture with the
+        cells drawn, numbered, and carrying the game's own pose as a pale
+        stencil is the same instruction in a form that can be painted over.  The
+        cell size is the file's own pixel grid, so one drawn pixel becomes one
+        sprite pixel -- the whole reason a picture dropped straight onto a unit
+        comes back as grain (a 512 square is fitted into a 32x84 window).
+
+        WHICH TWIN.  The sheet is cut from the file the player SEES (`_x2` when
+        the UHD pack is installed), so its cells are that drawing's grid; the
+        repaint rescales each cell down for the smaller twin on the way in,
+        because the twins are separate drawings, not one scaled.
+        """
+        from aoe2mod.game import ddstex as D
+        from aoe2mod.game import filmstrip as F
+        from aoe2mod.game import sld as S
+        from aoe2mod.game import sprites as SP
+        from aoe2mod.intent import repaint as RP
+        tk = self.tk
+        tk._ensure()
+        name = str(file or "").strip()
+        if name.endswith(".sld"):
+            name = name[:-4]
+        if not name:
+            return {"ok": False, "error": "要给出是哪一张图"}
+        gdir = SP.graphics_dir(tk.game_root)
+        base = name[:-3] if name.endswith("_x1") or name.endswith("_x2") else name
+        big, small = base + "_x2", base + "_x1"
+        path = None
+        for cand in (big, small):
+            p = os.path.join(gdir, cand + ".sld")
+            if os.path.isfile(p):
+                path = p
+                name = cand
+                break
+        if path is None:
+            return {"ok": False, "error": "游戏目录里没有 %s.sld" % (base,)}
+        ac = int(angles or 0)
+        if ac <= 0:
+            # THE RECORDS NAME THE `_x1` FILE ONLY, so that is the name to ask
+            # about; `grid(<stem>)` answers an empty set and a one-cell sheet.
+            grid = tk._reskin_art().grid(base + "_x1")
+            ac = sorted(grid)[0][1] if grid else 1
+        ac = max(ac, 1)
+        try:
+            sld = S.read_sld(path)
+        except Exception as exc:                      # noqa: BLE001
+            return {"ok": False,
+                    "error": "这张图读不出来：%s" % (exc,)}
+        cw, ch = RP.sheet_size(sld)
+        w, h, rgba = RP.sheet_template(sld, ac)
+        png = D.encode_png(w, h, rgba)
+        # The same bytes also land in '<tool>/sheets', so 「文件在哪」 has an answer
+        # and 「打开文件夹」 has something to open.  The download is what the page
+        # uses; this copy is what the player can find again tomorrow.
+        saved = _save_sheet(png, "%s_sheet_%d.png" % (base, ac))
+        return {"ok": True, "png": png,
+                "file": name, "angles": ac,
+                "saved": saved, "dir": os.path.dirname(saved) if saved else "",
+                # The numbers travel as headers so the page can print them
+                # without decoding the PNG it just handed to the browser.
+                "headers": {"X-Sheet-Cols": RP.sheet_grid(ac)[0],
+                            "X-Sheet-Rows": RP.sheet_grid(ac)[1],
+                            "X-Sheet-Cell": "%dx%d" % (cw, ch),
+                            "X-Sheet-Angles": ac,
+                            # Where the copy went, so the page can say it
+                            # without a second request.
+                            "X-Sheet-Saved": bool(saved)},
+                "cache": "no-store"}
+
+    def _pose_sheet_size(self, base, angle, angles):
+        """(w, h) of the per-frame sheet for one direction, (0, 0) on failure.
+
+        Beside `_sheet_size` in the records for the same reason: the page
+        prints the canvas size instead of making the player download a blank
+        sheet to measure it, and the number comes from the same function the
+        download uses so the two cannot disagree.
+        """
+        from aoe2mod.game import sld as S
+        from aoe2mod.game import sprites as SP
+        from aoe2mod.intent import repaint as RP
+        gdir = SP.graphics_dir(self.tk.game_root)
+        for cand in (base[:-3] + "_x2" if base.endswith("_x1") else base,
+                     base):
+            path = os.path.join(gdir, cand + ".sld")
+            if os.path.isfile(path):
+                try:
+                    sld = S.read_sld(path)
+                    return RP.pose_template_size(sld, max(int(angle or 0), 0),
+                                                max(int(angles or 1), 1))
+                except Exception:                      # noqa: BLE001
+                    return (0, 0)
+        return (0, 0)
+
+    def slide_pose_sheet(self, file, angle=0, angles=0):
+        """The blank PER-FRAME sheet for one direction -- `/api/slide-pose-sheet`.
+
+        WHY A SECOND SHEET.  A direction sheet has one cell per direction: one
+        drawing stands for a whole angle, so a walk cycle painted on it walks
+        in place with one pose.  The player said what they wanted instead --
+        你就看这个走路，明显图片都是不一样的，你应该让用户每个都可以修改,
+        而不是一张图片替换全部 (2026-11-26) -- and that is this sheet: one cell
+        per FRAME of the chosen direction, at the file's own pixel grid, with
+        the game's own pose as a pale stencil.  A cell the player leaves at
+        the stencil keeps the game's pixels for that frame, untouched, byte
+        for byte.
+        """
+        from aoe2mod.game import ddstex as D
+        from aoe2mod.game import sld as S
+        from aoe2mod.game import sprites as SP
+        from aoe2mod.intent import repaint as RP
+        tk = self.tk
+        tk._ensure()
+        name = str(file or "").strip()
+        if name.endswith(".sld"):
+            name = name[:-4]
+        if not name:
+            return {"ok": False, "error": "要给出是哪一张图"}
+        gdir = SP.graphics_dir(tk.game_root)
+        base = name[:-3] if name.endswith("_x1") or name.endswith("_x2") else name
+        path = None
+        for cand in (base + "_x2", base + "_x1"):
+            p = os.path.join(gdir, cand + ".sld")
+            if os.path.isfile(p):
+                path = p
+                name = cand
+                break
+        if path is None:
+            return {"ok": False, "error": "游戏目录里没有 %s.sld" % (base,)}
+        ac = int(angles or 0)
+        if ac <= 0:
+            grid = tk._reskin_art().grid(base + "_x1")
+            ac = sorted(grid)[0][1] if grid else 1
+        ac = max(ac, 1)
+        a = max(int(angle or 0), 0)
+        try:
+            sld = S.read_sld(path)
+        except Exception as exc:                      # noqa: BLE001
+            return {"ok": False,
+                    "error": "这张图读不出来：%s" % (exc,)}
+        _cols, _rows, cw, ch, _gap, mine = RP.pose_layout(sld, a, ac)
+        w, h, rgba = RP.pose_template(sld, a, ac)
+        png = D.encode_png(w, h, rgba)
+        # Named with the direction, because the same picture has sixteen of them
+        # and the cells are a different size in each: two files that look alike
+        # and are not interchangeable.
+        saved = _save_sheet(png, "%s_pose_a%d.png" % (base, a + 1))
+        return {"ok": True, "png": png,
+                "file": name, "angles": ac, "angle": a,
+                "saved": saved, "dir": os.path.dirname(saved) if saved else "",
+                # The numbers travel as headers so the page can print them
+                # without decoding the PNG it just handed to the browser.
+                "headers": {"X-Pose-Cols": RP.pose_grid(len(mine))[0],
+                            "X-Pose-Rows": RP.pose_grid(len(mine))[1],
+                            "X-Pose-Cell": "%dx%d" % (cw, ch),
+                            "X-Pose-Count": len(mine),
+                            "X-Pose-Angle": a,
+                            "X-Pose-Angles": ac,
+                            "X-Pose-Saved": bool(saved)},
+                "cache": "no-store"}
+
+    def slide_set(self, unit, civ="", file="", data_b64=None, filename=None,
+                  dry=True, angles=0, sheet=False, pose=False, angle=0):
+        """Repaint one of a record's pictures with the player's own image.
+
+        WHY IN PLACE: an .sld cannot be built from scratch (every frame carries
+        an `unknown2` layer whose size is not a function of main's run list), so
+        the only honest write is repainting main's BC1 blocks in a byte-identical
+        copy -- length unchanged, every other layer untouched.  See
+        `aoe2mod/intent/repaint.py` for the proof boundary.
+
+        BOTH TWINS, ALWAYS: the engine derives the `_x2` name from `_x1`, and x2
+        is an independent drawing, not x1 scaled -- so shipping only x1 leaves
+        UHD players looking at the old picture.
+
+        ONE FILE, EVERY CIVILISATION: a loose `.sld` is not a per-civilization
+        record.  The 63 .dat copies all name graphic ids that resolve to these
+        same files, so a repaint reaches every one of them at once; the page says
+        so instead of pretending there is a per-civ choice here.
+        """
+        from aoe2mod.game import sld as S
+        from aoe2mod.game import sldencode as E
+        from aoe2mod.game import sprites as SP
+        from aoe2mod.intent import repaint as RP
+        tk = self.tk
+        tk._ensure()
+        name = str(file or "").strip()
+        if name.endswith(".sld"):
+            name = name[:-4]
+        if not name.endswith("_x1"):
+            return {"ok": False, "error": "要换的是 `…_x1` 这一张，收到的是 %r" % (name,)}
+        rec = self._unit_record(unit, civ)
+        if rec is None:
+            return {"ok": False,
+                    "error": "找不到第 %s 号单位在这份数据里的记录" % (unit,)}
+        idx = tk._reskin_art()
+        art = idx.art(rec) or {}
+        mine = set((art.get("tokens") or {}).values())
+        if name not in mine:
+            return {"ok": False,
+                    "error": "这张图不是这条记录在用的（它用的是：%s）"
+                             % ("、".join(sorted(mine)) or "一张都没有")}
+        cleanup, src_path = [], None
+        if data_b64:
+            import base64
+            import tempfile
+            try:
+                blob = base64.b64decode(
+                    str(data_b64).split(",")[-1], validate=False)
+            except Exception:
+                return {"ok": False, "error": "这张图传过来的内容读不出来"}
+            if len(blob) > 8 * 1024 * 1024:
+                return {"ok": False,
+                        "error": "这张图有 %d MB，太大了（上限 8 MB）"
+                                 % (len(blob) // (1024 * 1024),)}
+            # Same temp-file detour as `set_icon`: `picture.read` is stdlib-only
+            # (the packaged build ships no Pillow on purpose), so one decoder
+            # serves both the preview and the build.
+            ext = os.path.splitext(str(filename or ""))[1].lower() or ".png"
+            if ext not in (".png", ".bmp", ".dds", ".jpg", ".jpeg"):
+                ext = ".png"
+            fd, tmp = tempfile.mkstemp(suffix=ext, prefix="aoe2slide_")
+            with os.fdopen(fd, "wb") as fh:
+                fh.write(blob)
+            src_path = tmp
+            cleanup.append(tmp)
+        if not src_path:
+            return {"ok": False, "error": "没有给出要用的图片"}
+        # ONE STEP PER REPAINT, holding both twins.  A repaint changes no .dat
+        # byte, so it produced no history at all: the bar said 已改 2 项 (the
+        # two files the session held) while 撤回 answered 「没有可以撤回的改动了」.
+        # Reported 2026-11-25 as 「撤回和重做按钮没反应」.
+        step = []
+        try:
+            pic, PW, PH = RP.load_picture(src_path)
+            gdir = SP.graphics_dir(tk.game_root)
+            # ONE SHEET, BOTH TWINS.  `sheet` says the upload is a direction
+            # sheet rather than a single picture: 16 cells, one per direction,
+            # painted at the file's own pixel grid.  `angles` is how many cells
+            # to expect; 0 means read it off the records the same way the film
+            # strip does.  A sheet upload of a file that has one direction is
+            # still meaningful -- it is just the one cell.
+            want_angles = int(angles or 0)
+            if want_angles <= 0:
+                # Records name the `_x1` file only (see `slide_sheet`).
+                stem = (name[:-3] if name.endswith("_x1")
+                        or name.endswith("_x2") else name)
+                grid = idx.grid(stem + "_x1")
+                want_angles = sorted(grid)[0][1] if grid else 1
+            want_angles = max(want_angles, 1)
+            use_sheet = bool(sheet)
+            auto = not use_sheet
+            # ONE CELL PER FRAME, ONE DIRECTION.  `pose` is the other sheet
+            # contract: sixteen cells per direction here means thirty cells
+            # of thirty different drawings there.  Recognised the same way --
+            # by size against the template of the direction being painted --
+            # so a player who saves the sheet without touching its size cannot
+            # land in the wrong branch.
+            use_pose = bool(pose)
+            want_angle = max(int(angle or 0), 0)
+            # WHICH TWIN THE UPLOAD WAS PAINTED ON.  The page cuts the
+            # template from the file the player sees (`_x2` under the UHD
+            # pack: 92x96 cells) and the pair below is painted `_x1` first
+            # (48x52 cells).  Reporting the first file's grid told the
+            # player their 92x96 sheet was 48x52 -- see `sheet` on the
+            # reply, filled from the twin that actually matched.
+            matched = ""
+            out = []
+            if auto:
+                # A SHEET IS RECOGNISED BY ITS SIZE, AND THE TWINS DIFFER.
+                # The page cuts the template from the file the player sees
+                # (the _x2 twin under the UHD pack), so an upload that matches
+                # only the bigger twin is still a sheet for the smaller one --
+                # its cells are refitted.  Asked once, before the loop, so both
+                # twins are painted the same way.
+                for tail in ("_x2", "_x1"):
+                    ppath = os.path.join(gdir, name[:-3] + tail + ".sld")
+                    if not os.path.isfile(ppath):
+                        continue
+                    try:
+                        psld = S.read_sld(ppath)
+                    except Exception:
+                        continue
+                    # The per-frame sheet is tried FIRST: its template is a
+                    # different size from the direction sheet, but a file
+                    # with one direction has one cell in both, and there
+                    # the two sizes are identical -- whichever answers, the
+                    # painted result is the same single frame.
+                    if RP.looks_like_pose_sheet(psld, PW, PH,
+                                                want_angle, want_angles):
+                        use_pose = True
+                        use_sheet = False
+                        matched = tail
+                        break
+                    if RP.looks_like_sheet(psld, PW, PH, want_angles):
+                        use_sheet = True
+                        matched = tail
+                        break
+            for tail in ("_x1", "_x2"):
+                base = name[:-3] + tail
+                path = os.path.join(gdir, base + ".sld")
+                if not os.path.isfile(path):
+                    if tail == "_x2":
+                        continue
+                    return {"ok": False,
+                            "error": "游戏目录里没有 %s.sld" % base}
+                sld = S.read_sld(path)
+                blob2, rep = RP.paint_sld(sld, pic, PW, PH,
+                                          angles=want_angles,
+                                          sheet=use_sheet,
+                                          pose=use_pose,
+                                          angle=want_angle)
+                # THE FILE GETS LONGER AND THAT IS THE POINT.  A shipped frame
+                # stores only the cells its art reaches, so an in-place repaint
+                # left a hole wherever the old art was empty -- reported
+                # 2026-11-25 as 「图像是缺损的」.  The main layer is now written as
+                # full cells (longer file, still one record per frame).  So the
+                # guard is structural: same frames, same rects, every other
+                # layer byte-identical.
+                # A PER-FRAME PAINT LEAVES MOST FRAMES ALONE ON PURPOSE, so the
+                # verifier is told which frames were actually written: the
+                # others still carry the run-list flag they shipped with, and
+                # holding a copy to the dense rule would fail on a file nobody
+                # touched.  A DIRECTION SHEET IS THE SAME CASE since the cells
+                # left at the stencil mean "this direction is still the game's"
+                # (before that, every frame was written and the set was None).
+                touched = (set(rep.get("frames_touched") or ())
+                           if (use_pose or use_sheet) else None)
+                try:
+                    E.verify_repaint(sld, S.Sld(path, blob2),
+                                     touched=touched)
+                except ValueError as exc:
+                    return {"ok": False,
+                            "error": "重画后这张图的骨架变了：%s" % (exc,)}
+                key = _slide_rel(base)
+                if not dry:
+                    # The before side is whatever the session already held:
+                    # None on the first repaint of the session, which IS the
+                    # game own picture, so undo means drop the key.
+                    step.append({"slide": key,
+                                 "before": (self._slides or {}).get(key),
+                                 "after": blob2})
+                    self._slides[key] = blob2
+                out.append({"file": base, "bytes": len(blob2),
+                            "frames_painted": rep.get("frames_painted"),
+                            "frames": len(sld.frames),
+                            "sheet": rep.get("sheet")})
+        finally:
+            for path in cleanup:
+                try:
+                    os.unlink(path)
+                except OSError:
+                    pass
+        if step:
+            # NO `unit` HERE, ON PURPOSE.  `edStepRows` reads a step note to
+            # decide which rows left the list, and a note carrying a unit id
+            # would take that row off the editor list on an undo that only
+            # put a picture back.  The label alone is what the bar prints.
+            note = {"civ": None, "field": "slide", "op": "slide",
+                    "label": "换样子 " + name,
+                    "was": "游戏原来的图", "now": "你的图"}
+            for w in step:
+                w["note"] = dict(note)
+            self._hist_push(step)
+            self._live_bump()
+        hist = self.hist_state()
+        # THE GRID THE PLAYER PAINTED ON, not the first twin's.  The two
+        # twins are separate drawings at separate grids (`_x2` cells are
+        # exactly twice `_x1` cells), and a sheet upload names one of them
+        # by its size.  `files` keeps both because both were rewritten.
+        sheet_geo = None
+        if use_sheet or use_pose:
+            for row in out:
+                if matched and row["file"].endswith(matched):
+                    sheet_geo = row.get("sheet")
+                    break
+            if sheet_geo is None and out:
+                sheet_geo = out[-1].get("sheet")
+        return {"ok": True, "dry": bool(dry), "picture": [PW, PH],
+                "files": out, "file": name, "sheet": sheet_geo,
+                "stored": 0 if dry else len(out),
+                "undo": hist["undo"], "redo": hist["redo"],
+                # Same sum `/api/session-info` reports, so the bar can move
+                # on the reply instead of one more round trip.
+                "pending": (len(self.pending_edits())
+                            + len(self._icon_items or [])
+                            + len(self._panel_files or {})
+                            + len(self._slides or {}))}
+
     def sprite(self, unit, donor, civs=None, whole_family=False, fill=False,
                mode="rename", dry=True, title=None, install=False):
         """Swap one unit's animation for another's -- `/api/sprite`.
@@ -3927,6 +4539,32 @@ class App(object):
         self._hist_record(off, before, packed, note, hold)
         self._after_write(off, packed, note)
 
+    def _drop_unit_decode(self, uid):
+        """Throw away every cached decode of one unit id, in every civilization.
+
+        WHY ONE HELPER: a blanket write (`civ="*"`) touches 63 records of the
+        same id, and each of those records caches its OWN decoded field map.
+        Dropping only the reference civilization's copy leaves the other 62
+        advertising the pre-write numbers -- and the pane reads whichever copy
+        the reference civilization has, so the player keeps seeing the old value
+        after a successful write.  Measured 2026-11-24 on the new 模型 page:
+        set 站姿图形 1102 -> 1100 reported success, the pane still said 1102.
+
+        The cross-civ histogram is a picture of the same bytes and goes with
+        them: `_civ_spread` is keyed by value, so a stale histogram claims all
+        63 copies agree on a number none of them store.
+        """
+        uid = int(uid)
+        tk = self.tk
+        idx = getattr(tk, "_field_index", None)
+        if idx:
+            for (_ci, u), r in idx.items():
+                if u == uid:
+                    r.pop("fields", None)
+        sp = getattr(tk, "_civ_spread", None)
+        if sp:
+            sp.pop(uid, None)
+
     def _after_write(self, off, packed, note):
         """Put a written value into the caches, or drop what cannot be patched.
 
@@ -3943,20 +4581,20 @@ class App(object):
         # rescan on the very NEXT edit; measured 2026-10-30, six edits paid
         # ~23 s each almost entirely for this one line.
         note = note or {}
-        idx = getattr(self.tk, "_field_index", None)
-        if idx is not None and note.get("unit") is not None:
-            civ_idx = None
-            try:
-                civ_idx = self.tk._civ_index(str(note.get("civ") or "").strip()) if str(
-                    note.get("civ") or "").strip() else (1 if len(self.tk._civs) > 1 else 0)
-            except Exception:                          # noqa: BLE001
-                civ_idx = None
-            rec = idx.get((civ_idx, int(note["unit"]))) if civ_idx is not None else None
-            if rec is not None:
-                # The index no longer caches decoded fields (12.3 GB, see
-                # `_unit_index`); drop this record's on-demand decode so the
-                # next `unit_fields()` reads the edited bytes.
-                rec.pop("fields", None)
+        if note.get("unit") is not None:
+            # EVERY COPY, NOT JUST ONE.  This used to work out `note["civ"]` and
+            # drop that single civilization's decode.  A blanket note says `*`,
+            # `_civ_index("*")` raises, the except swallowed it, and NOTHING was
+            # dropped -- so undoing a write that touched 63 records left 63 stale
+            # decodes and the pane kept showing the undone number.  Measured
+            # 2026-11-24 on the 模型 page: 站姿图形 1102 -> 1100 -> 撤回 said
+            # 已改 0 项 while the slot still read 1100.
+            #
+            # Dropping all of them costs nothing worth counting: the decodes are
+            # on demand (0.03 ms each) and only the copies that get read again are
+            # rebuilt.  What the comment below is warning about is dropping the
+            # INDEX, which is the 8-20 s rescan; that is not what this does.
+            self._drop_unit_decode(note["unit"])
         # Technologies cache their decode the same way, under their own index.
         # `note["tech"]` is present only for `set_tech_field`, so a unit edit
         # never invalidates the tech panel and vice versa.
@@ -4152,6 +4790,13 @@ class App(object):
                 note = w.get("note")
                 if not note:
                     continue
+                # A REPAINT IS HISTORY BUT NOT AN EDIT.  It changes no .dat
+                # byte, so it must not become a `unit.field` row: the mod
+                # description would claim a field named "slide" and a rebuild
+                # replay would try to write it back into the .dat.  The
+                # session reports the picture through `slides` instead.
+                if note.get("op") == "slide":
+                    continue
                 # `op` keeps a record add/remove out of the field-write rows:
                 # they share (civ, unit) with the field edits of the same record
                 # and merging them made 「复制单位 83」 vanish behind a row that
@@ -4300,8 +4945,22 @@ class App(object):
             if w.get("panel"):
                 self._panel_files = dict(w["panel"][side] or {})
                 break
+        # THE PICTURE HALF OF THE STEP, same shape as the menu half above: a
+        # repainted `.sld` lives in `self._slides`, not in the .dat buffer, so
+        # its two sides are whole blobs to swap rather than byte pairs to
+        # splice.  `before` is None on the first repaint of the session -- the
+        # game own picture -- and putting that back means DROPPING the key, or
+        # the mod would keep shipping the picture the player just took back.
+        for w in writes:
+            if "slide" in w:
+                if w[side] is None:
+                    (self._slides or {}).pop(w["slide"], None)
+                else:
+                    self._slides[w["slide"]] = w[side]
         order = list(writes) if side == "after" else list(reversed(writes))
         for w in order:
+            if "slide" in w:
+                continue
             packed = w[side]
             cut = len(w["after"] if side == "before" else w["before"])
             buf[w["off"]:w["off"] + cut] = packed
@@ -5304,6 +5963,9 @@ class App(object):
         self._icon_slots = {}
         self._icon_owner = {}
         self._icon_items = []
+        # 放弃 throws the repainted sprites away as well: they only existed to
+        # make this session's mod folder, and there is no mod folder now.
+        self._slides = {}
         # 放弃 means the menu edits did not happen either: the .dat half is being
         # thrown away, so a row that only exists to make its button visible would
         # be a button pointing at nothing.
@@ -5412,7 +6074,11 @@ class App(object):
         pictures = len([k for k in (self._icons or {})
                         if k.lower().endswith((".dds", ".png", ".bmp"))])
         panels = len(self._panel_files or {})
-        if not edits and not pictures and not panels:
+        # A REPAINTED SPRITE IS THE SAME KIND OF WORK: it changes no .dat byte,
+        # so it produces no pending edit either -- the guard below would answer
+        # "还没有任何改动" to a session whose whole point was a new picture.
+        slides = len(self._slides or {})
+        if not edits and not pictures and not panels and not slides:
             return {"ok": False, "error": "还没有任何改动，不用保存"}
         import os as _os
         import hashlib
@@ -5442,7 +6108,27 @@ class App(object):
             labels = [str((it or {}).get('label') or '')
                       for it in (self._icon_items or [])]
             labels = [x for x in labels if x]
-            name = "图标 %s" % ("、".join(labels[:3]) or "新图")
+            if not labels and slides:
+                # A repaint-only session: name it after the pictures it
+                # replaced, which is what the player looks for in the mod list.
+                # "resources/.../u_inf_militia_idleA_x1.sld" is a path, not a
+                # name, so the file's stem is what gets printed.
+                labels = [os.path.basename(k)[:-4]
+                          for k in sorted(self._slides or {})]
+            # 「图标」 would be a lie for a repainted sprite: nothing here is an
+            # icon, the file the game draws IS the picture. Measured 2026-11-24:
+            # a slide-only save came out titled "图标 u_inf_militia_idleA_x1".
+            #
+            # ONE picture plus a count, not a 、-joined list: the mod folder is
+            # named after this title, and _safe_dir keeps only alphanumerics and
+            # "-_ ()（）[]【】·", so the separator vanished and two file names ran
+            # together as "...idleA_x1u_inf_militia_idleA_x2". Measured right here.
+            if slides and not pictures:
+                name = "换样子 %s" % (labels[0] if labels else "新图")
+                if len(labels) > 1:
+                    name += " 等 %d 张" % len(labels)
+            else:
+                name = "图标 %s" % ("、".join(labels[:3]) or "新图")
         desc = "；".join("%s %s：%s → %s" % (
             e.get("label", e.get("field")), _subject_of(e), e.get("was"),
             e.get("now"))
@@ -5451,7 +6137,11 @@ class App(object):
             desc = "换图标：" + "、".join(
                 "槽 %s" % (it.get("slot"),)
                 for it in (self._icon_items or [])[:6])
-        info = E.make_info(name, author="aoe2mod", description=desc)
+        if slides and not desc:
+            desc = "换样子：" + "、".join(
+                os.path.basename(k)[:-4]
+                for k in sorted(self._slides or {})[:6])
+        info = E.make_info(name, author=AV.AUTHOR, description=desc)
         mod_dir = _os.path.join(_out_root(), _safe_dir(info["Title"]))
         # The string table rides along: a rename that only changed the .dat
         # would point LanguageDLLName at an id no table defines, and the game
@@ -5464,6 +6154,11 @@ class App(object):
         # (17 locale tables plus the two merged icon tables and one texture).
         _extra = dict(string_files or {})
         _extra.update(self._icons or {})
+        # THE REPAINTED SPRITES.  A loose .sld in the mod folder replaces the
+        # game's copy of that picture, and it goes in the same map for the same
+        # reason the strings do: the emitter writes one map, so two calls would
+        # mean one layer silently winning.
+        _extra.update(self._slides or {})
         # AND THE MENU.  A `card_put` that only spliced the .dat would give the
         # building a train entry the build panel never draws, because the panel
         # list is a pre-baked artifact of the generator, not something the engine
@@ -5574,6 +6269,11 @@ class App(object):
                "ui_files": man.get("ui_files"),
                "warnings": man.get("warnings") or [],
                "notes": man.get("notes") or [],
+                # A repainted sprite is neither an edit nor an icon: it writes a
+                # .sld and no .dat byte, so `applied` is 0 and `pictures` is 0
+                # too.  Without this the toast for a slide-only save read
+                # "已保存：0 项改动", which sounds like nothing happened.
+                "slides": slides,
                "pictures": pictures,
                "panels": panels,
                "edits": [{"unit": e.get("unit"), "tech": e.get("tech"),
@@ -5651,13 +6351,19 @@ class App(object):
         pics = [{"slot": it.get("slot"), "label": it.get("label"),
                  "kind": it.get("kind")}
                 for it in (self._icon_items or [])]
+        # A repainted sprite is pending work too, and for the same reason the
+        # icons are: no .dat byte moved, so the close guard would let it go.
+        slides = [{"file": os.path.basename(k)[:-4]}
+                  for k in sorted(self._slides or {})]
         return {"ok": True, "dirty": self.session_dirty,
                 "bytes": len(self._sess),
                 "pending": len(self.pending_edits()) + len(pics)
-                + len(self._panel_files or {}),
+                + len(self._panel_files or {}) + len(slides),
                 "edits_pending": len(self.pending_edits()),
                 "pictures": pics,
                 "picture_count": len(pics),
+                "slides": slides,
+                "slide_count": len(slides),
                 # Which mod 保存 will write into.  Empty until the first save.
                 # The page puts this in the name box so the player can see that
                 # saving again updates that mod instead of making another one.
@@ -6352,14 +7058,7 @@ class App(object):
         # `_session_edit` only drops the decode cache for the civ it was told
         # about; a blanket write staled all of them, so clear the lot -- including
         # the cross-civ histogram, which is now a picture of the old file.
-        idx = getattr(tk, "_field_index", None)
-        if idx:
-            for (ci, u), r in idx.items():
-                if u == int(unit):
-                    r.pop("fields", None)
-        sp = getattr(tk, "_civ_spread", None)
-        if sp:
-            sp.pop(int(unit), None)
+        self._drop_unit_decode(int(unit))
         self._stamp_write(out)
         out["hint"] = "已记在内存里，改完点「保存成 mod」一次写盘"
         if soft_note:
@@ -8579,7 +9278,7 @@ class App(object):
         # and `_probe/test_bytes_match_reference.py` both broke that way the
         # moment the shipped exe started running this engine.  The page sends
         # "dsh" itself, so this only ever decides for callers that say nothing.
-        author = author or "aoe2mod"
+        author = author or AV.AUTHOR
         if title_auto and title:
             title = E.fit_auto_title(title)
         if out_dir:
@@ -8803,6 +9502,26 @@ class App(object):
 
     def mods(self):
         return {"ok": True, "mods": _mods_brief(self.tk)}
+
+    def dataset_audit(self, profile_root=None):
+        """Which .dat the engine will open next launch, and which record says so.
+
+        Forwarded as-is; the work lives in `Toolkit.dataset_audit` because it
+        parses `mod-status.json` and the two compressed profile files.  This
+        wrapper was missing when the route landed, so `/api/dataset` answered
+        `AttributeError: 'App' object has no attribute 'dataset_audit'` and the
+        「游戏会读哪一份数据」 panel showed an error on a healthy profile.
+        """
+        return self.tk.dataset_audit(profile_root=profile_root)
+
+    def set_dataset_pick(self, name, profile_root=None):
+        """Point the game's dataset record at `name`, and report the new audit.
+
+        Refused while the game runs -- the engine flushes its own copy of
+        `Player.nfp` at exit, so a write into a live session is lost and reads
+        as a failed button.  The refusal text is the Toolkit's.
+        """
+        return self.tk.set_dataset_pick(name, profile_root=profile_root)
 
     def oplog(self, limit=60):
         r"""The last few operations, plus where the folder is.
@@ -9078,6 +9797,121 @@ class App(object):
             # Same reasoning as `open_log_folder` above.
             opened = False
         return {"ok": True, "dir": d, "opened": opened}
+
+    def open_sheets_folder(self):
+        """Open 'sheets/' in Explorer, creating it first.
+
+        The third of these, and the one the player asked for by name
+        (2026-11-26 「你总得给我个打开文件夹的选项吧」): the blank sheets used to
+        exist only as bytes inside a download, so there was nothing to open and
+        nothing to point at.  One folder this process owns, no path from the
+        page -- the same reasoning as `open_log_folder` above, including
+        "answer ok=True even if the file manager refuses": the folder exists
+        and the page prints its path, so the player can still walk there.
+        """
+        try:
+            d = _sheets_dir()
+        except Exception as exc:                       # noqa: BLE001
+            return {"ok": False, "error": "建不了空表文件夹：%s" % (exc,)}
+        opened = False
+        try:
+            if hasattr(os, "startfile"):
+                os.startfile(d)                        # noqa: S606 - our own folder
+                opened = True
+            else:
+                opened = bool(webbrowser.open("file://" + d))
+        except Exception:                              # noqa: BLE001
+            opened = False
+        return {"ok": True, "dir": d, "opened": opened}
+
+    def sheets_info(self):
+        """Where the blank sheets are and what is in there -- `/api/sheets-info`.
+
+        Read-only and keyless: the records card prints the folder path under the
+        two 领空表 buttons so the player knows where the file went BEFORE
+        pressing anything, and the count tells them whether an earlier sheet is
+        already sitting there.  Newest first, because the one they just took is
+        the one they are looking for.
+
+        Carries three things the buttons need and cannot guess: the `default`
+        folder (so 改回默认 can name what it goes back to), the `custom` folder
+        they picked ("" if they never did), and whether a dialog is `picking`
+        right now -- the page polls this route while the window is up, because a
+        modal dialog on the server answers nothing until it closes.
+        """
+        try:
+            d = _sheets_dir()
+        except Exception as exc:                       # noqa: BLE001
+            return {"ok": False, "error": "建不了空表文件夹：%s" % (exc,)}
+        rows = []
+        try:
+            for fn in os.listdir(d):
+                if not fn.lower().endswith(".png"):
+                    continue
+                full = os.path.join(d, fn)
+                try:
+                    st = os.stat(full)
+                except Exception:                      # noqa: BLE001
+                    continue
+                rows.append({"name": fn, "bytes": int(st.st_size),
+                             "when": int(st.st_mtime)})
+        except Exception:                              # noqa: BLE001
+            rows = []
+        rows.sort(key=lambda r: r["when"], reverse=True)
+        return {"ok": True, "dir": d, "count": len(rows), "files": rows[:40],
+                "default": _sheets_default(), "custom": _sheets_custom(),
+                "picking": bool(_SHEETS_PICK.get("busy")),
+                "pick_error": _SHEETS_PICK.get("error") or ""}
+
+    def sheets_pick(self, start=""):
+        """Ask Windows which folder the blank sheets should go to -- POST.
+
+        Answers at once and does the asking on a thread: the dialog is modal and
+        can stay up for minutes, while this reply has to reach the page now so
+        it can start polling `sheets_info` for the answer.  Picking one folder
+        twice at once is refused rather than queued -- the second dialog would
+        open under the first and the player would argue with an invisible one.
+        """
+        with _SHEETS_PICK_LOCK:
+            if _SHEETS_PICK.get("busy"):
+                return {"ok": True, "picking": True, "dir": _sheets_dir(),
+                        "note": "文件夹对话框已经开着了"}
+            _SHEETS_PICK["busy"] = True
+            _SHEETS_PICK["error"] = ""
+        begin = str(start or "").strip() or _sheets_dir()
+        threading.Thread(target=_sheets_pick_work, args=(begin,),
+                         name="sheets-pick", daemon=True).start()
+        return {"ok": True, "picking": True, "dir": _sheets_dir()}
+
+    def sheets_set_dir(self, dir_path=""):
+        """Use `dir_path` for the blank sheets, or "" for the default -- POST.
+
+        The typed-out sibling of `sheets_pick`: a player whose folder is on a
+        network share may prefer to paste the path than to walk to it, and a
+        page that only offers a dialog leaves them nowhere.  The folder is
+        created here rather than at the next download, so a mistyped path is
+        refused in the same breath as the answer instead of silently costing
+        them a sheet.
+        """
+        want = str(dir_path or "").strip()
+        if want:
+            want = os.path.abspath(os.path.expanduser(want))
+            try:
+                os.makedirs(want, exist_ok=True)
+            except Exception as exc:                   # noqa: BLE001
+                return {"ok": False, "error": "这个文件夹建不了：%s" % (exc,)}
+            if not os.path.isdir(want):
+                return {"ok": False, "error": "这个路径不是文件夹：%s" % (want,)}
+            # Picking the folder we already use by default is not a choice;
+            # storing it would leave 改回默认 lit up with nowhere to go and the
+            # page claiming 「你自己选的」 about a folder the player did not pick.
+            if _same_dir(want, _sheets_default()):
+                want = ""
+        try:
+            _sheets_set(want)
+        except Exception as exc:                       # noqa: BLE001
+            return {"ok": False, "error": "存不下来这个选择：%s" % (exc,)}
+        return {"ok": True, "dir": _sheets_dir(), "custom": want}
     # ---- carrying a mod's edits onto a NEW official build ----------------
     #
     # `repair_*` answers with the intent vocabulary, which cannot express an
@@ -9109,7 +9943,7 @@ class App(object):
 
     def upgrade_apply(self, name=None, mod_dat=None, out_dir=None, title=None,
                       base_dat=None, new_dat=None, install=True,
-                      profile_root=None, official_wins=False, force=False):
+                      profile_root=None, official_wins=True, force=False):
         """Carry one mod's edits onto today's official build and reinstall it.
 
         Cost: one analysis plus one rewrite, measured 22 s cold on this machine
@@ -9168,7 +10002,7 @@ class App(object):
                                       out_dir=out_dir)
         else:
             built = self.build(others, title=title,
-                               author=entry.get("author") or "dsh",
+                               author=entry.get("author") or AV.AUTHOR,
                                description=entry.get("description") or "",
                                out_dir=out_dir)
             if not built.get("ok"):
@@ -9332,7 +10166,7 @@ class App(object):
                      refused):
         """Write the replayed stream as one installable data mod."""
         tk = self.tk
-        info = E.make_info(title or "rebuild", author=author or "dsh",
+        info = E.make_info(title or "rebuild", author=author or AV.AUTHOR,
                            description=description or "")
         man = E.emit_data_mod(out_dir, buf, info, base_dir=tk.game_root,
                               overwrite=True)
@@ -9369,7 +10203,7 @@ class App(object):
         append moves every byte after it: offsets resolved before the append
         would point at the wrong field afterwards.
         """
-        built = self.build(others, title=title, author=author or "dsh",
+        built = self.build(others, title=title, author=author or AV.AUTHOR,
                            description=description or "", out_dir=out_dir)
         if not built.get("ok"):
             return built
@@ -9746,6 +10580,171 @@ def _tool_root():
     return root
 
 
+#: What the player's own choice of folder is remembered in.
+#: A preference of one player on one machine, so it lives in the app's state
+#: folder (provenance.state_dir) beside the archives index -- not in the build,
+#: which ships the same to everyone.
+SHEETS_PREF = "sheets.json"
+
+
+def _sheets_default():
+    """<tool>/sheets -- where the blank sheets go when nobody chose a folder."""
+    return os.path.join(_tool_root(), "sheets")
+
+
+def _sheets_pref_path():
+    from aoe2mod.mod import provenance as PV
+    return os.path.join(PV.state_dir(), SHEETS_PREF)
+
+
+def _sheets_custom():
+    """The folder the player picked, or "" when they never picked one.
+
+    A stored path that no longer exists still counts as picked: an unplugged
+    drive IS their folder, and quietly going back to the default would save the
+    next sheet somewhere they are not looking.  `_sheets_dir` tries to create
+    it and falls back only when it cannot.
+    """
+    try:
+        with open(_sheets_pref_path(), "r", encoding="utf-8") as fh:
+            doc = json.load(fh)
+    except Exception:                                  # noqa: BLE001
+        return ""
+    d = doc.get("dir") if isinstance(doc, dict) else ""
+    return str(d or "").strip()
+
+
+def _same_dir(a, b):
+    """Whether two folder paths name the same place, near enough to matter.
+
+    Windows says D:\\Sheets, d:\\sheets\\ and D:/Sheets are one folder, so a
+    string compare would record a "choice" the player never made and leave the
+    改回默认 button lit for a folder that IS the default.
+    """
+    try:
+        one = os.path.normcase(os.path.normpath(os.path.abspath(a)))
+        two = os.path.normcase(os.path.normpath(os.path.abspath(b)))
+    except Exception:                                  # noqa: BLE001
+        return False
+    return one == two
+
+
+def _sheets_set(dir_path):
+    """Remember `dir_path`; "" means back to the default.  Raises on failure."""
+    target = _sheets_pref_path()
+    os.makedirs(os.path.dirname(target), exist_ok=True)
+    doc = {"dir": str(dir_path or "").strip()}
+    with open(target, "w", encoding="utf-8") as fh:
+        fh.write(json.dumps(doc, ensure_ascii=False, indent=2))
+
+
+#: How many same-named copies of a blank sheet the folder keeps before it gives
+#: up and overwrites the oldest attempt.  A player who downloads the same blank
+#: sheet twice gets ONE file (the bytes are identical); only a name that already
+#: holds something else -- a sheet they painted and re-downloaded, a different
+#: twin's grid -- earns a numbered sibling.
+SHEET_COPIES = 12
+
+#: Is a folder dialog on screen, and what did the last one say.  Shared by the
+#: thread that shows the window and the route the page polls, which are two
+#: different requests -- hence the lock rather than a local variable.
+_SHEETS_PICK = {"busy": False, "error": ""}
+_SHEETS_PICK_LOCK = threading.Lock()
+
+
+def _sheets_pick_work(start):
+    """Show the folder dialog, remember the answer, clear the busy flag.
+
+    Runs on its own thread from `sheets_pick`. The dialog is modal: whatever
+    calls it stops until the player clicks 确定 or 取消, and that must not be the
+    HTTP handler.  A cancelled dialog is not an error -- silence means "nothing
+    picked", and the folder in use stays what it was.
+    """
+    from aoe2mod.ui import folderpick as FP
+    got = ""
+    err = ""
+    try:
+        got = FP.pick_folder(start)
+        if not got:
+            err = FP.last_error() or ""
+    except Exception as exc:                           # noqa: BLE001
+        err = str(exc)
+    try:
+        if got:
+            _sheets_set(got)
+    except Exception as exc:                           # noqa: BLE001
+        err = "存不下来这个选择：%s" % (exc,)
+    with _SHEETS_PICK_LOCK:
+        _SHEETS_PICK["busy"] = False
+        _SHEETS_PICK["error"] = err
+
+
+def _sheets_dir():
+    """The folder the blank sheets land in, created on first use.
+
+    Reported 2026-11-26 「那我这两个选项的文件在哪，你总得给我个打开文件夹的
+    选项吧」: both buttons handed the bytes to the browser, so the only answer to
+    "where is it" was "wherever your browser puts downloads" -- a place this
+    process cannot open, list, or even name.  Writing the same bytes here as
+    well costs one file and turns that question into a button.
+
+    Asked the same day 「或者你让这个功能存的图片，让用户选择存放位置」: <tool>/
+    sheets is only a good answer if it is where they keep things, so a folder
+    they picked wins over it.  The default stays the fallback for a picked
+    folder that cannot be created (drive unplugged, path deleted): one dead
+    path must not take all four buttons down with it.
+
+    Beside 'log/' and 'dat_archive/', and derived the same way (_tool_root),
+    because it is the same kind of thing: something the player opens in Explorer
+    and this process owns.  Never inside 'app/' -- see _tool_root for the
+    1.7 GB afternoon that rule comes from.
+    """
+    default = _sheets_default()
+    d = _sheets_custom() or default
+    try:
+        os.makedirs(d, exist_ok=True)
+        return d
+    except Exception:                                  # noqa: BLE001
+        if d == default:
+            raise
+        os.makedirs(default, exist_ok=True)
+        return default
+
+
+def _save_sheet(png, name):
+    """Put one blank sheet in 'sheets/' and answer its path, or "" on failure.
+
+    Identical bytes on disk means this sheet was already handed out, so the file
+    is left alone and its path returned: pressing the button twice must not fill
+    the folder with twins.  Different bytes under a name that exists means the
+    player painted that copy, and overwriting it would throw their drawing away
+    for a blank one -- so the new sheet becomes 'name (2).png' and theirs stays.
+
+    Failures are swallowed into "": the download had already gone out by the
+    time this runs, and a folder that cannot be written must not turn a sheet the
+    player has in hand into an error.
+    """
+    try:
+        d = _sheets_dir()
+        path = os.path.join(d, name)
+        if os.path.isfile(path):
+            with open(path, "rb") as fh:
+                if fh.read() == png:
+                    return path
+            stem, ext = os.path.splitext(name)
+            n = 2
+            while n <= SHEET_COPIES and os.path.isfile(path):
+                path = os.path.join(d, "%s (%d)%s" % (stem, n, ext))
+                n += 1
+        tmp = path + ".tmp"
+        with open(tmp, "wb") as fh:
+            fh.write(png)
+        os.replace(tmp, path)
+        return path
+    except Exception:                                  # noqa: BLE001
+        return ""
+
+
 def _op_detail(route, payload, result):
     """What the log should remember about one operation.
 
@@ -9767,6 +10766,18 @@ def _op_detail(route, payload, result):
                 continue
             detail.setdefault(k, v)
     return detail
+
+
+def _slide_rel(base):
+    """Where a repainted `.sld` sits inside the mod folder.
+
+    One place, because three callers have to agree on it: the session stores
+    bytes under this key, `save_session` hands the map to the emitter, and the
+    pending-preview route looks the file up by the same string.  A second
+    spelling would silently make a saved repaint unfindable.
+    """
+    return "/".join(("resources", "_common", "drs", "graphics",
+                     str(base) + ".sld"))
 
 
 def _out_root():
@@ -10051,6 +11062,12 @@ def make_handler(app):
                     _query(self.path).get("intent", [None])[0]))
             if path == "/api/mods":
                 return self._guard(lambda: app.mods())
+            if path == "/api/dataset":
+                # Dry read: parses mod-status.json and the two compressed profile
+                # files to say which .dat the NEXT launch will open.  Kept next to
+                # /api/mods because the mods screen is where a player looks after
+                # pressing "更新" and seeing nothing change.
+                return self._guard(lambda: app.dataset_audit())
             if path == "/api/mod-thumb":
                 # Image, not JSON -- a 1280x720 JPEG is up to 158 KB and
                 # base64-ing seventeen of them into the list route is 1.6 MB of
@@ -10140,6 +11157,12 @@ def make_handler(app):
                     q.get("pairs", [""])[0],
                     max_side=int((q.get("size", ["34"])[0] or 34)),
                     mode=q.get("mode", [""])[0]))
+            if path == "/api/lian":
+                # The alliance tables ("文联"): every school book already
+                # flattened to JSON by _probe/build_lian_json.py.  Static data
+                # that ships with the install, so there is nothing to parse
+                # from the query string and no mode: one file, one answer.
+                return self._guard(lambda: app.lian())
             if path == "/api/age-icon":
                 # The four age medallions, straight PNG off the install.
                 q = _query(self.path)
@@ -10275,6 +11298,44 @@ def make_handler(app):
                 return self._guard_icon(lambda: app.art(
                     q.get("civ", [""])[0],
                     mode=q.get("mode", [""])[0]))
+            if path == "/api/art-records":
+                # The pictures this record is DRAWN FROM, with the numbers the
+                # .dat would have to name.  JSON, because a unit has 1 to 9.
+                q = _query(self.path)
+                return self._guard(lambda: app.art_records(
+                    q.get("unit", q.get("id", ["0"]))[0],
+                    civ=q.get("civ", [""])[0]))
+            if path == "/api/slide-film":
+                # Image, not JSON -- see slide_film's docstring.  `pending=1`
+                # draws the bytes this session has not saved yet.
+                q = _query(self.path)
+                return self._guard_icon(lambda: app.slide_film(
+                    q.get("file", [""])[0],
+                    frame=q.get("frame", [0])[0],
+                    count=q.get("count", [1])[0],
+                    angle=q.get("angle", [0])[0],
+                    angles=q.get("angles", [0])[0],
+                    pending=bool(int(q.get("pending", ["0"])[0] or 0))))
+            if path == "/api/slide-sheet":
+                # The blank direction sheet as a PNG download.  A GET, because
+                # the page hands the player a link and a download is what a
+                # link does; the cell size and the grid come back as headers.
+                # A POST route would answer 404 here, which is what a first
+                # attempt did -- the page is the caller, and it navigates.
+                q = _query(self.path)
+                return self._guard_icon(lambda: app.slide_sheet(
+                    q.get("file", [""])[0],
+                    angles=q.get("angles", [0])[0]))
+            if path == "/api/slide-pose-sheet":
+                # The blank PER-FRAME sheet of one direction: one cell per
+                # frame of that direction, at the file's own pixel grid.  A
+                # GET for the same reason as the direction sheet -- the page
+                # hands the player a link and a download is what a link does.
+                q = _query(self.path)
+                return self._guard_icon(lambda: app.slide_pose_sheet(
+                    q.get("file", [""])[0],
+                    angle=q.get("angle", [0])[0],
+                    angles=q.get("angles", [0])[0]))
             if path == "/api/update-check":
                 return self._guard(app.update_check)
             if path == "/api/version-check":
@@ -10373,6 +11434,12 @@ def make_handler(app):
                 q = _query(self.path)
                 return self._guard(lambda: app.archive_info(
                     game_root=(q.get("game_root", [None])[0] or None)))
+            if path == "/api/sheets-info":
+                # Where the two 领空表 downloads land, and what is already there.
+                # Read-only: one os.listdir of one folder this process owns.
+                # Asked on a page load so the records card can print the path
+                # instead of making the player press 打开文件夹 to find out.
+                return self._guard(app.sheets_info)
             if path == "/api/instances":
                 # WHO ELSE IS OPEN.  Two workshops are two processes on two
                 # ports, so a drag has to be told where it could land; the
@@ -10738,6 +11805,21 @@ def make_handler(app):
                     slot=payload.get("slot"),
                     dry=bool(payload.get("dry", True)),
                     inplace=_ip))
+            if path == "/api/slide-set":
+                # One repaint is x1 AND x2, roughly 1.5-2 s of BC1 block
+                # encoding, so the page shows a busy state instead of a silent
+                # freeze; `dry` reports the plan without storing anything.
+                return self._guard(lambda: app.slide_set(
+                    unit=payload.get("unit", payload.get("id")),
+                    civ=payload.get("civ") or "",
+                    file=payload.get("file"),
+                    data_b64=payload.get("data_b64"),
+                    filename=payload.get("filename"),
+                    dry=bool(payload.get("dry", True)),
+                    angles=payload.get("angles") or 0,
+                    sheet=bool(payload.get("sheet", False)),
+                    pose=bool(payload.get("pose", False)),
+                    angle=payload.get("angle") or 0))
             if path == "/api/record-rename":
                 # The door the field editor has been pointing at since the day
                 # it made `Name` read-only: 「要改请用「重命名」」.
@@ -10796,6 +11878,13 @@ def make_handler(app):
                     title=payload.get("title"),
                     author=payload.get("author"),
                     description=payload.get("description")))
+            if path == "/api/dataset-pick":
+                # Make the engine read this mod's .dat on the next launch, by
+                # rewriting the dataset record in profile/Player.nfp -- the same
+                # record the create-game dropdown writes.  Refused while the game
+                # runs: it flushes its own copy at exit.
+                return self._guard(lambda: app.set_dataset_pick(
+                    payload["name"], profile_root=payload.get("profile_root")))
             if path == "/api/mod-move-to":
                 return self._guard(lambda: app.move_mod_to(
                     payload["name"], payload["position"],
@@ -10871,6 +11960,27 @@ def make_handler(app):
                 # Same shape as `/api/log-open` and for the same reason: one
                 # folder this process owns, no path from the page.
                 return self._guard(lambda: app.open_archive_folder())
+            if path == "/api/sheets-open":
+                # The blank sheets the two 领空表 buttons hand out.  Reported
+                # 2026-11-26 「这两个选项的文件在哪」: they went straight into the
+                # browser's download folder, which this process can neither
+                # name nor open.  Now they are also written to a folder of
+                # this process's own and this is the button that walks there.
+                return self._guard(lambda: app.open_sheets_folder())
+            if path == "/api/sheets-pick":
+                # 「或者你让这个功能存的图片，让用户选择存放位置」.  The browser
+                # cannot name a folder, so Windows asks: a modal dialog on a
+                # thread, and this reply says only "a window is up, poll for
+                # the answer".
+                return self._guard(lambda: app.sheets_pick(
+                    start=str(payload.get("start") or "")))
+            if path == "/api/sheets-dir":
+                # The typed-out sibling of the dialog: paste a path, or send
+                # "" to go back to the default folder.  Validated here, so the
+                # page learns about a bad path before the next download lands
+                # nowhere.
+                return self._guard(lambda: app.sheets_set_dir(
+                    dir_path=payload.get("dir") or ""))
             if path == "/api/dat-set":
                 # Switching the file under the whole session: the toolkit is
                 # rebuilt and every cache dropped, because a 93 MB buffer and
@@ -10992,7 +12102,11 @@ def make_handler(app):
             self.send_header("Content-Length", str(len(body)))
             # The files come off the installed game and do not change while it
             # is installed; a list view asks for the same sprite repeatedly.
-            self.send_header("Cache-Control", "max-age=86400")
+            # 一天缓存对「装好的游戏文件」是对的：同一张精灵在列表里会被问很多次。
+            # 但一条路由回的是 THIS SESSION 还没保存的字节（/api/slide-film 的
+            # pending=1），一天缓存就会让刚换过的图继续显示旧样子 —— 所以由
+            # handler 自己说了算，默认仍是原来的 86400。
+            self.send_header("Cache-Control", got.get("cache") or "max-age=86400")
             # A route that answers with a picture can still have numbers to
             # report (how many poses came back, whether the row was trimmed to
             # fit a window).  Headers carry them so the body stays a plain PNG

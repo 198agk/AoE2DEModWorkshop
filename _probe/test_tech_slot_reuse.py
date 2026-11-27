@@ -159,8 +159,13 @@ def main():
         }
         reloc = UP._relocate_techs(plan, base, mod, nf)
         check("the collision is found", reloc["count"] == 1, reloc["moved"])
-        check("...and the copy goes past the official array",
-              reloc["map"].get(18) == len(nspans), reloc["map"])
+        # Past the official array AND past the 5,000-id blank band (m24294): the
+        # band is the space the next official build grows into, so a relocated
+        # record may not sit on it.
+        band = UP._tech_band(nf, 1)
+        check("...and the copy goes past the official array and the blank band",
+              reloc["map"].get(18) == len(nspans) + band,
+              (reloc["map"], band))
         check("the field edits for that position are dropped",
               all(not (e["space"] == "tech" and e["index"] == 18)
                   for e in plan["edits"]))
@@ -189,17 +194,26 @@ def main():
             {"at": n - 2, "bytes": b"b"},
         ]}
         reloc2 = UP._relocate_techs(plan2, base, base, nf)
-        want = {n - 3: n, n - 2: n + 1}
+        band2 = UP._tech_band(nf, len(plan2["add_tech"]))
+        want = {n - 3: n + band2, n - 2: n + band2 + 1}
         check("an appended tech inside the array is remapped",
-              reloc2["map"] == want, reloc2["map"])
+              reloc2["map"] == want, (reloc2["map"], want))
         check("...without being appended a second time",
               reloc2["count"] == 0 and len(plan2["add_tech"]) == 2,
               (reloc2["count"], len(plan2["add_tech"])))
+        # A row numbered PAST the target array still has a place in the output:
+        # _apply_records appends every remaining row at count+k, so author tech
+        # 1523 of a 3,030-record table lands at count+k -- and a reference that
+        # says "tech 1523" names whatever the append order put there unless the
+        # map says otherwise.  Measured on 209785: effect 1423 ('Japan') asks
+        # for tech 1523 ('Japanese TB') and got an unrelated technology.
         plan3 = {"edits": [], "replace_tech": [], "notes": [], "add_tech": [
             {"at": n + 5, "bytes": b"a"}]}
         reloc3 = UP._relocate_techs(plan3, base, base, nf)
-        check("a row already bound for the tail is left alone",
-              reloc3["map"] == {}, reloc3["map"])
+        band3 = UP._tech_band(nf, len(plan3["add_tech"]))
+        check("a row numbered past the target array is still remapped, "
+              "because appending is what puts it there",
+              reloc3["map"] == {n + 5: n + band3}, (reloc3["map"], band3))
 
         print()
         print("=== D. every prerequisite that named the old position")
@@ -223,6 +237,53 @@ def main():
             same, zero = UP._patch_refs(blob, gv, {4000: 7})
             check("a map that names nobody changes nothing",
                   zero == 0 and same == blob, zero)
+
+    print()
+    print("=== F. an empty hole in the official file stays empty")
+    # THIS SECTION USED TO ASSERT THE OPPOSITE, and it was wrong.  209785 writes
+    # 55 of its 1,762 technologies into holes the official 8.9 array left blank
+    # (1,409..1,449 are the per-civ ones, 1423 among them), and the module used
+    # to write those records INTO those holes -- "it keeps its number, the hole
+    # is free".  The player read it as what it is (2026-11-23):
+    # 「你这更新还是直接覆盖了官方原来的数据，我要官方的数据不能动」.
+    # A hole is official data too: the array is the shipped file's, a number
+    # inside it belongs to the file, and the only honest place for the author's
+    # record is past the end of the array, in the band every other table uses.
+    if nf is None:
+        print("  NOTE the game data is not readable here; F is skipped")
+    else:
+        free = UP._free_tech_slots(nf)
+        check("the official file still has holes by shape", len(free) > 0,
+              len(free))
+        slot = sorted(free)[0]
+        src = mod_spans[donor]
+        # Fresh frames on purpose: `base` and `mod` above carry the section-B
+        # collision at 18, and this section is about a plan with NO collision at
+        # all -- otherwise the trace would mix the two rules.
+        base4 = reframe(nf, list(nspans), "base4")
+        mod4 = reframe(nf, list(nspans), "mod4")
+        plan4 = {"edits": [], "replace_tech": [], "notes": [],
+                 "add_tech": [{"at": slot, "bytes": bytes(nf.raw[src[0]:src[1]]),
+                               "start": src[0], "end": src[1]}]}
+        reloc4 = UP._relocate_techs(plan4, base4, mod4, nf)
+        check("nothing is written into the official array",
+              not plan4["replace_tech"], plan4["replace_tech"][:1])
+        check("the record moves past the end of the array",
+              reloc4["map"] == {slot: reloc4["map"].get(slot)}
+              and reloc4["map"].get(slot, -1) >= nf.tech_count(),
+              reloc4["map"])
+        check("...and it is still an addition, so the count word covers it",
+              len(plan4["add_tech"]) == 1,
+              len(plan4["add_tech"]))
+        check("...carrying the bytes and the span it was built from",
+              plan4["add_tech"][0].get("start") == src[0]
+              and plan4["add_tech"][0].get("end") == src[1])
+        check("...and the report counts no overwrite at all",
+              reloc4["count"] == 0 and not reloc4.get("adopted"),
+              (reloc4["count"], reloc4.get("adopted")))
+        check("the hole itself is not in the map",
+              slot not in [r.get("index") for r in plan4["replace_tech"]],
+              plan4["replace_tech"][:1])
 
     print()
     print("=== E. the pointer rule inside _link_effects")

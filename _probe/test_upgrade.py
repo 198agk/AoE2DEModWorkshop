@@ -257,7 +257,7 @@ def _explain(name, exc, UP, mod_p, base_p, new_p, keep):
         with contextlib.redirect_stdout(io.StringIO()):
             rep = UP.upgrade(mod_dat=mod_p, out_dir=spare, title="explain",
                              base_dat=base_p, new_dat=new_p, install=False,
-                             force=True)
+                             official_wins=False, force=True)
     except Exception as exc2:
         note("explain-" + name, "force=True also raised %s: %s"
              % (type(exc2).__name__, str(exc2)[:200]))
@@ -594,8 +594,13 @@ def run_case(name, UP, keep):
 
         with contextlib.redirect_stdout(chatter):
             try:
+                # official_wins=False on purpose: this suite is about the
+                # author's edits surviving the patch.  Which value wins a
+                # genuine conflict is the UI's call, and since m23827 the
+                # engine defaults to the official one.
                 got = UP.upgrade(mod_dat=mod_p, out_dir=out_dir, title="fixture",
-                                 base_dat=base_p, new_dat=new_p, install=False)
+                                 base_dat=base_p, new_dat=new_p, install=False,
+                                 official_wins=False)
             except Exception as exc:
                 got = {"ok": False, "raised": "%s: %s" % (type(exc).__name__, exc),
                        "message": str(exc), "exc": exc}

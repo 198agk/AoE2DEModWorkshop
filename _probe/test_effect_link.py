@@ -36,6 +36,7 @@ pointers moved (a row count says nothing about whether the port worked) and
 """
 import io
 import os
+import struct
 import sys
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
@@ -68,6 +69,28 @@ def rec(tag, n=0):
     a mapping that ignores content entirely.
     """
     return (tag * 3 + ("|%d" % n)).encode("utf-8")
+
+
+def eff(name, commands=()):
+    """One REAL effect record: debug string, count, then 11-byte commands.
+
+    `rec()` above is enough for the join, which only compares bytes.  The adopt
+    step and the command repointing read the record's SHAPE -- the hole test
+    counts commands and the patch walks them -- so those two need bytes laid out
+    the way the parser lays them out: u16 marker, u16 length, name, i16 count,
+    then count * (u8 type, i16 a, i16 b, i16 c, f32 d).
+    """
+    raw = name.encode("latin-1")
+    out = struct.pack("<HH", 0x0A60, len(raw)) + raw
+    out += struct.pack("<h", len(commands))
+    for ty, a, b, c, d in commands:
+        out += struct.pack("<Bhhhf", ty, a, b, c, d)
+    return out
+
+
+def hole():
+    """The shape the shipped file writes for an unused effect slot."""
+    return eff("", ())
 
 
 
@@ -158,6 +181,79 @@ def main():
           emap7[2] == 1 and join7["keep"] == 2, (emap7, join7))
 
     print()
+    print("=== I. a hole the target left can be filled in place")
+    # THE DEFECT THIS PINS, in the player's words: "the effect page is empty
+    # and nothing is bound".  When the author's record is merely APPENDED, its
+    # number no longer names it -- 209785 asks for effect 1423, the author's
+    # Japan effect moved to 1890, and 1423 in the merged table is the blank the
+    # official file left there.  The editor's list is indexed by number, so the
+    # page opened on a hole.  Filling the hole is not the same decision as
+    # appending, and it is only allowed when nothing in the target wants it.
+    nb8 = [rec("a"), hole(), rec("c")]
+    mb8 = [rec("a"), eff("Japan", ((103, 1473, -1, 0, 0.0),)), rec("c")]
+    emap8, tail8, join8 = UP._join_effects(mb8, nb8, adopt={1})
+    check("an adopted record keeps its own number",
+          emap8[1] == 1, (emap8, tail8))
+    check("...and is not appended a second time", tail8 == [], tail8)
+    check("...and the join counts it as an adopt, not a tail",
+          join8.get("adopt") == 1 and join8["tail"] == 0, join8)
+    # Without the adopt set the SAME input appends, because the bytes differ.
+    emap9, tail9, join9 = UP._join_effects(mb8, nb8)
+    check("without the adopt set it would be appended instead",
+          emap9[1] == len(nb8) and tail9 == [1], (emap9, tail9))
+    check("...and no adopt key appears when nobody adopted",
+          "adopt" not in join9, join9)
+    # WHICH slots count as free is the CALLER's question -- "empty" and
+    # "nothing points at it" are facts about the whole file, not about these two
+    # lists -- so _join_effects honours what it is told.  What it must not do is
+    # invent a slot: an index past the target table is refused, and a slot whose
+    # bytes ALREADY match was already answered by keep.
+    emap10, tail10, _j10 = UP._join_effects(mb8, nb8, adopt={0, 99})
+    check("an adopt index past the target table is refused", emap10[1] == len(nb8),
+          (emap10, tail10))
+    check("...and keep still answers first for a slot that already matches",
+          emap10[0] == 0, emap10)
+
+    print()
+    print("=== J. the technology numbers inside an effect command follow the move")
+    # Appending an effect is half the job: its commands name technologies by
+    # NUMBER.  Measured on 209785: the author's Japan effect asks for tech 1523
+    # (Japanese TB), and after the merge 1523 named an empty record and 2199
+    # named the official Paper Money + Celt -- the effect still ran, against
+    # the wrong technologies.
+    blob = eff("Japan", ((103, 1473, -1, 0, 0.0),
+                         (101, 1523, 0, 0, 0.0),
+                         (0, 3025, -1, 42, 251.0),
+                         (102, -1, -1, -1, 2199.0)))
+    moved = {1473: 1663, 1523: 1710, 2199: 2386}
+    got, hits = UP._patch_effect_techs(blob, moved)
+    check("every technology-numbering command is repointed", hits == 3, hits)
+    check("...and the record still walks to its own last byte",
+          UP._walk_effect(got)[2] == len(got), len(got))
+    ncmd = UP._walk_effect(got)[1]
+    cmds = []
+    pos = len(got) - 11 * ncmd
+    for _k in range(ncmd):
+        cmds.append(struct.unpack_from("<Bhhhf", got, pos))
+        pos += 11
+    check("type 103 names the technology's new number",
+          cmds[0][0] == 103 and cmds[0][1] == 1663, cmds[0])
+    check("type 101 names the technology's new number",
+          cmds[1][0] == 101 and cmds[1][1] == 1710, cmds[1])
+    check("a command whose A is a UNIT is left alone",
+          cmds[2][0] == 0 and cmds[2][1] == 3025, cmds[2])
+    check("type 102 names its technology in D, and D follows too",
+          cmds[3][0] == 102 and int(cmds[3][4]) == 2386, cmds[3])
+    check("the command count is untouched", len(cmds) == 4, len(cmds))
+    same, zero = UP._patch_effect_techs(blob, {})
+    check("no map, no change", zero == 0 and same == blob, zero)
+    kept, zero2 = UP._patch_effect_techs(blob, {4000: 7})
+    check("a map that names nobody changes nothing",
+          zero2 == 0 and kept == blob, zero2)
+    check("a record that does not walk to its end is left alone",
+          UP._patch_effect_techs(blob + b"xx", moved)[1] == 0)
+
+    print()
     print("=== G. the report says what a player needs, not how many rows")
     rep = {"counts": dict(UP._empty_counts(), tables_added=376),
            "effects": {"mod": 6085, "new": 1500, "out": 1876,
@@ -180,6 +276,40 @@ def main():
     rep["effects"]["overflow"] = 4
     check("an overflowing pointer index is stated, not swallowed",
           "效果编号溢出：4" in UP.describe(rep))
+    # The two numbers a reader needs in order to tell "every author effect was
+    # appended past the end" from "the ones that could keep their number did":
+    # how many effects sat down in a slot the target left empty, and how many
+    # technology numbers inside the commands had to follow their technology.
+    # Neither sentence may appear when the count is zero -- an older report has
+    # no such key at all, and printing "0 条" would read as a loss.
+    rep["effects"]["adopted"] = 39
+    rep["effects"]["refs"] = 341
+    said2 = UP.describe(rep)
+    check("the report says how many effects kept their own number",
+          "其中 39 条填的是目标文件留空的槽位，编号不变" in said2, said2)
+    check("...and how many technology numbers inside the commands followed",
+          "效果命令里点名的科技编号改了 341 处" in said2, said2)
+    del rep["effects"]["adopted"]
+    del rep["effects"]["refs"]
+    said3 = UP.describe(rep)
+    check("a report with no adopted effect prints no adopted line",
+          "目标文件留空" not in said3, said3)
+    check("a report with no patched command prints no command line",
+          "效果命令里点名" not in said3, said3)
+    # A technology never keeps its number by filling a hole any more: the first
+    # thing the player said must not move is the official array, and adopting
+    # a hole writes the author's record inside it.  A report that still carries
+    # the old key must therefore stay silent -- printing "科技填进空槽：55 条"
+    # would describe a merge this build no longer performs.
+    rep["techs_adopted"] = 55
+    said4 = UP.describe(rep)
+    check("a technology that fills a target hole is no longer reported",
+          "科技填进空槽" not in said4, said4)
+    check("...and the relocation sentence is the only one about tech numbers",
+          "科技换了位置" not in said4, said4)
+    del rep["techs_adopted"]
+    check("a report with no adopted technology prints no such line",
+          "科技填进空槽" not in UP.describe(rep))
     rep["confirmed"] = None
     del rep["effects"]
     check("a report with no effect block prints no effect line",

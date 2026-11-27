@@ -395,6 +395,26 @@ def browser_checks(base):
               "读不到字段" not in page.inner_text("#edpane"),
               page.inner_text("#edpane")[:160])
 
+        # The counter and the pager are written in one block, but a reload can
+        # start in the gap after it -- 2026-11-22 the sweep read "400 / 1707"
+        # and then found no #edall, because a fresh load had already emptied the
+        # box and the buttons go with the rows.  Settle on the LIST instead: every
+        # row down, or the pager that offers the rest.  Only the new file can
+        # satisfy this (the wait above already ruled out the old count).
+        try:
+            page.wait_for_function(
+                "() => { const c = document.querySelector('#edcount');"
+                " if (!c || c.textContent.indexOf(' / ') < 0) return false;"
+                " const m = c.textContent.match(/(\\d+)\\s*\\/\\s*(\\d+)/);"
+                " if (!m) return false;"
+                " const rows = document.querySelectorAll('.edrow').length;"
+                " if (!rows) return false;"
+                " return rows >= parseInt(m[2], 10)"
+                "     || document.querySelector('#edall') !== null; }",
+                timeout=300000)
+        except Exception:                               # noqa: BLE001
+            pass
+
         if page.query_selector("#edall"):
             page.click("#edall")
             try:
@@ -413,7 +433,19 @@ def browser_checks(base):
             page.eval_on_selector("#edlist", "n => { n.scrollTop = 4000; }")
             st0 = page.eval_on_selector("#edlist", "n => n.scrollTop")
             page.eval_on_selector_all(".edrow", "n => n[%d].click()" % idx)
-            page.wait_for_timeout(1200)
+            # The pane fills from `/api/fields`, which walks the whole record
+            # table -- 136,861 records on the big file.  A flat 1.2 s sleep was
+            # short enough to read the pane while it still said 「读取「火炬 A」…」,
+            # so the check below failed on a page that was merely still busy.
+            # Wait for the field sheet instead, and keep a short settle after it.
+            try:
+                page.wait_for_function(
+                    "() => { const p = document.querySelector('#edpane');"
+                    " return p && p.textContent.indexOf('编号') >= 0; }",
+                    timeout=120000)
+            except Exception:                               # noqa: BLE001
+                pass
+            page.wait_for_timeout(300)
             rows1 = page.eval_on_selector_all(".edrow", "n => n.length")
             st1 = page.eval_on_selector("#edlist", "n => n.scrollTop")
             print("       after a click  rows %d  scroll %d -> %d"

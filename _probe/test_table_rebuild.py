@@ -56,8 +56,14 @@ def main():
     # human can check the result by eye in the game's own files.
     REC = 100
     d0 = app.table_fields("graphic", REC)
-    check("record 100 exists and decodes", d0.get("ok") and d0["field_count"] == 26,
-          d0.get("error"))
+    # 26 used to be the count: three strings plus the 23 scalars of the fixed
+    # block.  Commit accbfbd gave names to the variable tail too -- one 16-byte
+    # delta per animation frame (7 fields each) and, when the record carries
+    # directional sound, one 24-byte trio per angle (3 fields each) -- because a
+    # byte landing in an unnamed region matched no field and vanished from every
+    # report.  Record 100 carries 3 deltas, so 26 + 21 = 47.
+    check("record 100 exists and decodes", d0.get("ok") and d0["field_count"] == 47,
+          (d0.get("error"), d0.get("field_count")))
 
     # --- write one field into the session --------------------------------
     wr = app.set_table_field("graphic", REC, "SpeedMultiplier", 2.5, dry=False)

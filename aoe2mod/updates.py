@@ -127,9 +127,17 @@ STATE_DIR_ENV_NATIVE = "AOE2MOD_STATE"
 _VERSION_RE = re.compile("(?m)^[ \t]*VERSION[ \t]*=[ \t]*(.+?)[ \t]*$")
 _NUM_RE = re.compile("([0-9]+)(?:[.]([0-9]+))?")
 
-#: How many decimal places the dot part is compared at.  Eight is more than any
-#: build will ever use and keeps ``1.0001`` from colliding with ``1.0002``.
+#: How many decimal places a LEGACY two-decimal number is compared at.  The
+#: 2026-11-21..25 builds were ``1.61``-style, and eight digits of room means a
+#: hand-typed ``1.101`` still lands between ``1.10`` and ``1.11`` instead of
+#: colliding with one of them.  Since 2026-11-26 the number is ``0.0.0`` and this
+#: padding is only reached by the numbers already in the changelog.
 FRAC_DIGITS = 8
+
+#: ``1.7.0`` -- the shape the player asked for on 2026-11-26 (「以后都这样0.0.0写」).
+#: Matched BEFORE the two-part pattern, because ``_NUM_RE`` would otherwise read
+#: ``1.7.0`` as major 1 with a dot-part of ``70`` (and drop the patch entirely).
+_THREE_RE = re.compile(r"([0-9]+)[.]([0-9]+)[.]([0-9]+)")
 
 
 def state_dir():
@@ -157,25 +165,44 @@ def cache_path():
 
 
 def ver_tuple(text):
-    """``"1.0002"`` -> ``(1, 20000)``.  Unparseable sorts last, never raises.
+    """``"1.7.3"`` -> ``(1, 703, 0)``.  Unparseable sorts last, never raises.
 
-    The dot part is read as a DECIMAL FRACTION, not as a second integer,
-    because the builds are numbered that way: every round of changes adds
-    0.0001, so 1.0001 < 1.0002 < 1.0010 < 1.1.  Reading it as an integer
-    would make 1.0001 and 1.0002 both ``(1, 1)`` and the check would answer
-    「已经是最新的」 to a player holding the older build.
+    Two grammars have to compare against each other, because the player changed
+    his mind in the middle of the project:
 
-    A plain string compare is worse still: it puts 1.10 before 1.9 and would
-    report a newer build as older, which is the one wrong answer that makes a
-    player stop pressing the button.
+    * ``0.0.0`` (from 2026-11-26, 「以后都这样0.0.0写」) -- ``1.7.3``
+    * ``0.00`` (2026-11-21..25) -- ``1.61``, which is what every release up to
+      and including v1.61 carries
+
+    Both are landed on ONE ordered scale: second slot = "hundredths of a minor",
+    third slot = "micro of a hundredth".  So
+
+    * ``1.61`` (legacy)   -> ``(1, 61, 0)``
+    * ``1.7.0`` (current) -> ``(1, 700, 0)``   (7 * 100 + 0)
+    * ``1.7.3``            -> ``(1, 703, 0)``
+
+    which keeps ``1.61 < 1.7.0 < 1.7.3 < 1.8.0`` -- the whole point, since a
+    player on 1.61 has to be told that 1.7.0 is newer, not that "61 beats 7".
+
+    The legacy dot-part is still read as a DECIMAL FRACTION rather than a second
+    integer, because that is how those numbers were numbered (1.10 < 1.20 < 1.30)
+    and a hand-typed ``1.5`` has to outrank ``1.10``.  A plain string compare
+    would be worse still: it puts 1.10 before 1.9 and reports a newer build as
+    older, which is the one wrong answer that makes a player stop pressing 检查更新.
     """
-    m = _NUM_RE.search(str(text or ""))
+    body = str(text or "")
+    three = _THREE_RE.search(body)
+    if three:
+        major = int(three.group(1))
+        flat = int(three.group(2)) * 100 + int(three.group(3))
+        return (major, flat, 0)
+    m = _NUM_RE.search(body)
     if not m:
-        return (-1, -1)
+        return (-1, -1, -1)
     major = int(m.group(1))
     tail = re.sub(r"[^0-9]", "", m.group(2) or "")
     frac = int((tail or "0").ljust(FRAC_DIGITS, "0")[:FRAC_DIGITS])
-    return (major, frac)
+    return (major, frac // 1000000, frac % 1000000)
 
 
 def parse_version(text):
@@ -241,10 +268,33 @@ def parse_changes(text):
     return out
 
 
+def _bust(url, stamp=None):
+    """The same URL with a unique query string, for hosts that pin their answers.
+
+    Kept as its own function so a test can ask it directly; the alternative is to
+    monkeypatch ``urllib`` and pretend to be a CDN, which tests the mock.
+    """
+    text = str(url or "")
+    if not ("githubusercontent.com" in text or "cdn.jsdelivr.net" in text):
+        return text
+    stamp = int(time.time() * 1000) if stamp is None else int(stamp)
+    return text + ("&" if "?" in text else "?") + "cb=%d" % stamp
+
+
 def _fetch(url, timeout=TIMEOUT):
-    """One GET, decoded as UTF-8.  Raises; ``check()`` is where it is caught."""
+    """One GET, decoded as UTF-8.  Raises; ``check()`` is where it is caught.
+
+    Every GitHub spelling gets a fresh query string, because GitHub serves these
+    files through a CDN that pins them for five minutes (``Cache-Control:
+    max-age=300``, ``X-Cache: HIT``).  Measured 2026-11-21: the 1.10 release was
+    up and the gist had been rewritten, and `check()` still answered 1.0014 from
+    the edge copy -- so a player who pressed 检查更新 right after a release was
+    told there was nothing new, and 「强制刷新」 did not force anything.  A unique
+    query misses the edge (``X-Cache: MISS``) and reaches the file itself.  The
+    cache-buster is invisible to GitHub: the path is what selects the resource.
+    """
     import urllib.request
-    req = urllib.request.Request(url, headers={"User-Agent": UA})
+    req = urllib.request.Request(_bust(url), headers={"User-Agent": UA})
     with urllib.request.urlopen(req, timeout=timeout) as r:
         raw = r.read(65536)
     return raw.decode("utf-8-sig", "replace")
@@ -371,6 +421,28 @@ def local_changelog():
         return []
 
 
+def _with_own(rows):
+    """Put this build's own release at the top when the fetched list lacks it.
+
+    Measured 2026-11-22, the day 1.20 shipped: the player opened 关于 and the
+    newest row was still 1.10.  Nothing was broken in the fetch -- the list was
+    a six-hour cache written minutes before the release existed, and the fetch
+    itself only runs when that cache is stale.  So the running build's own
+    number was missing from its own changelog, which reads as 「这一版没有说明」.
+
+    The running copy always knows its own number and its own lines; adding that
+    row costs nothing, and once the fetched list catches up the versions match
+    and this row replaces the fetched one instead of duplicating it.
+    """
+    mine = local_changelog()
+    if not mine:
+        return rows
+    have = {str((r or {}).get("version") or "").strip() for r in rows}
+    if str(mine[0].get("version") or "").strip() in have:
+        return rows
+    return mine + list(rows)
+
+
 def changelog_path():
     return os.path.join(state_dir(), CHANGELOG_FILE)
 
@@ -420,7 +492,7 @@ def changelog(force=False, timeout=TIMEOUT, opener=None, sources=None,
                         "project_url": PROJECT_URL,
                         "checked_at": time.strftime("%Y-%m-%d %H:%M:%S"),
                         "notes": ["来自本机缓存（%d 分钟前）" % int(age // 60)],
-                        "rows": doc["rows"]}
+                        "rows": _with_own(doc["rows"])}
 
     notes = []
     for name, url in (sources or RELEASES_SOURCES):
@@ -438,7 +510,7 @@ def changelog(force=False, timeout=TIMEOUT, opener=None, sources=None,
         return {"ok": True, "reachable": True, "cached": False,
                 "source": name, "url": url, "project_url": PROJECT_URL,
                 "checked_at": time.strftime("%Y-%m-%d %H:%M:%S"),
-                "notes": notes, "rows": rows}
+                "notes": notes, "rows": _with_own(rows)}
 
     return {"ok": True, "reachable": False, "cached": False, "source": None,
             "url": None, "project_url": PROJECT_URL,

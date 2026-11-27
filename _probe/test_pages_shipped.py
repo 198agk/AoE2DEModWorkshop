@@ -43,6 +43,8 @@ VIEWS = [
     ("view-editor", "edlist", 50, "编辑器：单位列表"),
     ("view-mods", "mods", 5, "模组：行"),
     ("view-card", "cardgrid", 15, "命令面板：格子"),
+    ("view-appearance", "ap-list", 5, "模型：单位列表"),
+    ("view-lian", "lian-body", 5, "文联：流派表"),
 ]
 
 SCRIPT = r"""
@@ -143,7 +145,20 @@ def main():
                             continue;
                         }
                         location.hash = viewId.replace('view-', '');
-                        await new Promise(r => setTimeout(r, 1400));
+                        // Wait for the STATE, not for a fixed sleep.  The lian
+                        // view paints from /api/lian (901 KB of JSON, nine
+                        // tables, 23205 px of DOM) and on a cold start that
+                        // response can land later than the 1.4 s this gate
+                        // used to allow -- it then read the "读取中…" shell and
+                        // reported FAIL on a correct build (2026-11-25).  Poll
+                        // for the counted children instead, with a ceiling so a
+                        // real break still fails.
+                        const t_view = performance.now();
+                        while (el.children.length < minChildren &&
+                               performance.now() - t_view < 12000) {
+                            await new Promise(r => setTimeout(r, 100));
+                        }
+                        await new Promise(r => setTimeout(r, 150));
                         const kids = el.children.length;
                         const text = (el.textContent || '').replace(/\\s+/g, ' ').trim();
                         out.checks.push({

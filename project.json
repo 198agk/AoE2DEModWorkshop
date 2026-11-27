@@ -11,7 +11,7 @@
     "verify_quick": "python _probe/run_suites.py",
     "verify_long": "python _probe/run_long.py",
     "suites": {
-      "python": 239,
+      "python": 251,
       "node": 1
     },
     "python": "python"
@@ -319,10 +319,12 @@
       "/api/animations",
       "/api/archive-info",
       "/api/art",
+      "/api/art-records",
       "/api/browse",
       "/api/card",
       "/api/civ",
       "/api/dat-sources",
+      "/api/dataset",
       "/api/describe",
       "/api/diag",
       "/api/drop-at",
@@ -334,6 +336,7 @@
       "/api/icons",
       "/api/instances",
       "/api/job",
+      "/api/lian",
       "/api/live",
       "/api/locale",
       "/api/log",
@@ -350,6 +353,10 @@
       "/api/script-read",
       "/api/search",
       "/api/session-info",
+      "/api/sheets-info",
+      "/api/slide-film",
+      "/api/slide-pose-sheet",
+      "/api/slide-sheet",
       "/api/table-fields",
       "/api/table-rows",
       "/api/tables",
@@ -380,6 +387,7 @@
       "/api/card-take",
       "/api/card-time",
       "/api/dat-set",
+      "/api/dataset-pick",
       "/api/drop",
       "/api/effect-set",
       "/api/field-set",
@@ -414,6 +422,10 @@
       "/api/session-intents",
       "/api/session-reset",
       "/api/session-save",
+      "/api/sheets-dir",
+      "/api/sheets-open",
+      "/api/sheets-pick",
+      "/api/slide-set",
       "/api/sprite",
       "/api/stat",
       "/api/table-field-set",
@@ -427,7 +439,7 @@
   "wording": {
     "file": "aoe2mod/schema/locales/zh.json",
     "locale": "zh",
-    "keys": 63
+    "keys": 67
   },
   "delivery": {
     "single_mod": "一份模组：只有 .dat，或只有 widgetui —— 单一策略的意图",

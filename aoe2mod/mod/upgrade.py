@@ -81,6 +81,7 @@ import aoe2mod.dat.unitfields as UF
 import aoe2mod.mod.portgen as PG
 from . import archives as AR
 from . import provenance as PV
+from .. import appversion as AV
 from ..game import locations as GL
 
 __all__ = ["UpgradeError", "analyze", "upgrade", "describe", "VERDICTS",
@@ -1857,7 +1858,7 @@ def _alias_note(alias):
         for old, new in sorted(alias.items()))
 
 
-def _port_plan(plan, mod_f, new_f, on_progress=None):
+def _port_plan(plan, mod_f, new_f, on_progress=None, preset=None):
     '''Re-lay-out every record this plan carries, for the new generation.
 
     A generation change moves bytes; it does not move FIELDS.  portgen decodes
@@ -1911,6 +1912,13 @@ def _port_plan(plan, mod_f, new_f, on_progress=None):
     # two records on one number, and _verify caught 32 of them by bytes.
     batch = set(r['unit'] for r in plan['add_unit'])
     taken = occupied | batch
+    # Numbers already decided before the port: _relocate_units moves the
+    # author's block above the band and hands the map in, so the encoder writes
+    # each record's own id fields to the number the merge actually placed it on.
+    # Without it the port would renumber a second time and the record would say
+    # its old number while the flag array said the new one.
+    preset = dict(preset or {})
+    taken |= set(preset.values())
     top = max(taken) if taken else 0
 
     def _blank(row):
@@ -1930,7 +1938,7 @@ def _port_plan(plan, mod_f, new_f, on_progress=None):
     # bar and the re-encoding gets the rest.
     _nadd = max(1, len(plan['add_unit']))
     _emit(0.0)
-    idmap = {}
+    idmap = dict(preset)
     kept = []
     for _ai, row in enumerate(plan['add_unit']):
         _emit(0.12 * (_ai + 1) / _nadd)
@@ -2216,6 +2224,465 @@ def _slot_reused(base_name, mod_name, now_name):
         return False
     return mn != bn and mn != nn and nn != bn
 
+
+#: Bytes of one effect command: ``u8 type`` + three ``i16`` + ``f32``.
+#: Same number as ``pseudopage.CMD_BYTES``; repeated here as a literal because
+#: this module reads the record by hand rather than through the page editor.
+_EFF_CMD_BYTES = 11
+
+#: Effect command types whose A field is a TECHNOLOGY number, straight out of
+#: ``schema/effect_command_types.json``: 8 Modify Tech, the four
+#: team/enemy/neutral/gaia variants 18/28/38/48, 101 Tech Cost Modifier and
+#: 103 Tech Time Modifier.  Every other type reads A as a unit id, a resource
+#: id or an attribute, so rewriting it there would corrupt the command instead
+#: of repointing it.
+_TECH_CMD_TYPES = frozenset((8, 18, 28, 38, 48, 101, 103))
+
+#: Type 102 (Disable Tech) is the one that names its technology in D, not A.
+_TECH_CMD_IN_D = 102
+
+
+def _walk_effect(blob):
+    """``(name, command count, end offset)`` of one effect record, or None."""
+    try:
+        r = P.Reader(blob, P.GV_C32)
+        _marker, name = r.debug_string()
+        n = max(0, r.i16())
+        r.skip(_EFF_CMD_BYTES * n)
+        return name, n, r.pos
+    except Exception:                               # pragma: no cover
+        return None
+
+
+def _effect_is_hole(blob):
+    """True when this target effect record is the official file's blank."""
+    got = _walk_effect(blob)
+    if got is None:
+        return False
+    name, n, end = got
+    return (not name.strip()) and not n and end == len(blob)
+
+
+def _patch_effect_techs(blob, mp):
+    """Repoint the technology numbers an effect's commands name.
+
+    WHY THIS EXISTS
+    ---------------
+    An effect command of type 8/18/28/38/48/101/103 names a technology in its
+    A field, and type 102 names one in its D field.  Those numbers are
+    POSITIONS, exactly like a technology's EffectID, so a technology that moved
+    leaves every command that named it talking about whatever moved into its
+    old slot.  Measured on 209785 (VER 8.9): the author's ``Japan`` effect asks
+    for tech 1523 (``Japanese TB``) and 2199 (``Already choose an ally``); after
+    the merge those two numbers named `` `` and ``Eisphora, Athenian Unique
+    Tech``, because the author's own records had been appended at 1765 and
+    2441.  The effect still ran -- against the wrong technologies.
+
+    WHAT IS PATCHED, AND ONLY THAT
+    ------------------------------
+    Only records this module actually WRITES: the tail copies and the ones
+    adopted into a free target slot.  A record the target already holds is
+    somebody else's bytes, and its numbers are already the target's own
+    numbering -- rewriting them would repoint an official effect.
+
+    A record whose bytes do not walk to their own last byte is returned
+    untouched: a patch that guessed where the commands end would write into
+    whatever follows them.
+    """
+    if not mp:
+        return blob, 0
+    got = _walk_effect(blob)
+    if got is None:
+        return blob, 0
+    _name, n, end = got
+    if end != len(blob):
+        return blob, 0
+    out = bytearray(blob)
+    pos = len(blob) - _EFF_CMD_BYTES * n
+    hits = 0
+    fmt = struct.Struct("<Bhhhf")
+    for _i in range(n):
+        ty, a, b, c, d = fmt.unpack_from(out, pos)
+        if ty in _TECH_CMD_TYPES:
+            new = mp.get(a)
+            if new is not None and new != a and -32768 <= new <= 32767:
+                fmt.pack_into(out, pos, ty, int(new), b, c, d)
+                hits += 1
+        elif ty == _TECH_CMD_IN_D:
+            if d == int(d):
+                new = mp.get(int(d))
+                if new is not None and new != int(d):
+                    fmt.pack_into(out, pos, ty, a, b, c, float(new))
+                    hits += 1
+        pos += _EFF_CMD_BYTES
+    return (bytes(out) if hits else blob), hits
+
+
+def _tech_is_hole(fields):
+    """True when a decoded technology record is the official file's blank.
+
+    Three statements, all of them about the record itself: no name, no effect,
+    and one research location that says "nowhere" (``(-1, 0, 0, -1)`` is the
+    shape the shipped file writes for a hole -- measured: 104 of them in the
+    1,510-record 8.9 array).  A record that fails any one of the three is
+    something, and a technology put there would write over it.
+    """
+    if ((fields.get("Name") or {}).get("value") or "").strip():
+        return False
+    if ((fields.get("EffectID") or {}).get("value")) not in (-1, None):
+        return False
+    got = tuple(((fields.get("ResearchLocations.0.%s" % k) or {}).get("value"))
+                for k in ("LocationID", "ResearchTime", "ButtonID", "HotKeyID"))
+    return got == (-1, 0, 0, -1)
+
+
+def _tech_is_blank(fields):
+    """True when an AUTHOR technology record is padding, not content.
+
+    Why this is not _tech_is_hole: that one answers "is this slot the TARGET's
+    blank record", and it insists on the shipped file's exact hole shape --
+    ResearchLocations.0 decoded as (-1, 0, 0, -1).  An author's stub was written
+    by an older build and its research-location fields do not even decode here
+    (measured on 209785 VER 8.4: all four come back None), so the strict test
+    says "not a hole" and 961 empty rows travelled into the middle of his block.
+    That is the second thing the player complained about (m25581:
+    中间这些空白的你不能自己删除整理吗).
+
+    The question a stub has to answer is about meaning, not layout: no name, no
+    effect, no research place, nothing to pay.  A record that grants no effect,
+    costs nothing, unlocks nothing and is researched nowhere is not a technology
+    however its bytes are laid out.
+    """
+    if ((fields.get("Name") or {}).get("value") or "").strip():
+        return False
+    if ((fields.get("EffectID") or {}).get("value")) not in (-1, None):
+        return False
+    # A DLL number is content too.  15373's author names nine of his records
+    # only through the language file -- LanguageDLLName 10,316..10,324 with
+    # Civ 46..54 and cost 1 -- and leaves Name empty; a test that reads only
+    # Name throws them away and leaves nine blanks in the middle of his block.
+    # 7,000/8,000 is the boilerplate pair older editors stamp on every padding
+    # row (measured: 18 rows in 15373, 11,374 in 408773), so it names nothing.
+    lang = (fields.get("LanguageDLLName") or {}).get("value") or 0
+    if isinstance(lang, int) and lang not in (0, 7000):
+        return False
+    desc = (fields.get("LanguageDLLDescription") or {}).get("value") or 0
+    if isinstance(desc, int) and desc not in (0, 8000):
+        return False
+    for name, m in fields.items():
+        if (name.startswith("ResourceCosts.")
+                and name.endswith(".Amount")
+                and (m.get("value") or 0) > 0):
+            return False
+    # A stub can also say "researchable at building 0 in 0 seconds", which is
+    # what an older editor wrote into every id it did not use.  Measured on
+    # 550749: 3,502 of his 3,513 nameless rows carry exactly
+    # (0, 0, 0, -1) -- nothing to pay, no effect, no name, no DLL number, a
+    # building-0 placemat -- and only 2 of them are named by another record
+    # (the reference guard in _relocate_techs keeps those).  Without this shape
+    # his block starts at 9,499 instead of official_count + 5,000 and carries
+    # 514 blanks in the middle, which is the same complaint again (m25581).
+    got = tuple(((fields.get("ResearchLocations.0.%s" % k) or {}).get("value"))
+                for k in ("LocationID", "ResearchTime", "ButtonID", "HotKeyID"))
+    if all(v is None for v in got) or got in ((-1, 0, 0, -1), (0, 0, 0, -1)):
+        return True
+    return False
+
+def _free_tech_slots(frame, spans=None):
+    """Indices of target technology slots nothing in the target file uses.
+
+    A slot is free when the record there is a hole (see :func:`_tech_is_hole`)
+    and NOTHING else in the target points at that number: no technology names
+    it in a ``RequiredTechs`` cell, and no effect command names it as a
+    technology.  The second half is not decoration -- an effect that modifies
+    "tech 1423" starts modifying the author's technology the moment one sits
+    down there, so a slot an effect talks about is not free.
+
+    Measured on 8.9: 104 holes by shape alone, 92 of them unreferenced.  Of the
+    author's 1,762 additions on 209785, 55 land on one of those 92.
+    """
+    if spans is None:
+        spans = frame.build_tech_spans()
+    used = set()
+    for start, _end in spans:
+        try:
+            fields = TF.fields_at(frame.raw, frame.gv, start)
+        except Exception:                           # pragma: no cover
+            continue
+        for name, m in fields.items():
+            if not name.startswith("RequiredTechs.") or m.get("kind") != "i16":
+                continue
+            value = m.get("value")
+            if isinstance(value, int):
+                used.add(value)
+    used |= _effect_tech_refs(_effect_records(frame.raw))
+    out = set()
+    for i, (start, _end) in enumerate(spans):
+        if i in used:
+            continue
+        try:
+            fields = TF.fields_at(frame.raw, frame.gv, start)
+        except Exception:                           # pragma: no cover
+            continue
+        if _tech_is_hole(fields):
+            out.add(i)
+    return out
+
+
+def _effect_tech_refs(blobs):
+    """Every technology number named by an effect command in ``blobs``."""
+    out = set()
+    fmt = struct.Struct("<Bhhhf")
+    for blob in blobs:
+        got = _walk_effect(blob)
+        if got is None:
+            continue
+        _name, n, end = got
+        if end != len(blob):
+            continue
+        pos = len(blob) - _EFF_CMD_BYTES * n
+        for _i in range(n):
+            ty, a, _b, _c, d = fmt.unpack_from(blob, pos)
+            if ty in _TECH_CMD_TYPES and a >= 0:
+                out.add(a)
+            elif ty == _TECH_CMD_IN_D and d == int(d):
+                out.add(int(d))
+            pos += _EFF_CMD_BYTES
+    return out
+
+
+#: How many blank ids this module leaves at the END of the technology and
+#: effect arrays.  5,000 each, which is the number the user asked for
+#: (2026-11-22): 在科技/单位/效果页内以官方最新数据为准，额外添加 5000 个空白
+#: 占位 id，再将作者制作模组的内容移植上去.
+#:
+#: WHY A RESERVE AND NOT 'append at count + k'
+#: --------------------------------------------
+#: Appending the author's records at count + k already writes past the official
+#: array, so no official RECORD is overwritten.  What was missing is that the
+#: space those records land in does not exist until they do: an id between
+#: 'official count' and 'official count + 5,000' names nothing at all, so the
+#: editor's list has no row to show and a reference that points there looks
+#: broken.  Writing the official file's own blank record into that band makes
+#: the ids real -- the count word covers them, the walk accepts them, the page
+#: lists them -- while touching no official record's bytes.
+#:
+#: The author's own numbers travel as before (_relocate_techs /
+#: _link_effects remap them onto these slots); the reserve only guarantees that
+#: wherever they land is a slot that says 'empty', never a technology the
+#: official file added after the author built his mod.
+_RESERVE_TECHS = 5000
+_RESERVE_EFFECTS = 5000
+
+#: Blank ids per civilization in the UNIT table, for the same reason and at the
+#: same number.  A unit's id is a slot in its civilization's flag array: the
+#: flag says whether a record sits there, so an id whose flag is zero is a real
+#: empty slot and an id past the array does not exist at all.  Reserving here
+#: means growing every rebuilt civilization's array so the ids the author's
+#: numbers reach are present-and-empty instead of simply absent.  Measured on
+#: the shipped file: 63 civilizations, so the band costs 4 x 5,000 = 20,000
+#: bytes of flag array each.
+_RESERVE_UNITS = 5000
+
+#: Cache sentinel: 'this frame has not been asked yet'.  None is a real answer
+#: ('this build has no hole to copy'), so it cannot double as the mark.
+_NO_BLANK = object()
+
+
+def _blank_tech_blob(frame):
+    """The bytes this build writes for an empty technology slot, or None.
+
+    Taken from the file rather than rebuilt from a table: a blank record is one
+    the target can WALK, and the only proof of that is the file's own bytes
+    (measured on VER 8.9: 104 holes, every one 71 bytes, two distinct shapes
+    among them).  None when there is no hole to copy -- then no reserve is
+    written, and the report stays silent instead of claiming a capacity this
+    run did not create.
+    """
+    cached = frame.__dict__.get("_blank_tech", _NO_BLANK)
+    if cached is not _NO_BLANK:
+        return cached
+    out = None
+    try:
+        spans = frame.build_tech_spans()
+    except Exception:                               # pragma: no cover
+        spans = []
+    for a, b in spans:
+        try:
+            fields = TF.fields_at(frame.raw, frame.gv, a)
+        except Exception:                           # pragma: no cover
+            continue
+        if _tech_is_hole(fields):
+            out = bytes(frame.raw[a:b])
+            break
+    frame._blank_tech = out
+    return out
+
+
+def _blank_effect_blob(frame):
+    """The bytes this build writes for an empty effect slot, or None.
+
+    Measured on VER 8.9: 184 of the 1,500 records are 6-byte holes (marker,
+    empty name, zero commands).  Same reasoning as _blank_tech_blob.
+    """
+    cached = frame.__dict__.get("_blank_effect", _NO_BLANK)
+    if cached is not _NO_BLANK:
+        return cached
+    out = None
+    try:
+        recs, leftover = TB.scan(frame.raw, "effect")
+    except Exception:                               # pragma: no cover
+        recs, leftover = [], 1
+    if not leftover:
+        for rec in recs:
+            blob = bytes(frame.raw[rec["start"]:rec["end"]])
+            if _effect_is_hole(blob):
+                out = blob
+                break
+    frame._blank_effect = out
+    return out
+
+
+def _effect_official_count(frame):
+    """How many records the TARGET's effect table holds, or None."""
+    try:
+        geo = _table_geometry(frame.raw, "effect")
+    except Exception:                               # pragma: no cover
+        return None
+    return geo.get("count")
+
+
+def _tech_band(new_f, appends):
+    """Blank technology ids written BETWEEN the official array and the author's.
+
+    THE LAYOUT (m24294)
+    -------------------
+    The array is laid out [official 0 .. count-1][5,000 empty][author ...].  The
+    band is not padding at the END: it is what makes the next official patch
+    harmless.  With the author's records sitting directly on top of the official
+    array, every author number occupied exactly the space the next build grows
+    into, and the pad only guarded the rows after them, which nothing used.
+    Measured on 209785: the author's 1,707 technologies used to start at 1,510 --
+    the first number the next official build takes -- and now start at 6,510.
+
+    Zero when this run appends nothing (no author record, nothing to protect)
+    and zero when the target has no hole record to copy: an id that is not a
+    real record cannot be walked or listed, so a count word claiming it would
+    promise capacity the file does not have.
+    """
+    if not appends:
+        return 0
+    return _RESERVE_TECHS if _blank_tech_blob(new_f) is not None else 0
+
+
+def _effect_band(new_f, appends):
+    """Blank effect ids between the official records and the author's.
+
+    Same layout and same reason as :func:`_tech_band`.  An effect record carries
+    no id either, so its POSITION is its number and the band is what keeps the
+    author's positions far away from the official tail.
+    """
+    if not appends:
+        return 0
+    return _RESERVE_EFFECTS if _blank_effect_blob(new_f) is not None else 0
+
+
+def _reserve_tech(plan, new_f):
+    """The blank technology records this run writes between official and author.
+
+    Always the full band, never "5,000 minus what the author appended" (m24294):
+    the promise is "the author's numbers start at official + 5,000", and that
+    only holds when the whole band is written no matter how many records the
+    author brought.  None means this run appends no technology at all, or the
+    target has no blank record to copy -- then nothing is written and the report
+    stays silent instead of claiming capacity this run did not create.
+    """
+    if not plan.get("add_tech"):
+        return None
+    blob = _blank_tech_blob(new_f)
+    if blob is None:
+        return None
+    official = new_f.tech_count()
+    return {"n": _RESERVE_TECHS, "bytes": blob, "official": official,
+            "author_from": official + _RESERVE_TECHS}
+
+
+def _reserve_units(plan):
+    """How many blank unit slots each rebuilt civilization's array grows by.
+
+    None when the plan adds no unit: a run that touches no civilization has no
+    reason to grow 63 flag arrays.  Unlike the tech and effect bands this needs
+    no record bytes -- a unit id whose flag is zero IS the empty slot, which is
+    the shape the shipped file already uses.
+    """
+    rows = plan.get("add_unit") or []
+    if not rows:
+        return None
+    # NOT when the units were relocated (m25581).  _relocate_units puts the
+    # author's numbers at official_top + 5,000, so the blank slots BETWEEN the
+    # two runs are already in the array the moment it is grown to cover those
+    # numbers -- a flag of zero IS an empty slot, and ids official_top ..
+    # author_from-1 all have one.  Growing again by 5,000 past the author's last
+    # record would add a second, useless band AFTER his content, which is what
+    # the player saw: 「单位页则是根本没把模组内容往后移，只是在后面添加了一堆
+    # 空占位符」-- 5,000 empty rows at the end and the author's units sitting in
+    # the official number range.
+    if plan.get("unit_idmap"):
+        return None
+    # Counted over every civilization this pass REBUILDS, not just the ones it
+    # adds to: _rebuild_civ grows the array whenever it is called, and it is
+    # called for a civ that only loses or rewrites records too.  Under-counting
+    # here made the panel promise fewer empty slots than the file has (measured
+    # on 209785: 54 civs rebuilt, 51 of them with additions).
+    civs = set(r.get("civ") for r in rows)
+    civs |= set(r.get("civ") for r in (plan.get("replace") or []))
+    civs |= set(r.get("civ") for r in (plan.get("del_unit") or []))
+    return {"n": _RESERVE_UNITS, "civs": len(civs)}
+
+
+def _reserve_effect(plan, appended, new_f):
+    """The blank effect records this run writes between official and author.
+
+    The full band for the same reason as :func:`_reserve_tech`, and None on the
+    same two conditions: nothing appended, or no hole record to copy.
+    """
+    if appended <= 0:
+        return None
+    blob = _blank_effect_blob(new_f)
+    if blob is None:
+        return None
+    official = _effect_official_count(new_f)
+    return {"n": _RESERVE_EFFECTS, "bytes": blob, "official": official,
+            "author_from": (official + _RESERVE_EFFECTS)
+                            if isinstance(official, int) else None}
+
+
+def _reserve_note(rep):
+    """One Chinese sentence naming the capacity this run created, or ''."""
+    bits = []
+    u = rep.get("reserve_units") or {}
+    if u.get("n"):
+        bits.append("单位表里重写过的那 %d 个文明各留了 %d 个空白编号（空槽）"
+                    % (u.get("civs") or 0, u["n"]))
+    t = rep.get("reserve_techs") or {}
+    if t.get("n"):
+        bits.append("科技 %d 个（官方 %d 条之后，作者的科技从 %s 号开始）"
+                    % (t["n"], t.get("official") or 0,
+                       t.get("author_from") if t.get("author_from") is not None
+                       else "官方之后"))
+    f = rep.get("reserve_effects") or {}
+    if f.get("n"):
+        bits.append("效果 %d 个（官方 %d 条之后，作者的效果从 %s 号开始）"
+                    % (f["n"], f.get("official") or 0,
+                       f.get("author_from") if f.get("author_from") is not None
+                       else "官方之后"))
+    if not bits:
+        return ""
+    return ("官方原有的记录一条都没被改写：%s。空白编号紧接在官方数组后面，"
+            "作者的东西排在空白之后，所以官方下次更新往那一带加东西也撞不上。"
+            % ("；".join(bits),))
+
+
 def _relocate_techs(plan, base_f, mod_f, new_f):
     """Move author techs out of slots the target has since handed to a new tech.
 
@@ -2268,7 +2735,7 @@ def _relocate_techs(plan, base_f, mod_f, new_f):
             continue
         hits[i] = (bn, mn, nn)
 
-    out = {"moved": [], "map": {}, "count": 0}
+    out = {"moved": [], "map": {}, "count": 0, "dropped": 0}
 
     # SECOND KIND OF REUSE, and the commoner one: the author APPENDED techs of
     # his own (314918: 24 of them, at 1268..1291 of his 1,292-record array),
@@ -2278,10 +2745,72 @@ def _relocate_techs(plan, base_f, mod_f, new_f):
     # the official tech does.  Every reference that still says 1277 has to be
     # repointed, and no EffectID may be written into position 1277.
     ncount = new_f.tech_count()
-    for k, row in enumerate(plan.get("add_tech") or []):
+    rows = list(plan.get("add_tech") or [])
+
+    # A HOLE IS NOT AN INVITATION.  There used to be a third branch here: when
+    # the author's record landed on one of the target's 92 unreferenced holes,
+    # the row became a whole-record write at that index, so the record kept its
+    # number and index 1423 showed the author's Japan instead of a blank.  It
+    # read well and it was wrong -- the player said so on 2026-11-23:
+    # 「你这更新还是直接覆盖了官方原来的数据，我要官方的数据不能动」.  A hole sits
+    # inside the shipped array; its index belongs to the file, and filling it is
+    # writing into official data however empty the slot looks.  Every author
+    # record now goes past the end of the array, into the same band the other
+    # two tables use.
+    #
+    # The author's own blank records are padding, not content.  He kept his
+    # numbering by writing a stub into every technology id he did not use; on
+    # 209785 that is 961 of his 1,762 added rows, and NOTHING in his file points
+    # at one -- every one of the 574 technology numbers his records name is a
+    # named record.  Carrying them put 961 empty rows in the middle of his block,
+    # which is the second thing the technology page was accused of.
+    refs = _author_tech_refs(mod_f)
+    rest = []
+    dropped = 0
+    for row in rows:
         at = row.get("at")
-        if isinstance(at, int) and 0 <= at < ncount:
-            out["map"][at] = ncount + k
+        if not (isinstance(at, int) and at >= 0):
+            continue
+        if at in refs:
+            rest.append(row)
+            continue
+        blob = row.get("bytes")
+        start = row.get("start")
+        if blob is None or not isinstance(start, int):
+            rest.append(row)
+            continue
+        try:
+            fields = TF.fields_at(mod_f.raw, mod_f.gv, start)
+        except Exception:                           # noqa: BLE001
+            rest.append(row)
+            continue
+        if _tech_is_hole(fields) or _tech_is_blank(fields):
+            dropped += 1
+            continue
+        rest.append(row)
+    plan["add_tech"] = rest
+    out["dropped"] = dropped
+
+    # EVERY remaining row is remapped, including the ones whose number is past
+    # the target's own array.  A reference that says "tech 1523" is not a
+    # reference to nothing when the target has 1,510 technologies: 1523 is
+    # inside the OUTPUT array as soon as the author's records are appended
+    # after it, so leaving it alone makes that reference name whichever author
+    # record the append order happened to park there.  Measured on 209785:
+    # effect 1423 ('Japan') asks for tech 1523 ('Japanese TB') and 2199
+    # ('Already choose an ally'); unpinned, 1523 landed on an unrelated
+    # technology and 2199 on the official 'Paper Money + Celt'.
+    # The number an author technology lands on is its index in the OUTPUT
+    # array, and that array now reads [official][5,000 empty][author] (m24294),
+    # so the first author record sits at official_count + 5,000 -- not at
+    # official_count, which is where the next official build will grow.
+    # Read through the same helper _apply_records will use, so the mapping and
+    # the bytes cannot disagree about whether the band is there.
+    band = _tech_band(new_f, len(rest) + len(hits))
+    for k, row in enumerate(rest):
+        at = row.get("at")
+        if isinstance(at, int) and at >= 0:
+            out["map"][at] = ncount + band + k
 
     if not hits and not out["map"]:
         return out
@@ -2295,7 +2824,7 @@ def _relocate_techs(plan, base_f, mod_f, new_f):
     plan["replace_tech"] = [r for r in (plan.get("replace_tech") or [])
                             if r.get("index") not in hits]
 
-    at0 = new_f.tech_count() + len(plan["add_tech"])
+    at0 = new_f.tech_count() + band + len(plan["add_tech"])
     for j, i in enumerate(sorted(hits)):
         ms, me = mspans[i]
         plan["add_tech"].append({
@@ -2320,7 +2849,50 @@ def _relocate_techs(plan, base_f, mod_f, new_f):
             % (out["count"],
                "、".join("%d「%s」" % (m["index"], m["name"]) for m in out["moved"]),
                "、".join(str(m["new_index"]) for m in out["moved"])))
+    if out.get("dropped"):
+        # The other half of the same promise: the author's block is contiguous.
+        plan["notes"].append(
+            "作者用来占位的 %d 条空科技（没有名字、也没有任何科技或效果引用它们）"
+            "没有搬过去，所以他新增的科技在表里是连续的一段。" % out["dropped"])
     return out
+
+
+def _patch_unit_tech(blob, gv, mp):
+    """Repoint the technology a unit record is an upgrade of.  Returns (blob, n).
+
+    A unit record holds exactly one technology number: Building.TechID, the
+    research that turns this building into its next form (unitfields.py:277 --
+    a scan of every i16 field in the unit layout finds no second one).  It is
+    NOT in portgen's ID_FIELDS, because that set is about units, and nothing
+    else in this module ever looked at it.  So when the author's technologies
+    moved past the target's array, the author's units kept saying 1400 while
+    his technology now lives at 6511 -- and 1400 in the output is a blank
+    official slot.  Measured on 209785: 5,444 cells inside the author's added
+    units and 54 planned field edits, every one of them naming a moved tech.
+
+    Only the author's own records are rewritten; a record whose bytes are still
+    the target's own is settled by the caller before this is called.
+    """
+    if not mp:
+        return blob, 0
+    try:
+        f = UF.fields_at(blob, gv, 0)
+    except Exception:                               # pragma: no cover
+        return blob, 0
+    m = f.get("Building.TechID") or {}
+    v = m.get("value")
+    if not isinstance(v, int):
+        return blob, 0
+    new = mp.get(v)
+    if new is None or new == v:
+        return blob, 0
+    off = int(m["offset"])
+    out = bytearray(blob)
+    try:
+        out[off:off + 2] = struct.pack("<h", int(new))
+    except (struct.error, ValueError):              # pragma: no cover
+        return blob, 0
+    return bytes(out), 1
 
 
 def _patch_refs(blob, gv, mp):
@@ -2435,10 +3007,457 @@ def _repair_tech_refs(plan, mod_f, new_f, reloc):
             seen.add((i, name))
             fixed += 1
 
+    # A unit is reached through Building.TechID, the research that turns this
+    # building into its next form -- and that field lives inside a UNIT record,
+    # a place neither this function nor _relocate_units used to look.  It is not
+    # in portgen's ID_FIELDS either, because that set is about units.  Measured
+    # on 209785: 5,444 cells inside the author's added units and 54 planned field
+    # edits still named his old technology numbers, and the output uses those
+    # numbers for blank official slots.  The player called it「单位绑定还是旧的」
+    # (2026-11-23).
+    #
+    # It runs after the port, like the tech side above: a ported record has been
+    # rebuilt from the mod's own bytes in the target's layout, and portgen leaves
+    # Building.TechID alone, so what this reads is already the record that ships.
+    #
+    # The map is FILTERED, for the reason _relocate_units filters its own: mp's
+    # keys are positions inside the target's technology array (on 209785 the
+    # author's appended techs sit at 1399..2201 of an official 1,510-record one),
+    # so an unguarded lookup would turn an OFFICIAL technology number into an
+    # author's.  A number is the author's to move only when he appended a
+    # technology there, or when the target array does not reach that far.
+    add_at = set(r.get("at") for r in (plan.get("add_tech") or [])
+                 if isinstance(r.get("at"), int))
+    ntech = new_f.tech_count()
+    up = dict((old, new) for old, new in mp.items()
+              if old in add_at or old >= ntech)
+    ufixed = 0
+    for row in (plan.get("add_unit") or []):
+        blob = row.get("bytes")
+        if not blob:
+            continue
+        row["bytes"], n = _patch_unit_tech(blob, new_f.gv, up)
+        ufixed += n
+    for row in (plan.get("replace") or []):
+        blob = row.get("bytes")
+        if not blob:
+            continue
+        # Same guard _relocate_units uses: bytes still equal to the target's own
+        # record are not the author's work, and rewriting a number inside them
+        # edits official data (m25581: 「我要官方的数据不能动」).
+        span = new_f.unit_span(row["civ"], row["unit"])
+        if span and blob == new_f.raw[span[0]:span[1]]:
+            continue
+        row["bytes"], n = _patch_unit_tech(blob, new_f.gv, up)
+        ufixed += n
+    for e in plan["edits"]:
+        if e.get("space") != "unit" or (e.get("field") or "") != "Building.TechID":
+            continue
+        if (e.get("width") or 0) != 2:
+            continue
+        try:
+            old = struct.unpack("<h", e["mod"])[0]
+        except struct.error:             # pragma: no cover
+            continue
+        new = up.get(old)
+        if new is None:
+            continue
+        e["mod"] = struct.pack("<h", new)
+        e["relocated_from"] = old
+        ufixed += 1
+
+    if ufixed:
+        fixed += ufixed
+        plan["notes"].append(
+            "单位记录里「研究哪条科技」的编号也跟着改了 %d 处，作者的单位不再挂在他"
+            "原来的科技号上。" % ufixed)
+
     if fixed:
         plan["notes"].append(
             "引用那几条科技的前置条件一共改了 %d 处，前置链没有断。" % fixed)
     return fixed
+
+
+# ---------------------------------------------------------------------------
+# moving the author's units out of the official id range
+# ---------------------------------------------------------------------------
+
+def _unit_is_hollow(fields):
+    """True when a decoded unit record is one of the author's blank slots.
+
+    The author kept his numbering by writing a stub into every id he did not
+    use: no name, no train entry, no cost, no attack or armour.  Measured on
+    209785: 40,336 of his 46,602 added rows are that shape, and 739 of his 863
+    distinct ids are blank in every civilization -- ids 2382..3244, 368 of
+    which the target ALSO uses for real units.
+
+    The three tests are the ones the player can see.  HitPoints = 1 and
+    StandingGraphic = -1 are what a stub looks like, so neither is a signal; a
+    record that trains something, costs something or fights is not a stub
+    whatever else is zero.
+    """
+    if ((fields.get("Name") or {}).get("value") or "").strip():
+        return False
+    for name, m in fields.items():
+        if not m.get("value"):
+            continue
+        if name.startswith("Creatable.TrainLocations"):
+            return False
+        if name.startswith("ResourceCosts"):
+            return False
+        if name.startswith("Type50."):
+            return False
+    return True
+
+
+def _patch_unit_ids(blob, gv, umap):
+    """Rewrite every unit number a record's own id fields name.
+
+    Returns (blob, hits).  Used on records this module writes whole -- the
+    author's added and replaced units -- because their id fields point at
+    other units, and after a renumber a stale CopyID or TrainLocations.0.UnitID
+    names somebody else's record.  Measured on 209785: 1,078 train entries and
+    270 DeadUnitID cells inside the author's own rows name an author id.
+    """
+    if not umap:
+        return blob, 0
+    try:
+        fields = UF.fields_at(blob, gv, 0)
+    except Exception:                               # pragma: no cover
+        return blob, 0
+    out = bytearray(blob)
+    hits = 0
+    for name, m in fields.items():
+        if m.get("kind") != "i16" or not PG.is_id_field(name):
+            continue
+        v = m.get("value")
+        if not isinstance(v, int):
+            continue
+        new = umap.get(v)
+        if new is None or new == v:
+            continue
+        off = int(m["offset"])
+        try:
+            out[off:off + 2] = struct.pack("<h", int(new))
+        except (struct.error, ValueError):          # pragma: no cover
+            continue
+        hits += 1
+    return (bytes(out) if hits else blob), hits
+
+
+#: Effect command types whose A field is a UNIT number, straight out of
+#: schema/effect_command_types.json: the attribute modifiers (0/4/5/7 and
+#: their team and other-player variants), Enable/Disable Unit (2) and the
+#: 200-series variants.  Read from the schema; listed here as the one cache
+#: the patcher consults so a command's A is never rewritten when it is a
+#: resource or an attribute instead.
+_UNIT_CMD_TYPES = frozenset((
+    0, 2, 4, 5, 7, 10, 12, 14, 15, 20, 22, 24, 25, 30, 32, 34, 35,
+    40, 42, 44, 45, 200, 201, 202, 203, 204, 205, 206,
+))
+
+#: Types that name their target unit in B: Upgrade Unit and its four variants.
+_UNIT_CMD_TO_B = frozenset((3, 13, 23, 33, 43))
+
+
+def _patch_effect_units(blob, umap):
+    """Repoint the unit numbers an effect's commands name.  Returns (blob, n).
+
+    The same fault as _patch_effect_techs one table over: an effect command
+    holds a POSITION, and once the author's units live somewhere else every
+    command that named one talks about whatever number it used to have.
+    Measured on 209785: 586 commands name one of his 124 real units in A and 25
+    in B.
+    """
+    if not umap:
+        return blob, 0
+    got = _walk_effect(blob)
+    if got is None:
+        return blob, 0
+    _name, n, end = got
+    if end != len(blob) or not n:
+        return blob, 0
+    out = bytearray(blob)
+    pos = len(blob) - _EFF_CMD_BYTES * n
+    hits = 0
+    fmt = struct.Struct("<Bhhhf")
+    for _i in range(n):
+        ty, a, b, c, d = fmt.unpack_from(out, pos)
+        if ty in _UNIT_CMD_TYPES:
+            new = umap.get(a)
+            if new is not None and new != a and -32768 <= new <= 32767:
+                fmt.pack_into(out, pos, ty, int(new), b, c, d)
+                hits += 1
+        elif ty in _UNIT_CMD_TO_B:
+            new = umap.get(b)
+            if new is not None and new != b and -32768 <= new <= 32767:
+                fmt.pack_into(out, pos, ty, a, int(new), c, d)
+                hits += 1
+        pos += _EFF_CMD_BYTES
+    return (bytes(out) if hits else blob), hits
+
+
+def _author_tech_refs(mod_f):
+    """Every technology number the author's own records name.
+
+    Read from his technology table (RequiredTechs) and his effect commands,
+    because a blank technology he nevertheless points at is not padding --
+    dropping it would break that reference.
+    """
+    out = set()
+    for start, _end in mod_f.build_tech_spans():
+        try:
+            fields = TF.fields_at(mod_f.raw, mod_f.gv, start)
+        except Exception:                           # noqa: BLE001
+            continue
+        for name, m in fields.items():
+            if not name.startswith("RequiredTechs.") or m.get("kind") != "i16":
+                continue
+            v = m.get("value")
+            if isinstance(v, int) and v >= 0:
+                out.add(v)
+    try:
+        out |= _effect_tech_refs(_effect_records(mod_f.raw))
+    except Exception:                               # noqa: BLE001
+        pass
+    return out
+
+
+def _author_unit_refs(mod_f):
+    """Unit ids the author's own file points at, from his records and effects.
+
+    Needed because dropping a stub is only free when nothing names it.  A stub
+    that something DOES name is a number the author reserved and used as a
+    placeholder -- delete it and the reference lands on nothing, so it has to
+    travel to the band with the real units instead.  Measured: on 209785 no
+    reference of any kind reaches the 739 stubs (0 of 46,602 records), on
+    550749 a DeadUnitID and three effect commands do.
+    """
+    refs = set()
+    try:
+        index = mod_f.build_unit_index()
+    except Exception:                               # noqa: BLE001
+        index = {}
+    for (_civ, uid), (s, e) in index.items():
+        if uid is None:
+            continue
+        try:
+            fields = UF.fields_at(mod_f.raw[s:e], mod_f.gv, 0)
+        except Exception:                           # noqa: BLE001
+            continue
+        for name, m in fields.items():
+            if m.get("kind") != "i16" or not PG.is_id_field(name):
+                continue
+            v = m.get("value")
+            if isinstance(v, int) and v >= 0 and v != uid:
+                refs.add(v)
+    fmt = struct.Struct("<Bhhhf")
+    for blob in _effect_records(mod_f.raw):
+        try:
+            walked = _walk_effect(blob)
+        except Exception:                           # noqa: BLE001
+            continue
+        if not walked:
+            continue
+        _n, cnt, _end = walked
+        at = len(blob) - _EFF_CMD_BYTES * cnt
+        for _k in range(cnt):
+            try:
+                ty, a, b, _c, _d = fmt.unpack_from(blob, at)
+            except struct.error:                    # pragma: no cover
+                break
+            at += _EFF_CMD_BYTES
+            if ty in _UNIT_CMD_TYPES and a >= 0:
+                refs.add(int(a))
+            if ty in _UNIT_CMD_TO_B and b >= 0:
+                refs.add(int(b))
+    return refs
+
+
+def _relocate_units(plan, mod_f, new_f, port=False):
+    """Move the author's units above the blank band, and drop his stubs.
+
+    THE FAULT (m25581)
+    ------------------
+    Unit ids are a POSITION in each civilization's flag array, exactly like a
+    technology's index, but nothing used to move them: the author's added units
+    kept the numbers he gave them.  On 209785 those are 2,382..3,244 -- 368 of
+    them numbers the shipped 8.9 file uses for REAL units.  The merge then had
+    three bad choices and took two of them: it adopted 1,944 rows on top of
+    official records and refused 13,052 more, and for the rest it grew every
+    flag array by 5,000 empty slots PAST the author's numbers, which is what
+    the player saw: the unit page had not moved the mod's content at all, it
+    had only appended a pile of empty placeholders.
+
+    WHAT THIS DOES
+    --------------
+    The layout becomes the same one the technology and effect tables already
+    use: [official ids][5,000 blank slots][author ids].  Every added record is
+    renumbered to base_m + 5,000 + k, the array grows to cover the new numbers,
+    and every reference to an author unit travels with it.
+
+    The author's stubs are dropped instead of moved: they are padding he wrote
+    to keep his own numbering, nothing in his file refers to them (measured: 0
+    references of any kind into the 739 blank ids), and carrying them would put
+    739 empty rows in the middle of his block -- the same complaint the
+    technology page already earned.
+
+    port says whether a generation change still has to re-encode the records:
+    when it does, the new numbers reach the bytes through portgen's id map
+    (which is what rewrites the id fields inside the record), so this function
+    must not patch bytes it is about to lose.
+    """
+    adds = plan.get("add_unit") or []
+    out = {"map": {}, "count": 0, "dropped": 0, "from": None, "moved": []}
+    if not adds:
+        return out
+
+    # 1. which ids are stubs EVERYWHERE the author wrote them.  A record that
+    # is a stub in one civilization and real in another is a real unit: the
+    # author only had to write the stub where he wanted the slot to exist.
+    hollow_ids = {}
+    for row in adds:
+        try:
+            fields = UF.fields_at(mod_f.raw, mod_f.gv, row["start"])
+        except Exception:                           # noqa: BLE001
+            fields = {}
+        uid = row["unit"]
+        hollow_ids[uid] = hollow_ids.get(uid, True) and _unit_is_hollow(fields)
+    stubs = set(uid for uid, hollow in hollow_ids.items() if hollow)
+    # A stub something points at is not free to delete: the reference would end
+    # up naming nothing.  Measured on 550749 -- one DeadUnitID and three effect
+    # commands reach stub ids, and those stubs have to move with the rest.
+    if stubs:
+        stubs -= _author_unit_refs(mod_f)
+        out["stubs_kept"] = len(hollow_ids) - len(stubs)
+
+    kept = [row for row in adds if row["unit"] not in stubs]
+    out["dropped"] = len(adds) - len(kept)
+    if not kept:
+        plan["add_unit"] = []
+        return out
+
+    # 2. where the author's block starts.  Read from the target's own flag
+    # arrays, not from the highest id: an array can be longer than the last id
+    # it holds, and the band has to sit past the ARRAY or the new numbers land
+    # inside it.
+    try:
+        layouts = _all_civ_layouts(new_f.raw, new_f.gv, new_f.civs_start,
+                                   count=len(new_f.civs))
+    except Exception:                               # noqa: BLE001
+        layouts = []
+    top = max([uid for (_cn, uid) in new_f.unit_keys()] + [0])
+    base_m = max([lay["m"] for lay in layouts] + [top + 1])
+    from_id = base_m + _RESERVE_UNITS
+    if from_id > 32767:
+        from_id = top + 1
+    out["from"] = from_id
+
+    # 3. one number per record, handed out in the order the author numbered
+    # them so two runs of this module agree byte for byte.
+    umap = {}
+    nxt = from_id
+    taken = set(uid for (_cn, uid) in new_f.unit_keys())
+    for uid in sorted(set(row["unit"] for row in kept)):
+        while nxt in taken:
+            nxt += 1
+        if nxt > 32767:
+            break
+        umap[uid] = nxt
+        taken.add(nxt)
+        nxt += 1
+    if not umap:
+        plan["add_unit"] = kept
+        return out
+
+    gv = new_f.gv if port else mod_f.gv
+    add_set = set((row["civ"], row["unit"]) for row in kept)
+    official_any = set(uid for (_cn, uid) in new_f.unit_keys() if uid is not None)
+    cmaps = {}
+
+    def _civ_map(cn):
+        '''The renumbering as ONE civilization sees it.
+
+        Unit numbers are global: a record in Berbers may point at 2736, which
+        the game only keeps a Gaia row for.  So the question "does the target
+        already use this number" is asked against every civilization, not
+        against this one -- asking per civilization is what turned 300 official
+        records' Bird.Tasks.N.UnitID from 2736 into 9828 on 310130, purely
+        because the author's new civilizations also number a unit 2736.
+
+        A reference belongs to the author only when this civilization holds an
+        added record at that number, or when no target record anywhere uses it.
+        Otherwise the reference is to the official unit and keeps its number:
+        the merge may not rewrite data the author never touched (m25581:
+        「我要官方的数据不能动」).  Measured on 310130, this is the difference
+        between changing 8 official records and changing 308.
+        '''
+        got = cmaps.get(cn)
+        if got is None:
+            got = {}
+            for old, new in umap.items():
+                if (cn, old) in add_set or old not in official_any:
+                    got[old] = new
+            cmaps[cn] = got
+        return got
+
+    for row in kept:
+        old = row["unit"]
+        new = umap.get(old)
+        if new is None:
+            continue
+        row["was"] = old
+        row["unit"] = new
+        blob = row.get("bytes")
+        if blob and not port:
+            row["bytes"], _n = _patch_unit_ids(blob, gv, _civ_map(row["civ"]))
+        out["moved"].append({"civ": row["civ"], "was": old, "unit": new})
+    plan["add_unit"] = kept
+    plan["unit_idmap"] = dict(umap)
+    out["map"] = dict(umap)
+    out["count"] = len(umap)
+
+    # 4. whole-record replacements and field edits that name an author unit.
+    # Only the same-generation path needs this: with a port, portgen applies
+    # the same map to every id field it writes.
+    if not port:
+        for row in (plan.get("replace") or []):
+            blob = row.get("bytes")
+            if not blob:
+                continue
+            # A record whose bytes are still exactly the official record is not
+            # the author's work -- it entered the plan only because the two
+            # files name their civilizations differently.  Rewriting a number
+            # inside it would change official data the author never touched,
+            # which is the one thing this merge may not do (m25581: 「我要官方
+            # 的数据不能动」).  Measured on 310130: 300 official records carried
+            # Bird.Tasks.N.UnitID pointing at 2736, and those became 9828 for no
+            # reason but that the author also owns a record numbered 2736.
+            span = new_f.unit_span(row["civ"], row["unit"])
+            if span and blob == new_f.raw[span[0]:span[1]]:
+                continue
+            row["bytes"], _n = _patch_unit_ids(blob, gv, _civ_map(row["civ"]))
+        for e in plan.get("edits") or []:
+            if e.get("space") != "unit" or (e.get("width") or 0) != 2:
+                continue
+            if not PG.is_id_field(e.get("field") or ""):
+                continue
+            try:
+                old = struct.unpack("<h", e["mod"])[0]
+            except struct.error:                    # pragma: no cover
+                continue
+            new = _civ_map(e.get("civ") or "").get(old)
+            if new is None:
+                continue
+            e["mod"] = struct.pack("<h", new)
+            e["relocated_from"] = old
+
+    if out["count"]:
+        plan["notes"].append(
+            "作者新增的 %d 个单位搬到了官方编号之后（%d 号起），官方原有的单位一条"
+            "都没被覆盖；他用来占位的 %d 条空记录（没有任何东西引用）没有搬过去。"
+            % (out["count"], from_id, out["dropped"]))
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -2496,7 +3515,7 @@ def _patch_pointer(blob, gv, value):
         return None
 
 
-def _join_effects(mb, nb):
+def _join_effects(mb, nb, adopt=None, band=0):
     '''Map every author effect onto the merged table, and name the tail.
 
     Returns ``(emap, tail, join)``:
@@ -2504,7 +3523,9 @@ def _join_effects(mb, nb):
       * ``emap[i]`` -- where author effect `i` ends up in the merged table;
       * ``tail``    -- the author indices appended after the target's own
                        records, in the order they are appended (so author
-                       tail item `k` lands at index ``len(nb) + k``);
+                       tail item `k` lands at index ``len(nb) + band + k``,
+                       `band` being the count of blank ids written between the
+                       two runs -- m24294);
       * ``join``    -- how each author record was settled, for the report.
 
     Split out from :func:`_link_effects` because this is the part with a right
@@ -2520,12 +3541,24 @@ def _join_effects(mb, nb):
                       never against the base: the base question reads as "the
                       author never edited this slot, keep it", which is wrong
                       exactly when the target has since reused that index.
-      2. find      -- some target slot holds these bytes (first occurrence wins,
+      2. adopt     -- only when the caller names an index in `adopt`: the target
+                      left that slot EMPTY and nothing in the target points at
+                      it, so the author's record can be written straight into
+                      it and keep its number.  This is not the same answer as
+                      "append": appended, the effect is reachable only through
+                      the technology's rewritten EffectID, and a page that
+                      opens effect 1423 by number shows the hole instead.
+      3. find      -- some target slot holds these bytes (first occurrence wins,
                       so the mapping is deterministic).
-      3. tail-dupe -- an earlier author record was already appended with these
+      4. tail-dupe -- an earlier author record was already appended with these
                       bytes (most of an author's table duplicates the base).
-      4. tail      -- append.
+      5. tail      -- append.
+
+    `adopt` is a set of author indices, and each of them must already be a hole
+    in `nb` -- the caller decides that, because "empty" and "unreferenced" are
+    questions about the whole file and not about these two lists.
     '''
+    adopt = set(adopt or ())
     first = {}
     for i, blob in enumerate(nb):
         first.setdefault(blob, i)
@@ -2533,10 +3566,16 @@ def _join_effects(mb, nb):
     tail = []
     tail_at = {}
     join = {"keep": 0, "find": 0, "tail": 0, "tail_dupe": 0}
+    if adopt:
+        join["adopt"] = 0
     for i, blob in enumerate(mb):
         if i < len(nb) and nb[i] == blob:
             emap[i] = i
             join["keep"] += 1
+            continue
+        if i in adopt and i < len(nb):
+            emap[i] = i
+            join["adopt"] += 1
             continue
         j = first.get(blob)
         if j is not None:
@@ -2548,7 +3587,7 @@ def _join_effects(mb, nb):
             emap[i] = j
             join["tail_dupe"] += 1
             continue
-        emap[i] = len(nb) + len(tail)
+        emap[i] = len(nb) + band + len(tail)
         tail_at[blob] = emap[i]
         tail.append(i)
         join["tail"] += 1
@@ -2580,10 +3619,15 @@ def _link_effects(plan, base_f, mod_f, new_f, reloc=None):
 
       1. keep      -- `target[k]` is byte-identical at the SAME index: the
                       record was inherited unchanged and needs no move;
-      2. find      -- some target slot already holds exactly these bytes;
-      3. tail-dupe -- an earlier author record was appended with these bytes
+      2. adopt     -- the target left slot k EMPTY and nothing in the target
+                      names it, and the author filled it: his bytes go into
+                      the hole and the record keeps its number (see
+                      :func:`_link_effects` for why that is not the same as
+                      appending);
+      3. find      -- some target slot already holds exactly these bytes;
+      4. tail-dupe -- an earlier author record was appended with these bytes
                       (most of an author's table is duplicates of the base);
-      4. tail      -- nothing holds them: append.
+      5. tail      -- nothing holds them: append.
 
     Note the first test asks about TARGET[k] versus MOD[k], never BASE[k]
     versus MOD[k].  Asking the base first reads as "the author never edited
@@ -2611,7 +3655,28 @@ def _link_effects(plan, base_f, mod_f, new_f, reloc=None):
         return None
     bb = _effect_records(base_f.raw)
 
-    emap, tail, join = _join_effects(mb, nb)
+    # NO SLOT INSIDE THE TARGET'S OWN TABLE IS EVER WRITTEN (m25581).
+    # There used to be an "adopt" branch here: an effect the author wrote on an
+    # index the target happened to leave blank was written BACK INTO that index
+    # as a whole-record replace, on the theory that the number the author and
+    # his technologies use would then keep pointing at it.  The player's verdict
+    # was unambiguous -- the mod's own data must not be touched, at any index,
+    # for any reason.  A blank slot is not free space, it is a reserved number,
+    # and the next official build may fill it.  Every author effect now travels
+    # past the band like everything else, and the pointers that named it were
+    # repointed by _repair_tech_refs / _decide below.
+    adopt = set()
+
+    emap, tail, join = _join_effects(mb, nb, adopt=adopt)
+    # THE BAND, and why this is a second pass (m24294): how many blank ids to
+    # write between the two runs depends on whether anything is appended at
+    # all, and only the join can say that.  The join itself is order-independent
+    # -- keep/find/adopt-by-index and tail-dupe-by-bytes all read the same
+    # either way -- so asking twice is the cheap honest answer, and the count
+    # word written by _apply_tables has to come from the same number.
+    band = _effect_band(new_f, len(tail))
+    if band:
+        emap, tail, join = _join_effects(mb, nb, adopt=adopt, band=band)
 
     # The target's own records are never patched in place: an edit there lands
     # on a record some official technology still points at, and a whole-record
@@ -2635,10 +3700,32 @@ def _link_effects(plan, base_f, mod_f, new_f, reloc=None):
             continue
         kept.append(e)
     plan["edits"] = kept
+
+    # The technology numbers an effect command names travel with the effect:
+    # the records written below are new bytes at new places, and a command that
+    # still says "tech 1523" would name whatever the target put there.  Only
+    # the rows this module actually WRITES are patched -- a record the target
+    # already holds keeps the target's own numbering.
+    mp = (reloc or {}).get("map") or {}
+    # ... and so do the UNIT numbers, for the same reason one table over: the
+    # author's units were renumbered above the band, so a command that still
+    # names his old number talks about an official unit (m25581).  Measured on
+    # 209785: 586 commands in A, 25 in B.
+    umap = plan.get("unit_idmap") or {}
+    refs = 0
+    urefs = 0
     for k, i in enumerate(tail):
+        blob, n = _patch_effect_techs(mb[i], mp)
+        refs += n
+        blob, un = _patch_effect_units(blob, umap)
+        urefs += un
+        # The author's records go AFTER the band (m24294), so their first
+        # index is official_count + 5,000.  The key is the index the record
+        # will actually occupy in the written table -- _apply_tables appends
+        # by key order, and _join_effects computed emap against the same band.
         plan["add_table"].append({
-            "table": "effect", "key": ("index", len(nb) + k),
-            "bytes": mb[i]})
+            "table": "effect", "key": ("index", len(nb) + band + k),
+            "bytes": blob})
 
     mspans = mod_f.build_tech_spans()
     nspans = new_f.build_tech_spans()
@@ -2649,7 +3736,7 @@ def _link_effects(plan, base_f, mod_f, new_f, reloc=None):
     # _relocate_techs -- every key in that map is a position in the TARGET that
     # holds somebody else technology, so the author's answer is the only one
     # that can be inherited there.
-    own = set((reloc or {}).get("map") or {})
+    own = set((reloc or {}).get("map") or {}) | set(adopt)
 
     def _decide(i):
         '''``(want, now)`` for mod tech ``i``: the pointer the merged file must
@@ -2778,16 +3865,27 @@ def _link_effects(plan, base_f, mod_f, new_f, reloc=None):
             rewritten += 1
 
     out = {
-        "mod": len(mb), "new": len(nb), "out": len(nb) + len(tail),
-        "appended": len(tail), "join": join,
-        "pointers": rewritten, "overflow": overflow,
+        "mod": len(mb), "new": len(nb), "band": band,
+        "out": len(nb) + band + len(tail),
+        "appended": len(tail), "adopted": 0, "join": join,
+        "pointers": rewritten, "overflow": overflow, "refs": refs,
+        "unit_refs": urefs,
     }
     if tail or rewritten:
         plan["notes"].append(
             "科技效果按内容接到了目标文件的效果表上：目标表 %d 条原样保留，"
-            "作者自己的效果按原顺序接在后面 %d 条（共 %d 条）；"
-            "%d 个科技的效果编号跟着改成了新位置。"
-            % (len(nb), len(tail), len(nb) + len(tail), rewritten))
+            "后面留 %d 个空白编号，作者自己的效果按原顺序接在空白之后 %d 条"
+            "（共 %d 条）；%d 个科技的效果编号跟着改成了新位置。"
+            % (len(nb), band, len(tail), len(nb) + band + len(tail),
+               rewritten))
+    if refs:
+        plan["notes"].append(
+            "效果命令里点名的科技编号跟着改了 %d 处：科技搬了位置，"
+            "「设置科技」「禁用科技」「研究时间」这些命令指的还是原来那一条。" % refs)
+    if urefs:
+        plan["notes"].append(
+            "效果命令里点名的单位编号跟着改了 %d 处：单位搬了位置，"
+            "「修改属性」「启用/禁用单位」「升级单位」这些命令指的还是原来那一个。" % urefs)
     return out
 
 
@@ -3019,9 +4117,10 @@ def _apply_edits(target, edits, work, official_wins=False):
     """Write every carryable edit into ``work`` (a bytearray of ``target.raw``).
 
     Returns ``(applied, refused, conflicts, ranges)``.  ``conflicts`` are edits
-    where the official stream had already moved that exact field: the author's
-    value still wins (that is what "my mod" means), but the row is reported so
-    the user is never surprised by which side won.
+    where the official stream had already moved that exact field.  ``official_wins``
+    (the default, since m23827) leaves the official value in place and reports the
+    row; ``official_wins=False`` writes the author's value instead.  Either way the
+    row is listed, so the player is never surprised by which side won.
     """
     applied, refused, conflicts, ranges = [], [], [], []
     for e in edits:
@@ -3212,7 +4311,8 @@ def _apply_records(target, plan, work, civs_start=None, tail=None):
         civs_start = target.civs_start
     if tail is None:
         tail = target.tail
-    done = {"units": [], "techs": [], "removed": [], "refused": []}
+    done = {"units": [], "techs": [], "removed": [], "refused": [],
+            "reserved_units": []}
 
     layouts = _all_civ_layouts(raw, gv, civs_start,
                                count=len(target.civs))
@@ -3232,6 +4332,13 @@ def _apply_records(target, plan, work, civs_start=None, tail=None):
     for row in plan["del_unit"]:
         per_civ_del.setdefault(row["civ"], []).append(row["unit"])
 
+    # The blank unit band (m22430), read here for the same reason the tech band
+    # is: the count word written by this pass has to be the number the check
+    # printed.  Only the civilizations this pass rebuilds can grow -- every
+    # other one is left byte for byte as the official file wrote it.
+    rsv_u = plan.get("reserve_units") or {}
+    rsv_m = int(rsv_u.get("n") or 0)
+
     for idx in range(len(target.keys) - 1, -1, -1):
         cn = target.keys[idx]
         dels = per_civ_del.get(cn)
@@ -3241,7 +4348,8 @@ def _apply_records(target, plan, work, civs_start=None, tail=None):
             continue
         lay = layouts[idx]
         was = len(raw)
-        raw, got = _rebuild_civ(raw, lay, cn, dels, repls, adds, done)
+        raw, got = _rebuild_civ(raw, lay, cn, dels, repls, adds, done,
+                                rsv_m=rsv_m)
         if got is None:
             return raw, done, None
         done["units"].extend(got["units"])
@@ -3261,7 +4369,16 @@ def _apply_records(target, plan, work, civs_start=None, tail=None):
             "why": "作者删了科技记录；科技没有 id 字段、位置即 id，"
                    "删掉会让后面每一条的 id 前移，本模块不猜这件事"})
     repl_tech = dict((row["index"], row["bytes"]) for row in plan["replace_tech"])
-    if repl_tech or plan["add_tech"]:
+    # The blank band the plan asked for (m22430).  Read here rather than
+    # recomputed: the count word written below has to be the same number the
+    # check printed, or the file and the report disagree about how many ids
+    # exist.
+    rsv = plan.get("reserve_techs") or {}
+    rsv_n = int(rsv.get("n") or 0)
+    rsv_blob = rsv.get("bytes")
+    if not rsv_blob:
+        rsv_n = 0
+    if repl_tech or plan["add_tech"] or rsv_n:
         if tail is None:
             tail = target.tail
         count_off, count, start, end = R.tech_section(raw, gv, tail)
@@ -3287,6 +4404,19 @@ def _apply_records(target, plan, work, civs_start=None, tail=None):
                 rewritten += 1
             parts.append(blob)
             at += len(blob)
+        # THE BAND GOES FIRST (m24294).  Layout is [official 0..count-1]
+        # [5,000 empty][author ...]: the empty run has to sit directly after the
+        # official array, because that is the space the next official build
+        # grows into.  Written after the author's records instead, the band
+        # guarded rows nobody numbers and the author's 1,707 technologies on
+        # 209785 still occupied 1,510.. -- the first number the next patch takes.
+        # Same bytes the target itself uses for a hole, so the walk accepts them
+        # and the editor lists them as empty rows.
+        if rsv_n:
+            done["techs"].append({"at": at, "bytes": rsv_n * len(rsv_blob),
+                                  "how": "reserved", "slots": rsv_n})
+            parts.append(rsv_blob * rsv_n)
+            at += rsv_n * len(rsv_blob)
         for row in plan["add_tech"]:
             done["techs"].append({"at": at, "bytes": len(row["bytes"]),
                                   "how": "appended"})
@@ -3298,7 +4428,7 @@ def _apply_records(target, plan, work, civs_start=None, tail=None):
                                          "研究地点、资源或名字），整条照抄"})
         body = b"".join(parts)
         raw = raw[:start] + body + raw[end:]
-        raw = (raw[:tail] + struct.pack("<h", count + len(plan["add_tech"]))
+        raw = (raw[:tail] + struct.pack("<h", count + len(plan["add_tech"]) + rsv_n)
                + raw[tail + 2:])
     return raw, done, None
 
@@ -3322,7 +4452,7 @@ def _tech_spans(raw, gv, start, count):
     return spans
 
 
-def _rebuild_civ(raw, lay, cn, dels, repls, adds, done):
+def _rebuild_civ(raw, lay, cn, dels, repls, adds, done, rsv_m=0):
     """Rewrite one civilization's record run in a single splice.
 
     ``(raw, report)``; ``report`` is ``None`` when this civ cannot be rebuilt
@@ -3385,7 +4515,23 @@ def _rebuild_civ(raw, lay, cn, dels, repls, adds, done):
     new_body = b"".join(body)
     old_len = lay["run_end"] - lay["run_start"]
     top = max(list(spans) + add_ids + [0])
-    want_m = max(lay["m"], top + 1)
+    base_m = max(lay["m"], top + 1)
+    want_m = base_m
+    if rsv_m:
+        # The blank unit band (m22430).  A unit's id IS a slot in this flag
+        # array: an id with a zero flag is an empty slot, an id past the array
+        # does not exist.  Growing the array by 5,000 past everything that has
+        # a record is what makes those ids real and empty at once -- no record
+        # bytes are needed because a zero flag already means 'nothing here'.
+        # The count word is an i16, so the band cannot push it past 32,767: a
+        # mod that adds a unit near the top of the id space already takes the
+        # array to 32,7xx, and +5,000 there raised "'h' format requires
+        # -32768 <= number <= 32767" out of struct.pack (measured on the
+        # unit_added_by_mod fixture).  Clamped, and the report says what was
+        # actually written rather than what was asked for.
+        want_m = min(32767, base_m + rsv_m)
+        done["reserved_units"].append({"civ": cn, "slots": want_m - base_m,
+                                       "from": base_m})
     grow = 4 * (want_m - lay["m"])
     delta = grow + len(new_body) - old_len
 
@@ -3531,6 +4677,17 @@ def _apply_tables(target, plan, raw):
             geo = _table_geometry(raw, table)
 
         del_keys = set(r["key"] for r in tdels)
+        rsv_n, rsv_blob = 0, None
+        if table == "effect":
+            # The blank band this plan asked for (m22430): 5,000 empty effect
+            # ids past the official array, written with the target's OWN hole
+            # record so the count word, the walk and the editor all agree that
+            # those ids exist and are empty.
+            rsv = plan.get("reserve_effects") or {}
+            rsv_n = int(rsv.get("n") or 0)
+            rsv_blob = rsv.get("bytes")
+            if not rsv_blob:
+                rsv_n = 0
         parts, removed, rewritten = [], [], []
         for rec in recs:
             key = target.table_key_of(table, rec, raw=raw)
@@ -3544,6 +4701,12 @@ def _apply_tables(target, plan, raw):
                 rewritten.append({"key": list(key),
                                   "bytes": [len(rep["base"]), len(blob)]})
             parts.append(blob)
+        # THE BAND GOES FIRST (m24294): [official][5,000 empty][author].  The
+        # empty run has to sit directly after the official records, because
+        # that is the space the next official build grows into; written after
+        # the author rows it would guard positions nobody numbers.
+        if rsv_n:
+            parts.append(rsv_blob * rsv_n)
         for row in tadds:
             parts.append(row["bytes"])
         blob = b"".join(parts)
@@ -3557,7 +4720,7 @@ def _apply_tables(target, plan, raw):
             # flags sit before the record area, so they are spliced first.
             flags = struct.pack("<i", 1) * len(tadds)
             grew += len(flags)
-        if not grew and not removed and not tadds and not rewritten:
+        if not grew and not removed and not tadds and not rewritten and not rsv_n:
             continue
 
         # One splice for the whole record area (plus the flags, which sit right
@@ -3572,7 +4735,7 @@ def _apply_tables(target, plan, raw):
         if geo["count_off"] is not None:
             # A replace-only table has no count word to correct: its record
             # count is the file's own and nothing here added or removed one.
-            new_count = geo["count"] + len(tadds) - len(removed)
+            new_count = geo["count"] + len(tadds) + rsv_n - len(removed)
             width = 4 if geo["count_kind"] == "i32" else 2
             raw = (raw[:geo["count_off"]]
                    + _pack_count(geo["count_kind"], new_count)
@@ -3582,6 +4745,8 @@ def _apply_tables(target, plan, raw):
         row = {"table": table, "bytes_added": sum(len(r["bytes"]) for r in tadds),
                "bytes_freed": None, "added": [list(r["key"]) for r in tadds],
                "removed": removed, "rewritten": rewritten}
+        if rsv_n:
+            row["reserved"] = rsv_n
         if removed:
             # How many bytes the deletions actually took out, as opposed to how
             # much the section shrank (a rewrite can cancel a deletion out).
@@ -4074,7 +5239,10 @@ def _analyze_core(mod_dat=None, base_dat=None, new_dat=None, game_root=None,
     _step("读完了三份数据文件", 0.12)
     rep = {
         "ok": True,
-        "official_wins": False,
+        # What an apply would do with a conflict, so the check's sentence and the
+        # apply's result cannot disagree: the official value wins by default
+        # (m23827), and every conflicting row is still listed.
+        "official_wins": True,
         "mod": {"path": mod_dat, "raw_bytes": len(mod_raw),
                 "ver": _head_ver(mod_raw), "sha256": _sha(mod_raw)},
         "base": {"path": base_path, "how": base_src,
@@ -4214,6 +5382,19 @@ def _analyze_core(mod_dat=None, base_dat=None, new_dat=None, game_root=None,
     if reloc["count"]:
         rep["techs_relocated"] = reloc["count"]
         rep["relocated"] = reloc["moved"]
+    if reloc.get("dropped"):
+        rep["techs_dropped"] = reloc["dropped"]
+
+    # The same relocation one table over, and before the port for the same
+    # reason: the numbers a record will live on have to be decided while the
+    # record is still whole bytes, so the port can write its own id fields to
+    # the number the merge actually placed it on (m25581).
+    ureloc = _relocate_units(plan, mod_f, new_f, port=bool(cross_gen))
+    if ureloc["count"]:
+        rep["units_relocated"] = ureloc["count"]
+        rep["units_from"] = ureloc["from"]
+    if ureloc.get("dropped"):
+        rep["units_stubs_dropped"] = ureloc["dropped"]
 
     if cross_gen:
         # The check must run the same port the apply will, or the verdict it
@@ -4230,7 +5411,8 @@ def _analyze_core(mod_dat=None, base_dat=None, new_dat=None, game_root=None,
             _step("把记录搬进新版本的格式",
                   _PORT_LO + (_PORT_HI - _PORT_LO) * max(0.0, min(1.0, frac or 0.0)))
 
-        rep["port"] = _port_plan(plan, mod_f, new_f, on_progress=_port_step)
+        rep["port"] = _port_plan(plan, mod_f, new_f, on_progress=_port_step,
+                                 preset=plan.get("unit_idmap") or {})
         rep["seconds_port"] = round(time.time() - t, 2)
         _step("把记录搬进新版本的格式", _PORT_HI)
 
@@ -4254,6 +5436,27 @@ def _analyze_core(mod_dat=None, base_dat=None, new_dat=None, game_root=None,
     t = time.time()
     rep["effects"] = _link_effects(plan, base_f, mod_f, new_f, reloc=reloc)
     rep["seconds_effects"] = round(time.time() - t, 2)
+
+    # The blank band at the end of each record array (m22430).  Decided here,
+    # on the plan that will be written, and stored IN that plan: the numbers the
+    # check prints and the count words the apply writes must come from one
+    # decision, or the report describes a file that was never produced.
+    _rsv_u = _reserve_units(plan)
+    if _rsv_u is not None:
+        plan["reserve_units"] = _rsv_u
+        rep["reserve_units"] = _rsv_u
+    _rsv_t = _reserve_tech(plan, new_f)
+    if _rsv_t is not None:
+        plan["reserve_techs"] = _rsv_t
+        rep["reserve_techs"] = _rsv_t
+    _rsv_e = _reserve_effect(plan, (rep["effects"] or {}).get("appended") or 0,
+                             new_f)
+    if _rsv_e is not None:
+        plan["reserve_effects"] = _rsv_e
+        rep["reserve_effects"] = _rsv_e
+    _rsv_note = _reserve_note(rep)
+    if _rsv_note:
+        plan["notes"].append(_rsv_note)
 
     applied, refused, conflicts, ranges = _apply_edits(
         new_f, plan["edits"], bytearray(new_raw))
@@ -4285,7 +5488,13 @@ def _analyze_core(mod_dat=None, base_dat=None, new_dat=None, game_root=None,
         # not as field edits: its length prefix, its research locations and its
         # costs all move together, and patching the diffs one field at a time
         # wrote string length words without writing the text they announce.
-        "techs_replaced": len(plan.get("replace_tech") or []),
+        # An ADOPTED row is not a record the author lengthened: it is his
+        # record going into a hole the target left, and saying "作者改过长度"
+        # about it would be a false statement about 39 of them.  Counted apart,
+        # in the report, because it is the number the player can check in the
+        # editor (those technologies keep their own numbers).
+        "techs_replaced": len([r for r in (plan.get("replace_tech") or [])
+                               if not r.get("adopted")]),
         # Flat-table record adds/removes are a different kind of change from a
         # unit add: no civ owns them, and they are counted per record rather
         # than per civilization, so mixing them into `units_added` would make
@@ -4345,13 +5554,20 @@ def _analyze_core(mod_dat=None, base_dat=None, new_dat=None, game_root=None,
 
 def upgrade(mod_dat=None, out_dir=None, title=None, base_dat=None,
             new_dat=None, game_root=None, install=False, profile_root=None,
-            official_wins=False, force=False, limit=20000):
+            official_wins=True, force=False, limit=20000):
     """Write an updated copy of the mod, carrying every change onto ``new``.
 
     ``force=True`` ships even when something could not be carried; the report
     still lists it, so "forced" never means "silent".  The default is to refuse,
     because a mod that silently lost one of its own edits is worse than one that
     was not rebuilt at all: the player blames the game, not the tool.
+
+    ``official_wins`` defaults to TRUE (m23827).  The player's rule for this
+    workshop is 「统一以官方的为主」: where the patch moved the same field the
+    author moved, the rebuilt mod carries the official value, because the base is
+    the official build and the tool's job is to carry the author's own work onto
+    it -- not to fight the patch over a field the patch also touched.  Every
+    conflict is still listed in the report, so nothing is settled quietly.
     """
     t0 = time.time()
     rep, kept = _analyze_core(mod_dat=mod_dat, base_dat=base_dat,
@@ -4396,10 +5612,20 @@ def upgrade(mod_dat=None, out_dir=None, title=None, base_dat=None,
     if reloc["count"]:
         rep["techs_relocated"] = reloc["count"]
         rep["relocated"] = reloc["moved"]
+    if reloc.get("dropped"):
+        rep["techs_dropped"] = reloc["dropped"]
+
+    ureloc = _relocate_units(plan, mod_f, new_f, port=bool(rep.get("cross_gen")))
+    if ureloc["count"]:
+        rep["units_relocated"] = ureloc["count"]
+        rep["units_from"] = ureloc["from"]
+    if ureloc.get("dropped"):
+        rep["units_stubs_dropped"] = ureloc["dropped"]
 
     if rep.get("cross_gen"):
         t = time.time()
-        port = _port_plan(plan, mod_f, new_f)
+        port = _port_plan(plan, mod_f, new_f,
+                          preset=plan.get("unit_idmap") or {})
         rep["port"] = port
         rep["unmapped"] = rep["unmapped"] + port["refused"]
         rep["seconds_port"] = round(time.time() - t, 2)
@@ -4419,6 +5645,25 @@ def upgrade(mod_dat=None, out_dir=None, title=None, base_dat=None,
     t = time.time()
     rep["effects"] = _link_effects(plan, base_f, mod_f, new_f, reloc=reloc)
     rep["seconds_effects"] = round(time.time() - t, 2)
+
+    # Same decision the check made, taken again against the plan that is about
+    # to be applied (the check stops counting at `limit`, this one does not).
+    _rsv_u = _reserve_units(plan)
+    if _rsv_u is not None:
+        plan["reserve_units"] = _rsv_u
+        rep["reserve_units"] = _rsv_u
+    _rsv_t = _reserve_tech(plan, new_f)
+    if _rsv_t is not None:
+        plan["reserve_techs"] = _rsv_t
+        rep["reserve_techs"] = _rsv_t
+    _rsv_e = _reserve_effect(plan, (rep["effects"] or {}).get("appended") or 0,
+                             new_f)
+    if _rsv_e is not None:
+        plan["reserve_effects"] = _rsv_e
+        rep["reserve_effects"] = _rsv_e
+    _rsv_note = _reserve_note(rep)
+    if _rsv_note:
+        plan["notes"].append(_rsv_note)
 
     t = time.time()
     work = bytearray(new_raw)
@@ -4585,7 +5830,10 @@ def _author_text(src_mod_dir, fallback_title):
         title = fallback_title
     author = str(info.get("Author") or "").strip()
     if not author or author == "Unpublished":
-        author = "dsh"
+        # The tool's own name, not its development handle (2026-11-22).  A mod
+        # that carries no author of its own is a mod this tool rebuilt, and the
+        # mod list is the player's screen -- "dsh" told them nothing there.
+        author = AV.AUTHOR
     desc = str(info.get("Description") or "")
     if not desc.strip() or desc.strip() == "No Description":
         desc = ""
@@ -4821,6 +6069,34 @@ def describe(rep):
         lines.append("科技换了位置：%d 条（原来那几个槽位官方已经另作他用，"
                      "整条搬到表尾；%d 处前置引用跟着改了指）"
                      % (rep["techs_relocated"], rep.get("relocated_refs") or 0))
+    # There used to be a line here for technologies that kept their number by
+    # filling a hole in the official array.  Nothing keeps its number any more
+    # -- see the note in _relocate_techs -- so the sentence had nothing left to
+    # say and would have printed a zero.
+    _rsv_t = (rep.get("reserve_techs") or {}).get("n") or 0
+    _rsv_u = (rep.get("reserve_units") or {}).get("n") or 0
+    _rsv_e = (rep.get("reserve_effects") or {}).get("n") or 0
+    if _rsv_t or _rsv_e or _rsv_u:
+        # The capacity this run created, said as a number the player can go and
+        # look at: those ids are real (the count word covers them, the walk
+        # accepts them, the list has a row for each), they are empty, and they
+        # sit past every official record rather than in place of one.
+        bits = []
+        if _rsv_u:
+            bits.append("单位 %d 个（重写过的那 %d 个文明各加一段空槽）"
+                        % (_rsv_u, (rep["reserve_units"] or {}).get("civs") or 0))
+        if _rsv_t:
+            _t = rep["reserve_techs"] or {}
+            bits.append("科技 %d 个（紧跟官方 %d 条之后，作者的科技从 %s 号开始）"
+                        % (_rsv_t, _t.get("official") or 0,
+                           _t.get("author_from") or "?"))
+        if _rsv_e:
+            _e = rep["reserve_effects"] or {}
+            bits.append("效果 %d 个（紧跟官方 %d 条之后，作者的效果从 %s 号开始）"
+                        % (_rsv_e, _e.get("official") or 0,
+                           _e.get("author_from") or "?"))
+        lines.append("官方原有的记录一条都没改写，空位紧接在官方数组后面：%s"
+                     % ("；".join(bits),))
     eff = rep.get("effects") or {}
     only_effects = (eff.get("appended") == (c.get("tables_added") or 0)
                     and not (c.get("tables_removed") or 0))
@@ -4848,6 +6124,19 @@ def describe(rep):
                      "%d 个科技的效果编号跟着改了位置"
                      % (eff.get("new") or 0, eff.get("appended") or 0,
                         eff.get("out") or 0, eff.get("pointers") or 0))
+        if eff.get("adopted"):
+            # These are the ones that keep their numbers -- they went into the
+            # empty slots the target left rather than past the end of the
+            # table.  Without this line the count above reads as if every
+            # author effect had been appended.
+            lines.append("其中 %d 条填的是目标文件留空的槽位，编号不变"
+                         "（按编号打开看到的就是作者写的那条）" % eff["adopted"])
+        if eff.get("refs"):
+            # A technology moving is not the only number that has to follow:
+            # 「设置科技」「禁用科技」「研究时间」 name a technology inside the
+            # effect itself, and those name the old position until patched.
+            lines.append("效果命令里点名的科技编号改了 %d 处（科技搬了位置，"
+                         "命令跟着指过去）" % eff["refs"])
         if eff.get("overflow"):
             lines.append("效果编号溢出：%d 个（这张表装不下这么多条）" % eff["overflow"])
     cl = rep.get("clashes") or {}
@@ -4872,7 +6161,8 @@ def describe(rep):
         lines.append("官方也改过同一处：%d 处%s（%s）"
                      % (c["conflicts"],
                         ("，也就是 %d 个字段" % _groups) if _groups < c["conflicts"] else "",
-                        "按官方" if rep.get("official_wins") else "按你的改法"))
+                        "这些格子按官方的值算，作者改的那一下没有搬过来"
+                        if rep.get("official_wins") else "按作者的改法搬的"))
     if c.get("unmapped"):
         lines.append("搬不过去：%d 处（已在报告里逐条列出）" % c["unmapped"])
     if c.get("gone"):

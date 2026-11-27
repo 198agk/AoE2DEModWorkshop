@@ -287,8 +287,14 @@ check("a failure it cannot undo reaches a person, not just a log",
 
 # ---- 7. the button and the sentence that shares it ----
 got = {"ok": True, "reachable": True, "behind": True, "remote": "9.9999"}
+# Three parts since 2026-11-26 (「以后都这样0.0.0写」; before that it was two decimals,
+# and before that four, which put fourteen releases and nine gigabytes into five
+# days).  What matters here is that the number is exactly TWO dots and three
+# integers, because the 关于 page, the release tag, the installer name and the gist
+# all repeat it verbatim.
 check("the check answers with the number this build says it is",
-      AV.VERSION.count(".") == 1 and len(AV.VERSION.split(".")[1]) == 4,
+      AV.VERSION.count(".") == 2
+      and all(p.isdigit() for p in AV.VERSION.split(".")),
       AV.VERSION)
 check("the version the player reads sorts above the one before it",
       UPD.ver_tuple(AV.VERSION) > UPD.ver_tuple("1.0"), AV.VERSION)

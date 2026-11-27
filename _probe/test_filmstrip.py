@@ -27,10 +27,12 @@ workspace; where a number could change with a game update, the assertion names
 the file it reads rather than hard-coding the count.
 """
 import io
+import io
 import os
 import re
 import struct
 import sys
+import zlib
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
@@ -71,6 +73,31 @@ def is_png(blob):
 def png_size(blob):
     w, h = struct.unpack_from(">II", blob, 16)
     return w, h
+
+
+def png_alpha(blob):
+    """The alpha channel of an RGBA PNG this project wrote, without PIL.
+
+    `ddstex.encode_png` writes colour type 6, bit depth 8 and filter type 0 on
+    every scanline, so unwrapping it is a zlib decompress and a stride.  A
+    decoder that only handles the shapes this repo emits is honest here; a
+    general one would be a library, and the project ships none.
+    """
+    w, h = png_size(blob)
+    pos, idat = 8, bytearray()
+    while pos < len(blob):
+        ln = struct.unpack_from(">I", blob, pos)[0]
+        kind = blob[pos + 4:pos + 8]
+        if kind == b"IDAT":
+            idat += blob[pos + 8:pos + 8 + ln]
+        pos += 12 + ln
+    raw = zlib.decompress(bytes(idat))
+    stride = w * 4 + 1
+    out = []
+    for y in range(h):
+        row = raw[y * stride + 1:(y + 1) * stride]
+        out.append(bytes(row[3::4]))
+    return w, h, out
 
 
 def body_of(src, name):
@@ -203,6 +230,24 @@ def main():
     check("a normal unit is not shadow_only", got["shadow_only"] is False)
     check("and it does have a main plane", got["has_main"] is True)
 
+    # The seam between two poses must be TRANSPARENT.  It used to be an opaque
+    # #18181c bar, which is invisible on the editor's dark panel and reads as a
+    # torn black stripe on the 模型 page's light one -- the player's words were
+    # 「图片是损坏缺失的」 (2026-11-24).  Both halves are asserted: no opaque
+    # column anywhere, and the frames themselves still draw.
+    gw, gh, arows = png_alpha(got["png"])
+    n = got["frames"]
+    cw = (gw - F.GAP * (n - 1)) // n
+    seams = [i * (cw + F.GAP) + cw + k for i in range(n - 1) for k in range(F.GAP)]
+    check("the width is the poses plus the gaps the layout counts",
+          cw * n + F.GAP * (n - 1) == gw, (cw, n, F.GAP, gw))
+    # A seam column has no pixel of any pose in it.  The interior of a pose is
+    # not fully opaque either (a silhouette has holes), so the test reads the
+    # seam positions from the layout instead of looking for "blank columns".
+    check("every seam column is fully transparent, not a dark stripe",
+          all(all(r[x] == 0 for r in arows) for x in seams),
+          [x for x in seams if any(r[x] for r in arows)][:4])
+
     walk = F.strip(root, "u_vil_male_villager_walkA_x1", frames=20, angles=16)
     check("the walk row is wider than the idle row",
           png_size(walk["png"])[0] * png_size(walk["png"])[1] > 0)
@@ -213,6 +258,21 @@ def main():
           is_png(arrow["png"]) and arrow["frames"] > 0, arrow["frames"])
     check("and it says so instead of pretending to be a unit",
           arrow["shadow_only"] is True and arrow["has_main"] is False)
+
+    # A SHIPPED 0-BYTE FILE IS NOT A CRASH.  Two merchant-ship files on disk are
+    # empty; `struct` raises with a byte offset and the page printed a stack
+    # trace, which reads like the workshop is broken.  The reader now says what
+    # it found, and every other unreadable file gets the same one-sentence
+    # treatment instead of a traceback.
+    try:
+        F.strip(root, "u_shp_merchant_ship_x1", frames=4)
+        check("a 0-byte file is refused, not drawn", False, "no error raised")
+    except F.FilmError as exc:
+        check("a 0-byte file is refused, not drawn",
+              "0 字节" in str(exc), str(exc))
+        check("and the sentence names the file, not a byte offset",
+              "u_shp_merchant_ship_x1" in str(exc) and "unpack_from" not in str(exc),
+              str(exc))
 
     # A file whose frames are mostly frame_type 0x00: either it draws, or it
     # refuses and says the frames are empty.  Both are honest; a blank PNG is
@@ -226,6 +286,78 @@ def main():
         check("a mostly-empty file says the frames are empty",
               "一个像素都没有" in str(exc), str(exc))
 
+    # A PATCH FRAME IS NOT A PICTURE.  Archer idle is 903 patches out of 961
+    # records: each one resends only the cells whose colour changed, so the
+    # figure exists only in a player that has applied every frame before it.
+    # Drawn on its own the body vanishes and the bow turns into a row of black
+    # dashes -- reported twice on 2026-11-27.  Both halves are pinned here.
+    from aoe2mod.game import sld as S
+    arch = os.path.join(F.SP.graphics_dir(root), "u_arc_archer_idleA_x2.sld")
+    if os.path.isfile(arch):
+        a = S.read_sld(arch)
+        fmts = [S.parse_rect_layer(f.layers["main"])[1]
+                for f in a.frames if "main" in f.layers]
+        patches = sum(1 for v in fmts if v & 0x80)
+        check("most of the archer's idle records are patches, not pictures",
+              patches > len(fmts) // 2, (patches, len(fmts)))
+
+        def opaque(rgba):
+            return sum(1 for i in range(3, len(rgba), 4) if rgba[i])
+
+        walked, alone = [], []
+        walk = S.Walk()
+        for k in range(4):
+            walk.take(a.frames[k])
+            walked.append(opaque(S.render_frame(
+                a.frames[k], with_shadow=False, walk=walk)[0]))
+            alone.append(opaque(S.render_frame(
+                a.frames[k], with_shadow=False)[0]))
+        check("a patch drawn on its own is missing most of the figure",
+              alone[1] < walked[0] * 3 // 4, (alone[1], walked[0]))
+        check("applied in file order it is as whole as the frame before it",
+              abs(walked[1] - walked[0]) * 20 < walked[0],
+              (walked[:4], alone[:4]))
+
+        # THE CELL KEY IS A PLACE ON THE CANVAS, NOT AN INDEX IN THE GRID.
+        # The mangudai idle file moves its rect 110 times over 961 frames, 95
+        # of those on patch frames.  Keyed by grid index the leftover cells get
+        # painted at the NEW origin and the figure smears; keyed by canvas
+        # position the picture stays where it was drawn.  Measured: 403,922
+        # leftover opaque pixels by index against 277 by position.
+        mang = os.path.join(F.SP.graphics_dir(root), "u_cav_mangudai_idleA_x2.sld")
+        if os.path.isfile(mang):
+            m = S.read_sld(mang)
+            rects = [S.parse_rect_layer(f.layers["main"])[0]
+                    for f in m.frames if "main" in f.layers]
+            check("one idle file moves its own frame window many times",
+                  len(set(rects)) > 20, len(set(rects)))
+            walk2 = S.Walk()
+            outside = 0
+            for k in range(min(len(m.frames), 60)):
+                walk2.take(m.frames[k])
+                if k != 59:
+                    continue
+                rgba, w, h, info = S.render_frame(
+                    m.frames[k], with_shadow=False, walk=walk2)
+                x1, y1, x2, y2 = info["main_rect"]
+                for i in range(3, len(rgba), 4):
+                    if not rgba[i]:
+                        continue
+                    px, py = (i // 4) % w, (i // 4) // w
+                    if px < x1 or py < y1 or px >= x2 or py >= y2:
+                        outside += 1
+            check("the drawn picture stays inside its own frame window",
+                  outside == 0, outside)
+
+        # The file stores every pose of one direction, then every pose of the
+        # next, so pose p of angle a sits at index a * poses + p.  The
+        # transposed formula the shipped notes carried turns these two into
+        # the same picture: sixteen poses wearing sixteen direction labels.
+        a3 = F.strip(root, "u_arc_archer_idleA_x2", frames=1, angles=16, angle=3)
+        p3 = F.strip(root, "u_arc_archer_idleA_x2", frames=1, angles=16,
+                     angle=0, start=3)
+        check("angle 3 opening pose is not angle 0 fourth pose",
+              a3["png"] != p3["png"], (len(a3["png"]), len(p3["png"])))
     big = F.strip(root, "b_west_castle_age3_destruction_x1", frames=150)
     check("a 150-frame collapse is capped in count", big["capped"] is True)
     check("and capped again by width", big["frames"] < 150, big["frames"])
@@ -471,6 +603,7 @@ def main():
     print("")
     print("FILMSTRIP: %s" % (
         "A POSE COUNT IS DECIDED BY THE FILE, A BLANK POSE IS COUNTED, "
+        "A PATCH FRAME IS DRAWN ONLY AFTER EVERY FRAME BEFORE IT, "
         "AND ONE PNG ROW CARRIES ITS OWN NUMBERS"
         if not FAILS else "FAILURES ABOVE"))
     return 1 if FAILS else 0

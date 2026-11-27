@@ -221,9 +221,10 @@ def main():
     check("the server reports it from one constant",
           'import appversion as AV' in io.open(
               os.path.join(ROOT, "aoe2mod", "ui", "server.py"), encoding="utf-8").read(), "")
-    # 版本号自 2026-11-18 起是「每次改动加 0.0001」（玩家原话），于是它是
-    # `1.0001` 这种四位小数；而 Rust manifest 只认三段。 两边不能各写一遍，
-    # 所以 appversion 里派生出 `SEMVER`（1.0001 -> 1.0.1），这里比对的就是它。
+    # 版本号自 2026-11-21 起是两位小数、每次加 0.10 才发一版（玩家原话
+    # 「版本号改成小数点后面只留两位数，每0.10更新才发布一次」），于是它是
+    # `1.10` 这种形状；而 Rust manifest 要三段。 两边不能各写一遍，所以
+    # appversion 里派生出 `SEMVER`（1.10 -> 1.10.0），这里比对的就是它。
     _av = __import__("aoe2mod.appversion", fromlist=["VERSION"])
     check("the bundle manifest agrees with that constant",
           __import__("json").load(io.open(
@@ -238,10 +239,9 @@ def main():
     # 从 VERSION 算出来用 /DAppVer= 传进去。 兜底值也必须跟着走，否则有人绕过
     # 打包脚本敲一次 ISCC，产出的安装包叫一个旧名字。
     #
-    # 这里比的是四位小数的 VERSION 而不是 SEMVER：玩家看到的包名、卸载列表、
-    # 发布标题都该是他要的那个数（1.0001）。 cargo 明确拒绝 `version = "1.0001"`
-    # （invalid leading zero in minor version number），所以只有 Rust 那两个
-    # manifest 退到派生出来的三段式，安装包不必跟着退。
+    # 这里比的是两位小数的 VERSION 而不是 SEMVER：玩家看到的包名、卸载列表、
+    # 发布标题都该是他要的那个数（1.10）。 只有 Rust 那两个 manifest 退到
+    # 派生出来的三段式（1.10.0），安装包不必跟着退。
     check("...and the installer carries the number the player reads",
           ("#define AppVer \"%s\"" % (_av.VERSION,)) in io.open(
               os.path.join(ROOT, "_probe", "installer", "aoe2mod.iss"),

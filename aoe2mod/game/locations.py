@@ -16,6 +16,8 @@ import json
 import os
 import time
 
+from .. import appversion as AV
+
 DAT_REL = os.path.join("resources", "_common", "dat", "empires2_x2_p1.dat")
 
 #: Override for the profile root; see :func:`find_profile_root`.  Points at ONE
@@ -794,7 +796,7 @@ def running_note(process=GAME_PROCESS):
 
 def install_mod(mod_dir, profile_root, name=None, title=None, kind="local",
                 enabled=True, position=0, account=None, overwrite=False,
-                backup=True):
+                backup=True, checksum=None):
     """Copy an emitted mod folder into the profile and register it.
 
     Two separate things must happen, and only the first is a file copy:
@@ -847,7 +849,29 @@ def install_mod(mod_dir, profile_root, name=None, title=None, kind="local",
 
     doc, acc, _ = read_status_doc(profile_root, account=acc)
     entry = upsert_mod_entry(doc, name, kind=kind, title=title,
-                             enabled=enabled, position=position, move=True)
+                             enabled=enabled, position=position, move=True,
+                             checksum=(checksum if checksum is not None else "0"))
+    # The engine keeps a FOLDER CHECKSUM in this entry and verifies the selected
+    # dataset against it.  Writing "0" left the number unusable for the two
+    # things that read it: `dataset.write_selection` refuses a zero checksum, and
+    # `dataset.audit` cannot tie a `Player.nfp` record to a folder whose status
+    # entry says zero -- so the tool's own freshly installed data mod looked like
+    # "nothing is picked" the moment it was installed.  Measured 2026-11-21: the
+    # only entries on this disk carrying a real CheckSum are the ones the GAME
+    # wrote, and the game writes it right after it discovers the folder.
+    #
+    # Computed here, once, from the bytes that just landed -- the same rule the
+    # engine uses (`zlib.crc32` over the folder, `info.json`/`thumbnail*` aside).
+    # An explicit `checksum=` still wins, so a caller that already knows the
+    # number does not pay for a second walk over 12 MB.
+    crc = checksum
+    if crc is None:
+        dat_probe = os.path.join(target, DAT_REL)
+        if os.path.isfile(dat_probe):
+            from . import dataset as _DS
+            crc = _DS._folder_checksum(target)
+    if crc is not None:
+        entry["CheckSum"] = str(crc)
     bak = write_status_doc(acc, doc, backup=backup)
 
     dat = os.path.join(target, DAT_REL)
@@ -1183,7 +1207,7 @@ def set_mod_info(profile_root, name, title=None, author=None,
         info = dict((k, v) for k, v in old.items() if isinstance(k, str))
         info["Title"] = want_title or str(old.get("Title") or
                                           os.path.basename(path))
-        info["Author"] = str(old.get("Author") or "aoe2mod")
+        info["Author"] = str(old.get("Author") or AV.AUTHOR)
         info["Description"] = str(old.get("Description") or "")
         if "CacheStatus" not in info:
             info["CacheStatus"] = 0
@@ -1310,9 +1334,9 @@ def copy_mod(profile_root, name, new_name=None, title=None, author=None,
 
     info = dict((k, v) for k, v in old.items() if isinstance(k, str))
     info["Title"] = want_title
-    info["Author"] = (str(old.get("Author") or "aoe2mod")
+    info["Author"] = (str(old.get("Author") or AV.AUTHOR)
                       if author is None else (author.strip() or
-                                              str(old.get("Author") or "aoe2mod")))
+                                              str(old.get("Author") or AV.AUTHOR)))
     info["Description"] = (str(old.get("Description") or "")
                            if description is None else description)
     if "CacheStatus" not in info:

@@ -207,6 +207,7 @@ _DETAIL_KEYS = {
     "/api/mod-copy": ("name", "new_name", "title", "author", "description"),
     "/api/mod-move": ("name", "delta"),
     "/api/mod-move-to": ("name", "position"),
+    "/api/dataset-pick": ("name", "profile_root"),
     "/api/dat-set": ("path", "dat", "scope"),
     "/api/sprite": ("unit", "donor", "mode", "dry", "families", "applied"),
     "/api/toggle-group": ("techs", "type", "dry", "applied", "pending"),
@@ -219,6 +220,8 @@ _DETAIL_KEYS = {
     "/api/ai-script-build": ("title", "built"),
     "/api/open-url": ("url",),
     "/api/log-open": ("dir",),
+    "/api/sheets-open": ("dir",),
+    "/api/sheets-dir": ("custom", "dir"),
     "/api/repair-apply": ("picked", "reason"),
     "/api/pseudo-pages": ("building", "box", "name", "on", "hide", "civ"),
     "/api/pseudo-page-put": ("building", "box", "unit", "page", "slot", "mode",
@@ -258,6 +261,7 @@ _VERBS = {
     "/api/mod-copy": "另存为模组",
     "/api/mod-move": "移动模组",
     "/api/mod-move-to": "模组排序",
+    "/api/dataset-pick": "设成游戏要读的数据模组",
     "/api/dat-set": "切换数据文件",
     "/api/sprite": "换精灵图",
     "/api/toggle-group": "批量开关科技",
@@ -270,6 +274,9 @@ _VERBS = {
     "/api/ai-script-check": "检查 AI 脚本",
     "/api/open-url": "打开链接",
     "/api/log-open": "打开日志文件夹",
+    "/api/sheets-open": "打开空表文件夹",
+    "/api/sheets-pick": "挑空表文件夹",
+    "/api/sheets-dir": "改空表文件夹",
     "/api/repair-apply": "修一处损坏",
     "/api/rebuild": "重建并重装",
 }
@@ -368,6 +375,10 @@ def summary_of(route, payload, result):
         was = _pick(p.get("name"), "?")
         return "%s：%s → %s" % (verb, was, _pick(got.get("title"), p.get("title"), "?"))
 
+    if route == "/api/dataset-pick":
+        got = r.get("pick") or {}
+        return "%s：%s" % (verb, _pick(got.get("title"), p.get("name"), "?"))
+
     if route == "/api/mod-copy":
         got = r.get("copy") or {}
         was = _pick(p.get("name"), "?")
@@ -385,7 +396,8 @@ def summary_of(route, payload, result):
                 one[2] if isinstance(one, (list, tuple)) and len(one) > 2 else "?")
         return verb
 
-    if route in ("/api/session-reset", "/api/log-open", "/api/open-url"):
+    if route in ("/api/session-reset", "/api/log-open", "/api/sheets-open",
+                 "/api/sheets-dir", "/api/open-url"):
         return "%s：%s" % (verb, _pick(r.get("url"), r.get("dir"), ""))
 
     return verb

@@ -165,13 +165,16 @@ ck("...and does not re-open the pane when it moves",
    re.search(r"sel\.value = d\.civ;", page) is not None)
 server = open(os.path.join(ROOT, "aoe2mod", "ui", "server.py"),
               encoding="utf-8").read()
-ck("one helper decides the reference civilization, used by both paths",
-   server.count("self._unit_read_ref(") == 3
+# 四条读路径，不是两条：编辑器、卡片、模型页的逐张图（art_records，2026-11-24
+# 加进来的）、以及它旁边的另一条。数量本身不是契约，契约是「一条新的读路径
+# 也必须走同一个 helper」——所以这里数到 4 而不是把 helper 拆开。
+ck("one helper decides the reference civilization, used by every read path",
+   server.count("self._unit_read_ref(") == 4
    and server.count("def _unit_read_ref(") == 1,
    server.count("self._unit_read_ref("))
 ck("the refusal is built in one place",
    server.count("def _unit_missing(") == 1
-   and server.count("self._unit_missing(") == 3,
+   and server.count("self._unit_missing(") == 4,
    server.count("self._unit_missing("))
 
 print()

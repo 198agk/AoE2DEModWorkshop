@@ -270,11 +270,149 @@ def decode_bc4_plane(blocks, bw, bh, cmds=None):
     return img, W, H
 
 
+# ------------------------------------------------------- delta frame replay
+
+def layer_is_patch(layer, mask=False):
+    # True when this layer is a PATCH over the frame before it.  A main or
+    # shadow layer keeps fmt at offset 8; a mask keeps it at offset 0.  Bit
+    # 0x80 says 'this layer carries its own run list', and on a later frame a
+    # run list is a patch, not a picture -- see Walk.
+    off = 0 if mask else 8
+    return bool(struct.unpack_from('<H', layer.data, off)[0] & 0x80)
+
+
+def decode_absolute(cells, w, h, mask=False):
+    # -> (plane, w, h) from a {(x, y): 8-byte block} dict.  The key is the
+    # pixel on the CANVAS that the block's top-left corner sits on, not a grid
+    # index -- see Walk for why that difference is the whole bug.
+    #
+    # A cell that is not in the dict was never drawn and stays empty.  That is
+    # NOT the same as a cell holding a zeroed block, which decodes to real
+    # pixels (an all-zero BC1 block is opaque black, an all-zero BC4 block is
+    # 0), so the two cases must never be folded together.
+    img = bytearray(w * h) if mask else bytearray(w * h * 4)
+    for (px, py), blk in cells.items():
+        if mask:
+            pal, bits = bc4_palette(blk), _idx_bits3(blk)
+        else:
+            pal, bits = bc1_palette(blk), _idx_bits(blk)
+        for i in range(16):
+            x, y = px + (i % 4), py + (i // 4)
+            if not (0 <= x < w and 0 <= y < h):
+                continue
+            if mask:
+                img[y * w + x] = pal[bits[i]]
+            else:
+                o = (y * w + x) * 4
+                img[o:o + 4] = bytes(pal[bits[i]])
+    return img, w, h
+
+
+class Walk:
+    # Replays a file's frames in order so a patch frame comes out whole.
+    #
+    # WHY THIS EXISTS.  Most .sld frames are not pictures, they are patches:
+    # bit 0x80 in the layer's fmt says the layer carries its own run list, and
+    # on any frame after the first of a pose that run list names only the cells
+    # whose colour changed.  Archer idle is 903 patch frames out of 961; the
+    # villager's is 960 whole frames out of 960, which is why only some units
+    # looked broken.  Drawn on its own, a patch frame shows the handful of
+    # cells it happened to resend: the body vanishes and a row of black dashes
+    # is left where the bow was -- the player reported exactly that twice
+    # (2026-11-27) and was right both times.
+    #
+    # The engine keeps the previous cells and overwrites the named ones.  So
+    # does this: take(frame) applies one frame in file order, plane(name) hands
+    # back the picture as of that frame.  A layer whose fmt has no 0x80 starts a
+    # new picture, which is exactly the reset the format implies.
+    #
+    # A CELL IS A PLACE ON THE CANVAS, NOT A GRID INDEX (measured 2026-11-27).
+    # The first version of this class keyed cells by their index in the frame's
+    # own grid, which is only the same thing while the rect never moves.  It
+    # does move: the mangudai idle rect changes 110 times over 961 frames, 95
+    # of those changes on a patch frame, and each move shifts the grid by 4 px.
+    # Keyed by index, a cell that is not resent keeps its old block, which the
+    # canvas then paints at the NEW rect origin: the previous pose is dragged
+    # along behind the new one.  Over 300 frames that leftover is 403,922 opaque
+    # pixels on the mangudai (3,614 in one frame) against 277 keyed by screen
+    # position, and 80,972 against 0 on the archer.  The player saw it as a
+    # smear of torn black dashes on the mangudai strip (2026-11-25).
+    #
+    # So the key is (x, y) on the canvas: `rect.x1 + (cell % bw) * 4` and
+    # `rect.y1 + (cell // bw) * 4`.  A mask has no rect of its own and rides on
+    # main's, exactly as parse_mask_layer's docstring says.
+
+    NAMES = ('main', 'playercolor', 'shadow', 'damage')
+    MASKS = ('playercolor', 'damage')
+
+    def __init__(self, width=0, height=0):
+        self.cells = dict((nm, {}) for nm in self.NAMES)
+        self.w = int(width or 0)
+        self.h = int(height or 0)
+        self.wholes = 0     # main-layer whole frames (each starts a picture)
+        self.patches = 0    # main-layer patches since the last whole frame
+
+    def _room(self, frame):
+        # The canvas can differ between frames of one file (a house's age
+        # states are 300x300 and 400x400), so it is grown, never fixed.
+        if frame.canvas_w > self.w:
+            self.w = frame.canvas_w
+        if frame.canvas_h > self.h:
+            self.h = frame.canvas_h
+
+    def take(self, frame):
+        self._room(frame)
+        m = frame.layers.get('main')
+        mg = grid_of(parse_rect_layer(m)[0]) if m is not None else None
+        for nm in self.NAMES:
+            layer = frame.layers.get(nm)
+            if layer is None:
+                continue
+            mask = nm in self.MASKS
+            if mask:
+                fmt, ncmd, cmds = parse_mask_layer(layer)
+                blocks = mask_blocks(layer, ncmd)
+                g = mg
+            else:
+                rect, fmt, ncmd, cmds = parse_rect_layer(layer)
+                blocks = rect_blocks(layer, ncmd)
+                g = grid_of(rect)
+            if g is None:
+                continue
+            x1, y1, bw, bh = g[0], g[1], g[4], g[5]
+            dest = self.cells[nm]
+            if not (fmt & 0x80):
+                dest.clear()
+                if nm == 'main':
+                    self.wholes += 1
+            elif nm == 'main':
+                self.patches += 1
+            for cell, drawn in placed_blocks(cmds, bw, bh):
+                if drawn >= len(blocks):
+                    continue
+                dest[(x1 + (cell % bw) * 4, y1 + (cell // bw) * 4)] = blocks[drawn]
+        return self
+
+    def plane(self, name, mask=False):
+        # The accumulated picture of one layer, or None when it has none.
+        if self.w <= 0 or self.h <= 0:
+            return None
+        if not self.cells[name]:
+            return None
+        return decode_absolute(self.cells[name], self.w, self.h, mask=mask)
+
 # ------------------------------------------------------------------ renderer
 
-def render_frame(frame, team=(220, 60, 60), with_shadow=True, with_pc=True):
+def render_frame(frame, team=(220, 60, 60), with_shadow=True, with_pc=True,
+                 walk=None):
     """Composite one frame onto its canvas.  Returns (bytearray RGBA, w, h)
-    plus a dict of intermediate planes for inspection."""
+    plus a dict of intermediate planes for inspection.
+
+    With `walk`, the picture comes from the replay instead of the frame: a
+    patch frame only resends the cells whose colour changed, and the walk owns
+    every cell applied so far, keyed by canvas position.  Each plane is then
+    already canvas-sized, so nothing here adds a rect origin to a coordinate.
+    """
     w, h = frame.canvas_w, frame.canvas_h
     canvas = bytearray(w * h * 4)
     info = {}
@@ -283,7 +421,14 @@ def render_frame(frame, team=(220, 60, 60), with_shadow=True, with_pc=True):
     if m is not None:
         rect, fmt, ncmd, cmds = parse_rect_layer(m)
         x1, y1, rw, rh, bw, bh = grid_of(rect)
-        plane, PW, PH = decode_bc1_plane(rect_blocks(m, ncmd), bw, bh, cmds)
+        if walk is None:
+            plane, PW, PH = decode_bc1_plane(rect_blocks(m, ncmd), bw, bh, cmds)
+            ox, oy = x1, y1
+        else:
+            # A patch frame carries only the cells that changed; the walk holds
+            # the picture as of this frame, which is what the engine draws.
+            plane, PW, PH = walk.plane("main")
+            ox, oy = 0, 0
         info["main_rect"] = rect
         info["grid"] = (bw, bh)
         info["main_plane"] = (plane, PW, PH)
@@ -293,13 +438,16 @@ def render_frame(frame, team=(220, 60, 60), with_shadow=True, with_pc=True):
         if with_pc and "playercolor" in frame.layers:
             pcl = frame.layers["playercolor"]
             pfmt, pncmd, pcmds = parse_mask_layer(pcl)
-            pc_plane = decode_bc4_plane(mask_blocks(pcl, pncmd), bw, bh, pcmds)
+            if walk is None:
+                pc_plane = decode_bc4_plane(mask_blocks(pcl, pncmd), bw, bh, pcmds)
+            else:
+                pc_plane = walk.plane("playercolor", mask=True)
             info["pc_plane"] = pc_plane
             info["pc_fmt"] = pfmt
 
         for gy in range(PH):
             for gx in range(PW):
-                sx, sy = x1 + gx, y1 + gy
+                sx, sy = ox + gx, oy + gy
                 if not (0 <= sx < w and 0 <= sy < h):
                     continue
                 o = (sy * w + sx) * 4
@@ -319,9 +467,13 @@ def render_frame(frame, team=(220, 60, 60), with_shadow=True, with_pc=True):
         sl = frame.layers["shadow"]
         rect, fmt, ncmd, cmds = parse_rect_layer(sl)
         x1, y1, rw, rh, bw, bh = grid_of(rect)
-        plane, PW, PH = decode_bc4_plane(rect_blocks(sl, ncmd), bw, bh, cmds)
+        if walk is None:
+            plane, PW, PH = decode_bc4_plane(rect_blocks(sl, ncmd), bw, bh, cmds)
+        else:
+            plane, PW, PH = walk.plane("shadow", mask=True)
         info["shadow_plane"] = (plane, PW, PH)
         info["shadow_rect"] = rect
+        info["shadow_absolute"] = walk is not None
 
     # damage mask: same grid as main, placed over the composited sprite
     if "damage" in frame.layers and "main" in frame.layers:
@@ -329,12 +481,17 @@ def render_frame(frame, team=(220, 60, 60), with_shadow=True, with_pc=True):
         dfmt, dncmd, dcmds = parse_mask_layer(d)
         rect = info["main_rect"]
         x1, y1, rw, rh, bw, bh = grid_of(rect)
-        dplane, DW, DH = decode_bc4_plane(mask_blocks(d, dncmd), bw, bh, dcmds)
+        if walk is None:
+            dplane, DW, DH = decode_bc4_plane(mask_blocks(d, dncmd), bw, bh, dcmds)
+            dx, dy = x1, y1
+        else:
+            dplane, DW, DH = walk.plane("damage", mask=True)
+            dx, dy = 0, 0
         info["damage_plane"] = (dplane, DW, DH)
         info["damage_fmt"] = dfmt
         for gy in range(min(DH, frame.canvas_h)):
             for gx in range(min(DW, frame.canvas_w)):
-                sx, sy = x1 + gx, y1 + gy
+                sx, sy = dx + gx, dy + gy
                 if not (0 <= sx < w and 0 <= sy < h):
                     continue
                 o = (sy * w + sx) * 4

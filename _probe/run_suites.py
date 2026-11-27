@@ -55,7 +55,11 @@ _FAIL_RE = re.compile(
     r"|\bFAILURES:\s*(?:\d|%[sdr])"          # `FAILURES: 1 -> [...]` / `FAILURES: %s`
     r"|^\s*FAIL(?:\s|:)(?!\s*[A-Z][A-Z0-9 _()/.-]{2,}:)"  # report, not a verdict
     r"|\bFAIL\s+[^\s]+\s*::"               # `FAIL name :: detail`
-    r"|\bFAIL(?:ED|URE|URES)?\s*$"           # report ends the line
+    # `print("FAILURES:", ...)` -- the colon ends the literal, so a bare
+    # `FAILURES` followed by nothing had to be closed by whitespace and never
+    # closed by a colon.  `_probe/test_upgrade_author_files.py` printed this and
+    # the audit reported it as an unrecognised shape, 2026-11-21.
+    r"|\bFAIL(?:ED|URE|URES)?:?\s*$"        # report ends the line
     r"|\bCHECK\(S\)\s+FAILED\b"            # `N CHECK(S) FAILED -> [...]`
     # `MOD ROUTES: FAILURES ABOVE` -- the sign-off five suites print when they
     # failed (`test_mod_routes`, `test_rebuild`, `test_pages_shipped`,
@@ -165,6 +169,10 @@ SUITES = [
     r"_probe\test_sld_encode.py",
     r"_probe\test_reskin.py",
     r"_probe\test_repaint.py",
+    # The step bar.  A repaint changes no .dat byte, so it entered no history
+    # at all: on 2026-11-25 the bar said 已改 2 项 while 撤回 answered 「没有可以
+    # 撤回的改动了」.  Registered here because a test no runner calls is not a test.
+    r"_probe\test_repaint_undo.py",
     r"_probe\test_retarget.py",
     # The ten below sat in `_probe/` registered with NOBODY -- not in this list,
     # not in run_long.py -- so nothing ever ran them.  Four of them had rotted
@@ -183,6 +191,13 @@ SUITES = [
     # silently edits both mods at once, so the suite diffs the source byte for
     # byte rather than trusting the answer dict.
     r"_probe\test_mod_copy.py",
+    # Whether the ENGINE reads a data mod at all.  The rebuild was correct and
+    # still did nothing in game, because the pick is not the enable switch -- it
+    # is a record in profile/Player.nfp, and nothing but the create-game dropdown
+    # ever wrote it.  This diffs the decompressed file byte for byte, because a
+    # naive "first record with a nonzero tail" match silently rewrote a player
+    # name once and the answer dict looked fine.
+    r"_probe\test_dataset_pick.py",
     # The UI shell.  These two are product assertions in the strictest sense:
     # the sentence parser is the only thing standing between a Chinese sentence
     # and a wrong edit, and the server test is the only thing that exercises the
@@ -711,12 +726,17 @@ SUITES = [
     # 死所以必须服务端转发、拷过去的是记录本身而不是一个「复制」的意图（改的只有 id，
     # 其余每个字节都是供体的）、以及别的窗口写完这一侧会自己重画列表。
     r"_probe\test_cross_drag.py",
-    # 更新检查: 2026-11-18「我每产生新改动，版本号就增加0.0001，然后说明更新内容，
-    # 这样就能直接用工具内置的更新来更新了」。两个容易假的地方：旧的 ver_tuple
-    # 只留两位整数（1.0001 与 1.0002 相等，新发布的版本在每台机器上都读成「已经是
-    # 最新的」），以及一个只有号码的版本卡等于让玩家盲下 286 MB。 钉子里没有网络：
-    # `check()` 的 opener 就是那个缝。
+    # 更新检查: 2026-11-21 起版本号是两位小数、每次加 0.10 才发一版（此前是
+    # 「每次改动加 0.0001」，五天发了十四次）。 两个容易假的地方：把小数点后当整数
+    # 读（1.1 与 1.10 相等，新版本在每台机器上都读成「已经是最新的」），以及一个
+    # 只有号码的版本卡等于让玩家盲下 286 MB。 钉子里没有网络：`check()` 的 opener
+    # 就是那个缝。
     r"_probe\test_version_check.py",
+    # 发版节奏：2026-11-21「还有Releases的发布别再发布这么多了，这个有上限的吧，
+    # 只发布稳定版更新会比较好吧」+「版本号改成小数点后面只留两位数，每0.10更新才
+    # 发布一次如何？」。 五天发了十四次，约 9 GB。 钉两件事：版本号必须是两位小数，
+    # 且只有 0.10 的整数倍能发；并且发布脚本真的去问这条规则（否则规则只是注释）。
+    r"_probe\test_release_cadence.py",
     # 自动更新: 2026-11-18「我要自动更新的，而不是自己手动去下载新版来自己安装
     # 覆盖」。四件容易假的事：挑的是 29 MB 的小包而不是 367 MB 的全包、下下来的
     # 字节真的和发布页公布的 sha256 比过、压缩包里跳出目录的名字在写盘之前就被拒、
@@ -738,6 +758,7 @@ SUITES = [
     # timeout.  This one costs a second and names the file.
     r"_probe\test_page_syntax.py",
     r"_probe\test_filmstrip.py",
+    r"_probe\test_sheet.py",
     r"_probe\test_editor_fit.py",
     # BRAND.md rule 5 had been broken twice: the Tauri shell page drew its own
     # gold pentagon and the Python loading page drew a blue one.  Pinned: one
@@ -1159,6 +1180,53 @@ SUITES = [
     # name lists and one integer map, so the properties are checked here against
     # the installed game data, no mod build.  ~2 s.
     r"_probe\test_tech_slot_reuse.py",
+    # The band that keeps a future official update from landing on the author's
+    # work: 5,000 blank ids past the last official record in each of the three
+    # arrays, written as REAL records (the count word covers them, the walk
+    # accepts them, the list has a row each) rather than as `count + k` ids that
+    # do not exist until something writes them.  Checked as a pure function over
+    # the installed data, plus one rebuild of the live flag array, so no mod
+    # build is needed.  ~3 s.
+    r"_probe\test_reserve_slots.py",
+    # Four complaints, one shape (2026-11-23): the merge wrote the author's
+    # records INTO the target's own blank slots, left blanks in the middle of
+    # his block, never moved the unit table at all, and left references naming
+    # the old numbers.  Each of the three tables is read by POSITION, so there
+    # is one honest layout -- [target][band][author] -- and this pins the
+    # decisions that produce it: the three record predicates (a target hole, an
+    # author stub whose 8.4 bytes do not even decode here, a unit stub), the DLL
+    # number that is content when Name is empty, the stub something points at
+    # that therefore cannot be deleted, and the order the stages must run in.
+    # Pure functions plus source-shape checks, so no mod build.  ~1 s.
+    r"_probe\test_three_table_bands.py",
+    # 「像 age3 这样，我能立刻马上找到我要修改的东西的对应的位置，而你这个研究科技
+    # 1423 这栏，我几乎是一个一个一个按钮页翻找才找到的」 -- reported 2026-11-23,
+    # verbatim.  The group rail narrows by MEANING, which is the right first cut
+    # for a reader who does not know the field's name and the wrong one for a
+    # reader who does: 研究科技 sat behind 建造 37 and nothing on screen said so.
+    # Two doors now answer it -- a typed name searches the WHOLE record instead of
+    # the lit group, and 一览 lays every name of the record on one screen and
+    # jumps to the row with the cursor already in its box.  Pure source-shape
+    # checks, no browser, under a second.
+    r"_probe\test_field_index.py",
+    # 「你先做个试试看，别发布」 -- 2026-11-24.  The 造型 page shows a unit's
+    # seventeen graphic slots with the record name behind each number, swaps one
+    # for a picture picked out of the graphic table, and plays the animation to
+    # confirm.  The nails are the two things the first draft got wrong: a swap
+    # has to reach all 63 civilization copies (the server now drops that unit's
+    # decode in every civ, not just the one the note names), and the AP state
+    # has to be declared above showView because the deep link calls it while the
+    # file is still parsing.  Pure source-shape checks, no browser, ~0.1 s.
+    r"_probe\test_appearance_page.py",
+    # One name, one meaning.  api.py bound AV to intent.availability and then
+    # rebound it to the version module forty lines later while the author name
+    # was being added; every AV.describe/plan/apply call in that module then hit
+    # the version constants.  Imports fine, compiles fine, whole suite set green
+    # -- the first symptom was the SHIPPED build answering /api/describe with
+    # "module 'aoe2mod.appversion' has no attribute 'describe'".  This walks the
+    # package with ast and compares each module-level alias against the others
+    # in the same file, then calls the route that broke.  ~2 s.
+    r"_probe\test_import_aliases.py",
     # Rebuilding a mod always lands in `mods/local/<name>`, and the copy it was
     # rebuilt FROM usually sits in `mods/subscribed/` -- Steam owns that folder,
     # so writing into it gets checked and reverted.  Both entries carry the same
@@ -1189,6 +1257,15 @@ SUITES = [
     # and a thumbnail the caller never handed to `emit_data_mod`), so both are
     # pinned here against the real broken byte shape.  Under a second, no .dat.
     r"_probe\test_upgrade_author_files.py",
+    # A rebuild replaces the folder the engine selected dataset points at, and the
+    # engine verifies that dataset by CHECKSUM.  Measured 2026-11-21 on 209785:
+    # 5,333 of 5,387 field changes carried, and the create-game screen still fell
+    # back to the base .dat because the pick kept the old number.  This pins the
+    # three legs -- install records a real checksum instead of "0", the pick is
+    # carried when it names the mod being rebuilt, and it is NOT touched when the
+    # player was reading something else.  Real Player.nfp, temp account.  Under a
+    # second.
+    r"_probe\test_upgrade_keeps_pick.py",
 ]
 
 # Suites that are not Python.  The screen's script is JavaScript and no Python
